@@ -38,6 +38,12 @@ TerminalFrame             exactly one, last
 A reader that reaches the end of the file without a terminal frame refuses it as an interrupted capture.
 A partial trailing batch is never committed and never read (§20.1).
 
+The clock frame is not optional and is not repeatable. A journal that names no clock is refused rather
+than read, because its records' native readings would then be presented against a clock the file does not
+name, which is the conversion I8 forbids; a journal that names two is refused because every record's
+reading would be ambiguous about which one produced it. A batch before the clock frame is refused for the
+same reason.
+
 ### FileHeader — 64 bytes
 
 | Offset | Width | Field |

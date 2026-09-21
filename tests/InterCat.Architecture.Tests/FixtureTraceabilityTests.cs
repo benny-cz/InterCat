@@ -29,6 +29,19 @@ public sealed partial class FixtureTraceabilityTests
         Assert.Equal(asserted.Order(StringComparer.Ordinal), declaredCovered.Order(StringComparer.Ordinal));
         Assert.Empty(declaredCovered.Intersect(declaredUncovered, StringComparer.Ordinal));
 
+        // The ledger names the tests behind each contract item, so those names are checked as well as the
+        // identifiers. A list nothing verifies drifts the moment a test is renamed or deleted, and a
+        // traceability matrix that has drifted is worse than none: it asserts coverage that is not there.
+        foreach (JsonProperty entry in coverage.GetProperty("covered").EnumerateObject())
+        {
+            IEnumerable<string> declaredTests = entry.Value.EnumerateArray().Select(test => test.GetString()!);
+            Assert.Equal(
+                AssertedTestNames(root)
+                    .Where(name => name.StartsWith(entry.Name + ": ", StringComparison.Ordinal))
+                    .Order(StringComparer.Ordinal),
+                declaredTests.Order(StringComparer.Ordinal));
+        }
+
         foreach (JsonProperty entry in coverage.GetProperty("uncovered").EnumerateObject())
         {
             Assert.False(

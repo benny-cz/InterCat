@@ -7,7 +7,7 @@ namespace InterCat.CaptureComparison.Tests;
 
 public sealed class CallbackEnvelopeMapperTests
 {
-    [Fact(DisplayName = "IC-009: every field in the callback envelope survives probe-file mapping")]
+    [Fact(DisplayName = "IC-011: every field in the callback envelope survives journal-v1 mapping")]
     public void CallbackEnvelopeRoundTripsExactly()
     {
         AdmittedEventPlan plan = BuildEventPlan();
@@ -32,10 +32,12 @@ public sealed class CallbackEnvelopeMapperTests
         admitted.RecordOmittedExtendedItem();
         CaptureId captureId = CaptureId.New();
 
-        JournalProbeEnvelope envelope = mapper.ToEnvelope(admitted, plan, captureId);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, captureId);
         AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
 
-        Assert.Equal(JournalProbeBodyDisposition.Retained, envelope.Body.Disposition);
+        Assert.Equal(captureId, envelope.CaptureId);
+        Assert.Equal(BodyDispositionV1.Retained, envelope.Body.Disposition);
+        Assert.Equal(Assert.Single(mapper.Schemas.Schemas).Reference, envelope.SchemaReference);
         Assert.Equal(admitted.SourceIndex, replayed.SourceIndex);
         Assert.Equal(admitted.EventId, replayed.EventId);
         Assert.Equal(admitted.Version, replayed.Version);
@@ -87,11 +89,11 @@ public sealed class CallbackEnvelopeMapperTests
         Assert.True(admitted.TryAppendExtendedItem(EtwExtendedDataTypes.Sid, 0, [9, 9, 9, 9], 4));
         Assert.True(admitted.TryAppendExtendedItem(EtwExtendedDataTypes.ContainerId, 0, [7, 7], 2));
 
-        JournalProbeEnvelope envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
         AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
 
         Assert.Equal(1, envelope.OmittedExtendedItemCount);
-        JournalProbeExtendedItem persisted = Assert.Single(envelope.ExtendedItems);
+        ExtendedItemV1 persisted = Assert.Single(envelope.ExtendedItems);
         Assert.Equal(EtwExtendedDataTypes.ContainerId, persisted.Type);
         Assert.DoesNotContain(
             envelope.ExtendedItems,
@@ -109,7 +111,7 @@ public sealed class CallbackEnvelopeMapperTests
         AdmittedEvent admitted = BuildAdmitted();
         admitted.BeginExtendedData(ExtendedDataAvailability.UnavailableOnThisAdapter, 5);
 
-        JournalProbeEnvelope envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
         AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
 
         Assert.Empty(envelope.ExtendedItems);

@@ -60,9 +60,11 @@ nunit-*.xml
 # the seeded workload. Only curated, fixture-scoped evidence is committed (section 13.6).
 fixtures/**/runs/
 
-# A diagnostic ETL and a probe journal hold records from every process on the machine, not only
-# the fixture's. Their counters are committed; their records never are (P16).
+# A diagnostic ETL and an admitted journal hold records from every process on the machine, not only
+# the fixture's. Their counters are committed; their records never are (P16). The .ijp0 pattern stays
+# for the runs recorded before the capture path moved onto journal-v1.
 bench/results/**/*.etl
+bench/results/**/*.icatj
 bench/results/**/*.ijp0
 
 # A load series writes one truth log per level, and the high levels reach tens of megabytes. The

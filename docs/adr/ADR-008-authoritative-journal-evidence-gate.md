@@ -218,6 +218,15 @@ stage and for buffer lifetime discipline; it is not what the allocation budget w
 IC-011 should not be judged on a debt that measurement says does not exist. `journal-probe-v0` and `callback-envelope-candidate-v0` remain disposable and
 must never be recognized as an `.icat` journal.
 
+*Closed 2026-09-21:* IC-011 met all three conditions. `contracts/journal-v1.md` is frozen against the
+golden corpus in `FX-JOURNAL-002`, buffer ownership is an explicit disposable lease rather than a
+convention, and the capture path writes `journal-v1`. The series was re-run on the new format as
+`capture-comparison-20260921b-series` and `-series-stacks`, which reach the same verdict on denser
+evidence - 231 bytes per admitted record against the probe format's 327 - with the call-stack run
+reporting `decisionReady: true` and no blockers. The `.ijp0` file framing this ADR was measured on has
+been deleted; the runs that carried it are kept, because an accepted decision should still be able to
+show the evidence it was accepted on.
+
 The comparison must not call the admitted journal byte-identical to ETL: policy intentionally removes
 unapproved bodies. It compares preservation of approved evidence and independent truth, while recording
 the intentional omissions.

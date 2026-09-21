@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 5, 2026-09-21. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 5 keeps the revision-4 ADR and identity corrections and removes an IC-009/IC-011 dependency cycle: IC-009 explicitly owns a disposable, non-production envelope candidate needed to measure real callback/extended-data fidelity; IC-011 owns the production contract and implementation only after ADR-008 closes.
+**Status:** reviewed product architecture and implementation blueprint, revision 12, 2026-09-21. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 5 keeps the revision-4 ADR and identity corrections and removes an IC-009/IC-011 dependency cycle: IC-009 explicitly owns a disposable, non-production envelope candidate needed to measure real callback/extended-data fidelity; IC-011 owns the production contract and implementation only after ADR-008 closes.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -971,6 +971,8 @@ Common-query budgets apply to documented indexed predicates and visible row budg
 
 At 100,000 observations/second, 128 bytes per normalized observation alone is about 12.8 MB/s or 46 GB/hour, before raw evidence and indices. Use actual measured sizes to estimate retention in the UI. Large recordings require disk planning and bounded retention, not a claim that memory mapping makes storage cost disappear.
 
+The journal is part of that arithmetic, not a rounding error beside it. `journal-v1` measured **231 bytes per admitted record** across every level of the 2026-09-21 series, because the format deliberately carries no dictionary: a provider, activity, related-activity and clock identifier are sixty-four bytes on every record, and §20.1's dictionaries belong to the derived store rather than to the append-only journal. A session that keeps its journal for the life of the session therefore costs roughly 359 bytes per observation, not 128, and reaches T2's 20 GiB in about fifteen minutes at the §12 ingest target. Retention arithmetic and the UI's remaining-time estimate must count the journal, and §20.1 must state how long a journal batch outlives the segment published from it. Until it does, no session-duration claim follows from the normalized figure alone.
+
 ### 12.1 Session size tiers and scale invariants
 
 Sessions are expected to reach tens of gigabytes: by the arithmetic above, one hour of sustained capture at 100,000 observations per second is roughly 46 GB of normalized data before raw evidence and indices. The tiers are qualification targets; the invariants below them are contracts that hold at every tier.
@@ -1576,7 +1578,9 @@ Compaction targets, so a long live session stays reopenable within §12's budget
 
 A segment header records magic, format major/minor, feature flags, segment ID, derivation version, row count, min/max local time, column directory and checksum references. Column entries carry type, row count, byte offset, byte length and encoding. Unknown required encodings/features are refused. Uncompressed fixed-width columns permit direct mapping; compressed variable chunks use bounded decode buffers. Do not describe compressed columns as directly memory-mappable arrays.
 
-Journal batches use length-delimited framing, record count, first/last source IDs and checksums. Partial trailing batches are not committed. Blob references include file/chunk identity, offset and length and are verified against the same open file handle used to read them. Source locators survive sorted-segment compaction.
+Journal batches use length-delimited framing, record count, first/last source IDs and checksums. Partial trailing batches are not committed. Blob references include file/chunk identity, offset and length and are verified against the same open file handle used to read them. Source locators survive sorted-segment compaction. `contracts/journal-v1.md` is the frozen framing; this section owns what is built on top of it and owns nothing inside it.
+
+**A journal's lifetime is a decision this section owes, and IC-016 makes it.** The journal is append-only and undictionaried by design, so it costs about 231 measured bytes per record where a normalized observation costs about 128 (§12). Keeping every batch for the life of a session nearly triples the session's storage; discarding a batch once its segment is durably published loses the ability to rebuild a segment from admitted evidence after a normalizer revision. IC-016 states which, publishes the retention boundary it implies, and records the choice in an ADR. Neither behaviour may be arrived at by default.
 
 Commit sequence:
 

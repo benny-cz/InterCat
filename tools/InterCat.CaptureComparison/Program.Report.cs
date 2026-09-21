@@ -252,7 +252,7 @@ internal static partial class Program
             CultureInfo.InvariantCulture,
             $"{stage.QueueHighWaterRecords:N0} / {stage.QueueCapacityRecords:N0}");
 
-    private static string Writer(JournalProbeWriterMetrics? writer) => writer is null
+    private static string Writer(WriterStageMetrics? writer) => writer is null
         ? "owned by Windows"
         : $"{Cpu(writer.WriterThreadCpu)} / {Bound(writer.DurableFlushLatency.Percentile99)}";
 

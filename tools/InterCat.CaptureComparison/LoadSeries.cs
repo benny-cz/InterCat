@@ -180,7 +180,7 @@ internal static class LoadSeries
     public static SaturationAssessment Assess(
         CaptureHealthSnapshot health,
         CaptureStageSnapshot? stages,
-        JournalProbeWriterFlushSummary? writer,
+        WriterFlushFacts? writer,
         double acquisitionMilliseconds,
         bool sourceLossKnown = true)
     {
@@ -228,7 +228,7 @@ internal static class LoadSeries
 }
 
 /// <summary>The writer facts the saturation rule needs, kept separate from the full writer metrics.</summary>
-internal sealed record JournalProbeWriterFlushSummary(
+internal sealed record WriterFlushFacts(
     int DurableFlushes,
     double TotalFlushMilliseconds,
     double ProcessorMilliseconds);

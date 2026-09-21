@@ -233,11 +233,12 @@
     },
     {
       "id": "FX-JOURNAL-001",
-      "title": "Callback envelope admission, extended data and clock replay probe",
-      "scenario": "Sections 18.1–18.2: known metadata, an unknown schema with opaque bytes, known content under a metadata-only policy, header-only evidence, allowlisted and denied extended items, a real EVENT_RECORD extended-data array read in bounded copies, and the capture source clock persisted with the file. The IC-009 harness then drives a declared load series through both evidence variants, so the bounded queue reaches its limit and the writer becomes the pacing stage.",
+      "title": "Callback envelope admission, extended data and the elevated load series",
+      "scenario": "Sections 18.1-18.2: known metadata, an unknown schema with opaque bytes, known content under a metadata-only policy, header-only evidence, allowlisted and denied extended items, and a real EVENT_RECORD extended-data array read in bounded copies. The harness then drives a declared load series through both evidence variants, so the bounded queue reaches its limit and the writer becomes the pacing stage. The journal variant writes journal-v1; the format itself is FX-JOURNAL-002.",
       "milestone": "M0",
       "backlog": [
-        "IC-009"
+        "IC-009",
+        "IC-011"
       ],
       "covers": {
         "rules": [
@@ -248,7 +249,6 @@
           "R9"
         ],
         "invariants": [
-          "I8",
           "I13",
           "I21"
         ],
@@ -262,24 +262,24 @@
       },
       "expected": {
         "artifact": "fixtures/FX-JOURNAL-001/expected.json",
-        "note": "All four headers remain attributable. Only approved metadata survives; unknown and content bodies and a denied extended item have explicit omission outcomes; an over-long extended item keeps its original length; and the persisted source clock replays byte-for-byte."
+        "note": "All four headers remain attributable. Only approved metadata survives; unknown and content bodies and a denied extended item have explicit omission outcomes; and an over-long extended item keeps its original length."
       },
       "environment": [
         {
           "build": "10.0.26220.9223-x64",
           "supportTier": "Primary",
           "date": "2026-09-21",
-          "result": "Two five-level elevated series on a supported build. The call-stack series reports decisionReady: true with no blockers: identical ordered replay at every level, 74,682 of 74,682 extended items copied, persisted and replayed, the queue bound reached with 71,107 counted drops and zero loss, and the writer pacing at 104% of an acquisition window. ADR-008 is accepted on this evidence."
+          "result": "Four five-level elevated series on a supported build: two writing the disposable probe format, on whose evidence ADR-008 was accepted, and two writing journal-v1 after the capture path moved to it. The journal-v1 call-stack series reports decisionReady: true with no blockers: identical ordered replay and an unchanged source clock at every level, 77,355 of 77,355 extended items copied, persisted and replayed, the queue bound reached with 60,006 counted drops and zero loss, and the writer pacing at 128% of an acquisition window in the clean series. journal-v1 costs 231 bytes per admitted record against the probe format's 327."
         },
         {
           "build": "portable",
           "supportTier": "NotApplicable",
           "date": "2026-09-21",
-          "result": "The version-0 probe round-trips admitted identity, extended items and the source clock descriptor, excludes unapproved bodies and denied extended types, and rejects checksum corruption. The extended-data walker is asserted against a synthetic EVENT_RECORD, not against a live capture. It is not journal-v1 or an ETL comparison. The load series, its saturation classifier and the storage probe arithmetic are asserted portably; the elevated runs they describe are recorded under bench/results/."
+          "result": "The portable admission policy round-trips admitted identity and extended items, excludes unapproved bodies and denied extended types, and rejects checksum corruption. The extended-data walker is asserted against a synthetic EVENT_RECORD, not against a live capture. The load series, its saturation classifier and the storage probe arithmetic are asserted portably; the elevated runs they describe are recorded under bench/results/."
         }
       ],
       "provenance": {
-        "adapter": "journal-probe-v0 + callback-envelope-candidate-v0",
+        "adapter": "journal-v1 + admitted-projection body (metadata-only-admitted-projection-v1)",
         "shareable": true,
         "contents": "Synthetic headers, schemas, content markers, extended items, a synthetic EVENT_RECORD layout and expected policy dispositions."
       },
@@ -292,8 +292,6 @@
         "R9: an admitted record owns its extended bytes after the source buffer changes",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
         "R21: a record whose extended items were unreachable replays as unavailable",
-        "I8: a probe file carries the capture's source clock and replays it unchanged",
-        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor",
         "R8: a series declares every setting that changes what it measures",
         "R8: an unknown series or level is refused rather than silently reduced",
         "R8: a full bounded queue is reported as a counted drop, not as loss",
@@ -308,21 +306,25 @@
     {
       "id": "FX-JOURNAL-002",
       "title": "The frozen journal-v1 framing and its buffer ownership",
-      "scenario": "Sections 18.1 and 20.1: a fixed corpus of record envelopes written as a journal-v1 file, with a source clock frame, a schema and policy table, two batches, a retained body, a policy-omitted body, a truncated extended item, and a terminal frame.",
+      "scenario": "Sections 18.1 and 20.1: a fixed corpus of record envelopes written as a journal-v1 file, with a source clock frame, a schema and policy table, two batches, a retained body, a policy-omitted body, a truncated extended item, and a terminal frame. The clock frame is the file's own: a journal that names no clock, or two, is refused rather than read against an assumed one.",
       "milestone": "M1",
       "backlog": [
         "IC-011"
       ],
       "covers": {
         "rules": [
+          "R21",
           "R3",
           "R9"
         ],
         "invariants": [
           "I1",
+          "I8",
           "I21"
         ],
-        "prohibitions": []
+        "prohibitions": [
+          "P16"
+        ]
       },
       "truth": {
         "generator": "Deterministic checked-in corpus in InterCat.Storage.Tests",
@@ -339,7 +341,7 @@
           "build": "portable",
           "supportTier": "NotApplicable",
           "date": "2026-09-21",
-          "result": "The corpus round-trips every field, a truncated file is refused as an interrupted capture, a flipped byte fails the per-record integrity check, another format major is refused, and every pooled buffer is returned by the writer."
+          "result": "The corpus round-trips every field, a truncated file is refused as an interrupted capture, a flipped byte fails the per-record integrity check, another format major is refused, a journal with no clock frame or with two is refused, starting one never replaces existing evidence, and every pooled buffer is returned by the writer."
         }
       ],
       "provenance": {
@@ -358,7 +360,11 @@
         "R9: a returned buffer refuses every read rather than handing out another owner's bytes",
         "R9: writing a batch returns every buffer the records held",
         "R9: a writer that is disposed mid-batch returns the buffers it was holding",
-        "R3: CRC-32C matches its published vectors"
+        "R3: CRC-32C matches its published vectors",
+        "P16: starting a journal never replaces evidence that is already there",
+        "I8: a corrupted source clock frame is refused, never read as a partial clock",
+        "I8: a second clock frame is refused rather than silently replacing the first",
+        "R21: a journal that names no clock is refused, never read against an assumed one"
       ]
     }
   ],
@@ -406,10 +412,10 @@
       "I8": [
         "I8: a capture clock stays unconfirmed until a delivered record is checked against it",
         "I8: a checked clock is never re-checked by a later record",
-        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor",
-        "I8: a probe file carries the capture's source clock and replays it unchanged",
+        "I8: a corrupted source clock frame is refused, never read as a partial clock",
         "I8: a reading from this process's own clock confirms the capture's encoding",
         "I8: a reading on another clock refuses the assumed encoding instead of converting it",
+        "I8: a second clock frame is refused rather than silently replacing the first",
         "I8: native clock, local time and workspace time remain distinct"
       ],
       "I9": [
@@ -430,7 +436,8 @@
         "P14: failed ETL provider setup cleans up the exact session it created"
       ],
       "P16": [
-        "P16: persisted fixture evidence excludes unrelated whole-machine endpoints"
+        "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
+        "P16: starting a journal never replaces evidence that is already there"
       ],
       "P2": [
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured"
@@ -522,10 +529,10 @@
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
+        "R21: a journal that names no clock is refused, never read against an assumed one",
         "R21: a machine that falls short of the reference names every way it does",
         "R21: a machine that meets the reference has no gaps to name",
         "R21: a negative result records the control that proves the source was live",
-        "R21: a probe file without a clock frame reports no clock rather than a default one",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",

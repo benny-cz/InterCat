@@ -34,6 +34,25 @@ internal sealed record EvidenceArtifact(
     bool Complete);
 
 /// <summary>
+/// What the writer stage cost. Encode and durable flush are separate quantities because they are paid on
+/// different resources, and the per-flush distribution is kept rather than an average (section 12).
+/// journal-v1 itself performs no durable flush - durability is IC-016's - so this probe opens the file
+/// write-through and flushes each batch itself, which is the cost IC-016 will have to pay.
+/// </summary>
+internal sealed record WriterStageMetrics
+{
+    public required long PayloadBytesWritten { get; init; }
+    public required LatencyHistogramSnapshot EncodeLatency { get; init; }
+    public required LatencyHistogramSnapshot DurableFlushLatency { get; init; }
+
+    /// <summary>Processor time of the writing thread, or null when it moved threads or cannot be read.</summary>
+    public required TimeSpan? WriterThreadCpu { get; init; }
+
+    /// <summary>Bytes the writing thread allocated, or null when the writer could not isolate a thread.</summary>
+    public required long? WriterThreadAllocatedBytes { get; init; }
+}
+
+/// <summary>
 /// Where each variant spends its cost. A stage this variant does not have is null with a stated reason,
 /// because "no callback cost" and "cost not measured" are different findings (section 12, R21).
 /// </summary>
@@ -41,7 +60,7 @@ internal sealed record VariantStageMetrics
 {
     public required CaptureStageSnapshot? Acquisition { get; init; }
     public required string AcquisitionNote { get; init; }
-    public required JournalProbeWriterMetrics? Writer { get; init; }
+    public required WriterStageMetrics? Writer { get; init; }
     public required string WriterNote { get; init; }
     public required CaptureStageSnapshot? Replay { get; init; }
     public required string ReplayNote { get; init; }

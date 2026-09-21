@@ -25,7 +25,9 @@ dotnet run --project tools/InterCat.JournalProbe/InterCat.JournalProbe.csproj -c
 
 `journal-probe-portable.json` measures the disposable version-0 admission and replay experiment against
 a synthetic original-evidence copy. It explicitly has `decisionReady: false`: it is not an ETL
-benchmark, does not exercise elevated ETW acquisition or disk saturation, and cannot close ADR-008.
+benchmark, does not exercise elevated ETW acquisition or disk saturation, and cannot close ADR-008. It
+measures the admission *policy*, which outlived the probe file format the elevated runs once used; the
+live capture path writes `journal-v1` (`contracts/journal-v1.md`).
 
 The IC-009 evidence-gate artifacts are produced by the ownership-safe elevated comparison harness:
 
@@ -65,7 +67,13 @@ and reduces the per-operation rows to the ones that failed, bounded and counted.
 not request extended data - a setting rather than a gap. The two single-point runs predate ADR-007 and
 still carry their "outside the support matrix" blocker; they are kept as the evidence they were.
 
-Only counters are committed. A run's `.ijp0` journal and `.etl` file hold records from every process on
+`capture-comparison-20260921b-series` and `-series-stacks` are the same five levels re-run after the
+capture path moved onto `journal-v1`. They supersede the `20260921` pair as the current state of the
+evidence and reach the same verdict: the call-stack run reports `decisionReady: true` with no blockers.
+The older pair is kept because ADR-008 was accepted on it and an accepted decision should still be able
+to show the evidence it was accepted on.
+
+Only counters are committed. A run's `.icatj` journal and `.etl` file hold records from every process on
 the machine, so they are gitignored and stay local (P16). The single-point runs commit their fixture
 truth logs, because they are the independent expected result those runs are scored against; a series'
 per-level truth logs are gitignored instead, because its high levels reach tens of megabytes and every

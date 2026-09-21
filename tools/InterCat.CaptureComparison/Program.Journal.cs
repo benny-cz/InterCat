@@ -10,13 +10,21 @@ namespace InterCat.CaptureComparison;
 /// <summary>What the dedicated journal writer thread produced, including anything it refused.</summary>
 internal sealed class JournalWriterOutcome
 {
-    public JournalProbeFileSummary? Summary { get; set; }
+    public long FileBytes { get; set; }
+    public long Batches { get; set; }
+    public int DurableFlushes { get; set; }
+    public LatencyHistogram EncodeLatency { get; } = new();
+    public LatencyHistogram DurableFlushLatency { get; } = new();
     public byte[]? Fingerprint { get; set; }
     public long EnvelopeRecords { get; set; }
     public long RecordsWithoutAdmissionPlan { get; set; }
     public long ExtendedItemsPersisted { get; set; }
     public long ExtendedItemsPolicyOmitted { get; set; }
     public SortedSet<ushort> ExtendedTypes { get; } = [];
+    /// <summary>Null when this host could not read the writing thread's clock. Never zero for unread (R3).</summary>
+    public TimeSpan? WriterCpu { get; set; }
+
+    public long WriterAllocatedBytes { get; set; }
     public Exception? Failure { get; set; }
 }
 
@@ -32,7 +40,7 @@ internal static partial class Program
     {
         string directory = Path.Combine(root, "journal");
         Directory.CreateDirectory(directory);
-        string evidencePath = Path.Combine(directory, "callback-envelope.ijp0");
+        string evidencePath = Path.Combine(directory, "capture.icatj");
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("cmpjournal", Environment.ProcessId);
         OwnedSessionPlan sessionPlan = BuildSessionPlan(identity, sources, providers, settings);
         await using var session = new OwnedCaptureSession(sessionPlan, new TraceEventSessionHost());
@@ -75,28 +83,28 @@ internal static partial class Program
                 outcome.Failure);
         }
 
-        JournalProbeFileSummary fileSummary = outcome.Summary
-            ?? throw new InvalidOperationException("The journal writer produced no file summary.");
         CaptureStageSnapshot captureStages = session.ReadStageMetrics();
         CaptureClockEvidence finalClock = session.SourceClock ?? clock;
 
         long replayStarted = Stopwatch.GetTimestamp();
-        JournalProbeFileContents replayed = JournalProbeFileWriter.ReadCompleteFile(evidencePath);
-        var admittedRecords = new List<AdmittedEvent>(Math.Min(replayed.Records.Count, settings.RecordBudget));
+        using JournalV1Contents replayed = JournalV1Reader.ReadFile(evidencePath);
+        var admittedRecords = new List<AdmittedEvent>(settings.RecordBudget);
         using IncrementalHash replayHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        long replayedRecords = 0;
         long extendedReplayed = 0;
-        foreach (JournalProbeEnvelope envelope in replayed.Records)
+        foreach (RecordEnvelopeV1 envelope in replayed.Records)
         {
             CallbackEnvelopeMapper.AppendFingerprint(replayHash, envelope);
             AdmittedEventPlan? plan = session.AdmissionTable.Find(
-                envelope.ProviderGuid,
-                envelope.EventId,
-                envelope.Version);
+                envelope.Header.ProviderId,
+                envelope.Header.EventId,
+                envelope.Header.Version);
             if (plan is null)
             {
                 throw new InvalidDataException("A replayed journal record has no admission plan.");
             }
 
+            replayedRecords++;
             extendedReplayed += envelope.ExtendedItems.Count;
             if (admittedRecords.Count < settings.RecordBudget)
             {
@@ -106,9 +114,18 @@ internal static partial class Program
 
         byte[] replayDigest = replayHash.GetHashAndReset();
         bool exact = outcome.Fingerprint is not null
-            && outcome.EnvelopeRecords == replayed.Records.Count
+            && outcome.EnvelopeRecords == replayedRecords
             && CryptographicOperations.FixedTimeEquals(outcome.Fingerprint, replayDigest);
         double replayMilliseconds = Stopwatch.GetElapsedTime(replayStarted).TotalMilliseconds;
+
+        var writerMetrics = new WriterStageMetrics
+        {
+            PayloadBytesWritten = outcome.FileBytes,
+            EncodeLatency = outcome.EncodeLatency.Read(),
+            DurableFlushLatency = outcome.DurableFlushLatency.Read(),
+            WriterThreadCpu = outcome.WriterCpu,
+            WriterThreadAllocatedBytes = outcome.WriterAllocatedBytes,
+        };
 
         IReadOnlyList<TruthRecord> truth = await ReadTruthAsync(directory, cancellationToken).ConfigureAwait(false);
         TcpCoverageResult coverage = BuildCoverage(
@@ -118,17 +135,17 @@ internal static partial class Program
             identity.CaptureId);
         return new()
         {
-            Name = "admitted-journal-callback-envelope-v0",
+            Name = "admitted-journal-v1",
             CaptureId = identity.CaptureId,
             Providers = start.Providers,
             Health = stop.Health,
             Coverage = CoverageSummary.From(coverage),
             Evidence = new(
-                "journal-probe-v0",
+                "journal-v1",
                 Path.GetRelativePath(root, evidencePath),
-                fileSummary.Bytes,
-                fileSummary.Records,
-                fileSummary.DurableFlushes,
+                outcome.FileBytes,
+                outcome.EnvelopeRecords,
+                outcome.DurableFlushes,
                 true),
             Timing = new(acquisitionMilliseconds, finalizationMilliseconds, replayMilliseconds),
             Stages = new()
@@ -137,10 +154,12 @@ internal static partial class Program
                 AcquisitionNote =
                     "Callback latency, allocations and processor time are the delivery thread's own totals; "
                     + "the queue high-water mark is sampled where the callback enqueues, not once a second.",
-                Writer = fileSummary.Writer,
+                Writer = writerMetrics,
                 WriterNote =
                     "One dedicated thread owns the file from its header to its terminal frame, so its "
-                    + "processor time and allocations are the writer stage's own.",
+                    + "processor time and allocations are the writer stage's own. journal-v1 performs no "
+                    + "durable flush - that is IC-016's - so this probe opens the file write-through and "
+                    + "flushes each batch itself to measure what the commit protocol will cost.",
                 Replay = null,
                 ReplayNote = "Journal replay reads framed batches; it runs no admission callback to measure.",
             },
@@ -163,23 +182,35 @@ internal static partial class Program
             },
             Allocations = null,
             TruthRecords = truth.Count,
-            ReplayedRecords = replayed.Records.Count,
-            ReplayBudgetDrops = replayed.Records.Count - admittedRecords.Count,
+            ReplayedRecords = replayedRecords,
+            ReplayBudgetDrops = replayedRecords - admittedRecords.Count,
             ReplaySourceEventsLost = 0,
             ExactAdmittedProjectionReplay = exact,
             Saturation = LoadSeries.Assess(
                 stop.Health,
                 captureStages,
                 new(
-                    fileSummary.DurableFlushes,
-                    fileSummary.Writer.DurableFlushLatency.TotalNanoseconds / 1_000_000d,
-                    fileSummary.Writer.WriterThreadCpu?.TotalMilliseconds ?? 0),
+                    outcome.DurableFlushes,
+                    writerMetrics.DurableFlushLatency.TotalNanoseconds / 1_000_000d,
+                    outcome.WriterCpu?.TotalMilliseconds ?? 0),
                 acquisitionMilliseconds),
             SourceLossKnown = true,
             Degradations = stop.Degradations,
         };
     }
 
+    /// <summary>
+    /// Owns the journal file from its header to its terminal frame on one thread, so that the processor
+    /// time and allocations it reports are the writer stage's own rather than whichever pool thread
+    /// happened to resume an await.
+    /// </summary>
+    /// <remarks>
+    /// The file is opened here rather than by <see cref="JournalV1Writer.CreateNewFile"/> because this
+    /// probe measures a cost journal-v1 does not itself pay: the format contract leaves durability to
+    /// IC-016, so the writer never flushes to the device. Opening write-through and flushing each batch
+    /// here measures what that protocol will cost on this machine, and keeps the format honest about
+    /// owning none of it.
+    /// </remarks>
     private static void RunWriterThread(
         string evidencePath,
         OwnedCaptureSession session,
@@ -192,25 +223,50 @@ internal static partial class Program
         long allocatedAtStart = GC.GetAllocatedBytesForCurrentThread();
         bool cpuReadable = ThreadCpuTime.TryReadCurrentThread(out ThreadCpuReading cpuAtStart);
         using IncrementalHash fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        using JournalProbeFileWriter writer = JournalProbeFileWriter.CreateNew(
-            evidencePath,
-            settings.JournalBatchRecords,
-            flushEachBatch: true,
-            sourceClock: clock.Descriptor,
-            synchronous: true);
         try
         {
-            ChannelDrain(session, mapper, captureId, writer, fingerprint, outcome);
-            outcome.Fingerprint = fingerprint.GetHashAndReset();
-            TimeSpan? cpu = null;
-            if (cpuReadable && ThreadCpuTime.TryReadCurrentThread(out ThreadCpuReading cpuAtEnd))
+            using var file = new FileStream(
+                Path.GetFullPath(evidencePath),
+                new FileStreamOptions
+                {
+                    Access = FileAccess.Write,
+                    Mode = FileMode.CreateNew,
+                    Share = FileShare.Read,
+                    BufferSize = 128 * 1024,
+                    Options = FileOptions.SequentialScan | FileOptions.WriteThrough,
+                });
+            using (JournalV1Writer writer = JournalV1Writer.Create(
+                file,
+                captureId,
+                clock.Descriptor,
+                DateTimeOffset.UtcNow,
+                settings.JournalBatchRecords))
             {
-                cpu = (cpuAtEnd - cpuAtStart).Total;
+                writer.WriteSchemas(mapper.Schemas);
+                ChannelDrain(session, mapper, captureId, file, writer, fingerprint, settings, outcome);
+                // The final batch and the terminal frame are an encode; getting them to the device is a
+                // flush. They are separate costs and are timed separately, so a run short enough to fill
+                // no batch still records a flush sample rather than reporting none.
+                long completeStarted = Stopwatch.GetTimestamp();
+                writer.Complete();
+                long completeFlushStarted = Stopwatch.GetTimestamp();
+                outcome.EncodeLatency.RecordTicks(completeFlushStarted - completeStarted, Stopwatch.Frequency);
+                file.Flush(flushToDisk: true);
+                outcome.DurableFlushLatency.RecordTicks(
+                    Stopwatch.GetTimestamp() - completeFlushStarted,
+                    Stopwatch.Frequency);
+                outcome.DurableFlushes++;
+                outcome.Batches = writer.BatchesWritten;
+                outcome.FileBytes = file.Length;
             }
 
-            outcome.Summary = writer.Complete(
-                cpu,
-                GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart);
+            outcome.Fingerprint = fingerprint.GetHashAndReset();
+            if (cpuReadable && ThreadCpuTime.TryReadCurrentThread(out ThreadCpuReading cpuAtEnd))
+            {
+                outcome.WriterCpu = (cpuAtEnd - cpuAtStart).Total;
+            }
+
+            outcome.WriterAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -218,14 +274,22 @@ internal static partial class Program
         }
     }
 
+    /// <summary>
+    /// Drains the admission queue into the journal until the capture closes it. Ownership of each pooled
+    /// envelope passes to the writer at <see cref="JournalV1Writer.Append"/>, which returns its buffers
+    /// when the batch is written, so nothing here outlives its single owner (section 18.1).
+    /// </summary>
     private static void ChannelDrain(
         OwnedCaptureSession session,
         CallbackEnvelopeMapper mapper,
         CaptureId captureId,
-        JournalProbeFileWriter writer,
+        FileStream file,
+        JournalV1Writer writer,
         IncrementalHash fingerprint,
+        ComparisonSettings settings,
         JournalWriterOutcome outcome)
     {
+        int sinceBatch = 0;
         while (true)
         {
             while (session.Records.TryRead(out AdmittedEvent admitted))
@@ -245,12 +309,31 @@ internal static partial class Program
                     outcome.ExtendedTypes.Add(admitted.GetExtendedItem(index).Type);
                 }
 
-                JournalProbeEnvelope envelope = mapper.ToEnvelope(admitted, plan, captureId);
+                RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, captureId);
                 outcome.ExtendedItemsPersisted += envelope.ExtendedItems.Count;
                 outcome.ExtendedItemsPolicyOmitted += envelope.OmittedExtendedItemCount;
                 CallbackEnvelopeMapper.AppendFingerprint(fingerprint, envelope);
+
+                // The append that fills the batch is the one that encodes and writes it, so it is the
+                // only one whose latency is an encode cost. Timing every append would measure a list add.
+                bool closes = ++sinceBatch >= settings.JournalBatchRecords;
+                if (!closes)
+                {
+                    writer.Append(envelope);
+                    outcome.EnvelopeRecords++;
+                    continue;
+                }
+
+                long started = Stopwatch.GetTimestamp();
                 writer.Append(envelope);
+                outcome.EncodeLatency.RecordTicks(Stopwatch.GetTimestamp() - started, Stopwatch.Frequency);
                 outcome.EnvelopeRecords++;
+                sinceBatch = 0;
+
+                long flushStarted = Stopwatch.GetTimestamp();
+                file.Flush(flushToDisk: true);
+                outcome.DurableFlushLatency.RecordTicks(Stopwatch.GetTimestamp() - flushStarted, Stopwatch.Frequency);
+                outcome.DurableFlushes++;
             }
 
             if (!session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult())

@@ -7,7 +7,7 @@ namespace InterCat.Storage;
 public sealed record JournalV1Contents(
     CaptureId CaptureId,
     DateTimeOffset CreatedUtc,
-    SourceClockDescriptor? SourceClock,
+    SourceClockDescriptor SourceClock,
     JournalV1SchemaTable Schemas,
     IReadOnlyList<JournalBatchV1> Batches) : IDisposable
 {
@@ -73,6 +73,42 @@ public sealed class JournalV1Writer : IDisposable
         stream.Write(JournalV1Codec.EncodeHeader(captureId, createdUtc));
         stream.Write(JournalV1Codec.EncodeClock(sourceClock));
         return writer;
+    }
+
+    /// <summary>
+    /// Starts a journal at a path that must not exist. Evidence is never replaced by a later run: a
+    /// capture that would overwrite one refuses instead, and the caller chooses another name (P16).
+    /// </summary>
+    public static JournalV1Writer CreateNewFile(
+        string path,
+        CaptureId captureId,
+        SourceClockDescriptor sourceClock,
+        DateTimeOffset createdUtc,
+        int batchCapacity = 4_096)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        string full = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)
+            ?? throw new ArgumentException("The journal path has no parent directory.", nameof(path)));
+        var stream = new FileStream(
+            full,
+            new FileStreamOptions
+            {
+                Access = FileAccess.Write,
+                Mode = FileMode.CreateNew,
+                Share = FileShare.Read,
+                BufferSize = 128 * 1024,
+                Options = FileOptions.SequentialScan,
+            });
+        try
+        {
+            return Create(stream, captureId, sourceClock, createdUtc, batchCapacity, ownsStream: true);
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -232,12 +268,27 @@ public static class JournalV1Reader
                 switch (kind)
                 {
                     case JournalFrameKind.SourceClock:
+                        if (clock is not null)
+                        {
+                            throw new InvalidDataException(
+                                "A journal-v1 file carries one source clock. Two would leave every record's "
+                                + "native reading ambiguous about which clock produced it.");
+                        }
+
                         clock = JournalV1Codec.DecodeClock(payload);
                         break;
                     case JournalFrameKind.SchemaTable:
                         schemas = JournalV1Codec.DecodeSchemaTable(payload);
                         break;
                     case JournalFrameKind.RecordBatch:
+                        if (clock is null)
+                        {
+                            throw new InvalidDataException(
+                                "A journal-v1 batch precedes its source clock frame. Records whose clock the "
+                                + "file does not describe are incomplete evidence, not records with a "
+                                + "default clock.");
+                        }
+
                         batches.Add(JournalV1Codec.DecodeBatch(payload, captureId));
                         break;
                     case JournalFrameKind.Terminal:
@@ -264,7 +315,14 @@ public static class JournalV1Reader
                 throw new InvalidDataException("A journal-v1 file has bytes after its terminal frame.");
             }
 
-            return new(captureId, createdUtc, clock, schemas, batches);
+            // The contract puts exactly one clock frame before every batch. A file without one describes
+            // no clock at all, and reading it would mean presenting native readings against an assumed
+            // clock - which is the conversion I8 forbids. It is refused instead (contracts/journal-v1.md).
+            return clock is not { } described
+                ? throw new InvalidDataException(
+                    "This journal describes no source clock. Its records' native readings belong to a clock "
+                    + "the file does not name, so they are refused rather than read against an assumed one.")
+                : new JournalV1Contents(captureId, createdUtc, described, schemas, batches);
         }
         catch
         {

@@ -46,7 +46,6 @@ public sealed class JournalV1Tests
 
         Assert.Equal(Capture, contents.CaptureId);
         Assert.Equal(Created, contents.CreatedUtc);
-        Assert.NotNull(contents.SourceClock);
         Assert.Equal(Clock(), contents.SourceClock);
         Assert.Equal(2, contents.Batches.Count);
 
@@ -208,6 +207,74 @@ public sealed class JournalV1Tests
         Assert.Contains("major", failure.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact(DisplayName = "P16: starting a journal never replaces evidence that is already there")]
+    public void AJournalNeverReplacesExistingEvidence()
+    {
+        string path = Path.Combine(
+            AppContext.BaseDirectory,
+            "journal-v1-tests",
+            $"{Guid.NewGuid():N}.icatj");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "evidence from an earlier run");
+        try
+        {
+            Assert.Throws<IOException>(
+                () => JournalV1Writer.CreateNewFile(path, Capture, Clock(), Created).Dispose());
+            Assert.Equal("evidence from an earlier run", File.ReadAllText(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact(DisplayName = "I8: a corrupted source clock frame is refused, never read as a partial clock")]
+    public void ACorruptedClockFrameIsRefused()
+    {
+        byte[] file = BuildGoldenJournal();
+
+        // The clock frame follows the header; flip a byte inside its payload.
+        file[JournalV1Codec.HeaderLength + 12] ^= 0xFF;
+
+        InvalidDataException failure = Assert.Throws<InvalidDataException>(
+            () => JournalV1Reader.Read(file).Dispose());
+
+        Assert.Contains("SourceClock", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: a journal that names no clock is refused, never read against an assumed one")]
+    public void ClocklessJournalIsRefused()
+    {
+        CaptureId captureId = CaptureId.New();
+        byte[] file =
+        [
+            .. JournalV1Codec.EncodeHeader(captureId, Created),
+            .. JournalV1Codec.EncodeSchemaTable(new JournalV1SchemaTable()),
+            .. JournalV1Codec.EncodeTerminal(),
+        ];
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalV1Reader.Read(file));
+
+        Assert.Contains("describes no source clock", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I8: a second clock frame is refused rather than silently replacing the first")]
+    public void SecondClockFrameIsRefused()
+    {
+        CaptureId captureId = CaptureId.New();
+        byte[] file =
+        [
+            .. JournalV1Codec.EncodeHeader(captureId, Created),
+            .. JournalV1Codec.EncodeClock(Clock()),
+            .. JournalV1Codec.EncodeClock(SecondClock()),
+            .. JournalV1Codec.EncodeTerminal(),
+        ];
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalV1Reader.Read(file));
+
+        Assert.Contains("one source clock", refusal.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R3: CRC-32C matches its published vectors")]
     public void Crc32CMatchesItsVectors()
     {
@@ -250,6 +317,17 @@ public sealed class JournalV1Tests
 
         return stream.ToArray();
     }
+
+    /// <summary>A second, different clock, for the file that wrongly declares two.</summary>
+    private static SourceClockDescriptor SecondClock() => new(
+        new ClockId(Guid.Parse("99999999-8888-4777-8666-555555555555")),
+        new HostId(Guid.Parse("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff")),
+        SourceClockKind.Monotonic,
+        TimestampEncoding.Qpc,
+        10_000_000,
+        1_000_000,
+        TimestampRounding.NearestEven,
+        604_800_000_000_000);
 
     private static SourceClockDescriptor Clock() => new(
         new ClockId(Guid.Parse("66666666-7777-4888-8999-aaaaaaaaaaaa")),

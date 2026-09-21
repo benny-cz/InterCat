@@ -17,7 +17,8 @@ internal static partial class Program
 
     private static readonly string[] SeriesNotes =
     [
-        "journal-probe-v0 and callback-envelope-candidate-v0 are disposable IC-009 formats, not journal-v1.",
+        "The journal variant writes journal-v1, the frozen format of contracts/journal-v1.md. Its record body is an admitted projection under policy metadata-only-admitted-projection-v1, not a copy of the source payload.",
+        "journal-v1 carries no dictionary: a provider, activity, related-activity and clock identifier are sixty-four bytes on every record. Compaction is section 20.1's derived store, so an admitted journal is denser than an ETL only at low volume, where the ETL pays for buffers it has not filled.",
         "The ETL is separately labeled original diagnostic evidence and is not claimed to be metadata-only.",
         "Coverage is evaluated independently against each level's own truth log; records from two runs are never merged.",
         "Loss, application drops and policy omissions remain separate counters and are never summed.",
