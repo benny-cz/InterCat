@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InterCat.Domain/InterCat.Domain.csproj" />
+    <Project Path="src/InterCat.Storage/InterCat.Storage.csproj" />
+    <Project Path="src/InterCat.Analysis/InterCat.Analysis.csproj" />
+    <Project Path="src/InterCat.Application/InterCat.Application.csproj" />
+    <Project Path="src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <Project Path="src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />
+    <Project Path="src/InterCat.Desktop/InterCat.Desktop.csproj" />
+    <Project Path="src/InterCat.Cli/InterCat.Cli.csproj" />
+    <Project Path="src/InterCat.TestWorkloads/InterCat.TestWorkloads.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InterCat.Domain.Tests/InterCat.Domain.Tests.csproj" />
+    <Project Path="tests/InterCat.Application.Tests/InterCat.Application.Tests.csproj" />
+    <Project Path="tests/InterCat.Analysis.Tests/InterCat.Analysis.Tests.csproj" />
+    <Project Path="tests/InterCat.Capture.Windows.Tests/InterCat.Capture.Windows.Tests.csproj" />
+    <Project Path="tests/InterCat.Architecture.Tests/InterCat.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

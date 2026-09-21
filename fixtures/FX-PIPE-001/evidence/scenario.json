@@ -1,0 +1,15 @@
+{
+  "scenarioId": "FX-PIPE-001",
+  "seed": 20260921,
+  "messages": 6,
+  "minimumMessageBytes": 64,
+  "maximumMessageBytes": 4096,
+  "partialReadMessageIndex": 2,
+  "partialReadBufferBytes": 1024,
+  "pipeName": "intercat-fx-pipe-58944-152065",
+  "pipePath": "\\\\.\\pipe\\intercat-fx-pipe-58944-152065",
+  "serverProcessId": 72164,
+  "clientProcessId": 14212,
+  "serverExitCode": 0,
+  "clientExitCode": 0
+}

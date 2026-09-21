@@ -1,0 +1,406 @@
+{
+  "schemaVersion": "1",
+  "description": "Traceability matrix of section 13.5: fixtures to contracts to tests to milestones. Two checks in InterCat.Architecture.Tests keep it honest.",
+  "updatedUtc": "2026-09-21",
+  "fixtures": [
+    {
+      "id": "FX-TCP-001",
+      "title": "Seeded two-process TCP loopback exchange",
+      "scenario": "Section 13.1 scenario 1: TCP IPv4 loopback, several connections, several messages per connection.",
+      "milestone": "M0",
+      "backlog": [
+        "IC-003",
+        "IC-004"
+      ],
+      "covers": {
+        "rules": [
+          "R8",
+          "R9",
+          "R21"
+        ],
+        "invariants": [
+          "I14"
+        ],
+        "prohibitions": [
+          "P14",
+          "P16",
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads tcp-loopback",
+        "seed": 20260920,
+        "log": "fixtures/FX-TCP-001/evidence/truth.jsonl",
+        "independence": "Both processes write their own log from ordinary socket calls; neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-TCP-001/evidence/verification.json",
+        "note": "The expected query bundle and its canonical hash are defined by IC-018. This milestone records measured counters and the inputs they came from."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Untested",
+          "date": "2026-09-21",
+          "result": "All six section 14.2 criteria met; the tier stays ExperimentalEvidence because the build is outside the section 1.3 matrix."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.2.0",
+        "shareable": true,
+        "contents": "Fixture-scoped loopback observations and truth records only. Unrelated whole-machine flows are never written (P16)."
+      },
+      "tests": [
+        "R8: a capture moves Idle to Recording to Closed and reports its own counters",
+        "P14: a capture never adopts or stops a session it did not create",
+        "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
+        "I14: one admitted record cannot satisfy two truth operations"
+      ]
+    },
+    {
+      "id": "FX-PIPE-001",
+      "title": "Seeded two-process named-pipe exchange in message mode",
+      "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
+      "milestone": "M0",
+      "backlog": [
+        "IC-005"
+      ],
+      "covers": {
+        "rules": [
+          "R3",
+          "R21",
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P3",
+          "P7",
+          "P8"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads pipe-loopback",
+        "seed": 20260921,
+        "log": "fixtures/FX-PIPE-001/evidence/truth-client.jsonl",
+        "independence": "Both processes write their own log from ordinary pipe calls; neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-PIPE-001/evidence/measurement.json",
+        "note": "A measured negative result: the tier is Unsupported, and the control count is part of the expected artifact because it is what makes the negative trustworthy."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Untested",
+          "date": "2026-09-21",
+          "result": "0 of 25 truth operations observed through Microsoft-Windows-Kernel-File, with 2,472 control records from the same processes in the same capture. Tier Unsupported; scope decision recorded in ADR-003."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.2.0",
+        "shareable": true,
+        "contents": "Truth logs, scenario parameters and the measurement counters. Raw file observations are not committed because they carry unrelated machine paths (P16)."
+      },
+      "tests": [
+        "P3: requested and completed pipe bytes stay in separate domains",
+        "P8: a completion is paired by I/O request identity, not by time proximity",
+        "R22: an operation on an unobserved create is left unresolved, not matched by name",
+        "R21: a negative result records the control that proves the source was live",
+        "P7: a pipe peer pairing is checked against the truth log rather than assumed"
+      ]
+    }
+  ],
+  "contractCoverage": {
+    "covered": {
+      "I14": [
+        "I14: one admitted record cannot satisfy two truth operations"
+      ],
+      "I19": [
+        "I19: clearing view selection does not mutate source data"
+      ],
+      "I3": [
+        "I3: time ranges are half-open"
+      ],
+      "P14": [
+        "P14: a capture never adopts or stops a session it did not create",
+        "P14: a failed start stops only the session that attempt created"
+      ],
+      "P16": [
+        "P16: persisted fixture evidence excludes unrelated whole-machine endpoints"
+      ],
+      "P27": [
+        "P27: a measurement on an untested build cannot promote past experimental evidence",
+        "P27: a source that registers and enables but emits nothing stays unsupported",
+        "P27: discovered resources without a byte claim are topology only",
+        "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
+        "P27: false peer attribution above one percent blocks traffic visualization"
+      ],
+      "P3": [
+        "P3: requested and completed pipe bytes stay in separate domains"
+      ],
+      "P7": [
+        "P7: a pipe peer pairing is checked against the truth log rather than assumed"
+      ],
+      "P8": [
+        "P8: a completion is paired by I/O request identity, not by time proximity"
+      ],
+      "R10": [
+        "R10: inverse zoom restores the viewport within rounding tolerance",
+        "R10: panning cannot escape the retained extent",
+        "R10: pointer-focused zoom preserves its time focus"
+      ],
+      "R16": [
+        "R16: a capture attempt without elevation creates nothing and says why"
+      ],
+      "R19": [
+        "R19: platform packages stay in their owning adapters",
+        "R19: portable core source has no Windows or UI imports",
+        "R19: project references follow the inward dependency map"
+      ],
+      "R20": [
+        "R20: an unchanged layout keeps one schema fingerprint across formatting differences"
+      ],
+      "R21": [
+        "R21: a descriptor the schema does not declare is refused with a reason",
+        "R21: a field behind a variable-length field is reported unknown, never guessed",
+        "R21: a negative result records the control that proves the source was live",
+        "R21: a refused state rundown degrades the capture instead of hiding the gap"
+      ],
+      "R22": [
+        "R22: an operation on an unobserved create is left unresolved, not matched by name"
+      ],
+      "R3": [
+        "R3: a matched observation without bytes stays unknown",
+        "R3: an absent denominator is reported as not measured rather than as a pass",
+        "R3: an operation without a paired completion keeps completed bytes unknown",
+        "R3: unknown and observed zero remain distinct"
+      ],
+      "R5": [
+        "R5: initial normative wire codes stay stable",
+        "R5: the manifest parser resolves descriptors, keyword masks and template fields"
+      ],
+      "R6": [
+        "R6: linked panes observe one atomic selection state"
+      ],
+      "R8": [
+        "R8: a capture moves Idle to Recording to Closed and reports its own counters",
+        "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
+        "R8: a session name carries a unique suffix and an ownership token per attempt",
+        "R8: source-reported loss is read into its own counter, never merged with drops"
+      ],
+      "R9": [
+        "R9: admitted fields compile to fixed offsets with a minimum body length"
+      ]
+    },
+    "uncovered": {
+      "I1": {
+        "reason": "Raw-record key stability across replay needs the journal of IC-011.",
+        "plannedBy": "IC-011"
+      },
+      "I10": {
+        "reason": "Cross-host alignment invariance belongs to M4.",
+        "plannedBy": "M4"
+      },
+      "I11": {
+        "reason": "Layer accounting needs application and transport projections from IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "I12": {
+        "reason": "Instance epochs are observed in FX-TCP-001 but not yet asserted by a PID-reuse fixture (IC-007).",
+        "plannedBy": "IC-007"
+      },
+      "I13": {
+        "reason": "Full record attribution needs the journal and admission ledger of IC-009.",
+        "plannedBy": "IC-009"
+      },
+      "I15": {
+        "reason": "Atomic snapshot publication needs the storage commit protocol of IC-016.",
+        "plannedBy": "IC-016"
+      },
+      "I16": {
+        "reason": "Result identity needs the query identity contract of IC-018.",
+        "plannedBy": "IC-018"
+      },
+      "I17": {
+        "reason": "Late-evidence revisions need the storage generations of IC-016.",
+        "plannedBy": "IC-016"
+      },
+      "I18": {
+        "reason": "Pinned evidence survival needs retention from IC-016.",
+        "plannedBy": "IC-016"
+      },
+      "I2": {
+        "reason": "Deterministic fact keys arrive with the canonical importer of IC-013.",
+        "plannedBy": "IC-013"
+      },
+      "I20": {
+        "reason": "Boundary censoring needs the checkpoint work of IC-016.",
+        "plannedBy": "IC-016"
+      },
+      "I21": {
+        "reason": "Retained content fields arrive with IC-012.",
+        "plannedBy": "IC-012"
+      },
+      "I22": {
+        "reason": "Redacted export belongs to M5.",
+        "plannedBy": "M5"
+      },
+      "I4": {
+        "reason": "Cell membership needs the aggregate contract of IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "I5": {
+        "reason": "Cell counts versus detail rows need the aggregate contract of IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "I6": {
+        "reason": "Byte-domain conservation needs the metric contributions of IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "I7": {
+        "reason": "Acquisition versus display order needs the import metadata of IC-013.",
+        "plannedBy": "IC-013"
+      },
+      "I8": {
+        "reason": "Four distinguishable time bases need the clock contract of IC-007.",
+        "plannedBy": "IC-007"
+      },
+      "I9": {
+        "reason": "Alignment revisions cannot rewrite source fields until IC-007 defines them.",
+        "plannedBy": "IC-007"
+      },
+      "P1": {
+        "reason": "Absence versus observed zero in aggregates is asserted with IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "P10": {
+        "reason": "Source-record rewriting is asserted with IC-007.",
+        "plannedBy": "IC-007"
+      },
+      "P11": {
+        "reason": "Quality dimensions stay separate once IC-015 publishes them.",
+        "plannedBy": "IC-015"
+      },
+      "P12": {
+        "reason": "Callback-path prohibitions are asserted against the journal of IC-011.",
+        "plannedBy": "IC-011"
+      },
+      "P13": {
+        "reason": "Coverage epochs on a provider change arrive with IC-009.",
+        "plannedBy": "IC-009"
+      },
+      "P15": {
+        "reason": "View-filter substitution for retention is asserted with IC-012.",
+        "plannedBy": "IC-012"
+      },
+      "P17": {
+        "reason": "Redacted package contents belong to M5.",
+        "plannedBy": "M5"
+      },
+      "P18": {
+        "reason": "Broker isolation is asserted with IC-014.",
+        "plannedBy": "IC-014"
+      },
+      "P19": {
+        "reason": "Broker authentication is asserted with IC-014.",
+        "plannedBy": "IC-014"
+      },
+      "P2": {
+        "reason": "Substitution of a missing measurement is asserted with IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "P20": {
+        "reason": "Intrusive peer resolution is asserted with IC-005.",
+        "plannedBy": "IC-005"
+      },
+      "P21": {
+        "reason": "Obsolete result publication is asserted with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "P22": {
+        "reason": "Stale geometry hit tests are asserted with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "P23": {
+        "reason": "In-flight analysis states are asserted with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "P24": {
+        "reason": "Colour-only meaning is asserted with the theme work of IC-008.",
+        "plannedBy": "IC-008"
+      },
+      "P25": {
+        "reason": "Whole-session interactive scans belong to M2 scale work.",
+        "plannedBy": "M2"
+      },
+      "P26": {
+        "reason": "Preview versus exact results are asserted with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "P28": {
+        "reason": "The catalog denies payload-producing descriptors; a fixture asserting it arrives with IC-006.",
+        "plannedBy": "IC-006"
+      },
+      "P4": {
+        "reason": "Layered double counting needs the RPC correlators of IC-006.",
+        "plannedBy": "IC-006"
+      },
+      "P5": {
+        "reason": "Retransmit folding is asserted with the transport correlators of IC-006.",
+        "plannedBy": "IC-006"
+      },
+      "P6": {
+        "reason": "Identity from a reusable value is asserted with the reuse fixtures of IC-007.",
+        "plannedBy": "IC-007"
+      },
+      "P9": {
+        "reason": "Cross-host ordering claims belong to M4.",
+        "plannedBy": "M4"
+      },
+      "R1": {
+        "reason": "Immutable source facts need the journal envelope and derived tables that IC-011 introduces.",
+        "plannedBy": "IC-011"
+      },
+      "R11": {
+        "reason": "Paint and aggregate loops do not exist before IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "R12": {
+        "reason": "Published render results arrive with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "R13": {
+        "reason": "Data-space hit testing arrives with IC-017.",
+        "plannedBy": "IC-017"
+      },
+      "R14": {
+        "reason": "Redundant visual encoding is asserted once the theme tokens of IC-008 are frozen.",
+        "plannedBy": "IC-008"
+      },
+      "R15": {
+        "reason": "Accessible table equivalents arrive with the remaining IC-008 work.",
+        "plannedBy": "IC-008"
+      },
+      "R17": {
+        "reason": "Per-record content admission arrives with IC-012.",
+        "plannedBy": "IC-012"
+      },
+      "R18": {
+        "reason": "UI and CLI answer one specification only after IC-018.",
+        "plannedBy": "IC-018"
+      },
+      "R2": {
+        "reason": "Typed measurement contributions arrive with the metric contract of IC-015.",
+        "plannedBy": "IC-015"
+      },
+      "R4": {
+        "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",
+        "plannedBy": "IC-006"
+      },
+      "R7": {
+        "reason": "Result supersession needs the query scheduler of IC-017.",
+        "plannedBy": "IC-017"
+      }
+    }
+  }
+}

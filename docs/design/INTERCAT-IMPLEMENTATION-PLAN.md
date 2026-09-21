@@ -1,0 +1,2120 @@
+# InterCat / Windows IPC Visualizer
+
+## 1. Purpose and product decisions
+
+**Status:** reviewed product architecture and implementation blueprint, revision 3, 2026-09-20. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim.
+
+InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
+
+This specification is self-contained: it carries every rule, value, enumeration and contract needed to implement InterCat, and depends on no other document, repository, product or prior discussion. Where a principle was demonstrated elsewhere, the principle is restated here with its own rationale and its own numbers rather than referenced.
+
+Reading guide: [binding rules and invariants](#2-binding-engineering-rules-and-data-invariants), [prohibitions](#24-prohibitions), [first run and the detail ladder](#31-first-run-turn-it-on-and-see-the-flow), [product workflows](#3-core-exploration-workflows), [Windows coverage](#4-capture-coverage-and-evidence-contract), [volume semantics](#5-measurement-semantics-what-volume-means), [workspace design](#6-workspace-and-visual-design), [domain model](#7-domain-model-and-identity), [multi-machine analysis](#8-time-and-multi-machine-investigations), [architecture](#9-architecture-and-module-boundaries), [storage and queries](#10-storage-snapshots-and-query-implementation), [payloads](#11-payload-inspection-privacy-and-source-fidelity), [performance](#12-performance-and-responsiveness-targets), [scale at multi-gigabyte sessions](#121-session-size-tiers-and-scale-invariants), [verification](#13-verification-strategy), [v1 milestones M0–M5](#14-implementation-milestones-and-release-gates), [post-v1 milestones M6–M13](#15-full-post-v1-implementation-milestones), [risks](#16-risk-register-and-decision-rules), [open choices](#17-remaining-conceptual-choices-to-revisit-after-the-prototype).
+
+Implementation detail: [capture and replay contracts](#18-capture-and-replay-implementation-contracts), [analysis and rendering contracts](#19-analysis-and-rendering-implementation-contracts), [storage and operational contracts](#20-storage-and-operational-implementation-contracts), [acceptance examples and review findings](#21-executable-acceptance-specification-and-review-findings). Reference material: [enumerations and wire codes](#23-normative-enumerations-and-wire-codes), [version axes and invalidation](#24-version-axes-and-invalidation), [non-goals and definition of done](#25-non-goals-and-definition-of-done), [solution layout and settings](#26-solution-layout-settings-and-operational-defaults), [glossary](#22-terminology-and-reference-notes), [illustrative manifest](#27-appendix-a-illustrative-session-manifest), [illustrative analysis specification](#28-appendix-b-illustrative-analysis-specification).
+
+Sections 18–28 make the earlier architecture concrete; they are part of the specification, not optional commentary. Section 1.4 states how requirement words and identifiers in this document bind an implementation.
+
+### 1.1 Confirmed product choices
+
+| Decision | Requirement |
+|---|---|
+| Main use case | System exploration: discover who communicates with whom across Windows. Performance diagnosis is a supporting workflow; threat detection is not the organizing concept. |
+| Capture | Driverless first. Optional deeper collectors and application instrumentation are later extensions. |
+| Machine scope | Capture locally; import and correlate captures from multiple machines in one analysis workspace. No remote deployment or fleet control is required for the first release. |
+| Main workspace | Timeline and graph have equal visual prominence, with linked selection, filters, and a ranked process/channel table. |
+| Payloads | Include explicit opt-in inspection wherever a source exposes contents. Absence of contents remains an ordinary supported state. |
+| Visual fundamentals | Preserve responsive timeline aggregation, pointer-focused zoom, pinch, panning, overview/minimap, reversible navigation, and exact evidence drill-down. |
+| Post-v1 priority | Broader Windows IPC coverage and deeper visibility lead the roadmap, including optional collectors where they add proven value. |
+| Deep application visibility | Support both cooperative SDK instrumentation and optional attachment to selected unmodified processes; deliver the SDK first. |
+
+### 1.2 Meaning of whole-system visibility
+
+“Whole-system” means system-wide discovery across supported IPC mechanisms and accessible processes. It does **not** mean that Windows offers a universal, lossless feed of every message, memory write, endpoint, or payload. Coverage depends on Windows build, provider schemas, privileges, capture settings, and event loss.
+
+The product must always distinguish:
+
+1. **Observed activity:** a source directly recorded an operation or lifecycle event.
+2. **Correlated relationship:** multiple observations were linked by a documented rule.
+3. **Discovered resource:** an endpoint, handle, or mapping exists; traffic may be unobserved.
+4. **Unknown or unavailable:** information was not collected, not exposed, lost, or ambiguous.
+
+An empty timeline cannot by itself establish that no IPC occurred. A mapped section cannot establish that bytes were exchanged. A temporal coincidence cannot establish a causal chain.
+
+### 1.3 Delivery defaults, toolchain and supported builds
+
+Use a new repository and solution. Target Windows x64 first; validate native ARM64 separately after the first complete vertical slice. Introduce native code only for a measured interoperability or throughput need. Offline viewing runs without elevation; system capture uses a narrowly privileged broker.
+
+Stack: C#/.NET for domain, query engine, desktop, and capture orchestration; Avalonia with custom Skia drawing for timeline and graph; Microsoft TraceEvent behind a capture adapter, supplemented by Windows TDH metadata decoding.
+
+Pin the following before the first production commit and record the choice and upgrade policy in ADR-1. “Pinned” means a failing build rather than a silent upgrade:
+
+| Item | Initial pin | Policy |
+|---|---|---|
+| .NET SDK | .NET SDK 10.0.401, pinned in `global.json` with roll-forward disabled | Move only on an LTS boundary, through ADR-1 |
+| Language and compiler settings | C# latest of the pinned SDK; nullable reference types enabled and warnings as errors solution-wide | No per-project suppression without a recorded reason |
+| UI framework | Avalonia 11.3.22, centrally pinned; custom drawing uses Avalonia's Skia-backed rendering path | A major-line change is an ADR |
+| ETW adapter | Microsoft TraceEvent 3.2.6, centrally pinned and referenced only by `InterCat.Capture.Windows` | Replaceable by a native TDH consumer if M0 fixtures show a semantic or throughput gap (§18.3) |
+| Static analysis | Compiler analyzers plus an architecture fitness test enforcing §9's dependency direction (R19) | A failing fitness test blocks the build |
+
+Supported build candidates for the first release, revisable by ADR-2 once M0 measures them. A build is supported only when its fixture corpus (§13.4) passes on it; every other build is reported as untested, never as probably working:
+
+| Tier | Builds | Meaning |
+|---|---|---|
+| Primary | Windows 11 24H2 x64 | Development target and per-pull-request CI gate |
+| Secondary | Windows 11 23H2 x64; Windows Server 2025 x64 | Fixture corpus maintained; release gate |
+| Candidate | Windows Server 2022 x64; Windows 11 24H2 ARM64 | Qualified in M13; may ship as a separate edition |
+
+Support named builds from this matrix, not a blanket “Windows 10+” assertion.
+
+### 1.4 How this document binds an implementation
+
+Requirement words have one meaning throughout:
+
+| Word | Meaning |
+|---|---|
+| **must**, **must not** | A contract. Code, fixtures and gates depend on it; changing it requires an ADR |
+| **should** | Strong default. A deviation is recorded in the owning module's ADR with its reason |
+| **may** | Genuine latitude for the implementer |
+| `TUNABLE:` | A named starting value to be benchmarked, not a contract. Measurement can change the value; it cannot remove the surrounding rule, and the value lives as a recorded profile setting rather than a literal |
+
+Identifiers exist so that code, tests and gates can cite this document. A test asserting a rule names it; a milestone gate lists the rules and fixtures it verifies. A gate that cannot name them is not a gate.
+
+| Prefix | Meaning | Defined in |
+|---|---|---|
+| `R<n>` | Binding engineering rule | §2.1 |
+| `I<n>` | Product and data invariant | §2.2 |
+| `P<n>` | Prohibition: a blocking defect if found | §2.4 |
+| `S<n>` | Scale invariant | §12.1 |
+| `EN-<Name>` | Normative enumeration and its wire codes | §23 |
+| `IC-<n>` | Implementation backlog item | §14.1 |
+| `FX-<mechanism>-<nnn>` | Validation fixture | §13.5 |
+| `ADR-<n>` | Architecture decision record | §16 |
+
+Units: storage, memory, buffer and message sizes use IEC binary units (KiB, MiB, GiB). Rates, frequencies and durations use SI units; a decimal byte rate is written MB/s and a binary one MiB/s, and the two are never interchanged. Every displayed, exported and logged measurement carries its unit and its semantic domain (§5); no number reaches a user, a report or a machine-readable result without both (R2). Displayed numbers and dates use the current user locale, with a thousands separator on counts and at most three significant decimals on rates; machine-readable output is locale-independent and uses the invariant forms of §10.5 and §20.5. Wall-clock times state their time base and offset (§6.2); a time without one is never displayed.
+
+## 2. Binding engineering rules and data invariants
+
+These are the contracts every module inherits. Each rule states the failure it prevents, because a rule whose failure mode is unstated gets negotiated away under schedule pressure. Rules constrain how code is written; invariants constrain what the data may ever be. Both are cited at the point of implementation and named by the tests covering them (§1.4).
+
+### 2.1 Binding engineering rules
+
+| ID | Rule | Failure prevented |
+|---|---|---|
+| R1 | Source-derived facts are immutable. Resolved identities, correlations and derived metrics live in versioned derived tables, never in writable observation columns | Evidence rewritten behind a reader; irreproducible snapshots |
+| R2 | Every measurement carries value-or-null, unit, semantic domain, observation side, source and quality | An unexplained single “volume” number |
+| R3 | Null is unknown and zero is an observed zero. No missing measurement is defaulted, substituted, interpolated or scaled into existence | Fabricated totals and invented traffic |
+| R4 | Every relationship carries its rule identity, rule version, evidence IDs and strength | A convincing graph edge nobody can explain |
+| R5 | One canonical enumeration and one display mapping per semantic dimension, defined in §23 | Two views disagreeing about what a mechanism or a quality level is |
+| R6 | All panes answer from one published analysis bundle identified by §10.5's query identity | Old counts shown beside new filters |
+| R7 | A result whose identity has become obsolete is discarded, never merged or partially applied | Late work overwriting newer intent |
+| R8 | Every queue, cache, index, pending-join table, layout pass, spill file and retention policy is bounded, and exhaustion is a reported state | Memory explosion; silent invisible loss |
+| R9 | The capture callback path performs bounded admission and copying only: no queries, name resolution, symbol lookup, decoding beyond a descriptor and shape check, unpooled allocation, or blocking I/O | Machine-wide instability caused by the observer |
+| R10 | Interaction and bucketing math is pure, integer-based in the time domain, and property-tested independently of the UI | Pointer drift, hit-test error, records lost at cell boundaries |
+| R11 | No allocation, boxing, LINQ, reflection or logging inside paint, aggregate, admission or decode loops | Diagnostics and convenience becoming the bottleneck |
+| R12 | Drawing consumes immutable published numeric results, layout results and transforms only; it performs no storage query and no correlation | Frame stalls; results changing while being drawn |
+| R13 | Hit testing resolves against a data-space index. Cosmetic widening changes no interval, no count, and not the evidence a mark resolves to | A mark reporting a time or a record it does not represent |
+| R14 | No meaning is carried by color alone; every channel assignment in §6.6 has a redundant encoding | Unreadable under color-vision differences, high contrast or print |
+| R15 | Every canvas affordance has a keyboard path and an accessible table equivalent yielding the same result set | A product usable only with a mouse and full vision |
+| R16 | Privileged work is confined to the broker's allowlisted capture operations. Parsing imports, decoding content, drawing, querying and exporting never require elevation | A privileged parser or decoder as attack surface |
+| R17 | Content admission is decided per record, by policy identity, before persistence. A view filter is never a substitute for not retaining bytes | Sensitive content retained and then merely hidden |
+| R18 | The core runs headlessly. Every analysis result in the UI is reachable from the CLI through the same specification and yields the same machine-readable values | UI-only validation; untestable analysis semantics |
+| R19 | Platform adapters stay outside the domain, analysis and query modules, which carry no Windows or UI dependency and whose tests run without either | Interop and UI assumptions leaking into analysis semantics |
+| R20 | Every derived artifact records the version axes it was produced from (§24) and is rebuildable from retained raw evidence alone | Derived state that cannot be reproduced or correctly invalidated |
+| R21 | Coverage is stated independently from data. Absence of observations is never rendered, exported, summed or ranked as observed zero activity | A quiet channel and an unobserved channel looking identical |
+| R22 | No identity is established by a reusable numeric value alone: PID, TID, port, handle, object address or name | Independent instances merged into one convincing entity |
+
+### 2.2 Product and data invariants
+
+- **I1** A raw-record key is unique within its capture and stable across every re-read, replay and re-import of that capture.
+- **I2** One raw record may yield several observations; each has a deterministic fact key, and the set is reproducible from the same record, saved schema and normalizer version.
+- **I3** Every time interval is half-open: `[startInclusive, endExclusive)`.
+- **I4** For a declared boundary set, each eligible point observation belongs to exactly one cell.
+- **I5** A cell's count equals the number of detail records returned for that cell under the same analysis specification and snapshot.
+- **I6** A byte sum covers exactly one byte domain and one accounting side; unknown values are counted as unknown and never coerced to zero.
+- **I7** Source acquisition order and chronological display order are recorded separately and never conflated.
+- **I8** Original timestamp encoding, source clock identity, session-relative time and workspace-aligned time remain distinguishable at every layer.
+- **I9** Manual alignment, host aliasing, accepted candidate joins and user annotations never rewrite a source timestamp or a source field.
+- **I10** A locally measured duration is unchanged by any cross-host alignment revision.
+- **I11** Adding a higher-layer annotation to existing evidence changes no transport-layer metric.
+- **I12** Instance epochs make every reusable identifier non-merging: two independently proven instances never collapse into one.
+- **I13** Every acquired record is attributable to an admitted observation, a recorded policy omission, or a recorded loss or undecodable counter.
+- **I14** Re-importing the same bytes with the same versions and retention policy yields equivalent facts and identical normalized IDs, independent of worker count.
+- **I15** A published snapshot contains all data and relations at its declared generation; a partially published generation is never visible.
+- **I16** Every query result names the snapshot vector, revisions and analysis specification it answers.
+- **I17** Late evidence creates a new revision. Earlier snapshots remain reproducible and their identities unchanged.
+- **I18** A pinned or open evidence reference is never invalidated by retention, compaction or export.
+- **I19** No viewport operation changes stored observations, capture policy, or the size of the application window.
+- **I20** An operation open at a capture or retention boundary is censored, not failed; a missing completion is never a timeout unless a source reported one.
+- **I21** Every retained content fragment records classification, direction, retained length, original length when exposed, truncation state and its admission policy identity.
+- **I22** A redacted export contains no original payload bytes, no reference that resolves to them, and no embedded unredacted source.
+
+### 2.3 Approaches explicitly excluded
+
+Severity or log-level taxonomies as an organizing dimension; text mining of message bodies as a primary analysis; the assumption that every fact is a point record owned by exactly one process; `sender PID / receiver PID / bytes` as a universal row shape; a single scalar confidence percentage; and any performance figure not measured against InterCat's own workloads on the reference machine of §12.
+
+The rules and invariants above are not novel. Each was validated in a shipped desktop application of comparable interaction and storage scale, and each is restated here with the failure it prevents so that this document remains the only source required to implement InterCat. If any external implementation is reused later, retain its applicable license notices and re-verify its invariants against this domain.
+
+### 2.4 Prohibitions
+
+These are the specific mistakes this design exists to prevent. They restate, in one place, what the rest of this document forbids in context, so that a reviewer or an implementer has a single page of “what not to do”. A review or test that finds one reports a blocking defect rather than a preference. The last column names the contract that forbids it and the section that specifies the correct behavior, which is also what a test asserting the prohibition must cite (§13.5).
+
+| ID | Never | Enforced by |
+|---|---|---|
+| P1 | Render, export, sum or rank absence of data as observed zero activity | R21, I13 |
+| P2 | Substitute, interpolate, pad or scale a missing measurement — including padding absent content bytes to present a complete message | R3 |
+| P3 | Sum or rank two byte domains together, or relabel requested bytes as transferred bytes | I6, §5.3 |
+| P4 | Count one exchange twice by treating transport evidence and its logical operation as independent communications | §5.1 |
+| P5 | Deduplicate observations by equal timestamp and size, or fold retransmissions into unique delivered payload | §5.1 |
+| P6 | Establish identity from a reusable numeric value alone, from an equal name, or from the same executable path | R22, I12 |
+| P7 | Pair every client with every server sharing a name, or invent a peer to complete an edge | §7.4 |
+| P8 | Present time proximity as causality, or a shared activity identifier as simultaneity | §7.4, §8.2 |
+| P9 | State a cross-host order, one-way latency or causal chain that the combined uncertainty does not support | I10, §8.2 |
+| P10 | Rewrite, clamp or re-timestamp a source record, or let an alignment revision change a locally measured duration | I9, I10 |
+| P11 | Collapse the four quality dimensions into one confidence percentage | R2, §7.3 |
+| P12 | Run a query, name resolution, symbol lookup, unpooled allocation or blocking I/O on the capture callback path | R9, §9.3 |
+| P13 | Silently disable a provider, switch to sampling, or change an effective profile without opening a new coverage epoch | §9.3 |
+| P14 | Take over a session because its name resembles InterCat's, or stop another tool's session to make room | §9.2, §18.2 |
+| P15 | Retain content the active profile did not admit and rely on a view filter to hide it | R17, §18.2 |
+| P16 | Place payload bytes, endpoint strings or command lines into logs, telemetry, crash diagnostics, search snippets or support bundles | §11.1, §20.6 |
+| P17 | Ship an original unredacted source inside a package labeled redacted | I22, §11.3 |
+| P18 | Parse an imported archive, decode content, or draw UI inside the elevated broker | R16 |
+| P19 | Accept a PID, a nonce or a stored session name as authentication or as proof of ownership | R22, §20.3 |
+| P20 | Connect to an unknown application pipe, read another process's memory, or duplicate a handle merely to resolve a peer | §4.4 |
+| P21 | Publish a result whose identity is obsolete, or mix one pane's old numbers with another's new filter | R6, R7, I15 |
+| P22 | Let stale or cosmetically widened geometry answer a hit test, or let a drawn width change a reported interval | R13, §6.2 |
+| P23 | Block input, clear a populated view, or raise a modal because analysis work is in flight | R12, §6.8 |
+| P24 | Carry a meaning on color alone, or reuse the coverage hatch or the unknown grey for a supported mechanism | R14, §6.6 |
+| P25 | Scan a whole session on an interactive path, or recompute a whole-session overview on reopen | S3, S4 |
+| P26 | Export or report a coarse preview as an exact result | §19.3 |
+| P27 | Promote a mechanism's tier, or claim a supported build, without its fixture evidence | §14.2 |
+| P28 | Enable a payload-producing debug keyword, a symbol download or a reverse DNS lookup by default | §4.2, §19.5 |
+
+## 3. Core exploration workflows
+
+### 3.1 First run: turn it on and see the flow
+
+The product's first promise is that a new user launches InterCat, does nothing else, and watches the machine's IPC appear. That promise is a specification, not a slogan, so first run is defined step by step with the required state at each step.
+
+| Step | The user does | What must be on screen, and when |
+|---|---|---|
+| 1 | Launches InterCat | The workspace itself, not a wizard and not a modal: both panes in their designed empty state, a single primary `Start exploring` action already focused, the Explore profile preselected, and one line stating what Explore collects and what it does not. First paint under TUNABLE: 1 s |
+| 2 | Presses `Start exploring` or `Ctrl`+`R` | At most one elevation prompt, preceded by one sentence naming what is elevated and why. Nothing else is asked: no profile editor, no provider list, no destination dialog. The capture writes to a default session in the broker-owned directory |
+| 3 | Waits | Capability and coverage state appear immediately. Lifecycle inventory populates process nodes before traffic arrives, so the graph is never blank while the machine is visibly busy. First useful overview inside §12's 3 s budget, with the health strip naming whatever is still starting |
+| 4 | Watches | A live L0 overview (§3.2): mechanism lanes in the timeline, host and process clusters in the graph, the ranked table filling, follow-latest on. Nothing needs configuring for this view to be correct |
+| 5 | Sees something interesting | One gesture descends one rung of §3.2's ladder. Selection, breadcrumb and time context follow; nothing resets |
+| 6 | Stops, or leaves it running | `Stop` finalizes and reopens the same view over the finished session. Closing the window while recording asks once, states the consequence, and never silently discards a session |
+
+Every first-run default must be correct without a user choice: Explore profile; mechanism-overview lanes; process-to-process graph with resource hubs for ambiguous channels; the `Observations` metric with its transport breakdown; analysis scope following the viewport; evidence policy `IncludeCorrelated`; follow-latest on; ranking by observed activity. Each is visible and changeable, and none must be touched to reach step 4.
+
+If capture cannot start, the empty state names the specific thing that failed, what remains possible — opening a session, importing a trace — and the one action that would fix it. A refused elevation is an expected outcome with a designed state, not an error dialog (§6.8).
+
+### 3.2 Levels of detail: from the whole machine to one record
+
+One ladder, the same gestures at every rung, and the current position always visible. `Enter` or double-click descends; `Esc` or `Alt`+`Left` ascends to exactly where the user was. The ladder behaves identically on a live capture and a finished session.
+
+| Level | Timeline | Graph | Ranked table | Descend by |
+|---|---|---|---|---|
+| L0 Machine | One lane per mechanism, density cells across the retained extent | Host and group clusters with aggregate edges | Mechanisms and top groups | Selecting a lane, cluster or interval |
+| L1 Group | One lane per process group: executable, service container, session | Groups expanded to member clusters within a bounded neighborhood | Groups and their peers | Selecting a group |
+| L2 Process instance | One lane per process instance, split by direction | The instance, its peers one hop out, context nodes for explanation | Peers and channels of that instance | Selecting an instance |
+| L3 Channel | One lane per channel or endpoint of the selection, banded by direction | The channel's participants and its resource hub | Channels, endpoints, operations | Selecting a channel or edge |
+| L4 Operation | Individual operations with duration bars and status | Only the participants of the selected operation | Operations with their measurements | Selecting an operation |
+| L5 Evidence | Individual source observations as marks | Unchanged, with the contributing edge highlighted | Source records, keyset-paged | Selecting a mark |
+
+Ladder invariants, each property-tested:
+
+- **One gesture per rung.** Descending and ascending never require a menu, a mode switch, or a hand-typed query.
+- **Position is always stated.** A breadcrumb names the level and the selection at each rung, and the effective time range, basis and metric stay on screen at every level (§6.4).
+- **Reversible.** Ascending restores the previous viewport, selection, lane grouping and graph focus as one navigation state. The user never loses their place (§6.7).
+- **The same numbers.** A level change alters grouping and lane composition, never eligibility: an L1 total is the sum of its L2 constituents under the same specification, and any difference has a named denominator (§19.1).
+- **A level is not a filter.** Descending sets scope and grouping; it never silently adds a predicate. Where a descent does imply a filter, that filter appears in the filter bar where it can be seen and removed.
+- **Evidence is always one step away.** Every rung reaches L5 in at most one step from its selection, because “show me the actual records” is the question the product exists to answer.
+- **No dead ends.** A level with no data for a selection names the source that would supply it (§4.3) instead of showing an empty pane.
+
+### 3.3 Discover the machine
+
+Start a short Explore capture. Within seconds, the graph shows processes and observed channels; the timeline shows activity by transport. Select a process to highlight its incoming/outgoing relations. Expand one hop, pin relevant nodes, group by executable or service host, and inspect endpoint names and evidence quality. Switch lanes to process or channel and sort the ranked table by activity or measured bytes.
+
+Discovery must remain useful even when peer resolution is incomplete: render `process -> unresolved pipe instance`, rather than omit the event or invent another process.
+
+### 3.4 Explain a burst
+
+Brush an interval in the timeline. The graph and ranking adopt that analysis interval. Sort by observed bytes sent, or operations if bytes are unavailable. Select a channel; inspect its operations and exact source events. Zoom to distinguish a sustained flow, short burst, retry sequence, or repeated RPC operation. Pin the result and return to the full overview without losing the selected entity.
+
+### 3.5 Understand a shared resource
+
+Find a section mapped by multiple processes. Display a section node with membership edges and known mapping lifetimes. Show that this proves shared access, not message traffic. Display size as capacity, with traffic marked unavailable unless a suitable source supplies actual transfer observations.
+
+### 3.6 Follow a relationship across machines
+
+Import two independently recorded captures into an investigation. Assign or verify host identities, inspect clock alignment, and correlate compatible connection observations. Show the relationship between host A's client process and host B's server process only at the evidence strength available. Allow uncertain matches to remain candidates. Local RPC durations remain useful even when network one-way latency cannot be established.
+
+### 3.7 Inspect an available payload
+
+Select an operation with content evidence. Inspect bounded hex/text previews, encoding, direction, source, original length if known, captured length, truncation, and reassembly state. An RPC fragment is initially a fragment, not a decoded function argument. Explicitly request decoding or export; keep binary contents inert. For unavailable content, show the precise reason and which future capture source could provide it, if known.
+
+## 4. Capture coverage and evidence contract
+
+### 4.1 Required capability matrix
+
+Every adapter publishes capabilities per tested OS build and profile. The following table is a design target and feasibility backlog, not a claim that each Windows provider exposes every field.
+
+| Mechanism | Driverless starting point | Intended first-release result | Boundaries and validation needs |
+|---|---|---|---|
+| Process/thread lifecycle | Kernel lifecycle events, rundown where supported, bounded startup inventory | Process instances, thread ownership, names, lifetimes | Starting mid-run, protected metadata, PID/TID reuse, and missing lifecycle events need explicit states |
+| TCP IPv4/IPv6 | Kernel network ETW; bounded IP Helper table snapshots as enrichment | Local owner, connection lifetime, endpoints, source-defined byte observations | Use payload owner fields where appropriate; async event header PID may be unrelated. Loopback, port reuse, reconnect, offload and retransmits need fixtures |
+| UDP IPv4/IPv6 | Kernel UDP events and endpoint inventory | Datagram observations and directional endpoint relationships where fields permit | No TCP-style connection lifetime; multicast, reuse and ambiguous recipient ownership must remain visible |
+| Unix-domain sockets | Investigate relevant Winsock/AFD schemas and controlled fixtures | Explicit capability result; discovery/activity only when validated | Do not assume TCP/IP tracing covers AF_UNIX or every socket family |
+| Named pipes | Candidate kernel file events and name/lifetime correlations; optional existing external evidence import | Pipe resource/activity when validated; peers and bytes only to supported confidence | NPFS coverage is a hard feasibility gate. Equal pipe names do not identify one instance. Reads/writes need completion semantics |
+| Anonymous pipes | Candidate file events plus inherited/duplicated resource evidence where available | Resource/operation discovery where validated | Parent/child relationship alone does not establish shared pipe ownership |
+| RPC | `Microsoft-Windows-RPC` schemas, activity metadata, client/server fixtures | Interface UUID, operation number, protocol, endpoint, status, local call spans where available | Async, nested, multiplexed and cancelled calls require protocol-specific pairing; remote pairing is separately qualified |
+| ALPC | Kernel ALPC send/receive/wait events | Activity, candidate peer pairing and bounded wait observations | Documented send/receive schemas provide MessageID; do not assume payload length, port name, or globally unique IDs |
+| Shared memory/sections | Feasibility-gated mapping/object evidence, bounded accessible inventory; later cooperative instrumentation | Resource topology and mapping lifetimes where supported | Ordinary loads/stores are not a universal ETW message stream. Mapping size, committed pages and dirty pages are not transfer volume |
+| COM/DCOM/WinRT | RPC plus validated component-specific activation/metadata providers | Higher-level annotation and out-of-process relations when supported | In-process COM is not IPC; activation alone is not proof of subsequent calls; runtime coverage varies |
+| Synchronization | Optional context-switch/ready-thread tracing, object evidence, later application markers | Supporting waits and correlations | A blocked thread is not necessarily waiting on IPC; no automatic definitive deadlock diagnosis |
+| WM_COPYDATA/window messages, clipboard, DDE, mailslots | Mechanism-specific research or imported instrumentation | Visible unsupported/experimental entries until validated | Do not market one provider as coverage for all legacy/UI IPC |
+| Remote pipes/SMB, TLS, QUIC | Underlying socket observations plus validated higher-level adapters | Remote endpoints and available protocol annotations | Transport encryption stays encrypted; SMB multiplexing and QUIC stream ownership need independent evidence |
+
+Windows documents a broad set of IPC mechanisms, including file mapping, pipes, RPC and sockets. This taxonomy is intentionally extensible. [Microsoft IPC overview](https://learn.microsoft.com/en-us/windows/win32/ipc/interprocess-communications).
+
+TCP ETW documents source-specific process attribution and warns against assuming event-header PID/TID identifies the network originator. [TCP/IP event documentation](https://learn.microsoft.com/en-us/windows/win32/etw/tcpip). Documented file read/write `IoSize` is **requested** bytes, so it cannot be relabeled as successful transfer size. [FileIo_ReadWrite](https://learn.microsoft.com/en-us/windows/win32/etw/fileio-readwrite).
+
+ALPC has documented send, receive, and wait events; its documented send/receive payloads expose a message identifier, not a universal content/size contract. [ALPC events](https://learn.microsoft.com/en-us/windows/win32/etw/alpc), [send schema](https://learn.microsoft.com/en-us/windows/win32/etw/alpc-send-message), [receive schema](https://learn.microsoft.com/en-us/windows/win32/etw/alpc-receive-message).
+
+Shared mappings expose memory to processes through mapped pointers. The design inference is that discovering a mapping cannot quantify arbitrary accesses through those pointers. [Creating named shared memory](https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory).
+
+### 4.2 Metadata inspection already performed
+
+Read-only provider inspection on Windows build `10.0.26220.0` found `Microsoft-Windows-RPC`, GUID `{6AD52B32-D609-4BE9-AE07-CE8DAE937E39}`. Its local version-1 metadata describes client/server start events 5/6 with interface UUID, procedure number, protocol, network address and endpoint; stop events 7/8 with status; and debug events 10/11 with binary fragments. This is evidence of schemas on one machine, **not** proof of runtime emission, portable event IDs, complete payloads, correlation quality, or safe enablement masks.
+
+Implementation must reproduce the inspection on each supported build, capture synthetic calls, and record which fields actually appear. Do not enable every RPC debug keyword by default. Derive narrowly scoped settings from validated descriptors and store them in the capture manifest.
+
+### 4.3 Source capability descriptor
+
+Required fields: adapter/version; provider identity; supported event descriptors and schema fingerprints; tested build/architecture; required privileges; enablement keywords/levels; available entity, timing, byte and content fields; capture-side filtering support; startup/rundown behavior; documented versus experimental status; validation fixture IDs; measured overhead class.
+
+Runtime states: `Available`, `Experimental`, `Unsupported`, `PermissionDenied`, `DisabledByProfile`, `SchemaUnknown`, `ProviderFailed`. Distinguish “enabled but no matching events” from demonstrated health. Controlled fixture probes are an explicit diagnostics action, not hidden traffic generation during everyday capture.
+
+### 4.4 Practical limits of enrichment
+
+An IP Helper table gives a point-in-time connection inventory, not historic byte counts or every short-lived flow. [GetExtendedTcpTable](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable).
+
+Pipe client/server PID APIs require suitable existing pipe handles. They are not a passive API for enumerating and resolving arbitrary named pipes. Never connect to unknown application pipes merely to discover their peer. [GetNamedPipeClientProcessId](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid).
+
+If handle/object enumeration requires native interfaces without a stable public contract, isolate it as optional, build-tested enrichment with a kill switch. Time-limit potentially blocking name lookups in disposable helper processes. Do not place handle duplication, remote memory reads, or blocking name queries on the capture callback path. Protected-process failure is a supported outcome.
+
+Existing Sysmon imports can add pipe creation/connection evidence, but Sysmon itself installs a driver/service. It is not a dependency of the driverless baseline and does not provide general pipe byte or content accounting. [Sysmon capabilities and events](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon).
+
+## 5. Measurement semantics: what volume means
+
+The UI must offer named metrics, never an unexplained single “volume” number.
+
+| Metric | Definition and scope |
+|---|---|
+| Observations | Number of normalized source observations of the selected kinds; useful across mechanisms but sensitive to instrumentation density |
+| Operations started/completed | Distinct logical operations with qualifying observed start/completion evidence; never raw ETW event count renamed as calls |
+| Bytes sent/received | Sum of eligible byte measurements in one named byte domain and observation side |
+| Requested I/O bytes | Sum of requested lengths; separate from completed bytes |
+| Application payload bytes | Only source-verified application lengths, including explicit partial/unknown status |
+| Captured content bytes | Amount retained for inspection; not the actual volume transferred |
+| Rate | Selected count or compatible byte sum divided by specified duration; incomplete coverage is disclosed |
+| Duration/latency | Named interval: client call, server execution, I/O completion, ALPC send-to-receive, or wait. These are not interchangeable |
+| Active channels/peers | Distinct channel/entity instances under the selected interval and evidence policy |
+| Mapping capacity | Resource capacity where known, not traffic; available as a separate topology metric |
+
+Each measurement carries `value?`, unit, semantic domain, observation side, source, quality, and unavailable reason. Zero is an observed zero. Null is unknown. Show “12 MiB observed; byte size available on 63% of eligible operations” only when that denominator is defined; this is measurement availability, not percentage of all actual traffic captured.
+
+### 5.1 Avoid double counting
+
+Represent a transport observation separately from a logical operation. RPC over ALPC or a pipe is one application operation with transport evidence beneath it, not three independent communications to sum. Application and transport modes use different counting domains with visible labels. Cross-layer relationships can be many-to-many; never assume one RPC call corresponds to one transport event.
+
+For a local transfer observed as A-send and B-receive, sender accounting counts A-send once. A process's sent-plus-received total is endpoint activity, and summing this across processes intentionally counts both endpoints. Label it accordingly. Do not deduplicate by equal timestamp/size. Retransmit observations remain separate from unique delivered payload. Cross-host matched observations retain both records and a canonical accounting policy.
+
+### 5.2 Sorting and scale
+
+Default ranking for Explore: observed communication activity, with metric name shown and transport breakdown. Offer sent bytes, received bytes, total endpoint bytes, operations, rate, peers, errors, and local duration statistics. Unknown byte values sort in a separate `Unmeasured` group; never below measured zero without explanation. Mixed byte domains require separate groups or an explicit selected domain.
+
+Ranking scope is selectable: analysis interval (default), whole retained capture, or visible viewport. Freeze order during gestures and while inspecting a row. Live reranking is optional, throttled, and uses stable entity-ID tie breaks. Pins remain fixed. Top-N displays include an exact remainder or a clearly labeled approximation; the remainder is a grouping, not a real communicating peer.
+
+Use a shared magnitude scale across comparable lanes by default. Optional per-lane normalization is prominently labeled because it hides absolute volume differences. Logarithmic display affects only drawing, not counts, sorting, exports or units (§6.2). Quantiles are computed from mergeable distributions or exact selected durations, never by averaging bucket percentiles.
+
+### 5.3 Metric compatibility and accounting ownership
+
+The query compiler resolves every request against this matrix before planning (§19.1). A metric outside its basis is rejected with the compatible alternatives named; it is never silently substituted. `EN-Metric`, `EN-Basis`, `EN-ByteDomain` and `EN-AccountingSide` are defined in §23.
+
+| Metric | Source observations | Logical operations | Resource topology | Byte domain | Accounting side |
+|---|---|---|---|---|---|
+| `Observations` | yes | no; use operation counts | yes, over membership and lifecycle records | not applicable | not applicable |
+| `OperationsStarted`, `OperationsCompleted` | no | yes | no | not applicable | not applicable |
+| `BytesSent`, `BytesReceived` | yes | yes, where operation-level lengths are proven | no | required, exactly one | required |
+| `RequestedIoBytes` | yes | yes | no | fixed `RequestedIo` | required |
+| `ApplicationPayloadBytes` | yes, only from application-layer sources | yes | no | fixed `ApplicationPayload` | required |
+| `CapturedContentBytes` | yes | yes | no | fixed `CapturedContent` | required |
+| `Rate` | yes | yes | no | inherited from the numerator | inherited from the numerator |
+| `Duration` | no | yes, with a named cohort | mapping lifetime only | not applicable | not applicable |
+| `ActiveChannels`, `ActivePeers` | yes | yes | yes | not applicable | not applicable |
+| `MappingCapacity` | no | no | yes | fixed `Capacity` | not applicable |
+| `Errors` | yes | yes | no | not applicable | inherited where a side is known |
+
+Two byte domains are never summed, ranked together, or shown in one total. A request mixing them is rejected or split into labeled groups (§5.2, I6).
+
+**Canonical accounting owner.** When a transfer association is proven and both sides carry a measurement in the selected domain, exactly one contribution owns the total:
+
+1. the send-side contribution, when it has a known value in the selected domain;
+2. otherwise the receive-side contribution;
+3. ties, including two send-side records for one association, resolve to the lower `(host ID, stream ID, record ordinal)`.
+
+The non-owning side stays visible as corroborating evidence and navigates to the same records while contributing zero to the total. Alignment revisions never change ownership (I10). A resource projection drawing two legs for one exchange assigns the total to the leg carrying the owning contribution (§19.1). Endpoint activity is a separate, explicitly labeled metric that counts both sides by design (§5.1).
+
+## 6. Workspace and visual design
+
+### 6.1 Layout
+
+```text
++--------------------------------------------------------------------------+
+| Capture / Open / Investigation    Host(s)   Coverage   Recording         |
+| Filters: process, peer, mechanism, endpoint, time, quality               |
+| Basis / Metric / Byte domain / Accounting side / Evidence policy         |
++------------------------------------+-------------------------------------+
+| COMMUNICATION GRAPH                | TIMELINE                            |
+| equal main-pane weight             | grouped virtualized lanes           |
+| stable layout, clusters, pins      | pan / zoom / pinch / brush          |
+| process <-> channel <-> process    | counts / bytes / durations          |
+| bounded neighborhood + context     | retained-capture minimap            |
++------------------------------------+-------------------------------------+
+| Ranked processes / channels        | Inspector / evidence / content      |
++--------------------------------------------------------------------------+
+| Live lag · ETW loss · app drops · unknown schemas · disk · scope         |
++--------------------------------------------------------------------------+
+```
+
+The two main panes start at equal widths and share available height. Users can resize, swap or maximize either, with layout saved per workspace. Smaller windows can stack them; neither becomes a token thumbnail. The graph is a navigable map and the timeline is the time axis for that map.
+
+Layout rules, so that equal prominence is testable rather than aspirational:
+
+| Rule | Value |
+|---|---|
+| Default split | 50/50 by width; both panes take the full height of the main region |
+| Minimum pane size | TUNABLE: 420 × 320 logical pixels each, below which the layout stacks rather than shrinks |
+| Stacking breakpoint | A window narrower than TUNABLE: 1,100 logical pixels stacks the panes vertically, graph above timeline, each keeping its minimum |
+| Collapse floor | Either pane may be maximized or hidden by explicit command only. No automatic layout pass reduces a pane below its minimum or to a thumbnail |
+| Persistence | Split ratio, orientation, maximized pane, lane grouping, pinned lanes, graph pins, sort column and column widths are saved per workspace and restored on reopen |
+
+Use restrained chrome, crisp typography, persistent legends and rounded selection emphasis. All colors, spacings, radii, stroke widths, font sizes and animation durations are named tokens resolved from one theme definition per mode — dark, light and high contrast — and no view hard-codes a color or a size (R5). Channel assignments, the mechanism palette and its contrast requirements are specified in §6.6; interaction and navigation math in §6.7.
+
+### 6.2 Timeline
+
+Modes: mechanism overview; host -> process instance; process -> peer/channel; endpoint/resource; and selected operation/thread detail. Keep entity identity independent of lane position. Pin lanes, collapse groups, search lane names, and virtualize rows. A stable low-cardinality mechanism overview remains available even with thousands of processes.
+
+At coarse zoom show density/rate cells. At medium zoom expose directional traffic bands and operation clusters. At fine zoom show individual events and duration bars, capped by a visible rendering budget. Expand overlapping marks to a detail list. Do not draw millions of arrows.
+
+Wheel zoom anchors time under the pointer; pinch uses the gesture-start viewport and current focal point; horizontal scrolling/dragging pans. Vertical scrolling over lane headers scrolls lanes. A documented modifier/drag gesture brushes time without conflicting with pan. Keyboard offers pan, zoom, fit, selection, next/previous observation and navigation history. Buttons expose every essential gesture.
+
+Minimap shows the retained time range, current viewport, selection and capture gaps. Follow-latest and recording are separate states: pausing the view never stops capture. An “as-of” snapshot pin holds analysis stable while ingestion continues. Rejoin live deliberately. Ring-retention eviction must not silently invalidate pinned evidence (I18).
+
+**Level of detail.** The regime is chosen from cell width in device pixels, not from a zoom level or an observation count:
+
+| Regime | Entered when | Drawn |
+|---|---|---|
+| Density | cell width < 3 device px | One intensity cell per column per lane, carrying the selected count or compatible byte sum |
+| Band | 3–12 device px per cell | Directional traffic bands and operation clusters with count badges |
+| Event | > 12 device px per cell | Individual marks, duration bars and direction arrows |
+
+Named widths use a 1–2–5 ladder so cached tiles, CLI resolutions and exports are comparable: 1 µs where source precision permits, then 10/20/50 µs, 100/200/500 µs, 1/2/5 ms, 10/20/50 ms, 100/200/500 ms, 1/2/5 s, 10/20/30 s, 1/2/5/10/30 min, 1 h. Pixel-driven boundaries (§10.3) remain primary; the ladder only names resolutions. Never allocate a model for an empty unit.
+
+Mark budget: TUNABLE: 20,000 drawn marks per frame across all lanes and 2,000 per lane. A lane exceeding its budget in the event regime falls back to its band representation and says so in the lane header; the budget never silently drops individual marks (R21). Arrows are drawn in the event regime only.
+
+**Cell intensity.**
+
+```text
+intensity = log2(1 + v) / log2(1 + vScale)
+```
+
+`v` is the cell's value in the selected metric and `vScale` is the maximum over the normalization scope. Rules: intensity is display only and changes no count, sum, ordering, export or unit; the scope toggle between shared-across-lanes (default) and per-lane is visible at all times, because per-lane normalization hides absolute differences; the active scale, its scope and `vScale` appear in the legend and the hover card; linear and square-root alternatives may be offered under the same disclosure; a cell whose value is unknown draws in the unmeasured pattern of §6.6 and never as intensity 0; an observed zero draws as empty; and a cell holding any eligible observation never draws below the occupied floor.
+
+**Mark geometry and hit testing.** A data column is one device pixel wide in the density regime, which reads the shape of a dense lane correctly but leaves an isolated burst as an unpointable hairline. Therefore:
+
+| Constant | Value | Reason |
+|---|---|---|
+| Occupied floor | TUNABLE: 0.42 of lane height | Any occupied cell keeps a visible share of its lane and only growth above the floor tracks intensity, so magnitude is carried by height as well as alpha (R14). Scaling linearly from zero would draw a lone critical mark thinner than the gridline beneath it |
+| Minimum drawn width | TUNABLE: 5 logical px, ceiling 12 | One device pixel is under half a millimetre on a dense display: legible as a signal, not as a pointer target |
+| Widening scope | Runs narrower than the minimum only | A dense lane already exceeds the minimum everywhere and keeps its true shape untouched |
+| Widening geometry | Expand around the run centre, clamped inside the plot; members share the widened width evenly | Preserves each column's relative position and the run's proportional ink |
+| Pointer snap radius | `minimumWidth / 2 + 5` logical px | Every painted pixel selects the mark it belongs to, plus a small allowance for aim |
+| Snap search cap | TUNABLE: 128 columns | Snapping never degenerates into a full lane scan |
+| Snap tie break | The earlier column | Deterministic hit testing |
+
+Snapping applies only when the pointer is not already on data, and clicking genuine emptiness still selects that empty interval — an empty answer is a supported result (§1.2). Widening is cosmetic: hit tests resolve through a data-space index to the true interval and the true records (R13), and the hover card states the actual interval.
+
+**Viewport bounds and overscroll.**
+
+| Bound | Value |
+|---|---|
+| Minimum span | `max(1 native tick, W × minimumTicksPerPixel)`, TUNABLE: 1 µs per device pixel, never below one native tick |
+| Maximum span | TUNABLE: 1.1 × retained extent under the current analysis scope |
+| Overscroll allowance | `min(0.05 × retained extent, 0.10 × current viewport span)` |
+
+The allowance must be bounded by **both** terms. Bounding it by the retained extent alone makes the margin a fixed amount of *time* at every zoom: invisible at fit, but at deep zoom it can consume most of the plot, leaving a largely empty canvas beneath an axis printing an interval in which no data exists. That reads as a failure to draw rather than as an edge, and it collapses the minimap brush to a sliver exactly where a reader most needs to know where they are. The viewport term keeps the affordance while making it read as an edge at every zoom.
+
+**Axis and ticks.** Choose 1–2–5 tick intervals from the same ladder. Measure label text rather than estimating its width. Keep tick spacing independent of data column width. Escalate units only at the span that needs them: hours and minutes at coarse spans, milliseconds below about 10 s, microseconds below about 10 ms, nanoseconds only where the source clock justifies the digit. Show the date when the viewport crosses a day. State the displayed time base at all times — host-local wall clock, session-relative, or workspace-aligned — and account for device scale. When the axis is workspace-aligned across hosts, draw each host group's uncertainty half-width as a band at the lane edge and repeat the value in the hover card; never draw an aligned axis as though uncertainty were zero (§8.2).
+
+**Minimap.** Draws the whole retained extent at a coarse fixed resolution, TUNABLE: 2,000 columns, plus the viewport brush, the selection, capture gaps and coverage defects. Minimum brush width TUNABLE: 8 logical px, so the brush stays grabbable at deep zoom.
+
+**Hover contract.** A hover over any cell or mark states at least: the exact half-open interval; the metric name, unit, semantic domain and accounting side; the value or `unknown`; the unmeasured count inside the cell; the number of contributing observations; the coverage state and any defect in the interval; and the intensity scale with its normalization scope. The unmeasured count is never omitted, because it is what distinguishes a quiet channel from an unobserved one (R21).
+
+### 6.3 Communication graph
+
+Use a directed multigraph with optional explicit resource nodes. Processes are nodes, channels distinguish parallel relationships, and hosts form outer groups. Shared memory is a section hub with membership edges, not a complete directed clique of supposed traffic. Unresolved resources remain visible. Separate initiator/responder roles from actual data direction; a server often sends data.
+
+Provide process-to-process projection for overview and process-resource-process projection for explanation. Group by executable, service container, host, or user session while preserving instance drill-down. A service list under `svchost` is metadata; attributing an individual IPC operation to one hosted service requires additional evidence.
+
+Default to bounded neighborhoods and explicit expansion at high cardinality. Suggested starting display budget: 200 visible nodes and 500 edges, with counts for omitted groups. Large captures open clustered, not as an unreadable force-directed cloud. Run layout off-thread; preserve positions across refreshes; avoid relayout during time gestures; offer manual pins and explicit re-layout.
+
+Encoding is fixed so that the two panes cannot disagree about magnitude:
+
+| Element | Encoding |
+|---|---|
+| Edge thickness | `1.25 + 4.75 × intensity(metric)` logical px, using §6.2's intensity function and the same normalization scope; TUNABLE bounds 1.25 and 6.0 |
+| Node radius | `6 + 10 × intensity(incident metric)` logical px, floor 6 so a low-traffic participant stays selectable |
+| Edge hue | Mechanism, from §6.6's palette; never magnitude or quality |
+| Inferred link | Dashed stroke plus an explicit `inferred` marker in the legend and hover card |
+| Candidate relation | Dotted stroke at reduced opacity; excluded from definitive causal views |
+| Resource-membership edge | Neutral hue, thin constant stroke, no arrowhead — membership is undirected and carries no traffic value |
+| Context node | Outline-only fill with a `context` badge; contributes to no total (§19.1) |
+| Cluster collapse | A group collapses when its member count exceeds TUNABLE: 25, or when the projection would exceed the display budget. Groups collapse lowest-metric-first, and every collapsed group shows its member and edge counts |
+
+Hover explains evidence and time scope and follows §6.2's hover contract. A graph edge selection filters relevant detail records; double-click opens a channel view with direction, lifetime, statistics and source evidence. Layout, determinism and hit testing are specified in §19.4.
+
+### 6.4 Shared state and interaction rules
+
+Maintain three separate time concepts: retained capture extent, visible viewport, and analysis interval. Default graph/ranking scope is the brushed interval if present, otherwise the viewport. A scope lock holds it while navigating. Always show the effective range. Zoom changes presentation and default scope, never capture policy or stored observations.
+
+Selecting a graph entity highlights it in the timeline; `Focus` makes it a filter. Selecting a timeline cell opens the exact contributing evidence and highlights graph relationships. Distinguish hover, selection, highlight and filter. Multi-select composes explicit predicates. Back/forward restores filters, time, graph focus and lane grouping as one navigation state.
+
+Maintain requested and applied query states. Publish a coherent result bundle identified by snapshot, filters, metric, scope, graph projection and alignment revision. While work is pending, keep the previous bundle with a pending indicator. Export operates on a named applied snapshot, never a mixture of old counts and new filters.
+
+### 6.5 Inspector and accessibility
+
+Inspector tabs: overview; endpoints and lifetimes; operations; source events; correlation explanation; content; capture coverage. Raw evidence includes provider/event descriptor and schema, source clock, decoded fields, adapter version and original record reference.
+
+All canvas selections have keyboard-accessible table equivalents and UI Automation descriptions (R15). Test high contrast, color-vision differences, 100–250% DPI, touch and precision touchpads. Widening a tiny drawn mark improves hit testing but does not expand its actual time interval. State the actual interval in the hover card.
+
+### 6.6 Visual encoding channels and palette
+
+Four meanings compete for the same canvas: which mechanism, how much, how trustworthy, and whether the period was observed at all. Each owns distinct channels, and no meaning borrows another's:
+
+| Meaning | Primary channel | Redundant channel | Never used for it |
+|---|---|---|---|
+| Mechanism / transport | Hue from the fixed palette below | Legend chip glyph and lane label | Opacity, thickness, pattern |
+| Magnitude | Intensity (alpha) plus height in the timeline or thickness in the graph | Numeric value in the hover card and ranked table | Hue |
+| Evidence quality | Border treatment: solid, ticked, dotted | Quality words per dimension in the hover card and inspector | Hue, height |
+| Coverage defect | Diagonal hatch across the affected interval, drawn above data | Explicit gap entries in the minimap and health strip | Hue, opacity |
+| Unmeasured value | Open cross-hatch outline with no fill | `unknown` in the hover card and an `Unmeasured` ranking group | Intensity 0, empty cell |
+| Direction | Arrowhead in the graph, band side in the timeline | Direction word in the hover card | Hue |
+| Selection and focus | Rounded outline in the accent token plus a full-height locator line | Stated selection in the header and the accessible table | Hue, hatch |
+
+One hue per mechanism family, defined once as theme tokens (R5):
+
+| Mechanism family | Hue role |
+|---|---|
+| TCP | Primary blue |
+| UDP | Teal |
+| Named and anonymous pipes | Violet |
+| RPC, COM, DCOM, WinRT | Amber |
+| ALPC | Mint |
+| Shared sections | Magenta |
+| Other socket families, including AF_UNIX | Indigo |
+| Synchronization, window messaging and other legacy IPC | Steel |
+| Unknown or unsupported mechanism | Desaturated grey |
+
+Requirements the palette must satisfy, each enforced by a test rather than by judgement:
+
+- Fills and ink are separate questions. A hue chosen to read well as an area on a dark ground can fail badly as text on a light one, and mechanism names appear as ink in the ranked table, the legend and the inspector. Define a fill variant and an ink variant per mechanism per theme mode.
+- Every ink variant clears a 4.5:1 contrast ratio against every surface token it can land on, measured and recorded per mode; every fill variant clears 3:1 against its own ground.
+- Adjacent mechanisms in palette order keep a stated minimum perceptual separation, verified under protanopia, deuteranopia and tritanopia simulation and in greyscale.
+- Hatches and warning patterns are reserved for coverage and quality. No mechanism may use one.
+- The unknown/unsupported grey is never reused for a supported mechanism.
+- Measured ratios and separations are stored with the theme definition, so a palette change that breaks one fails a test rather than a review.
+
+Animate transitions, selections and layout settling only; never animate per-message activity in a whole-system view. Respect the platform reduced-motion setting: transitions are skipped without changing the final layout, selection or values.
+
+### 6.7 Interaction reference and navigation math
+
+The viewport is `[t0, t1)` with span `span = t1 - t0` over drawable width `W` device pixels.
+
+| Input | Behavior |
+|---|---|
+| Wheel or precision-trackpad scroll over the plot | Zoom anchored at the pointer, `f = 1.25^(∓notches)` |
+| Pinch | Zoom against the gesture-start viewport and the current focal point; `f` from the gesture scale |
+| Primary-button drag over the plot | Pan |
+| Horizontal wheel or two-finger horizontal scroll | Pan |
+| Vertical scroll over lane headers | Scroll lanes |
+| `Shift` + drag, or middle-button drag | Brush a time interval; never conflicts with pan |
+| Drag on the minimap | Move the viewport; drag an edge to resize it |
+| Click a cell, mark, node or edge | Select it; update inspector and detail |
+| `Ctrl` + click | Add to or remove from a multi-selection as an explicit predicate |
+| Double-click a cell | Zoom by TUNABLE: 2.0 around the pointer |
+| Double-click an edge | Open the channel view |
+| Hover | Highlight only; never changes selection or filters |
+| `Enter` on a selection | Focus: turn the selection into a filter |
+| `+` / `-` | Zoom around the selection, else the viewport centre |
+| Arrow keys | Pan by TUNABLE: 10% of the span; with `Shift`, by one cell |
+| `Home` / `End` | Go to the retained extent's edges |
+| `0` | Fit the current analysis scope |
+| `[` / `]` | Previous / next observation in the selected lane or channel |
+| `Tab` | Move focus between graph, timeline, lane list, ranked table and inspector |
+| `Alt`+`Left` / `Alt`+`Right` | Navigation history back and forward, restoring filters, time, graph focus and lane grouping as one state |
+| `F` | Toggle follow-latest |
+| `Ctrl`+`F` | Focus search |
+| `Ctrl`+`E` | Export the applied result |
+| `Esc` | Cancel the gesture in progress, else clear the selection |
+
+Every row has a visible button or menu equivalent and an accessible-table equivalent (R15). No behavior is reachable by gesture alone.
+
+Navigation math is pure and property-tested (R10):
+
+```text
+tc    = t0 + (x / W) * span                  # time under the pointer or focal point
+span' = clamp(span * f, spanMin, spanMax)
+t0'   = tc - (x / W) * span'
+pan:    t0' = t0 - (dx / W) * span
+brush:  [min(xa, xb), max(xa, xb)] -> half-open range, widened to spanMin when degenerate
+```
+
+each result then clamped by §6.2's overscroll allowance. Required properties:
+
+- **Pointer invariant.** The time under the pointer is identical before and after a zoom, within integer-tick and pixel rounding tolerance. This is the contract; `f` and the tick floor are TUNABLE.
+- **Inverse.** Zooming in and back out by the same factor at the same focus restores the viewport unless a clamp intervened, and the same holds for pan.
+- **Bounded overscroll.** No sequence of gestures leaves empty edge space exceeding the allowance.
+- **Pinch stability.** Pinch resolves against the gesture-start viewport, so one continuous gesture accumulates no drift.
+- **Clamp independence.** Clamping depends only on the retained extent, the analysis scope and the viewport — never on graph layout state or an alignment revision (I10).
+
+Lane order and graph positions freeze for the duration of an active gesture (§19.4). Zoom changes presentation and default scope only; it never changes capture policy or stored observations (I19).
+
+### 6.8 Interaction quality, responsiveness and states
+
+Fast usability is a set of testable rules, not an aspiration.
+
+**Perceived latency.** Each window has a different obligation, and the obligation is on the UI thread, not on the query:
+
+| Window | Requirement |
+|---|---|
+| Under 16.7 ms | Every pointer, wheel, pinch, key and drag produces visible motion from cached geometry and current transforms. Input is never gated on a query (R12, P23) |
+| Under 100 ms | Hover feedback, selection outline, breadcrumb change, and lane reorder on an explicit command |
+| Under 1 s | A coarse but correct answer for any level change, brush or filter, labeled as coarse while refinement is pending |
+| Beyond 1 s | Progressive results, cancellable, with a determinate indicator where a bound is known and an indeterminate one where it is not, keeping the previous coherent answer on screen until the new one is complete (§6.4) |
+
+Never raise a blocking modal for analysis work, never disable the canvas while a query runs, and never clear a populated view because a refresh is in flight.
+
+**Progressive disclosure.** The default surface carries only what §3.2's ladder needs: record state and profile, filter bar, basis and metric selector, lane grouping, legend, breadcrumb. Byte domain, accounting side, evidence policy, normalization scope and graph projection are one click away and always display their current value when it is not the default. A non-default setting is never invisible, because a silently unusual setting is how a user comes to distrust every number in the product.
+
+**Defaults that need no configuration.** The first-run defaults of §3.1 are correct for the whole L0-to-L5 path. Once changed, a setting is remembered per workspace and shown as changed, and returning to defaults is one command.
+
+**States are designed, not dialogs.** Empty, starting, permission-denied, provider-failed, unsupported-mechanism, no-match, loss-affected, alignment-unknown and retention-boundary are designed in-pane states. Each states what is true, why, what remains possible, and the one action that changes it, naming the specific source or setting rather than a generic failure (§20.6).
+
+**Discoverability.** The legend is always visible and names the active metric with its unit, domain, accounting side and intensity scale. Every visual claim is one action from its explanation: an `Explain` affordance on any cell, edge or ranked row opens the correlation rule, its version, the evidence IDs and the coverage that produced the mark. §17's prototype questions are the acceptance test for this, not a sentiment survey.
+
+**Motion.** Animate only what helps the eye follow a change: level changes, selection, layout settling and the follow-latest advance. Durations are theme tokens, TUNABLE: 120 ms for selection and 200 ms for a level change. Nothing animates per message. Reduced motion skips all of it without altering a value, a final position or a selection.
+
+## 7. Domain model and identity
+
+### 7.1 Core entities
+
+| Entity | Required meaning |
+|---|---|
+| CaptureSession | One recording/import, configuration, host/boot evidence, source clocks, adapters, retention and quality ledger |
+| Investigation | References one or more immutable capture generations plus host mappings, alignments, annotations and saved views |
+| ProcessInstance | Host + boot epoch + creation identity; numeric PID is an attribute, never the global key |
+| ThreadInstance | Owning process instance + thread creation identity; numeric TID is reusable |
+| Endpoint | Mechanism-specific address/name plus namespace, host, scope and observed validity |
+| ResourceInstance | Pipe instance, section, ALPC port when known, socket or other object with a bounded lifetime |
+| Channel | Relationship through a resource/connection incarnation, possibly one-sided or with multiple participants |
+| Observation | Immutable fact from one source record, preserving original attribution and measurements |
+| Operation | Derived logical I/O, message or call with optional start, end, status and participating observations |
+| Relation | Observed or inferred link with evidence IDs, rule/version, validity range and quality |
+| PayloadFragment | Content evidence, source semantics, parent observation, lengths, direction, offsets, truncation and protection policy |
+| CoverageInterval | Mechanism/source capability and known interruptions or losses over a time interval |
+
+Do not force all IPC into a `sender PID / receiver PID / bytes` row. Discovery, resource membership, observations and completed operations have different shapes.
+
+### 7.2 Stable identifiers
+
+A raw-record key is `(capture UUID, source stream ID, source epoch, record ordinal)`. Live ordinals are assigned at acquisition before parallel decode and are retained in the authoritative journal. One raw record may produce several observations: use `(raw-record key, normalizer contract version, deterministic fact key)` for observation identity. Correlation changes never replace these identities. ETL import uses the canonicalization contract in section 18.4; callback delivery order alone is not a reproducible identity when equal-time events come from different CPUs. Raw acquisition/delivery order and chronological display order remain separate.
+
+A process uses a provider start key when available, otherwise host/boot/PID plus observed creation time. For a process already running at startup, create a provisional instance with evidence strength; do not invent a start event. Keep an alias-resolution table when better lifecycle evidence arrives. Handle reuse, object-address reuse, port reuse and section-name reuse through instance epochs and lifecycle intervals. Same executable path does not mean same process.
+
+For endpoints, retain original and normalized names separately. Include terminal session, object-manager namespace, container/network compartment and IPv6 scope when available. Do not blindly lowercase every endpoint or strip prefixes before identity matching. An unavailable kernel address is not zero and must not collapse unrelated objects.
+
+### 7.3 Observation schema
+
+```text
+Observation
+  Id, CaptureId, SourceId, RawRecordReference
+  ProviderGuid, EventId/ClassicType, Version, Opcode, SchemaFingerprint
+  NativeTimestamp, ClockId, LocalRelativeTime, SourceOrdinal
+  HeaderPid/Tid, SourceOwnerFields, SourceEndpointFields, SourceObjectFields
+  Mechanism, Layer, Kind, Direction?
+  ActivityId?, RelatedActivityId?, SourceCorrelationFields
+  ByteValue?, ByteDomain?, ByteMeaning?, StatusDomain?, StatusCode?
+  FieldAvailability, QualityFlags, PayloadReference?
+
+EntityBindingRevision
+  ObservationId, Revision, ProcessInstanceId?, ThreadInstanceId?
+  EndpointIds[], ResourceInstanceId?, AttributionRule, EvidenceIds[], Quality
+
+OperationRevision
+  OperationId, Revision, Kind, EvidenceIds[], ParticipantIds[]
+  Start?, End?, CompletionState, Measurements[], CorrelationRuleVersion
+```
+
+Source-derived facts remain immutable; subsequently resolved identities live in `EntityBindingRevision`, not writable observation columns. A materialized query row can join them for speed, with its binding revision in the cache key. Field availability reasons include not exposed, profile-disabled, denied, event lost, schema unknown, redacted and not applicable. Quality is multidimensional: attribution, correlation, measurement and timing. A single confidence percentage would imply calibration that the product does not have.
+
+### 7.4 Correlation contracts
+
+Every correlator states its join keys, lifecycle scope, timeout, cardinality, ambiguity policy and evidence requirements. The concrete keys per mechanism cannot be settled from documentation alone: they are an M0 measurement, recorded in that adapter's capability descriptor (§4.3) and fixed in ADR-6 before the correlator is implemented. The contracts below constrain what any such rule may conclude. Produce `Direct`, `Correlated`, `Candidate`, `Unresolved` or `Conflicting` relationships with explanations.
+
+* **Network:** join compatible tuples within host/compartment and connection lifetimes, using provider connection identifiers where validated. Account for reconnect and port reuse. Local loopback endpoints can identify both local owners when corresponding evidence exists. UDP association is scoped by observations, not fabricated connection state.
+* **Pipes:** use object/lifetime evidence to identify instances. Name alone creates an endpoint grouping. Keep multiple same-name instances distinct; never pair each client with every server.
+* **RPC:** use validated activity/call identities and role-specific lifecycle schemas. Thread nesting may supplement a validated synchronous path; it cannot generally pair async or interleaved calls. Interface UUID + procedure number is a grouping key, not a unique call ID.
+* **ALPC:** message ID plus host/boot/time and available lifecycle/thread evidence produces candidates. Reuse, missing sends/receives and repeated IDs prevent blanket uniqueness. Send-to-receive duration is not automatically server execution time.
+* **Shared memory:** connect verified mappings to a section instance. Membership alone is undirected and cannot establish writer/reader roles or transferred bytes.
+* **Cross-layer:** link only through explicit identities or a documented qualified rule. Time proximity alone remains a candidate annotation and is excluded from definitive causal views.
+
+Bound pending joins by count, age and memory. Eviction produces an unresolved reason. Capture ending leaves operations open/censored, not failed. A lost completion is not a timeout unless a source actually reports timeout. Late evidence adds a new correlation revision, invalidates affected aggregates, and preserves earlier snapshot reproducibility (I17, §24).
+
+## 8. Time and multi-machine investigations
+
+### 8.1 Preserve native clocks
+
+Record each source clock and frequency, raw timestamp, capture epoch and conversion policy. Use integer session-relative time for indexing, with checked wide intermediate arithmetic. Preserve native ticks even if the internal display/index resolution is nanoseconds. Precision of representation is not accuracy of measurement; do not advertise nanosecond accuracy simply because a field stores nanoseconds.
+
+For owned ETW sessions prefer a suitable monotonic clock, validated against the actual ETW consumer conversion mode. Collect paired monotonic/wall-clock calibration samples with acquisition uncertainty. Imported traces retain their recorded clock mode. Avoid converting an already converted ETW timestamp a second time.
+
+QPC is not synchronized to external UTC, so values from different hosts cannot be directly compared. Wall-clock alignment also depends on clock synchronization and its accuracy. [Microsoft timestamp guidance](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps).
+
+### 8.2 Alignment model
+
+An investigation maps each host's relative clock into a workspace clock using versioned affine or piecewise-affine segments:
+
+```text
+workspaceTime = scale * hostRelativeTime + offset
+u(t)          = u_systematic + sqrt(u_calibration^2 + u_synchronization^2 + u_drift(t)^2)
+```
+
+Uncertainty is a symmetric half-width in workspace ticks, never a percentage and never a quality word. Independent random contributions combine in quadrature; any contribution known only as a bound, including an unverified synchronization claim, is added linearly as `u_systematic`. If a required contributor is unknown the total is unknown, not zero and not a default, and every cross-host ordering, latency and pairing conclusion that depends on it is withheld rather than estimated (R3, R21). Comparing observations on hosts A and B uses the pair uncertainty `u_pair = sqrt(u(tA)^2 + u(tB)^2) + u_systematic`; their order is reportable only when `|tA - tB| > u_pair` and is otherwise ambiguous, which is the rule the cross-host scenario in §21.1 asserts.
+
+Store original samples, fit residuals, valid intervals and evidence provenance. Offer three alignment modes: recorded wall clock, shared marker/activity evidence, and explicit manual alignment. Manual alignment is an annotation, never a rewrite of source timestamps (I9). A single anchor supplies offset only; drift estimation requires separated anchors and a validated model. Split segments at wall-clock discontinuities or unsupported clock behavior.
+
+A shared activity ID does not make a send and receive simultaneous. Network marker exchanges constrain offset through measured round trips and delay assumptions; they are not exact equal-time anchors. Keep calibration evidence independent from the relationship being tested where possible. Do not fit an offset from a guessed connection pairing and then use that fitted proximity as independent confirmation of the same pairing.
+
+If synchronization accuracy is unknown, display it as unknown; a small local sampling error does not bound remote clock offset. Refuse an unjustified one-way latency number. A cross-host time difference smaller than combined uncertainty has ambiguous order. Preserve stable display tie breaks without calling them causal order.
+
+### 8.3 Cross-host correlation
+
+Host IDs are capture-scoped opaque identities initially. Hostname/IP equality is not identity: DHCP, NAT, VPNs, aliases and cloned VMs can invalidate it. User-confirmed host/boot equivalence is versioned. Local IPC objects never match across hosts just because names coincide.
+
+Network pairing considers protocol, addresses/ports, lifetime overlap under timing uncertainty, known address translations and source identifiers. Unknown NAT or proxy boundaries remain visible endpoint nodes. RPC correlation uses explicit propagated identifiers if available; client and server activity IDs are not assumed to be automatically shared. Content hashes, if an approved decoder produces them, are sensitive optional supporting evidence, not a default global matching mechanism.
+
+The correlation UI previews candidate joins, their evidence and alternatives. Accepted manual joins retain `Manual` provenance. Default graph distinguishes candidate from established relations. Re-aligning time invalidates dependent candidates, ranking caches and graph projections without mutating source sessions.
+
+### 8.4 Investigation persistence
+
+An `.icat-workspace` manifest stores capture content identities, selected generations, host aliases, clock mappings, correlation revisions, graph pins, notes and saved views. Sources remain separately valid `.icat` sessions. Re-importing the same capture must not duplicate its observations; partial overlap between different captures is flagged and handled conservatively, not deduplicated by time alone.
+
+Export can package selected captures plus the workspace. Missing captures reopen as unresolved references with a relink workflow. Automated remote installation, synchronized remote start/stop and streaming over the network are later features, not prerequisites for multi-machine analysis.
+
+## 9. Architecture and module boundaries
+
+```mermaid
+flowchart LR
+  OS[Windows ETW and inventory] --> Broker[Privileged capture broker]
+  Broker --> Raw[Authoritative admitted-event journal]
+  Raw --> Decode[Unprivileged decode and normalize]
+  Import[ETL and InterCat imports] --> Decode
+  Decode --> Store[Immutable observation segments]
+  Store --> Correlate[Versioned entity and relation analysis]
+  Correlate --> Snapshot[Analysis snapshot]
+  Store --> Snapshot
+  Snapshot --> Query[Shared query engine]
+  Query --> Timeline[Timeline and minimap]
+  Query --> Graph[Communication graph]
+  Query --> Detail[Ranking, evidence and content]
+```
+
+| Module | Responsibility |
+|---|---|
+| `InterCat.Domain` | IDs, clocks, measurements, source capabilities, filter AST, query/result and evidence contracts; no Windows/UI dependencies |
+| `InterCat.Storage` | Immutable columns, dictionaries, checksums, manifests, raw references, reader leases and crash recovery |
+| `InterCat.Analysis` | Entity lifetimes, correlation, alignment, aggregation, ranking, adjacency queries and coverage propagation |
+| `InterCat.Application` | Capture/import/analyze/export use cases, cancellation, budgets, snapshot publication and workspace lifecycle |
+| `InterCat.Capture.Windows` | ETW adapter, TDH/TraceEvent decoding boundaries, inventory, profile negotiation and build-specific capabilities |
+| `InterCat.CaptureBroker` | Elevated executable: session ownership, allowlisted capture control, bounded transport, resource limits and audit state |
+| `InterCat.Desktop` | Avalonia workspace, Skia timeline/graph, accessible tables, inspector and commands |
+| `InterCat.Cli` | Scriptable local capture, import, inspect, query, verify, export and capability reporting |
+| `InterCat.TestWorkloads` | Reproducible communicating processes, application truth logs and adversarial fixtures |
+
+Keep platform adapters outside the portable domain/query code even though the product is Windows-focused. This supports deterministic offline tests, not a commitment to another desktop platform. The broker handles only privileged capture operations; parsing imported archives, drawing UI and executing payload decoders must not require elevation.
+
+### 9.1 Capture adapter interfaces
+
+```text
+ProbeCapabilities(environment) -> CapabilityReport
+ValidateProfile(request, capabilities) -> EffectiveProfile + omissions
+StartCapture(effectiveProfile, sink, budgets) -> CaptureHandle
+ObserveCaptureHealth(handle) -> counters + coverage transitions
+StopCapture(handle) -> final source metadata
+
+Decode(rawRecord, savedSchema) -> observations + decode diagnostics
+Correlate(snapshot, changes, budget) -> immutable relation delta
+Query(snapshot, AnalysisSpec, viewport, budget) -> versioned result
+```
+
+Adapters cannot silently change a requested profile. Store both requested and effective settings and the reasons for omissions. Plugin-like interfaces do not imply unrestricted in-process third-party code: external decoders later run in isolated, unprivileged workers with resource limits.
+
+### 9.2 Capture lifecycle
+
+States: `Idle -> Probing -> Starting -> Recording -> Stopping -> Finalizing -> Closed`. `Recording` begins when the first provider is enabled and delivery has started, not when the startup inventory finishes: inventory runs concurrently with early `Recording` and completes into a recorded witnessed-presence interval (§18.5). Failures produce `Degraded` or `RecoverablePartial` with concrete diagnostics; degradation is orthogonal status rather than a lifecycle state (§20.3). View pause is independent. Restart creates a new recording epoch and an explicit gap.
+
+Use unique ETW session names and explicit ownership tokens. Never stop a session solely because its name resembles InterCat. Startup failure cleans up only resources created by that attempt. Detect other profilers/session limits and explain conflicts without disabling them. A broker lifetime/lease policy stops orphaned captures by default; headless CLI recording has an explicit owner and bounded duration or retention policy.
+
+The initial capture requests one UAC elevation for the broker when required. The viewer stays at ordinary integrity. Use a local authenticated control pipe with restrictive ACLs, remote-client rejection, client identity verification, bounded/versioned messages and a small command allowlist. Validate destinations through a broker-owned capture directory and resist junction/reparse substitution. No arbitrary shell execution, arbitrary provider configuration supplied by imported files, or generalized privileged file access.
+
+### 9.3 ETW ingest and overload
+
+An ETW callback must promptly copy the necessary record data out of callback-owned memory into bounded pooled buffers. It must not perform graph queries, symbol lookup, name resolution or blocking storage writes. A full queue cannot safely throttle Windows event generation; return promptly and record application drops using counters that do not depend on the full queue.
+
+Use separate logical stages for acquisition, raw preservation, decode, entity enrichment, correlation, immutable segment commit and snapshot publication. ETW real-time and file consumers use the documented consumption APIs; TDH provides schema information. [Consuming ETW events](https://learn.microsoft.com/en-us/windows/win32/etw/consuming-events), [TdhGetEventInformation](https://learn.microsoft.com/en-us/windows/win32/api/tdh/nf-tdh-tdhgeteventinformation). Evaluate TraceEvent as the implementation adapter, not as the domain model. [Microsoft TraceEvent guide](https://github.com/microsoft/perfview/blob/main/documentation/TraceEvent/TraceEventProgrammersGuide.md?plain=1).
+
+The selected implementation default is a broker-owned, bounded admitted-event journal as the authoritative source for live capture, consumed incrementally by unprivileged analysis. This preserves one record identity from live viewing through replay and applies content policy before InterCat persists event bodies. Optional ETL recording is a separately labeled diagnostic artifact, not an automatically merged second source. ETL-only import remains supported. M0 benchmarks journal fidelity/overhead against ETL; changing the default requires an ADR and updated identity/privacy tests. Do not assume a growing ETL supports arbitrary live random access or that live delivery and file replay have identical loss or order. An unfiltered ETL cannot be described as sanitized. Sections 18.1–18.4 define the exact contracts.
+
+Bound reordering by a watermark and configured lateness window. Equal timestamps use deterministic source/ordinal tie breaks without implying causal order. Late observations go into new sorted delta segments, not dropped or silently retimestamped. Finalized offline ingest can compact them. Every published snapshot includes all data/relations at its declared generation.
+
+A watermark is an optimization boundary, not proof of source completeness. Quiet/idle streams cannot stall publication forever; record their idle status and admit subsequent late records normally. Coverage state remains independent from the event-time watermark, and a stalled source is not equivalent to a stopped source.
+
+Capture health records ETW reported lost events/buffers, broker/application drops, undecodable events, lag, disk failures and provider transitions as different quantities. ETW counters may only bound a loss to a polling interval; do not fabricate exact missing timestamps or add overlapping counters into a fictitious total. [ETW session properties and loss counters](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_properties).
+
+Overload response: reduce nonessential UI refresh, defer enrichment/layout, use reserved bounded buffering, and expose lag. Stop cleanly at configured disk limits or use explicit rolling retention. Never silently disable providers or switch to sampled capture. Any user-selected sampling or adaptive profile change creates a new coverage epoch.
+
+### 9.4 Capture profiles
+
+| Profile | Contents and use |
+|---|---|
+| Explore | Lifecycle + validated network/RPC/ALPC metadata; optional validated pipe metadata if overhead permits; no payload-producing debug settings by default |
+| Focused transport | One mechanism or selected processes where source filtering works; preserves required lifecycle/correlation context |
+| Timing | Explore plus selected thread scheduling/stack evidence after an overhead preview; avoids always-on stack collection |
+| Content | Explicit scope, allowlisted payload-capable sources, byte limits, retention and inspection settings; unsupported mechanisms remain unavailable |
+| Flight recorder | Bounded rolling history with visible oldest retained time; pin/export freezes required evidence before eviction |
+
+Capture-side filtering and view filtering are different. If a provider cannot filter on PID before emission, disclose that a process-focused view still incurs wider capture cost and may collect broader metadata. Capture enough peer/lifecycle context to explain selected activity, while recording any excluded context.
+
+## 10. Storage, snapshots and query implementation
+
+### 10.1 Durable format
+
+Use `.icat` session directories and optional verified `.icat.zip` transport packages. Version the format independently from application releases. Suggested layout:
+
+```text
+session.icat/
+  manifest.json
+  sources/             raw ETL or event journal chunks, schema snapshots
+  observations/        immutable sorted column segments
+  entities/            process/thread/resource revisions and dictionaries
+  relations/           immutable correlation revisions and evidence links
+  indices/             time, postings, adjacency, intervals and aggregate tiles
+  coverage/            capture configuration epochs and health/loss ledger
+  content/             optional restricted payload chunks
+  annotations/         user bookmarks and saved views
+```
+
+Manifest includes UUIDs; host/boot evidence; actual Windows build; adapter/schema/normalizer/correlator versions; clock definitions; requested/effective profile; counts; extent; finalized/partial state; checksum/file inventory; content policy; and retention epochs. Retain imported source bytes unchanged when requested. A derived/redacted package has a new identity and explicit provenance.
+
+Use append-only journal records and immutable sorted segments with atomic manifest publication after durable writes. Recovery selects the last valid generation and reports incomplete tails. Checksums detect corruption; they are not a claim of hostile-tamper resistance or forensic chain of custody. Guard all lengths, offsets, decompression sizes, paths and dictionary cardinalities.
+
+Readers lease generations. Compaction, retention and deletion cannot remove referenced segments/content. Pinning a snapshot must either reserve disk space or materialize the selected evidence; do not promise indefinite pins within a strict circular quota. Export freezes a generation and verifies its dependencies before publishing the result.
+
+### 10.2 Indices suited to IPC
+
+Memory-map fixed-width columns and keep variable metadata/content in separate blobs. Use low-cardinality bitmaps for mechanism/kind/quality. Use compressed postings or sparse indices for high-cardinality process, endpoint and channel IDs; do not allocate a full bitmap for every unique resource. Add time-block min/max metadata, directional adjacency postings and interval start/end indices.
+
+Counts can use rank subtraction. Byte metrics need weighted sums: block summaries for compatible unfiltered spans and vectorized masked scans or cached filtered summaries for the rest. A count bitmap alone cannot answer byte sums. Keep values nullable with availability counters. Use checked wide accumulators so long high-volume captures cannot wrap silently.
+
+Maintain the durable multiresolution overview pyramid required by S4, updated incrementally at commit, so a whole-session overview never needs recomputation at open. Beyond it, do not precompute the Cartesian cube of host × process × peer × resource × operation × time: build compact common summaries and bounded query-driven caches. Dictionary and correlation-state growth have explicit budgets and fallback policies.
+
+### 10.3 Aggregate contract
+
+For a viewport `[t0,t1)` and device width `W`, define boundaries using integer arithmetic:
+
+```text
+b(i) = t0 + floor((t1 - t0) * i / W), for i = 0..W
+cell(i) = [b(i), b(i+1))
+```
+
+Use wide intermediates. Two boundary policies are fixed rather than left to the renderer:
+
+- **Sub-tick zoom.** Clamp the column count to `Weff = min(W, t1 - t0)` in native ticks, so no two boundaries coincide and every cell spans at least one tick. Draw `Weff` cells across the full plot width, each occupying `W / Weff` device pixels, and state the effective resolution in the axis and the hover card. A cell that is empty by construction is never drawn or exported as an observed zero (R21).
+- **Fit range.** A fit computes `[firstStart, lastEnd)`, where `lastEnd` is the greatest end among eligible observations and, for a point observation, its instant plus one native tick. The final observation therefore lands inside cell `Weff - 1` rather than on the exclusive endpoint. §6.2's overscroll allowance applies to the resulting viewport, never to the fit range itself.
+
+Each eligible point observation belongs to exactly one cell and the final endpoint is exclusive (I3, I4). Rendering never rewrites or coalesces source observations.
+
+An aggregate cell stores count; compatible byte sum; known/unknown measurement counts; duration distribution reference where meaningful; coverage state; provisional state; and query identity. For operations, separate start counts, completion counts, overlap count and occupancy. A long operation contributes clipped occupied time to each intersected bucket but is not a newly started operation in each bucket. Censored operations are excluded from completed-duration percentiles and counted separately.
+
+Coverage and quality roll up into a cell by worst case, never by averaging. A cell's coverage state is the maximum over the ordered lattice `Covered < ReducedFidelity < PartialGap < NotCollected < Unknown` across every (mechanism, source) pair contributing to the eligible set over that cell's interval, and the cell retains the number of contributing sources and the identity of each defective one so the hover card can explain the state. Quality rolls up per dimension — attribution, correlation, measurement, timing — as the worst value in that dimension plus the count of contributions at each value. Dimensions are never combined into a scalar, and no roll-up yields a value better than its worst contributor (R2).
+
+Build a multiresolution tile hierarchy for common lane/metric views. Merge additive summaries exactly; retain a documented approximation for quantile sketches. Arbitrary filters must fall back to valid filtered queries rather than reuse unrelated tiles. Boundary fragments require exact treatment. Label approximate top-K/quantiles; exact evidence drill-down always uses the contributing records and predicate.
+
+### 10.4 Query identity and API
+
+```text
+AnalysisSpec:
+  CaptureSnapshotVector, NormalizationRevision, EntityRevision
+  CorrelationRevision, AlignmentRevision
+  Basis, FilterExpression, TimeScope, LayerProjection, Grouping
+  Metric + ByteDomain + AccountingSide, EvidencePolicy
+
+QueryIdentity:
+  hash(AnalysisSpec), Viewport, RequestedRows, QueryGeneration
+
+QueryTimeline / QueryOverview / QueryGraph / QueryRanking
+QueryOperations / QueryEvidence / QueryCoverage / QueryContent
+```
+
+The snapshot vector contains one generation per capture. A workspace query cannot read arbitrary “latest” generations midway through execution. Changing metric, evidence policy or alignment invalidates affected caches. Use cancellation and supersession; no result may publish after its identity becomes obsolete.
+
+Filter AST supports host, process instance/executable, peer, mechanism, layer, endpoint, direction, operation, status, time, quality and source. Restrict text search to selected metadata/content fields; regex has explicit time and result limits. Discovery facets may omit their own dimension to reveal alternatives, but are labeled with that scope. They are not promised to equal the final result count.
+
+Details use keyset pagination over stable order keys. For live changes, preserve selected observation IDs and show when the result's as-of snapshot differs from capture latest. Graph edges reference relation/evidence IDs so every visual claim is explainable.
+
+### 10.5 Canonical analysis specification and query identity
+
+The UI and the CLI must produce byte-identical identities for the same request (R18), so the canonical form is a contract rather than an implementation detail. Normalize the filter expression first:
+
+1. Resolve every name to its enumeration code (§23) and every time to native ticks.
+2. Constant-fold, drop no-op terms, and reject an empty include set rather than treating it as “all”.
+3. Push negations to leaves and keep `is unknown` predicates explicit (§19.1).
+4. Deduplicate and sort include values within a facet by value code; sort facets and independent AND terms by dimension code.
+
+Then serialize the whole specification:
+
+- UTF-8, no insignificant whitespace, members emitted in the declared order of §23's specification schema.
+- Integers in decimal without leading zeros; identities in lowercase hexadecimal; no floating-point value anywhere — instants and durations are integer ticks, ratios are explicit numerator and denominator pairs.
+- Optional members absent rather than null. Defaults are materialized before hashing, so “unset” and “set to the default” hash identically only when they are semantically identical.
+- Every version axis of §24 the result depends on is included.
+
+`QueryIdentity = (canonicalizationVersion, SHA-256(canonicalBytes), Viewport, RequestedRows, QueryGeneration)`. The canonicalization version prefixes the hash, so a future change to the canonical form cannot silently collide with cached entries. A golden corpus mapping specification to canonical bytes to hash is part of the test suite, and the CLI can print the canonical form and hash of any accepted specification, so a UI/CLI mismatch is diagnosable rather than mysterious.
+
+## 11. Payload inspection, privacy and source fidelity
+
+Opt-in content inspection is part of the first release, even though many baseline sources supply metadata only. Implement the evidence model, bounded viewer, availability UX and controlled fixture path immediately. Production content adapters ship only for validated source semantics; no generic interception promise is needed to make the viewer useful.
+
+### 11.1 Two separate content choices
+
+**Collection:** enabling payload-producing sources is explicit before capture. Preview scope, mechanisms, source fields, limits and retention. Metadata-only recording persists event bodies only for a validated descriptor/schema allowlist; unknown or unapproved bodies are omitted with a visible coverage diagnostic. Provider-side filtering is preferred but is not a universal content guarantee. Events may transiently reach the OS or callback before admission; the guarantee concerns InterCat's retained evidence, not all Windows buffers. An adapter unable to enforce its body contract is unavailable in this profile. Original ETL preservation is a separate source-retention choice. Section 18.2 specifies admission and unknown-event handling.
+
+**Inspection/import:** imported ETL or instrumented traces may already contain content. Explain that before enabling content previews. Inspection consent does not change what the imported file already contains. Preserve its source policy and do not silently place previews into search snippets, reports or crash diagnostics.
+
+Payload search, reassembly and export have separate deliberate commands. Keep content out of routine telemetry/logging; the product itself has no automatic upload path. Endpoint names, command lines and RPC options can also be sensitive metadata.
+
+### 11.2 Content data contract
+
+Store source bytes plus content classification: `OpaqueProviderData`, `TransportFragment`, `ApplicationPayload`, `DecodedFields` or `EncryptedContent`. Never automatically interpret arbitrary ETW event payload as bytes sent by the application. Keep a decoder's output linked to the original fragment and decoder version.
+
+Require per-record and per-session byte caps, truncation flags, missing-range markers, direction, encoding and original length when exposed. Never pad missing bytes and present a complete message. Stream reassembly is mechanism-specific: one TCP event is not one application message, and equal read/write buffer sizes do not establish boundaries. Binary decoders run with length limits, timeouts and isolation; no scripts, macros or active rendering from captured content.
+
+First-release inspection: hex, bounded text, structured event fields, byte-range selection and explicit binary export. Protocol decoders are later incremental work, except a small synthetic fixture decoder used to validate the model. TLS/other encrypted data remains encrypted unless the selected source legitimately supplies pre-encryption application content.
+
+### 11.3 Storage and sharing
+
+Restrict session ACLs to the capturing user and necessary broker identity. Optional encryption uses a reviewed authenticated-encryption library and OS-protected key storage; portability requires an explicit key/password wrapping design. Do not invent cryptography or suggest local encryption removes exposure while content is being inspected.
+
+Export presets: metadata-only derived report, redacted normalized session, or original evidence package. Show included fields, hosts, raw files and payload chunks before export. A filtered/redacted package must not include an original unredacted ETL as an unnoticed attachment (I22). Redaction produces new dictionaries/indices and scans annotations/content references for leakage; original evidence stays separate. Deleting files is not a guaranteed secure erase on SSDs.
+
+## 12. Performance and responsiveness targets
+
+These are proposed engineering acceptance budgets, not measured results. Revise them openly through an ADR with measured evidence rather than quietly dropping a benchmark. Report broker, analysis and UI costs separately, including OS ETW buffers and mapped-file residency.
+
+Reference machine for every number in this section, confirmed or revised in M0: an x64 desktop-class CPU with 8 physical cores and 16 threads; 32 GiB RAM; an NVMe SSD sustaining at least 2 GB/s sequential read and 1 GB/s write; a 2560 × 1440 display at 100% scaling; the primary supported build of §1.3; and no other profiler or tracing session running. Publish the exact CPU and storage models, Windows build, source schema versions, workload seed and distributions with every result: a number without them is not a measurement.
+
+| Area | Initial target and measurement |
+|---|---|
+| First feedback | Capture status/coverage immediately; first useful overview within 3 seconds of first delivered events, with provider flush latency reported separately |
+| Interaction | Cached pan/zoom drawing p95 within a 16.7 ms frame budget; uncached query never blocks input |
+| Timeline query | Warm 2,000-column × 40-visible-lane common query p95 under 100 ms at 10 million observations; publish coarse preview before a longer exact refinement |
+| Graph/ranking | Bounded 200-node/500-edge projection and top-100 ranking p95 under 250 ms for common indexed scopes at 10 million observations |
+| Detail | First evidence page p95 under 150 ms for indexed filters; content preview streams with a strict size bound |
+| Ingest | Sustain 100,000 normalized metadata observations/second for 10 minutes on the reference machine with no application drops; explicitly measure provider/ETW loss separately |
+| Bursts | Exercise 1 million observations/second for short bursts; bounded memory and accurate loss disclosure are mandatory even if lossless handling is not achieved |
+| Scale | Validate 1M, 10M and 100M observations; 100M is a scale qualification tier, not the first vertical-slice gate |
+| Memory | Initial configurable default budgets: 256 MiB acquisition queues, 512 MiB analysis/cache, 512 MiB UI/layout; measure total private bytes/residency separately and cap ETW buffers independently |
+| Reopen | Indexed 10M-observation session usable within 3 seconds on reference NVMe without re-decoding the source |
+| Capture impact | Target under 5 percentage points of total-machine CPU for Explore at the stated workload, and under 5% workload-throughput regression; measure both against a no-capture baseline |
+
+End-to-end live latency budget, so that “first useful overview within 3 seconds” is verifiable stage by stage. Provider flush latency sits outside this budget and is reported separately:
+
+| Stage | Budget |
+|---|---|
+| Callback admission and copy, per record | p99 under 50 µs with no unpooled allocation (R9, R11) |
+| Admitted record to committed journal batch | p95 under 250 ms |
+| Committed batch to normalized immutable segment | p95 under 500 ms |
+| Segment to published snapshot | p95 under 250 ms, at a publication cadence of at least 4 Hz (§19.3) |
+| Published snapshot to first drawn frame | p95 under 100 ms |
+| Event acquired to event visible | p95 under 1.5 s, p99 under 3 s |
+
+Derived requirement from these budgets and the memory table: at 100,000 observations per second and 128 bytes per normalized observation, a 256 MiB acquisition budget holds roughly 20 seconds of full-rate data. The pipeline must therefore survive a 20-second analysis stall without application drops, report lag before half that budget is consumed, and turn the remainder into explicit counted loss rather than an unbounded queue (R8).
+
+Common-query budgets apply to documented indexed predicates and visible row budgets. Arbitrary regex, full-content search, or novel graph expansion may take longer; they must remain cancellable, progressive and honest about exactness. Measure cold and warm caches separately and publish hardware, Windows build, source schema versions, workload seed and distributions.
+
+At 100,000 observations/second, 128 bytes per normalized observation alone is about 12.8 MB/s or 46 GB/hour, before raw evidence and indices. Use actual measured sizes to estimate retention in the UI. Large recordings require disk planning and bounded retention, not a claim that memory mapping makes storage cost disappear.
+
+### 12.1 Session size tiers and scale invariants
+
+Sessions are expected to reach tens of gigabytes: by the arithmetic above, one hour of sustained capture at 100,000 observations per second is roughly 46 GB of normalized data before raw evidence and indices. The tiers are qualification targets; the invariants below them are contracts that hold at every tier.
+
+| Tier | On-disk session size | What must remain true |
+|---|---|---|
+| T1 interactive | up to 2 GiB | Every §12 budget, cold and warm |
+| T2 standard | up to 20 GiB | Every §12 budget; compaction stays inside §20.1's segment targets |
+| T3 large | up to 100 GiB | Interactive budgets hold for indexed predicates; full-content search and novel graph expansion may be progressive and must say so |
+| T4 qualification | beyond 100 GiB, including 24-hour rolling capture | Bounded memory, honest coverage, recoverable reopen and declared quotas; measured in M13 |
+
+- **S1 Time-to-interactive is independent of session size.** Reopen reads the manifest, the top level of the overview pyramid, and only the index heads it needs. It never scans observation data in proportion to session bytes. The 3-second reopen budget is measured at T1 and again at T3, and the two must not differ by more than TUNABLE: 2×.
+- **S2 Resident memory is independent of session size.** UI, layout and cache footprints are bounded by the viewport, the row budgets and the declared cache budgets — never by observation count. A T3 session and a T1 session show the same steady-state working set within those budgets.
+- **S3 No interactive path scans the whole session.** Overview, minimap, ranking and facet results are served from persisted summaries or bounded index reads. Anything that cannot be answered that way is explicitly progressive, cancellable, and never blocks input (P25).
+- **S4 The whole-session overview is persisted, not recomputed.** Maintain a durable multiresolution overview pyramid for the common lane and metric views, updated incrementally at commit, so the minimap and the L0 view of a 100 GiB session open in bounded time. Its top level is small enough to load eagerly; deeper levels load by viewport. Rebuilding it is a background repair, never a precondition for opening a session.
+- **S5 Growth is disclosed before it hurts.** The UI states current session size, measured bytes per observation, and time remaining under the active retention policy and free disk, from measured sizes rather than estimates. Crossing a tier is visible, and so is the point at which retention will begin evicting.
+- **S6 Retention never breaks a reference.** Rolling eviction publishes §20.2's boundary checkpoint and cannot remove leased, pinned or open evidence (I18).
+- **S7 Degradation is stated, never silent.** When a scope is too large for an exact answer inside the interaction budget, show the coarse answer labeled coarse, refine in the background, and never let a preview leave the product as an exact result (P26, §19.3).
+
+These invariants are what make §3.1's promise survive a long session: the view a user gets three seconds after launch must be the same view they get three seconds after reopening a 100 GiB capture.
+
+## 13. Verification strategy
+
+### 13.1 Controlled workload suite
+
+Create small cooperating executables with independent truth logs containing scenario IDs, process creation identities, monotonic times, call IDs, declared sizes, successful counts, failures and lifecycle events. The truth log is an oracle for the test, not data silently supplied to the production ETW correlator. Separate workload truth from intentionally supported cooperative instrumentation.
+
+Required scenarios:
+
+1. TCP IPv4/IPv6 loopback and two-host connections, reconnect/port reuse, partial sends, retransmissions under controlled impairment, multiple concurrent clients, and a flow already open at capture start.
+2. UDP one-way/reply, endpoint reuse, multicast and absent receivers; do not expect every sender observation to have a receiver match.
+3. Named pipe byte/message modes, duplex, multiple instances sharing one name, overlapped I/O, cancellation, partial completion, denied access and disconnect.
+4. Anonymous pipes with inherited and duplicated handles, including a non-parent recipient where the workload deliberately transfers a handle.
+5. RPC over local and network transports, concurrent/nested/async calls, errors, cancellation and long-running calls spanning the capture boundary.
+6. ALPC activity generated through supported local RPC paths; a separate version-gated native ALPC fixture may be used in the lab. Assert only the events/identities the source contract supports.
+7. Shared memory with two and three participants, named/unnamed sections where feasible, duplicated handles, unmap/remap and repeated names; many memory writes must not fabricate ETW byte traffic.
+8. Protected/inaccessible processes, service-host groups, multiple interactive sessions and container boundaries where supported.
+9. Content with binary zeros, invalid encoding, truncated fragments, very large lengths, encrypted data and imported content without opt-in preview.
+10. Two-machine offset/drift/clock-step scenarios, NAT/proxy ambiguity, duplicate capture imports, missing host capture and manual alignment revisions.
+
+### 13.2 Correctness properties
+
+| Property | Required assertion |
+|---|---|
+| Conservation | Sum of timeline point counts equals the exact eligible evidence query for the same scope/snapshot (I4, I5) |
+| Weighted conservation | Byte sum equals compatible known measurements; unknown values and requested/completed domains stay distinct (R3, I6) |
+| Layer accounting | Adding an RPC annotation to ALPC evidence does not increase transport bytes; endpoint and canonical transfer totals have their documented differences (I11, §5.3) |
+| Identity | PID/TID/object/port reuse never merges independently proven instances (R22, I12) |
+| Reproducibility | Same raw source, saved schemas, versions and settings yield identical normalized IDs and deterministic analysis, independent of worker count (I2, I14) |
+| Late evidence | New relation revisions update current views without mutating old snapshots or changing source IDs (I1, I17) |
+| Boundaries | Half-open buckets conserve records at edges, equal timestamps and final observation; overflow is checked (I3, I4, §10.3) |
+| Intervals | Start counts, overlap counts and clipped occupancy obey their distinct definitions, including open operations (I20) |
+| Navigation | Pointer/pinch focus remains within representable tolerance; inverse zoom/pan restores position unless clamped; overscroll stays bounded within §6.2's allowance (R10, R13, §6.7) |
+| Async publication | Delayed queries cannot mix old graph/ranking with a new timeline/filter/alignment (R6, R7, I15, I16) |
+| Clock safety | Unknown synchronization never yields an exact cross-host causal order or one-way latency; local durations are unchanged by alignment (I9, I10, §8.2) |
+| Content safety | Disabled content collection/preview behaves as specified; redacted exports contain no original payload references or unredacted embedded source (R17, I21, I22) |
+| Coverage | Missing providers and deliberate drops produce visible quality states, not zero-traffic assertions (R21, I13) |
+| Encoding | Every meaning in §6.6 keeps a redundant channel; contrast and perceptual-separation targets hold in all theme modes and under three color-vision simulations (R14) |
+| Layout determinism | The same graph identity, seed, constraints and iteration cap produce identical positions independent of thread count and wall-clock time (§19.4) |
+| Specification identity | Equal specifications hash equally and unequal ones differ, in the UI and the CLI alike, across the golden corpus (R18, §10.5) |
+
+Use scan-based reference implementations for small randomized traces to validate optimized indices and tiles. Property tests should stress adversarial identities and intervals, not mirror production algorithms.
+
+### 13.3 Capture and failure tests
+
+Test cancellation during startup, provider-enable failure, broker crash, UI crash, user logoff, disk full, slow disk, queue overflow, CPU contention, source event loss, malformed schema, missing manifests on another machine, corrupted segments and unsupported future format versions. Restart must recover the last durable generation and leave no unowned ongoing ETW sessions.
+
+Inject deliberate loss separately at provider/ETW reporting boundaries, callback queues, decode and storage. Verify that the health ledger identifies the correct layer and that incomplete operations/relationships remain qualified. A trace with zero reported loss is still not proof of universal coverage.
+
+Verify coexistence with WPR/PerfView and existing monitoring software. Test standard-user viewing, UAC cancellation, restricted users, local pipe ACL rejection and broker command validation. Archive tests include traversal, reparse points, decompression bombs, huge dictionaries, oversized event fields and content decoder timeouts.
+
+### 13.4 Compatibility and independent checks
+
+Maintain fixture captures per explicitly supported Windows build, architecture and relevant feature configuration. On Windows updates rerun source-contract tests before expanding claims. An unknown schema can be preserved as opaque evidence only when the selected admission/original-evidence policy permits its body; otherwise retain approved diagnostics and an omission reason. It must not be decoded using a guessed old layout.
+
+Compare selected ETW results with WPA/PerfView where the same source events are available and compare capture semantics against the workload truth. Another tool displaying the same provider is a useful cross-check, not an independent proof of complete observation. Maintain synthetic shareable captures free of machine/user data for demos and regression artifacts.
+
+### 13.5 Fixture identity and traceability
+
+Fixtures are named `FX-<mechanism>-<nnn>`, where `<mechanism>` is a code from `EN-Mechanism` (§23) and `PLT` covers platform, clock and multi-host scenarios: `FX-TCP-001`, `FX-PIPE-014`, `FX-ALPC-003`, `FX-PLT-007`. A number is permanent; a superseded fixture is retired, never renumbered or reused.
+
+Each fixture declares, in machine-readable form beside its data:
+
+| Field | Content |
+|---|---|
+| `id`, `title`, `scenario` | Identity and the §13.1 scenario family it belongs to |
+| `covers` | The `R<n>` rules, `I<n>` invariants and §21.1 scenarios it asserts |
+| `truth` | The independent truth log or expected result, and how it was produced |
+| `expected` | The expected query bundle as canonical bytes plus its hash (§10.5) |
+| `environment` | Builds, architectures and profiles on which it has passed, with dates |
+| `provenance` | Tool and adapter versions, workload seed, and whether the artifact is shareable |
+
+`fixtures/index.json` is the traceability matrix: fixture to rules and invariants to tests to milestones. Two derived checks run in CI: every rule and invariant is named by at least one passing fixture or test, and every milestone gate names only fixtures that exist. A rule nobody asserts is reported as an uncovered contract rather than silently trusted.
+
+### 13.6 Determinism, golden files and test policy
+
+- Property tests are required for navigation math, bucket boundaries, identity, interval accounting and layout determinism. They generate adversarial identities and intervals rather than mirroring the production algorithm.
+- Every optimized index, tile or aggregate has a straightforward scan-based reference implementation, and randomized small traces compare the two exactly.
+- Every determinism claim is tested at worker counts 1, 2 and N and across repeat runs, with the seed printed in any failure.
+- Golden files are regenerated only by an explicit tool command that prints a diff summary; a regenerated golden is reviewed as a change to the contract, never as test maintenance.
+- Fixtures containing machine or user data are never committed. The generator and its seed are committed instead (§13.5).
+- Every test names the rules, invariants or prohibitions it asserts. That naming is what makes §13.5's coverage check meaningful rather than decorative.
+
+## 14. Implementation milestones and release gates
+
+Complete each milestone as a demoable slice with code, fixture evidence, updated capability documentation and explicit limitations. Delivery estimates should be made after M0; unknown capture behavior is the dominant schedule risk. Separate a useful preview from the full first-release contract.
+
+### M0 — Feasibility and product proof
+
+**Implement:** repository skeleton; capability probe; owned ETW capture/stop utility; minimal raw decoder; process/network/RPC/ALPC and pipe/shared-memory fixtures; source schema inventory; overhead counters; a synthetic two-pane graph/timeline interaction prototype. Select and pin supported toolchain versions. Validate the selected journal strategy against ETL before freezing session-format details; any change follows the identity/privacy ADR gate.
+
+**Deliver:** build-by-mechanism capability report, synthetic ETLs/truth logs, field semantics, a stack/collector ADR, and UI interaction review. Validate named-pipe NPFS activity and byte completion semantics specifically. Validate whether useful section membership can be discovered without intrusive enumeration. Test RPC content event semantics in a dedicated opt-in lab capture.
+
+**Exit gate:** a measured end-to-end network/process vertical path, and for every proposed initial adapter an explicit tier assignment computed from §14.2's promotion thresholds rather than argued in prose. §6.7's pointer invariant, inverse and pinch-stability properties and linked graph selection pass as property tests, not as a demonstration video. The §17 prototype questions are run as a scored usability review of the two-pane prototype, with the score and the observed failures recorded. No mechanism is promoted from “candidate” solely because a provider name exists.
+
+**Fallback:** if pipes or shared-memory discovery cannot be made reliable driverlessly, assign the measured tier from §14.2, retain explicit coverage entries and partial resource evidence, and route the gap to M7 or M9. Do not substitute parent-child guesses or mapping sizes. A preview may ship with qualified coverage; a claim of broad pipe or shared-memory visualization stays gated on a `Traffic visualization` tier result or an ADR-recorded product scope revision.
+
+### M1 — Evidence and persistence foundation
+
+**Implement:** stable IDs and lifecycle epochs; nullable typed metrics; immutable columns; raw/schema retention; manifests/checksums; partial recovery; query snapshots; basic CLI import/verify/query; synthetic adapters; content fragment schema with bounded inspection backend.
+
+**Exit gate:** deterministic offline import/reopen; source-to-observation traceability; PID/handle reuse tests; corruption/partial recovery tests; a reference query agreeing with indexed counts and bytes. Freeze format v0 with migration/refusal policy, not an accidental permanent schema.
+
+Required closure artifacts and exact scenarios are in section 21; IC-011 through IC-018 turn them into implementation work. M1 closes only when the foundation contracts and their applicable fixtures pass, not merely when a sample file opens.
+
+### M2 — First live exploration slice
+
+**Implement:** ordinary-integrity viewer and elevated broker; Explore profile for validated process/network capture; the §3.1 first-run flow with its designed empty, starting and permission states; the §3.2 L0–L5 ladder with breadcrumb and reversible navigation; equal graph/timeline panes; minimap backed by the first level of §12.1's overview pyramid; process/channel grouping; filters; directional metrics; sorting; exact evidence inspector; record/view pause distinction; health strip; stop/reopen/export.
+
+**Exit gate:** a first-time user reaches a live L0 overview by pressing one action, with no configuration and no prior state, inside §12's first-feedback budget; then descends L0 to L5 and back with one gesture per rung, without losing position. Find a known loopback client/server, brush its burst, rank it, inspect its evidence and reopen the same result. Complete a 10-minute bounded live session; close or crash the UI without leaking an unmanaged trace. All panes agree on scope and counts, and §6.8's latency windows are measured rather than asserted. This is the earliest usable preview.
+
+### M3 — Windows IPC breadth and content
+
+**Implement:** validated RPC/ALPC adapters and correlators; pipe adapter at proven coverage; shared-section resource topology at proven coverage; application/transport projections; unresolved-resource UX; optional timing profile; content opt-in flow, raw/hex/text viewer and at least one validated content-capable source or import path.
+
+**Exit gate:** demonstrate RPC layered over transport without duplicate volume, pipe instance ambiguity without invented peers, shared-resource membership without invented traffic, and content truncation/encryption states. Publish per-build coverage. An unavailable pipe/section feature remains explicit and cannot be called implemented.
+
+### M4 — Multi-machine investigation
+
+**Implement:** workspace manifest; host/boot identity mapping; clock calibration/alignment UI; merged time navigation; source snapshot vectors; candidate connection matching; confidence/evidence explanations; duplicate import detection; portable workspace packaging and relinking.
+
+**Exit gate:** inspect a known two-host exchange from separately captured traces, expose injected clock uncertainty, reject unjustified causal ordering, and persist/reopen manual alignment without changing raw timestamps. Multi-machine analysis is required for full v1, even if previews were local-only.
+
+### M5 — Scale, reliability and release
+
+**Implement:** adaptive indices/tiles, the complete §12.1 overview pyramid, bounded graph layout, cache/queue budgets, rolling retention with pin semantics, redacted export, accessibility polish, signed installer/binaries, update compatibility and support diagnostics. Keep payloads and raw sensitive events out of automatic diagnostic bundles.
+
+**Exit gate:** correctness suite, declared performance tier, compatibility matrix, crash/disk/loss tests, accessible keyboard workflow, content-export review, installation/uninstallation and capture cleanup checks. Scale tiers T1 through T3 measured with invariants S1 through S7 holding, including the T3-versus-T1 reopen ratio and a steady-state working-set comparison. Ship a reproducible demo investigation showing multiple transports and two hosts, with explicit unsupported rows.
+
+### Dependency order
+
+```mermaid
+flowchart LR
+  M0[Feasibility M0] --> M1[Evidence M1]
+  M1 --> M2[Live workspace M2]
+  M2 --> M3[IPC breadth and content M3]
+  M1 --> M4[Multi-machine M4]
+  M3 --> M5[Release qualification M5]
+  M4 --> M5
+```
+
+Clock/host identities and source capability contracts begin in M1 even though the multi-host UI arrives in M4. Payload storage policy begins in M0/M1 even if richer adapters arrive later. Do not defer these schema decisions until after a local-only store has shipped.
+
+### 14.1 First implementation backlog
+
+Every item names the milestone that owns it and the items it depends on, so the backlog can be scheduled without re-reading the milestone prose. Rules and invariants in the last column are the contracts the acceptance artifact must assert (§13.5).
+
+| ID | Milestone | Depends on | Concrete work item | Acceptance artifact | Asserts |
+|---|---|---|---|---|---|
+| IC-001 | M0 | — | Initialize new solution and inward dependency boundaries | Clean build, minimal test/CLI harness, architecture fitness check | R19 |
+| IC-002 | M0 | IC-001 | Implement capability/schema inventory without starting capture | Machine-readable report with provider/event versions and unavailable reasons | R5, R21 |
+| IC-003 | M0 | IC-001 | Implement owned ETW session lifecycle and health counters | Start/stop/crash cleanup tests; no interference with another session | R8, R9 |
+| IC-004 | M0 | IC-001 | Build seeded two-process TCP and local RPC truth workloads | Shareable fixtures with independent expected results | I14 |
+| IC-005 | M0 | IC-003, IC-004 | Spike named/anonymous pipes and section discovery | Tested matrix of events, names, instance/peer attribution, bytes and gaps; tier assignment | R22, I12 |
+| IC-006 | M0 | IC-003, IC-004 | Spike ALPC and RPC pairing/content semantics | Ambiguity cases and proven metadata/content boundaries | R4, R17 |
+| IC-007 | M0 | IC-004 | Define process/resource/observation IDs and clock contract | Reuse, late-start and cross-host collision tests | I1, I2, I8, I12 |
+| IC-008 | M0 | IC-001 | Prototype equal graph/timeline layout, pure transforms, and the §3.2 ladder over synthetic data | §6.7 property tests, §6.6 palette contrast tests, ladder reversibility tests, scored interaction review | R10, R13, R14 |
+| IC-009 | M0 | IC-003 | Validate authoritative journal and content admission | ADR-3 and benchmarks; extended-data replay and unknown-schema policy tests | R17, I13 |
+| IC-010 | M0 | IC-004 | Establish benchmarks, reference machine and Windows support candidates | Reproducible baseline and explicit release-build validation backlog | §12 budgets |
+| IC-011 | M1 | IC-009 | Implement owned journal envelopes and schema persistence | Extended-data round-trip, buffer ownership and callback-lifetime tests | R9, I1 |
+| IC-012 | M1 | IC-009, IC-011 | Compile capture profiles and enforce body admission | Unknown-schema omission, content scope and original-evidence policy fixtures | R17, I13, I21 |
+| IC-013 | M1 | IC-007, IC-011 | Implement canonical ETL import and multi-fact identity | Equal-time/multiplicity replay and normalizer-revision tests | I2, I7, I14 |
+| IC-014 | M1 | IC-003 | Implement broker protocol, leases and idempotency | Duplicate start/stop, disconnect, permission and crash fixtures | R16 |
+| IC-015 | M1 | IC-007 | Implement metric contributions and query basis semantics | Exact accounting/filter scenarios from §21.1 and the §5.3 matrix | R2, R3, I6, I11 |
+| IC-016 | M1 | IC-011 | Implement durable commit/recovery and boundary checkpoints | Crash-at-each-commit-step and reopen-after-retention tests | I15, I18, I20 |
+| IC-017 | M2 | IC-015 | Implement coherent query scheduling and render separation | Supersession, cancellation, stale hit-test and graph-layout identity tests | R6, R7, R12, R13 |
+| IC-018 | M2 | IC-015, IC-017 | Bind UI/CLI to common specifications and freeze contracts | Matching query output, canonical-form golden corpus, cursor validation and §21.2 artifacts | R18, I16 |
+
+### 14.2 Definition of first-release completeness
+
+Full v1 requires the applicable confirmed product decisions in section 1, not merely a socket graph. It must provide zero-configuration first run to a live overview (§3.1), the complete L0–L5 detail ladder with reversible navigation (§3.2), local capture, durable offline sessions that hold the scale invariants of §12.1 at tier T3, equal graph/timeline exploration, accurate typed ranking, explicit pipe/RPC/ALPC/section capability results, opt-in available-content inspection, multi-machine import/alignment/correlation, accessible navigation, and visible loss/uncertainty. Post-v1 priorities remain obligations of the later milestones.
+
+“Capability result” alone does not satisfy a promise of active visualization for that mechanism.
+
+**Coverage tiers and promotion thresholds.** A mechanism's tier is computed from its fixture results on every supported build, not argued:
+
+| Tier | Entry criteria, measured against the truth workload |
+|---|---|
+| Traffic visualization | At least 95% of truth operations produce an admitted observation; at least 90% bind to a specific resource instance; at most 1% false peer attributions; a byte measurement in a named domain on at least 90% of eligible operations |
+| Topology only | At least 95% of truth resources discovered with their lifetimes, and memberships or endpoints resolved, with no byte or operation claim made |
+| Experimental evidence | Reproducible observations on at least one supported build, below the thresholds above, with the gap stated field by field |
+| Unsupported | Anything less, including a provider that registers and enables but emits nothing useful |
+
+Release notes and any marketing material list every mechanism with its tier and the build it was measured on. If driverless feasibility leaves named pipes or shared-memory topology below `Topology only`, that is an explicit release-scope decision recorded in an ADR, never a silent restatement of the original goal as achieved.
+
+## 15. Full post-v1 implementation milestones
+
+Post-v1 work is part of the planned product program. These are bounded implementation milestones, not an undifferentiated wish list. Optional collectors remain optional to install and use even if their development milestone is completed. M6–M13 identifiers describe work packages; their dependency graph determines execution order. The confirmed priority is broader IPC coverage and deeper visibility, with the cooperative SDK delivered before selected-process attachment. Reassess detailed scheduling after each release against actual coverage gaps and user investigations.
+
+Every milestone inherits the v1 invariants: immutable source evidence, traceable relationships, typed measurements, bounded work, explicit coverage and content consent. A feature is not complete merely because its collector emits records; it needs storage, query, timeline, graph, inspector, export, tests and documentation.
+
+### M6 — Broader driverless Windows discovery
+
+**Goal:** expand useful whole-system topology without adding installation burden.
+
+**Prerequisites:** M0 capability findings and M5's tested capture architecture. Build on M3 rather than replacing its adapters.
+
+**Implementation:** create independent capability work packages for AF_UNIX, richer COM/DCOM/WinRT annotations, named synchronization objects, mailslots, UI messaging and improved section discovery. For each, first identify a supported passive source or an explicitly experimental source contract; build a truth fixture; then implement only proven metadata/activity fields. Enrich process nodes with package, service and user-session information as accessible. Add namespace-aware endpoint browsing and resource lifetimes. Expose discovered-but-idle resources separately from observed traffic.
+
+**Deliverables:** versioned adapters; per-build coverage extensions; graph/resource inspectors; searchable capability catalog explaining unsupported mechanisms; synthetic investigations for each promoted capability. Keep speculative names and handle-derived candidates visually distinct from established identity.
+
+**Exit tests:** two independent instance/lifetime fixtures per newly supported mechanism, one ambiguity case and one permission/schema failure case; exact source drill-down; baseline overhead comparison. A COM activation event cannot become a call count, and an AF_UNIX endpoint cannot be reported as fully observed if only its name was discovered.
+
+**Fallback:** a mechanism without reliable passive evidence stays explicitly unsupported and is routed to M7 or M10. No UI hook or broad process instrumentation is silently introduced into the driverless Explore profile.
+
+### M7 — Cooperative instrumentation and shared-memory semantics
+
+**Goal:** obtain precise application meaning, especially where memory access and higher-level message boundaries are invisible to OS tracing.
+
+**Prerequisites:** M1 identity/content contracts and M3 layered graph model. Can proceed alongside M6.
+
+**Implementation:** publish a small versioned SDK schema with host/process instance binding; channel and peer identities; operation/message IDs; parent/related operation IDs; explicit source clock; started/committed/consumed/completed transitions; application lengths; status; and optional bounded content. Provide native C/C++ and .NET reference libraries and samples. Use ETW/EventSource or a validated local transport behind the SDK; measure event size and rate limits rather than assuming arbitrarily large ETW payloads.
+
+For a shared-memory ring buffer, instrument logical publish/consume boundaries, not every CPU load/store. Include channel epoch, sequence, slot reuse and fan-out reader identity. Distinguish logical payload size, bytes copied, and number of consumers; one write consumed by three readers is not automatically three physical writes. Define batching and loss behavior. App-provided peer/call IDs are assertions whose authenticity is limited to the source trust boundary.
+
+**Deliverables:** documented SDK/version negotiation; sample pipe, socket and shared-memory applications; source adapters; a shared-resource view with measured logical messages; an overhead guide; explicit content opt-in integration. Support size/count metadata without requiring content capture.
+
+**Exit tests:** producer/consumer and multi-reader shared-memory fixtures match independent truth counts; wrapping sequence IDs and process restart create new epochs; missing consumption remains unknown/open; uninstrumented memory access remains unmeasured; SDK-disabled overhead and enabled throughput are published. Old viewers retain unknown new event fields safely.
+
+**Fallback:** if a high-rate path exceeds the chosen event transport, offer bounded batching or metadata-only instrumentation with explicit semantics. Never silently estimate individual message counts from sampled events. Existing applications remain usable without the SDK.
+
+### M8 — Conversation reconstruction and payload decoders
+
+**Goal:** turn available fragments into navigable conversations while preserving gaps and source boundaries.
+
+**Prerequisites:** M3 content viewer plus at least one source with validated direction, byte-range/message identity and length semantics; M7 is the preferred application-level source but not mandatory for imported evidence.
+
+**Implementation:** define a decoder contract with input content classification, protocol/version, framing rules, resource budgets and output provenance. Add mechanism-specific reconstruction state machines for supported application framing, pipe messages, RPC fragments or packet streams only when their source supplies enough ordering information. Ordinary kernel TCP event sizes alone cannot reconstruct a TCP byte stream. Add explicit missing-range, duplicate, out-of-order, retransmitted and truncated states. Isolate decoders in unprivileged workers and index decoded metadata separately from original content.
+
+Choose the first real decoder based on validated fixtures and user value, not name recognition. A custom length-prefixed sample protocol proves the contract; an HTTP, RPC or other production decoder requires its own complete specification and tests. RPC interface UUID/operation number does not reveal an argument schema; symbolic method/field names require matching definitions or a qualified lookup source. TLS, authenticated RPC, SMB encryption and QUIC content remain unavailable without an appropriate authorized plaintext source.
+
+**Deliverables:** conversation inspector; fragment-to-message-to-operation navigation; decoder manager and version pinning; bounded content search with match previews disabled until opted in; JSON/columnar metadata export and explicit binary content export; decoder fixture corpus.
+
+**Exit tests:** fragmented, malformed and truncated conversations never become falsely complete; correlation remains correct under concurrent calls and direction changes; decoder timeout/crash does not stop capture; opening a source with a new decoder changes a derived revision only; content search/export respects scope and redaction.
+
+**Fallback:** display raw fragments and structured source metadata. A decoder that cannot prove framing produces candidate annotations, not authoritative message boundaries or byte totals.
+
+### M9 — Optional supported kernel collectors
+
+**Goal:** address specific measured gaps that passive user-mode capture cannot close.
+
+**Prerequisites:** M6 gap report, repeatable workloads, product decision that added coverage merits deployment cost, and a dedicated driver engineering/release capability. The baseline application must remain fully usable without any driver.
+
+**M9a: pipe metadata collector.** Prototype a supported NPFS/MSFS minifilter, starting with lifecycle, operation identity, status and completed-length metadata. Windows exposes a registration option for filtering these requests. [FLT_REGISTRATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/ns-fltkernel-_flt_registration). Validate create/close, async completion, cancellation, fast paths, instance reuse and bypass cases against the truth workload. Establish exactly which object identities and peer relationships the callbacks prove. Content copying is a separate opt-in subfeature with separate overhead and validation gates.
+
+**M9b: network collector, only if justified.** Evaluate supported WFP layers for the required flow/process attribution or available content semantics. ALE is network-specific; it does not monitor ALPC, shared sections or arbitrary IPC. [Application Layer Enforcement](https://learn.microsoft.com/en-us/windows/win32/fwp/application-layer-enforcement--ale-). Preserve passive behavior and explicitly test any layer-specific buffering, ordering and attribution limits.
+
+**Common implementation:** small bounded callbacks; restricted user/kernel control interface; no caller-supplied arbitrary memory access; validated lengths and ownership; no blocking payload decoding in kernel; explicit loss counters; version negotiation; driver presence/capability status; signed installation, upgrade, rollback and uninstall. Run kernel validation in disposable test environments and publish HVCI/Secure Boot and architecture compatibility. The installed driver must not silently turn itself on in ordinary captures.
+
+**Deliverables:** separately packaged signed component, adapter, updated evidence matrix, workload benchmarks, installation/rollback guide and crash diagnostics that exclude contents by default.
+
+**Exit tests:** independently reviewed driver boundary, stress and verifier runs on declared builds, suspend/resume, low memory, driver/service restart, consumer disconnect, invalid control messages, uninstall during idle and refused unsafe unload states. Re-run semantic conservation tests with both ETW and driver evidence enabled so duplicate observations do not inflate traffic.
+
+**Stop rule:** no unsupported kernel patching, SSDT hooks, bypass of protected processes, or claim to observe arbitrary shared-memory loads/stores. If the supported callback path does not expose the needed fact, retain the gap. Signing/compatibility failure blocks this optional package, not the driverless product.
+
+### M10 — Selected-process instrumentation
+
+**Goal:** offer deeper capture for unmodified applications where the operator deliberately accepts instrumentation overhead and compatibility limits.
+
+**Prerequisites:** a specific gap from M6, the M7 semantic schema, M8 decoder isolation where contents are involved, and explicit product choice to support attachment. This is a separate profile and distribution component, never implicit whole-system injection.
+
+**Implementation:** assess launch-under-instrumentation and attach modes separately. Scope to selected process instances and compatible architecture/runtime/API paths. Prefer supported runtime/profiler mechanisms where applicable; document any function interception as a compatibility-sensitive adapter. Record instrumentation start/stop and all known bypass paths. Track synchronous versus asynchronous completion accurately; function entry/return does not necessarily bracket the whole I/O operation. Capture content only from explicitly enabled source/API categories with strict limits.
+
+**Deliverables:** preflight compatibility report, explicit target selector, overhead preview, launch/attach/detach workflow, target-liveness reporting and a prominent instrumented-process marker in every result/export. Use the same observation model as M7 but label the source as instrumentation rather than a cooperative application assertion.
+
+**Exit tests:** unsupported/protected target rejected cleanly; normal app functionality preserved in the declared test matrix; process exit, collector loss, instrumentation failure and reentrancy handled; complete and partial async I/O matched correctly; no unrelated process attached; declared overhead measured. If live detachment is unsafe, require launch mode and state the restart requirement before use.
+
+**Fallback:** offer SDK instrumentation or existing metadata sources. Direct native calls, custom runtimes, mitigations and protected processes may remain outside coverage. API interception still cannot reveal every ordinary write to a shared mapping.
+
+### M11 — Remote capture coordination
+
+**Goal:** extend v1's offline multi-machine investigations to deliberately coordinated remote recording.
+
+**Prerequisites:** M4 host/clock/workspace contracts and M5 broker hardening. Can proceed independently of kernel collectors and process instrumentation.
+
+**Implementation:** add an explicitly installed, authenticated remote agent with device enrollment and mutual transport authentication. Separate permission to start metadata capture, collect contents, download evidence and install optional collectors. Define bounded capture duration, disk limits and expiry when the controller disappears. Preview the effective profile on each host; protocol compatibility/capability negotiation may produce different supported subsets. Keep local policy authoritative and audit remote actions.
+
+Start with remote control plus store-and-forward files; live streaming follows only after quotas and reconnect semantics work. A coordinated start is a control barrier, not proof of synchronized clocks. Record per-host acknowledgment times and uncertainty, and use M4's alignment model. Make partial starts/stops, offline hosts and missing fragments visible. Deduplicate resumed chunk transfer by content identity and verify hashes before workspace publication.
+
+**Deliverables:** host inventory with capability/health; coordinated start/stop; reliable session download/resume; partial-host workspace; short-lived control leases; credential rotation/revocation; remote content scope preview; CLI automation API. Remote driver installation is a separate administrative workflow, not a side effect of pressing Record.
+
+**Exit tests:** expired/revoked credentials denied; wrong host identity rejected; no remote arbitrary shell; capture survives controller disconnection only within configured policy; quota stops safely; partial host failure does not erase other captures; transferred package matches source; clock offset is not mistaken for network latency. A remote metadata-only policy cannot be upgraded to contents by a local viewer setting.
+
+**Fallback:** keep offline `.icat`/ETL import and manual transfer working. Remote features must not require a cloud service or make local viewing network-dependent.
+
+### M12 — Comparative and causal exploration
+
+**Goal:** make repeated investigations useful without turning uncertain observations into automated conclusions.
+
+**Prerequisites:** stable metric/coverage contracts and M4 investigations; richer sources from M6–M10 are optional inputs.
+
+**Implementation:** compare two captures or selected time windows by compatible mechanism, metric, entity grouping and capture profile. Provide normalized rates and absolute counts, baseline/difference timelines, ranked changed relations, and graph overlays. Entity matching across sessions is a separate qualified mapping; executable name alone cannot establish identity. Distinguish unavailable measurement from disappeared activity.
+
+Add recurring communication patterns using structural signatures such as mechanism + interface/operation + endpoint role, with source-specific normalization. Optional outlier detection explains the baseline window, minimum sample size and uncertainty. A causal navigation view traverses only evidence-backed parent/related links; proximity candidates stay separate. Include bottleneck views using validated local call/wait spans, with no unsupported critical-path or deadlock claims.
+
+**Deliverables:** saved comparison specifications, relation-difference explorer, explainable pattern groups, annotations/bookmarks, shareable redacted reports and an accessible tabular equivalent. Reports record scope, byte domain, accounting policy, missing sources and alignment revision.
+
+**Exit tests:** identical captures compare as equal; changed capture profiles cannot masquerade as workload changes; differing durations normalize correctly; uncertainty propagates; a synthetic known dependency is traversable and unrelated simultaneous events are not labeled causal. Outlier labels describe observations, not malware or root cause.
+
+**Fallback:** where captures are not comparable, show side-by-side values with explicit incompatibility reasons rather than an invalid numeric delta.
+
+### M13 — Platform and long-term operation qualification
+
+**Goal:** turn the expanded product into a maintainable Windows diagnostics platform.
+
+**Prerequisites:** select which M6–M12 features are shipping; qualify each optional component independently.
+
+**Implementation:** native ARM64 qualification; selected Windows Server deployments; unattended bounded capture; installation/update/rollback; format migration tools; old-session compatibility; signed release provenance and dependency inventory. Add a repeatable provider-schema diff/fixture job for candidate Windows updates and a published deprecation policy. Test remote protocol and optional collector version skew.
+
+Make 24-hour rolling recording and large multi-host workspaces explicit qualification tiers with measured quotas and recovery. Retain the short interactive diagnostic profile as the default. If a persistent service is offered, it is explicitly enabled, visible and removable, with a finite retention policy. Boot-time collection, if later requested, is its own feasibility track rather than an assumed property of a background service.
+
+**Deliverables:** expanded support matrix, scale report, long-running recovery tests, compatibility corpus, upgrade/rollback guides and a privacy-reviewed support bundle generator.
+
+**Exit tests:** migration preserves IDs/evidence; old viewer refuses unsupported features safely; 24-hour tests stay within declared memory/disk budgets; Windows update/schema drift degrades affected adapters honestly; uninstall removes installed components without deleting user evidence unless explicitly requested; optional components failing to qualify do not block unrelated supported editions.
+
+### 15.1 Dependency graph and sequencing
+
+```mermaid
+flowchart LR
+  V1[M5 qualified v1] --> M6[Broader driverless discovery M6]
+  V1 --> M7[Cooperative instrumentation M7]
+  V1 --> M11[Remote coordination M11]
+  M6 --> M9[Optional kernel collectors M9]
+  M7 --> M8[Conversation reconstruction M8]
+  M6 --> M10[Selected-process instrumentation M10]
+  M7 --> M10
+  V1 --> M12[Comparative exploration M12]
+  M8 --> M13[Platform and operation qualification M13]
+  M9 --> M13
+  M10 --> M13
+  M11 --> M13
+  M12 --> M13
+```
+
+The M13 arrows mean “qualify if selected for shipment,” not that every optional component must exist before another release. M8 can begin earlier with a validated existing content source. Prefer incremental releases by completed capability; do not hold all improvements for one enormous v2.
+
+Recommended sequence under the confirmed priorities: first M6 and M7; then the justified M9 collector work and M8 reconstruction; then M10 attachment after the SDK contract is proven. Schedule M11 remote coordination and M12 comparisons after the coverage/depth work has a usable release, unless new needs justify a change. Apply M13 qualification incrementally to every release and complete its long-running/expanded-platform tier after the selected features stabilize. This order is a product priority, not a requirement to leave independent engineering work idle.
+
+### 15.2 Post-v1 release review
+
+Before each milestone is committed for shipment, record the user problem, exact new evidence obtainable, supported environments, expected overhead, deployment burden and exit fixtures. Review these decisions with the product owner when feasibility materially changes the proposed scope. Ordinary implementation details follow this specification without repeated conceptual approval.
+
+Success is deeper trustworthy exploration: each added source should make an actual previously unresolved relationship, measurement or conversation explainable. More enabled providers, more graph edges, or more retained bytes alone are not success criteria.
+
+## 16. Risk register and decision rules
+
+| Risk | Consequence | Mitigation and release decision |
+|---|---|---|
+| Pipe or section coverage weaker than expected | Product misses requested Windows breadth | M0 truth fixtures; explicit topology/traffic tiers; release scope review before claims |
+| Schema drift or undocumented events | Misdecoded facts or broken adapter | Saved schemas, versioned adapters, fail-to-opaque behavior and build matrix |
+| False process/resource pairing | Convincing but incorrect graph | Lifetime identities, conservative joins, evidence inspector, unresolved nodes |
+| Cross-layer/dual-endpoint duplication | Misleading volume ranking | Typed accounting domains and conservation tests |
+| Capture overwhelms storage/consumer | Missing history or unstable machine | Measured profiles, quotas, bounded stages, visible loss and lag |
+| High-cardinality indices/layout | Memory explosion and unusable graph | Sparse indices, cache budgets, visible expansion limits and persistent pins |
+| Incorrect clock alignment | False cross-host causality/latency | Versioned clock mappings, uncertainty and refusal to overstate timing |
+| Payload collection beyond expectations | Sensitive information retained/shared | Narrow sources, explicit content policy, separate original/redacted exports |
+| Broker attack surface | Privileged misuse | Small allowlist, authenticated local channel, safe storage root, no elevated parsers |
+| Instrumentation perturbs workload | Diagnosis changes the observed behavior | Overhead measurement, profile disclosure and reproducible no-capture baseline |
+| Retention evicts referenced evidence | Broken bookmarks or irreproducible reports | Generation leases and explicit pin storage policy |
+| Session growth outruns disk, reopen and overview budgets | A long capture becomes unopenable or unusable exactly when it is most valuable | §12.1 tiers and invariants; persisted overview pyramid; measured T1/T3 reopen ratio; growth disclosure and retention with boundary checkpoints |
+| Interaction latency degrades as data grows | The product feels slower the longer it runs, which reads as unreliability | §6.8 latency windows measured per tier; cached geometry on the input path; coarse-then-exact publication; S2 and S3 |
+| Graph interaction design unvalidated | The pane given equal product prominence is the one with no proven interaction contract | ADR-13; deterministic bounded layout; M0 scored usability gate on the §17 questions before breadth work |
+| Palette and encoding collisions | Four meanings competing for the same channels become unreadable, especially under color-vision differences | §6.6 channel allocation with redundant encodings and measured contrast enforced by tests (R14) |
+| Oversized first release | Delay before useful tool | Deliver M2 preview while keeping M3/M4 requirements visible for full v1 |
+
+Required ADRs, each recorded before the corresponding implementation and each stating evidence, alternatives and reversal cost:
+
+| ID | Decision |
+|---|---|
+| ADR-1 | Stack, toolchain pins and UI framework (§1.3) |
+| ADR-2 | Supported build policy and compatibility matrix (§1.3) |
+| ADR-3 | Raw-evidence strategy: authoritative journal versus ETL (§9.3) |
+| ADR-4 | Identities, instance epochs and lifetimes (§7.2) |
+| ADR-5 | Byte accounting: domains, sides and canonical ownership (§5.3) |
+| ADR-6 | Correlation quality model (§7.4) |
+| ADR-7 | Clocks, alignment and uncertainty (§8) |
+| ADR-8 | Broker trust boundary and client authentication (§20.3) |
+| ADR-9 | Content policy and privacy (§11) |
+| ADR-10 | Indices, tiles and cache budgets (§10.2) |
+| ADR-11 | Snapshot publication and query scheduling (§19.3) |
+| ADR-12 | Retention, pinning and export (§20.2) |
+| ADR-13 | Graph projection, layout algorithm and determinism (§19.4) |
+| ADR-14 | Query identity and canonical specification form (§10.5) |
+| ADR-15 | Visual encoding, palette and accessibility targets (§6.6) |
+| ADR-16 | Fixture naming and traceability scheme (§13.5) |
+
+## 17. Remaining conceptual choices to revisit after the prototype
+
+The central choices are settled in section 1. Remaining choices have safe proposed defaults so implementation can proceed without reopening the product concept:
+
+| Choice | Proposed default | Evidence that could change it |
+|---|---|---|
+| Graph projection on first open | Process graph with explicit resource hubs for shared/ambiguous channels | User testing shows resource-first graph explains the system better |
+| Amount of raw evidence retained | Bounded admitted-event journal for live capture; imported originals and diagnostic ETL are explicit choices | M0 journal overhead, decode fidelity and content-policy findings |
+| Background history | User-started bounded recording; no persistent always-on service | Clear need for pre-incident history and acceptable measured overhead |
+| Support breadth | Tested Windows x64 client/server builds, then ARM64 | Concrete deployment targets and capture compatibility results |
+| Content decoding depth | Hex/text/structured source fields first | Repeated need for a specific protocol and a reliable decoder contract |
+| Timing and stack depth | Focused optional profile | Exploration studies demonstrate that stacks are essential by default |
+| Licensing/distribution | Decide for the new repository before public packaging | Owner preference; a license inherited with any reused component constrains that component only, not this product's whole distribution strategy |
+
+The prototype review should answer: Can a new user discover a surprising but real communication relationship in under two minutes? Can they explain exactly why InterCat drew the edge? Can they distinguish an unmeasured channel from a quiet one? Can they navigate from a whole-system burst to source evidence without losing their place? These are stronger product gates than merely displaying many nodes.
+
+## 18. Capture and replay implementation contracts
+
+### 18.1 Authoritative live journal and event ownership
+
+Use one journal writer per capture, owned by the broker. Callbacks perform bounded admission, assign stream/epoch ordinals and copy approved data into pooled buffers. The writer appends framed batches and publishes committed offsets; analysis reads committed batches without using the UI control channel as an event firehose. Acquisition can continue if the analysis process stalls, until the declared queue/disk policy is reached. The UI receives low-rate progress and generation notifications.
+
+The journal is **InterCat's admitted evidence**, not a byte-identical replacement for an ETL and not a guarantee of zero ETW loss. Record policy omissions and source loss separately. By default, analysis publishes durable snapshots only after the source batch and derived segment are committed. If a future low-latency mode renders uncommitted data, it must visibly label that state and cannot export it as durable evidence.
+
+An event envelope contains:
+
+```text
+RecordEnvelopeV1
+  CaptureId, StreamId, SourceEpoch, RecordOrdinal
+  EventHeaderFields, BufferContextFields, TimestampEncoding, ClockId
+  ExtendedItems[] = { type, flags, owned bytes }
+  Body = { classification, retained length, original length?, owned bytes }
+  SchemaReference?, AdmissionPolicyId, IntegrityChecksum
+```
+
+Copy the contents of permitted extended-data items, not native addresses. Preserve fields needed for related activities, architecture/pointer-width interpretation and embedded decoding metadata. Do not serialize `UserContext` or other callback pointers. Windows defines header, extended data and user data separately in `EVENT_RECORD`; serializing only its user-data buffer loses potentially important decoding/correlation context. [EVENT_RECORD contract](https://learn.microsoft.com/en-us/windows/win32/api/evntcons/ns-evntcons-event_record).
+
+Every buffer has a single owner at a time: callback -> queue -> journal writer -> returned pool. Use explicit disposable leases with failure-path tests. Do not keep TraceEvent callback objects or spans into callback memory for later asynchronous work. All allocations and copies are bounded by envelope limits, including extended items; do not assume an event's user-data limit bounds its complete serialized envelope.
+
+### 18.2 Profile compilation and content admission
+
+Compile a profile into an immutable `EffectiveCapturePlan` before starting:
+
+```text
+ProviderPlan
+  Identity, SessionKind, Level, MatchAnyKeyword, MatchAllKeyword
+  EnableProperties, SupportedSourceFilters, RequiredLifecycleSources
+  AllowedDescriptorsAndSchemaContracts, AdmissionPolicy, FieldPolicy
+  ClockMode, BufferBudget, FlushPolicy, ContentBudget, ValidationFixtureIds
+```
+
+Separate classic/kernel event enablement from manifest-provider enablement. Select and record the tested logger strategy per Windows build: prefer a privately named system logger session where the build supports one, fall back to a named manifest-provider session otherwise, and record in the manifest which strategy the capture actually used. Never take over `NT Kernel Logger`, and never stop a session because its name merely resembles InterCat's (§9.2). Treat provider registration, enablement success, observed event health and validated semantic coverage as different checks.
+
+`EnableTraceEx2` supports provider configuration and filter descriptors, but support and filtering behavior must be evaluated per source; an application-side filter is not equivalent to preventing emission. Handle keyword-zero events and provider-specific enable properties explicitly instead of assuming a narrow keyword mask is a complete allowlist. [EnableTraceEx2](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-enabletraceex2), [enable parameters](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-enable_trace_parameters).
+
+Admission policies are explicit:
+
+| Mode | Known permitted event | Unknown/unapproved event body |
+|---|---|---|
+| Metadata only | Persist the body only if all retained fields are approved metadata; otherwise persist a labeled metadata projection using a validated adapter | Discard body before persistence; retain allowed header/diagnostic fields and omission counters |
+| Scoped content | Apply validated source/process/channel scope and content budgets; preserve classification and truncation | Omit unless a separately approved opaque-evidence rule permits retention |
+| Original evidence import/diagnostic ETL | Preserve the selected original unchanged and mark it potentially content-bearing | Preserve as original evidence; no claim of metadata-only sanitation |
+
+Admission is a bounded descriptor/schema/shape check, not general-purpose payload decoding inside the privileged callback. Preload validated schema contracts. Providers requiring expensive interpretation to enforce policy need a separately bounded admission stage before persistence or must be unavailable for that profile. Reject unsupported scope guarantees rather than capturing all contents and merely hiding them in the view.
+
+The metadata contract identifies field categories, not a guarantee that arbitrary endpoint strings or command lines contain no secrets. Opaque omitted bodies cannot later be recovered from the InterCat session. A transformed metadata projection must never be labeled original raw bytes. Unknown-body suppression is a visible policy omission, not unexplained parser loss.
+
+### 18.3 Schemas and timestamp decoding
+
+Schema lookup keys include provider, event descriptor/classic type, version, opcode where relevant, source architecture, decoding kind and schema fingerprint. Support manifest, classic and self-describing events through distinct tested paths. Persist required decoding metadata and enum/map definitions when obtainable; do not assume the viewing machine has the recording machine's manifests or binaries. TDH metadata and event-map lookup can fail independently. [TdhGetEventInformation](https://learn.microsoft.com/en-us/windows/win32/api/tdh/nf-tdh-tdhgeteventinformation), [TdhGetEventMapInformation](https://learn.microsoft.com/en-us/windows/win32/api/tdh/nf-tdh-tdhgeteventmapinformation).
+
+A missing schema yields a diagnosable opaque or header-only record according to admission policy. WPP/TMF-dependent events without matching metadata stay unsupported. Decoder numeric values remain available even when localized display labels cannot be resolved. Fuzz variable counts, strings, pointer-sized fields and extended metadata before promoting an adapter.
+
+For the native consumer path, explicitly select record callbacks and the intended timestamp mode. `ProcessTrace` converts timestamps to system time by default unless raw timestamp processing is selected. Save the actual mode and source clock metadata; a .NET wrapper must prove equivalent behavior in fixtures. [EVENT_TRACE_LOGFILE processing modes](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_logfilew).
+
+Convert local QPC deltas through checked `Int128` arithmetic and an explicit rounding rule. Keep native ticks for precise local interval calculation. Quarantine implausible or overflowed timestamps with raw evidence intact; a corrupted future event must not stretch the whole viewport or advance the reorder watermark arbitrarily.
+
+### 18.4 Stable import and live replay
+
+Replaying an InterCat journal preserves its original record IDs. Re-importing an existing `.icat` session reuses its identity after integrity validation. An optional companion ETL is not silently merged into that journal, even if it contains more events; a user can import it as separate evidence, with overlap disclosed.
+
+For standalone ETL, compute a source content identity and import-contract version before assigning persistent identities. Reuse a matching completed import when available. Do not assume `ProcessTrace` callback order is deterministic: equal-time records from different CPUs can arrive in an unpredictable order. [ProcessTrace ordering limits](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-processtrace).
+
+Use an external-sort import path with canonical keys: source identity, clock/time representation, semantic event header/context fields, and a fingerprint of the admitted envelope. Resolve hash collisions by comparing canonical bytes. Preserve multiplicity for byte-identical records with an occurrence index; their individual physical identity cannot be distinguished by these fields, and the UI must not invent an ordering between them. Exclude callback-local pointer values and transient consumer context from the key. Preserve original delivery ordinal as separate import metadata, not as a reproducibility guarantee.
+
+The canonical importer supports bounded spill files and cancellation. The retained evidence policy and import-contract version are part of import identity, so importing metadata-only and importing original contents are not silently treated as identical derived sessions. If original bodies are intentionally omitted, document the resulting identity granularity. Normalizer upgrades produce a new derivation generation with links back to raw-record identities; old bookmarks can fall back to raw evidence when a fact is split or renamed.
+
+### 18.5 Startup inventory, loss and correlation continuity
+
+Start capture delivery before taking asynchronous inventory so short-lived processes are less likely to be missed. Reconcile events with per-item inventory timestamps and a query start/end interval. Inventory is not an atomic view of the OS: a row can disappear or be reused during enumeration. A snapshot saying “present” supplies a witnessed presence interval, not an exact creation time.
+
+Keep `ObservedStart`, `PresentAtInventory`, `ObservedEnd`, `LastSeen` and `UncertainLifetime` separate. An empty inventory result after an access error is not process exit. Inventory enrichment must not overwrite a proven start-key identity using only a matching PID.
+
+Track continuity epochs for correlation fields susceptible to reuse. A gap that could hide lifecycle transitions reduces confidence in joins across it; retain valid explicit identities where available, but do not pair solely on a recycled numeric identifier. Pending operation states are `Started`, `Completed`, `ExplicitlyFailed`, `OrphanCompletion`, `OpenAtBoundary`, `Ambiguous`, and `EvictedUnresolved`. A heuristic pending-state timeout produces the last state, not a Windows timeout error.
+
+Initial tuning values to benchmark: 2-second reorder grace, 1-second health sampling and 30-second pending-join expiry for adapters without a stronger lifecycle contract. Long-lived identified calls either spill pending state to bounded disk or stay open; they are never falsely terminated at expiry. Spill files are append-only under the session root, framed like a journal batch with a spill header, keyed by correlation key, bounded to TUNABLE: 128 MiB per capture, and evicted oldest-first within that budget with an `EvictedUnresolved` reason. Spill is derived state (R20): recovery never depends on it, and losing a spill file degrades pending joins rather than the session. Timeouts and budgets are recorded profile settings, and every adapter can require stricter semantics.
+
+## 19. Analysis and rendering implementation contracts
+
+### 19.1 Unified analysis basis and process/peer filters
+
+Compile each user query into one explicit basis — source observations, logical operations, or resource topology (`EN-Basis`, §23), whose permitted metrics, byte domains and accounting sides are fixed by §5.3's matrix. Source events used as supporting evidence do not become additional operations. A topology query can count resources/memberships but cannot invent traffic values. The query compiler rejects a metric that is undefined for the selected basis and offers a compatible metric.
+
+Define process filters precisely:
+
+* `owner(P)` means the directly attributed source process, where available.
+* `participant(P)` means P participates under the selected binding/correlation revision; this is the ordinary process-focus behavior.
+* `sender(P)` and `receiver(P)` require a known data direction, not an assumed client/server role.
+* `between(A,B)` selects relationships connecting the selected participant sets under the chosen direction policy.
+* `peer(P,Q)` is relative to the focused process P; it cannot silently become a global PID filter.
+
+Unknown values use explicit `is unknown` predicates. Negation of a known-value comparison does not include unknowns implicitly. Include values within a facet are ORed; independent dimensions are ANDed; exclusions are explicit. If generic Boolean expressions are supported, show the normalized expression and test it against the same three-valued logic.
+
+Filtering a graph does not remove the unselected counterpart needed to explain a selected relation. Render that counterpart as a context node unless the user requests a strict induced subgraph. Context nodes do not enter selected-node totals. Optional neighborhood expansion adds context outside the filter and must be visually distinguished; it cannot increase timeline/ranking totals silently.
+
+Graph edges, timeline cells and ranked rows use the same eligible fact set and accounting policy. A bidirectional aggregate edge references two directional metric sets. Resource projection may draw two legs for one exchange; only one is the accounting owner, while both navigate to the same evidence. Per-node incident totals and edge totals need not be arithmetically interchangeable; expose the selected denominator.
+
+### 19.2 Accounting and rate rules
+
+Introduce an internal `MetricContribution` keyed by `(basis identity, metric domain, observation side)`, with evidence links. This is the unit deduplicated before graph grouping or timeline aggregation. Alternative source records remain visible as corroborating evidence. Without proof that observations describe the same contribution, retain them separately and state the unresolved accounting issue rather than guessing a transfer total.
+
+Default rates divide by the full selected interval. Show `observed rate` and coverage defects when records are missing; do not divide by a shorter apparently healthy interval and label the result the whole-interval rate. An optional covered-time rate needs a source-specific valid exposure duration and a different label. Statistical sampling requires an explicit estimator and error model; no general scaling factor applies to all event-loss modes.
+
+Report mapping capacity once per identified resource, with separate per-process mapped-view lengths. Alias views, partial mappings and multiple participants must not multiply resource capacity. Latency distributions identify their cohort: operations completed in range by default, with started-in-range available separately. Mark left/right-censored operations and distinguish summed operation time from union-of-busy-time; concurrent work can make the former exceed wall time.
+
+Multi-host selection defaults to transformed point-estimate timestamps. Report how many observations have uncertainty intervals crossing a selection boundary. An optional uncertainty-overlap mode includes those possible matches and labels the result accordingly. Cross-host alignment changes must not alter locally measured operation durations.
+
+### 19.3 Query execution and cancellation
+
+Implement a small query planner before adding sophisticated tiles:
+
+```text
+acquire snapshot leases and normalize AnalysisSpec
+resolve clock bounds and candidate segments
+intersect sparse postings / low-cardinality bitmaps
+apply revisioned entity/relationship predicates
+produce eligible basis IDs and metric contributions
+aggregate once into requested timeline, graph and ranking projections
+publish one coherent AnalysisBundle when still current
+```
+
+The eligible-ID set may be streamed rather than fully materialized. Exact common queries should share expensive predicate work across projections. Graph layout is subsequent presentation work: it does not delay correct numeric results. A late layout result can apply only to the matching graph identity.
+
+Start with one coalescing scheduler per workspace, a latest-request slot and bounded worker pools. Cancel superseded jobs; check cancellation at each segment/block and within expensive joins. Give selected evidence pages and visible gestures precedence over background overview refinement, but reserve capacity for ingestion. Never launch a new complete query pipeline for every pointer-move event.
+
+Suggested initial cadence: coalesce gesture requests over 30–50 ms, publish live analytic snapshots at up to 4 Hz, update live ranking at up to 1 Hz, and redraw cached interaction geometry at display rate. Benchmark these values; they are not source flush guarantees. Exact counts can arrive after a clearly labeled cached/coarse preview. A preview cannot be exported as an exact result.
+
+Cache keys use canonical serialized filter semantics, snapshot vector, normalization/entity/correlation/alignment versions, basis, metric, accounting side, time scope, grouping and requested resolution. Budget each cache by bytes, not entry count alone. Cache aliases cannot survive a rebind from one process instance to another. Cursors carry snapshot/query identity; applying a cursor to another identity is a handled restart, not a silently shifted page.
+
+### 19.4 Stable timeline and graph drawing
+
+Use separate immutable numeric results, layout results and paint resources. Skia drawing consumes these results and current transforms; it performs no storage queries. Dispose or reuse GPU and text resources on the appropriate UI and render lifetimes. Device loss or a software fallback must preserve navigation and the accessible tables.
+
+Frame-loop rules (R11). These are the reason §12's frame budget is reachable, not optional optimizations:
+
+- Cache immutable brushes, pens and typefaces per (semantic token, alpha) pair. A heat-map frame touches thousands of cells; constructing a brush per cell per frame is the single most common way to lose the budget.
+- Use spans and pooled buffers; keep per-frame allocation out of the steady state so a long interaction accumulates no collection pauses.
+- No boxing, LINQ, reflection, string formatting or logging inside a paint, aggregate, admission or decode loop.
+- Format label text only for ticks and cells actually drawn; measure text once per (string, font, DPI, theme) and cache the result.
+- Draw only visible lanes plus a small overscan, and never replace or recreate a control to resize, zoom or re-theme it.
+
+Timeline: draw only visible lanes plus a small overscan; retain world-time coordinates and lane IDs; update pointer/pinch transforms immediately while fresh cells are pending. Indicate when cached cells are being reprojected and prevent exact hit assertions from stale geometry. Maintain a CPU-side hit index over actual data cells/intervals; cosmetic widening maps back to the correct original evidence.
+
+Graph layout runs in three stages, off-thread, and only after a graph change or an explicit re-layout:
+
+1. **Banding.** Partition nodes into outer host bands ordered by host ID, then into groups within each band ordered by descending selected metric and then by group ID. Banding is fully determined by the data, so it is stable across refreshes.
+2. **Seeding.** Place new nodes on a deterministic lattice inside their group from a seed derived from `(graph identity, node ID)`. No random number generator is used without a recorded seed. Existing nodes keep their positions, and pins are hard constraints.
+3. **Relaxation.** Run bounded incremental relaxation — edge attraction, intra-band repulsion, band containment — for at most TUNABLE: 300 iterations or TUNABLE: 120 ms, whichever comes first, retaining the best-scoring valid layout under a stated energy function.
+
+Determinism contract: the same graph identity, seed, constraint set and iteration cap produce identical positions, independent of thread count and wall-clock time. The caps are TUNABLE; the determinism is not. Relaxation never runs during an active gesture, and a completed layout may be applied only to the graph identity it was computed for (R7). Hit testing uses a spatial index with a hit radius of the node radius plus TUNABLE: 4 logical px and resolves to the node, edge or cluster actually drawn (R13). Clusters show member and edge counts. Pins are stored in graph coordinates, independent of timeline time, and survive refresh, re-layout and reopen.
+
+Freeze lane order and graph positions during active gestures. Process groups and graph pins use stable IDs, not row numbers or display names. Hover changes highlighting only; click establishes selection; a separate focus command changes filters. Reduced motion skips animated transitions without changing final layout or selection.
+
+### 19.5 Self-observation and optional name/symbol enrichment
+
+InterCat's broker, viewer, helper processes, control pipe, journal files and optional remote-agent traffic can appear in its own capture. Record their process/channel identities and label them as collector activity. Default exploration may hide them through a visible view filter while retaining evidence and excluded counts. Do not silently remove every event involving InterCat, because legitimate interactions with it may be the investigation target.
+
+DNS reverse lookup and symbol downloads are disabled by default; they can generate traffic and change the system under observation. Resolve names from captured evidence or local caches first. Optional online enrichment requires an explicit action, runs outside the callback path and records its provenance. Names are time-scoped annotations; a currently resolved DNS name is not proof of the peer's historical identity. Stack frames remain raw module/address evidence until symbol identity matches the captured module; unresolved frames remain usable.
+
+## 20. Storage and operational implementation contracts
+
+### 20.1 Physical storage v0 and commit protocol
+
+Implement the minimum store first: immutable fixed-width little-endian columns, null bitmaps, variable-data chunks, dictionaries, a raw-record locator and time-block metadata. Initial tuning defaults are up to 250,000 observations or 64 MiB of staged normalized data per segment, whichever comes first; flush smaller segments on the live-publication cadence. Coalesce small segments asynchronously under a budget. These values are tunable; memory and latency budgets take precedence.
+
+Compaction targets, so a long live session stays reopenable within §12's budget: at most TUNABLE: 64 live segments per time block and TUNABLE: 512 per session before compaction becomes mandatory rather than opportunistic; coalesce into outputs of at least 8 MiB or 64,000 rows; and require no more than TUNABLE: 128 segment opens to serve the initial viewport after reopen. At §19.3's live publication cadence a ten-minute capture would otherwise leave thousands of small segments, which is the failure these targets exist to prevent.
+
+A segment header records magic, format major/minor, feature flags, segment ID, derivation version, row count, min/max local time, column directory and checksum references. Column entries carry type, row count, byte offset, byte length and encoding. Unknown required encodings/features are refused. Uncompressed fixed-width columns permit direct mapping; compressed variable chunks use bounded decode buffers. Do not describe compressed columns as directly memory-mappable arrays.
+
+Journal batches use length-delimited framing, record count, first/last source IDs and checksums. Partial trailing batches are not committed. Blob references include file/chunk identity, offset and length and are verified against the same open file handle used to read them. Source locators survive sorted-segment compaction.
+
+Commit sequence:
+
+1. Write/flush a complete admitted journal batch and its committed-boundary record.
+2. Write derived segments, required dictionaries and relation/entity revisions to unique staging files; validate and flush them.
+3. Publish immutable final files, then write a new immutable manifest generation referencing only durable dependencies.
+4. Update the current-generation pointer with `ReplaceFileW`, or `MoveFileExW` with write-through where a replace does not apply, after flushing the buffers of every dependency; retain the previous pointer and generation as last-known-good.
+5. Announce the generation. Readers acquire it and its dependencies as one lease.
+
+Do not assume a filesystem rename alone proves every dependency survived power failure. Windows offers no directory flush, so recovery must never depend on rename atomicity: the manifest carries its own checksum and complete dependency list, and the retained last-known-good pointer lets a torn publication be detected and rolled back rather than trusted. Recovery verifies manifests and checksums and falls back to the latest complete generation; replay committed journal batches to rebuild missing derived data. It reports omitted incomplete tails and orphan files. Staging cleanup only removes unreferenced files under the verified session root.
+
+### 20.2 Derived state, revisions and retention checkpoints
+
+Raw/admitted evidence is authoritative; indices, tiles and correlation tables are versioned derivations. They can be rebuilt when their source and required schemas remain retained. Changing a decoder does not edit old columns in place. Keep an explicit dependency graph from a derived generation to raw chunks, schemas, dictionaries and algorithm versions.
+
+Retention state is disclosed before it bites: the UI shows the current session size, measured bytes per observation, the retained extent and the time remaining under the active policy and free disk (S5). Before rolling retention evicts an old interval, publish a boundary checkpoint containing still-live process/thread/resource identities, known endpoint bindings, continuity quality, clock state and pending-operation summaries (S6). Preserve supporting lifecycle evidence separately when exact provenance is required. A checkpoint preserves known state but does not prove activity in the removed interval or turn a missing start into an observed start. If provenance was deliberately evicted, label the retained summary accordingly.
+
+Checkpoint pending calls/resources so an operation beginning before the retained window can still be represented as left-censored. Old raw traffic remains unavailable. Remove stale index/adjacency references and update the visible retention boundary atomically with the new manifest. Test reopen after eviction, not only uninterrupted live viewing.
+
+Default interactive queries have short leases. Long-running exports or user pins reserve a declared disk allowance. If quotas conflict, stop recording with an explicit reason or require an explicit eviction/unpin decision; never invalidate evidence behind an open inspector. Disk-reserve space for final health/manifest writes must be included in quota planning.
+
+### 20.3 Broker protocol and failure semantics
+
+Use a versioned length-prefixed binary protocol with a small reviewed schema, not unrestricted object deserialization. Separate control/status from event-journal access. Initial commands:
+
+```text
+Hello(protocol range, client instance, negotiated features)
+GetCapabilities()
+PrepareCapture(profile ID, approved overrides, quota, retention policy)
+StartCapture(prepared plan token, request ID)
+GetStatus(capture ID)
+StopCapture(capture ID, request ID)
+RenewOwnerLease(capture ID)
+```
+
+The broker authenticates the local OS identity and connection ownership as follows; a supplied PID or random nonce is never accepted as authentication:
+
+- The broker creates the control pipe with first-instance semantics and an explicit DACL granting only the capturing user's SID and the broker identity, and sets the pipe to reject remote clients.
+- On each connection it impersonates the named-pipe client, reads the client token, and verifies SID, logon session, integrity level and elevation state against the capture owner before reverting.
+- Prepared plan tokens bind to that authenticated SID and logon session with an expiry. A token presented by another client, or after expiry, is rejected.
+- A client PID is diagnostic information only, never an authorization input (R22). Bind prepared tokens to that authenticated client/session and an expiry. Ordinary UI elevation can involve a different administrative account; account for the requesting user's read access explicitly, and never rely on permissive default ACLs. Reject remote clients and unsupported commands/versions.
+
+Use idempotent start/stop request IDs and persist the capture ownership record before exposing success. Duplicate start returns the existing capture, not a second ETW session. Disconnect does not imply successful stop. Stop returns separate milestones for requested, providers stopped, callbacks drained, journal finalized and analysis finalized. If draining exceeds a timeout, preserve a partial session and explain the incomplete tail; do not forcibly claim finalization.
+
+`Recording`, `Stopping`, etc. describe lifecycle; degradation is orthogonal status with a reason list. This avoids impossible transitions such as a degraded recorder no longer knowing whether it is recording. Health/status messages must still function when data queues are full. Orphan recovery verifies ownership plus session metadata before cleaning up; a stored matching name alone is insufficient.
+
+### 20.4 CLI, files and reproducible headless operation
+
+Proposed CLI contracts, to be frozen before M2:
+
+```text
+icat capabilities --json
+icat capture --profile explore --duration 60s --output capture.icat
+icat import source.etl --output imported.icat
+icat verify capture.icat --deep
+icat query capture.icat --spec analysis.json --format jsonl
+icat workspace create --capture a.icat --capture b.icat --output case.icat-workspace
+icat export case.icat-workspace --spec analysis.json --mode redacted --output report.icat.zip
+```
+
+The JSON analysis specification uses the same versioned AST/metric contracts as the UI; no separate approximate CLI interpretation. Status/progress goes to stderr and machine-readable data to stdout. Return distinct documented exit codes for success, partial-result success, invalid invocation, permission/capability failure, corrupted input and cancellation. Machine-readable status includes actual effective profile, capture IDs and quality/loss summary.
+
+Do not overwrite existing outputs without an explicit overwrite option. Save/export stages in the destination filesystem and publishes only a verified result. Cancel leaves either the previous destination intact or a clearly labeled recoverable partial capture. Archive extraction validates paths, links and quotas before publication. Imported manifests cannot start capture or request elevation merely by being opened.
+
+### 20.5 Deployment and compatibility boundaries
+
+Package the viewer/CLI and capture broker with a version compatibility handshake. A viewer opening a session requires neither an installed service nor a driver. On-demand broker elevation is the baseline. Updates do not restart a running broker/capture silently; negotiate stop/finalize or defer the update. Future service/driver components use explicit separate installation choices and rollback paths.
+
+Format major changes require migration into a new destination; preserve the original. Minor additions are ignorable only when marked optional. Use a feature-bit/required-feature list rather than assuming every future minor version is readable. Store canonical JSON values for public interchange where numbers exceed consumer-safe integer ranges, with explicit string encodings for large IDs/timestamps.
+
+Create CI lanes for deterministic pure tests, Windows ETW integration, elevated VM scenarios, visual/accessibility tests, fixture compatibility, performance qualification and later driver validation. Routine pull requests need not run every 100M-event or multi-day test, but those tests gate releases claiming that tier. Keep test results tied to exact build/profile/schema versions.
+
+### 20.6 Errors, defect counters and diagnostics
+
+Error categories, each with its own presentation and its own counter. Presentation is a designed state (§6.8), not a dialog, except where the user must decide something:
+
+| Category | Meaning | Presentation |
+|---|---|---|
+| `UserInput` | An invalid filter, specification or invocation | Inline beside the input, with the accepted form |
+| `Capability` | A source cannot supply what was asked | A coverage entry plus an `EN-CapabilityState` value; never an error dialog |
+| `Permission` | Elevation refused, protected process, denied ACL | A designed state naming what remains possible |
+| `SourceLoss` | Provider, ETW, broker or application drop | The health ledger, attributed to the layer that lost it |
+| `Decode` | Unknown or mismatched schema, malformed field | An opaque or header-only record plus a counter; never a guessed layout |
+| `Storage` | Corruption, checksum mismatch, disk full, slow disk | A recoverable-partial state naming the last valid generation |
+| `Protocol` | Broker or agent version, token or command rejection | A refusal stating the negotiated range |
+| `Internal` | A violated invariant | Fail loudly in debug; contain and report in release, naming the rule or invariant ID |
+
+Defect counters are session statistics, written to the manifest and surfaced in the health strip: admitted records; policy omissions by reason; undecodable records by reason; provider-reported loss; ETW buffer loss; broker drops; application drops; unresolved-join evictions; quarantined timestamps; dictionary, cache and spill evictions; and capability transitions per source. A counter is never folded into another, and no total is presented that adds overlapping counters (§9.3).
+
+Structured diagnostics obey R11: no logging on the callback, decode, aggregate or paint path — counters instead. The support bundle contains manifests, capability reports, counters, versions and timings, and by default contains no payloads, endpoint strings, command lines or raw events (P16). Its contents are listed before it is written.
+
+## 21. Executable acceptance specification and review findings
+
+### 21.1 Small scenarios with exact expected results
+
+These examples specify accounting and failure semantics before optimization. Each becomes a fixture plus a reference-query assertion; do not encode the examples only as UI screenshots.
+
+| Fixture | Expected result |
+|---|---|
+| A sends 100 known-domain bytes to B; B receives the same transfer; one proven logical call is associated | Source basis: 2 transport observations. Sender-accounted transport total: 100 bytes. Endpoint activity: A sent 100, B received 100; sum of endpoint activity 200, labeled accordingly. Logical basis: 1 call. Source associations add no bytes. |
+| A requests a 4,096-byte pipe write and a validated completion reports 1,024 bytes | Requested-byte metric 4,096; completed-byte metric 1,024; content may still be unavailable. No generic unqualified 4,096-byte transfer claim. |
+| Two processes map the same 8 MiB section | 1 section, 2 memberships, capacity 8 MiB; no observed traffic count or byte rate unless another source supplies it. |
+| Two server instances share a pipe name and one client name event lacks instance identity | One endpoint grouping with distinct known server instances and an unresolved client relation; no fabricated choice or all-to-all edges. |
+| PID 400 exits, is reused, and a late event belongs to the earlier start key | The late event binds to the earlier process instance; the newer instance's totals do not change. |
+| Two same-time, byte-identical imported records | Preserve multiplicity 2; repeated canonical import yields stable equivalent facts; neither record receives invented causal priority. |
+| An operation starts at 0.5 s and ends at 2.5 s; buckets are [0,1), [1,2), [2,3) | Start counts 1/0/0; completion counts 0/0/1; overlap counts 1/1/1; occupied durations 0.5/1/0.5 s. |
+| A 10-second window contains 100 observed operations and a 2-second loss interval | Observed rate 10/s with incomplete coverage; no automatic 12.5/s “corrected” whole-window rate and no invented missing count. |
+| Host B appears to receive 0.2 ms before host A sends, with combined uncertainty 3 ms | Cross-host order is ambiguous; no negative network-latency diagnosis; valid local spans are unchanged. |
+| Metadata-only profile encounters a new event schema with a binary body | Body not persisted; permitted diagnostic header and policy-omission counter visible; no payload preview or silent coverage claim. |
+| Recording crosses retention boundary while a resource is still open | Reopen knows the checkpointed resource's qualified identity; pre-boundary traffic is unavailable; lifetime does not become a new observed creation. |
+| A slow old query completes after a new filter request | It cannot replace the applied new bundle or attach its graph layout to a different graph. |
+| The writer crashes after raw-batch commit but before derived-manifest publication | Recovery replays the committed batch once into new derived data, preserving raw IDs and reporting any uncommitted tail. |
+
+Metric examples with both endpoints assume a proven transfer association; without that proof, show side-specific observations and unresolved aggregate accounting as specified in section 19.2.
+
+### 21.2 Concrete M0/M1 closure artifacts
+
+Produce each contract below before its governed production format or behavior is frozen or promoted beyond an explicitly labeled spike. M0 feasibility probes and disposable prototypes may precede a contract, but they cannot become the production implementation until the applicable contract and fixture exist. This removes a sequencing contradiction with IC-011–IC-018 while preserving the rule that a contract must not merely document an accidental shipped design:
+
+1. `capabilities/<build>/<adapter>.json`: supported descriptors, exact fields, units, attribution, enablement and profile admission rules, with links to fixtures.
+2. `contracts/journal-v1.md`: complete framing, bounds, checksum, extended-data and replay contract; golden binary files and corruption tests.
+3. `contracts/identity-v1.md`: live/import/subrecord IDs, process/resource epochs, alias revisions and canonical ETL tie handling.
+4. `contracts/metrics-v1.md`: contribution keys, domains, accounting sides, cohorts, unknown values and the scenarios above.
+5. `contracts/broker-v1.md`: message framing, the authentication mechanism of §20.3 and its assumptions, ownership, idempotency, states, timeout behavior, and a threat model naming the assets, the boundary, the assumed attacker positions and the abuse cases each command rejects.
+6. `fixtures/`: truth logs, admitted journals/ETLs where shareable, expected query bundles and exact tool/build provenance.
+7. `bench/results/`: journal-vs-ETL fidelity/overhead, queue/disk saturation, mixed IPC query timings, the end-to-end latency budget of §12 measured stage by stage, and the chosen values for every `TUNABLE:` setting exercised.
+8. `contracts/query-identity-v1.md`: the canonical specification form, hash construction and the golden corpus mapping specifications to canonical bytes and hashes (§10.5).
+9. `theme/`: the theme definitions of §6.6 with recorded contrast ratios, perceptual separations and color-vision verification output, plus the tests that fail when one regresses.
+10. `fixtures/index.json`: the traceability matrix of §13.5 and the two CI checks that keep it honest.
+
+These paths are deliverables in the new InterCat repository, not files created by this planning task. IC-011–IC-018 cover them: complete foundation portions in M1 and their live/presentation integration in M2. M1's exit requires the corresponding contracts and foundation fixtures. Avoid implementing all future adapters before the first durable vertical slice.
+
+### 21.3 Reanalysis disposition
+
+| Review finding | Resolution in revision 2 |
+|---|---|
+| “Implementation-ready” overstated untested capture feasibility | Status now distinguishes a concrete blueprint from gated runtime capabilities |
+| Competing journal/ETL authorities could change live IDs or duplicate records | One authoritative admitted-event journal selected; companion ETL is separate evidence |
+| Callback ordinal was assumed reproducible for ETL | Canonical import handles equal-time ordering and preserves duplicate multiplicity |
+| One raw record could produce multiple observations without unique IDs | Raw-record identity and deterministic fact keys are separate |
+| Immutable observations included mutable resolved identities | Entity bindings moved to versioned derived tables |
+| Metadata-only and unknown raw preservation conflicted | Explicit source/body admission matrix and separate original-evidence policy |
+| Broker, schemas, recovery and retention were principles without sufficient contracts | Added wire commands, owned envelopes, schema replay, commit order and boundary checkpoints |
+| Graph filtering could change denominators or hide counterpart nodes | Shared basis/contribution model and distinct context-node semantics |
+| CPU/GPU responsiveness lacked a concrete scheduling path | Added coalescing scheduler, revision-aware caches and separate numeric/layout/paint results |
+| Self-observation and enrichment could perturb exploration | Explicit collector identities and opt-in network/name/symbol enrichment |
+| Milestone acceptance was broad | Added exact scenarios and required M0/M1 contract artifacts |
+
+Remaining uncertainty is principally empirical: NPFS/section coverage, provider semantics on target builds, journal throughput, instrumentation overhead and graph usability at scale. Resolve those through the stated fixtures/prototype, not by adding speculative certainty to the plan. No user-level conceptual decision needs reopening to implement these revisions.
+
+## 22. Terminology and reference notes
+
+| Term | Meaning |
+|---|---|
+| Observation | An immutable fact recorded by one source record, preserving original attribution and measurements |
+| Operation | A derived logical message, I/O or call lifecycle, with optional start, end and status |
+| Channel | A scoped communication relationship through a resource or connection incarnation |
+| Resource | An object through which communication may occur: pipe instance, section, port, socket |
+| Endpoint | A mechanism-specific address or name, with namespace, host, scope and observed validity |
+| Relation | An evidence-backed link carrying its rule identity, version, evidence IDs and strength |
+| Snapshot | An immutable, identified analysis state, named by a generation per capture |
+| Snapshot vector | One generation per capture in an investigation; a query answers exactly one vector |
+| Generation | A published, immutable version of a session's derived state |
+| Revision | A versioned derived binding or relation set layered over unchanged observations |
+| Epoch | A continuity interval for an identifier or a capture configuration, after which reuse is non-merging |
+| Coverage | What the configured sources could observe during a period, including known defects |
+| Coverage epoch | An interval over which capture configuration and admitted sources were unchanged |
+| Correlation | An evidence-backed link produced by a named rule with a stated ambiguity policy |
+| Basis | The fact family a query counts: source observations, logical operations, or resource topology |
+| Contribution | The deduplicated accounting unit keyed by basis identity, metric domain and observation side |
+| Eligible | Passing the analysis specification's filter, basis, evidence policy and time scope together |
+| Accounting side | Which end of a transfer a measurement is attributed to, including the canonical owner |
+| Byte domain | The named meaning of a byte measurement; two domains are never summed |
+| Canonical owner | The single contribution that owns a matched transfer's total (§5.3) |
+| Endpoint activity | A metric that counts both sides of a transfer by design, and says so |
+| Occupancy | Clipped time an interval occupies inside a cell, distinct from a start or completion count |
+| Censored | An operation open at a capture or retention boundary, excluded from completed cohorts |
+| Cohort | The population a duration distribution describes, for example operations completed in range |
+| Payload | Content whose semantic classification is known, distinct from generic event data |
+| Admitted evidence | What InterCat retained after applying admission policy, which is not every OS buffer |
+| Admission policy | The per-record, pre-persistence decision about bodies and content |
+| Journal | The broker-owned, append-only authoritative record of admitted events |
+| Segment | An immutable, time-sorted set of columnar observations and their indices |
+| Tile | A cached multiresolution aggregate for a common lane and metric view |
+| Watermark | A reordering optimization boundary; never evidence of source completeness |
+| Viewport | The visible half-open time range |
+| Analysis interval | The half-open range that scopes graph, ranking and detail results |
+| Retained extent | The time range still held by the session after retention |
+| Context node | A node drawn to explain a selected relation, contributing to no total |
+| Follow-latest | A view state that tracks newly committed data, independent of recording |
+| Workspace clock | The investigation-wide time base each host's clock maps into, with uncertainty |
+| Tier | A mechanism's measured support level, from traffic visualization to unsupported (§14.2) |
+| Collector activity | Observations produced by InterCat's own processes and channels |
+
+Public technical references are linked beside the claims they support. They establish Windows mechanisms and API contracts, not that an InterCat adapter has been tested. Local RPC metadata inspection establishes only the reported single-build schema. The rules and invariants in section 2 are stated on their own merits, with the failure each prevents; no external benchmark is carried into this document as evidence about InterCat.
+
+All throughput numbers and delivery budgets in this document are proposed targets. All unsupported or experimental Windows paths require their stated feasibility gates. The design's central invariant is that every displayed relationship, measurement and content preview can be traced to evidence and interpreted at its actual level of certainty.
+
+
+## 23. Normative enumerations and wire codes
+
+Every enumeration below is a contract (R5). Codes are stable and never reused; retiring a value leaves a gap. A reader encountering an unknown code in a **required** field refuses the artifact and reports the version axis responsible; in an **optional** field it preserves the raw code and renders it as unknown rather than guessing. Names are the identifiers used in the CLI, the canonical specification form and the JSON interchange; codes are what the durable format stores.
+
+**`EN-Mechanism`** — address family (IPv4/IPv6) is an endpoint attribute, not a separate mechanism.
+
+| Code | Name | Fixture prefix |
+|---|---|---|
+| 1 | `ProcessLifecycle` | `PROC` |
+| 2 | `ThreadLifecycle` | `PROC` |
+| 3 | `Tcp` | `TCP` |
+| 4 | `Udp` | `UDP` |
+| 5 | `UnixDomainSocket` | `UDS` |
+| 6 | `NamedPipe` | `PIPE` |
+| 7 | `AnonymousPipe` | `APIPE` |
+| 8 | `Rpc` | `RPC` |
+| 9 | `Alpc` | `ALPC` |
+| 10 | `SharedSection` | `SECT` |
+| 11 | `ComActivation` | `COM` |
+| 12 | `Synchronization` | `SYNC` |
+| 13 | `WindowMessage` | `WMSG` |
+| 14 | `Clipboard` | `CLIP` |
+| 15 | `Mailslot` | `MSLOT` |
+| 16 | `Dde` | `DDE` |
+| 17 | `RemoteFileOrSmb` | `SMB` |
+| 18 | `Quic` | `QUIC` |
+| 19 | `ApplicationSdk` | `SDK` |
+| 20 | `Instrumented` | `INST` |
+| 99 | `UnknownMechanism` | — |
+
+**`EN-Layer`**: 1 `Transport`, 2 `Application`, 3 `Resource`, 4 `Lifecycle`, 5 `Collector`.
+
+**`EN-ObservationKind`**: 1 `Send`, 2 `Receive`, 3 `RequestStart`, 4 `RequestEnd`, 5 `Open`, 6 `Close`, 7 `Bind`, 8 `Connect`, 9 `Accept`, 10 `Disconnect`, 11 `Map`, 12 `Unmap`, 13 `Wait`, 14 `Signal`, 15 `Create`, 16 `Exit`, 17 `Inventory`, 18 `Error`, 19 `Discovery`, 99 `UnknownKind`.
+
+**`EN-Direction`**: 0 `UnknownDirection`, 1 `Outbound`, 2 `Inbound`, 3 `Bidirectional`, 4 `DirectionNotApplicable`. Initiator and responder roles are separate attributes; a server commonly sends data.
+
+**`EN-Basis`**: 1 `SourceObservations`, 2 `LogicalOperations`, 3 `ResourceTopology`.
+
+**`EN-Metric`**: 1 `Observations`, 2 `OperationsStarted`, 3 `OperationsCompleted`, 4 `BytesSent`, 5 `BytesReceived`, 6 `RequestedIoBytes`, 7 `ApplicationPayloadBytes`, 8 `CapturedContentBytes`, 9 `Rate`, 10 `Duration`, 11 `ActiveChannels`, 12 `ActivePeers`, 13 `MappingCapacity`, 14 `Errors`. Permitted combinations with basis, byte domain and accounting side are fixed by §5.3.
+
+**`EN-ByteDomain`**: 1 `TransportObserved`, 2 `RequestedIo`, 3 `CompletedIo`, 4 `ApplicationPayload`, 5 `CapturedContent`, 6 `Capacity`.
+
+**`EN-AccountingSide`**: 1 `SendSide`, 2 `ReceiveSide`, 3 `EndpointActivity`, 4 `CanonicalOwner`.
+
+**`EN-EvidencePolicy`**: 1 `DirectOnly`, 2 `IncludeCorrelated` (default), 3 `IncludeCandidates`, 4 `AllIncludingConflicting`. Definitive causal views permit 1 and 2 only.
+
+**`EN-GraphProjection`**: 1 `ProcessToProcess`, 2 `ProcessResourceProcess`, 3 `HostToHost`, 4 `EndpointCentric`.
+
+**`EN-Grouping`**: 1 `InstanceOnly`, 2 `Executable`, 3 `ServiceContainer`, 4 `UserSession`, 5 `Host`, 6 `Mechanism`, 7 `Endpoint`, 8 `Package`.
+
+**`EN-TimeScope`**: 1 `AnalysisInterval` (default), 2 `RetainedCapture`, 3 `VisibleViewport`.
+
+**`EN-QualityDimension`**: 1 `Attribution`, 2 `Correlation`, 3 `Measurement`, 4 `Timing`.
+
+**`EN-QualityLevel`** — ordered worst-last; roll-ups take the worst (§10.3): 1 `Proven`, 2 `Qualified`, 3 `Weak`, 4 `UnknownQuality`.
+
+**`EN-CoverageState`** — ordered lattice, worst-last: 1 `Covered`, 2 `ReducedFidelity`, 3 `PartialGap`, 4 `NotCollected`, 5 `UnknownCoverage`.
+
+**`EN-FieldAvailability`**: 1 `Present`, 2 `NotExposed`, 3 `ProfileDisabled`, 4 `Denied`, 5 `EventLost`, 6 `SchemaUnknown`, 7 `Redacted`, 8 `NotApplicable`.
+
+**`EN-CapabilityState`**: 1 `Available`, 2 `Experimental`, 3 `Unsupported`, 4 `PermissionDenied`, 5 `DisabledByProfile`, 6 `SchemaUnknown`, 7 `ProviderFailed`.
+
+**`EN-Tier`**: 1 `TrafficVisualization`, 2 `TopologyOnly`, 3 `ExperimentalEvidence`, 4 `Unsupported` (§14.2).
+
+**`EN-RelationStrength`**: 1 `Direct`, 2 `Correlated`, 3 `Candidate`, 4 `Unresolved`, 5 `Conflicting`.
+
+**`EN-OperationState`**: 1 `Started`, 2 `Completed`, 3 `ExplicitlyFailed`, 4 `OrphanCompletion`, 5 `OpenAtBoundary`, 6 `Ambiguous`, 7 `EvictedUnresolved`.
+
+**`EN-ContentClassification`**: 1 `OpaqueProviderData`, 2 `TransportFragment`, 3 `ApplicationPayload`, 4 `DecodedFields`, 5 `EncryptedContent`.
+
+**`EN-AdmissionMode`**: 1 `MetadataOnly`, 2 `ScopedContent`, 3 `OriginalEvidence` (§18.2).
+
+**`EN-CaptureLifecycle`**: 1 `Idle`, 2 `Probing`, 3 `Starting`, 4 `Recording`, 5 `Stopping`, 6 `Finalizing`, 7 `Closed`. Degradation is orthogonal status, not a state: `Degraded` and `RecoverablePartial` are flags with a reason list (§20.3).
+
+**`EN-AlignmentMode`**: 1 `RecordedWallClock`, 2 `SharedMarkerEvidence`, 3 `ManualAnnotation` (§8.2).
+
+**`EN-ExitCode`** for the CLI (§20.4): 0 `Success`, 1 `PartialResultSuccess`, 2 `InvalidInvocation`, 3 `PermissionOrCapabilityFailure`, 4 `CorruptedInput`, 5 `Cancelled`.
+
+**Specification member order** for canonicalization (§10.5), emitted exactly in this sequence: `specVersion`, `snapshotVector`, `versions`, `basis`, `metric`, `byteDomain`, `accountingSide`, `evidencePolicy`, `timeScope`, `graphProjection`, `grouping`, `filter`, `requestedRows`.
+
+## 24. Version axes and invalidation
+
+Fourteen independent version axes decide reproducibility, cache correctness and what a bump costs. Each is owned by exactly one module, persisted in exactly one place, and invalidates a stated set of derived state. No bump ever edits data in place (R1, R20).
+
+| Axis | Owner | Bumps when | Persisted in | Invalidates |
+|---|---|---|---|---|
+| `formatMajor` | Storage | An incompatible layout or a newly required feature | Segment headers, manifest | Everything: a reader refuses the session and offers migration into a new destination |
+| `formatMinor` | Storage | A purely additive, optional feature | Segment headers, manifest | Nothing, provided the feature is marked optional |
+| `adapterVersion` | Capture adapter | Enablement, field mapping or admission behavior changes | Manifest, per source | Capability claims and tier assignments; applies to new captures, never to past sessions |
+| `schemaFingerprint` | Capture adapter | A provider's event layout differs from the saved one | Schema snapshots, per descriptor | Decode of the affected descriptors, which fall back to opaque or header-only |
+| `normalizerContract` | Analysis | Field-to-observation mapping or fact-key derivation changes | Manifest, observation identity | Observation identities: a new derivation generation with links back to raw-record keys |
+| `derivationVersion` | Storage and Analysis | Any index, tile or column encoding change | Segment headers | The affected derived files only; rebuildable from retained raw evidence |
+| `entityRevision` | Analysis | New lifecycle or alias evidence rebinds observations | Entity revision tables | Entity-bound caches, ranking, graph projections |
+| `correlationRevision` | Analysis | A correlator, its version, or late evidence changes relations | Relation revision tables | Relation-dependent aggregates, operation metrics, graph edges |
+| `alignmentRevision` | Workspace | Clock mapping, host alias or manual alignment changes | Workspace manifest | Cross-host scopes, candidate joins, multi-host aggregates — never local durations (I10) |
+| `importContract` | Application | Canonical import keying or retained-evidence policy changes | Import identity | Import identity: the same bytes produce a distinct derived session |
+| `canonicalizationVersion` | Domain | The canonical specification form changes | Query identity prefix | All query caches and all cursors |
+| `brokerProtocol` | Broker | Wire schema or command set changes | Handshake only | Nothing persisted; incompatible peers refuse to connect |
+| `sdkSchema` | SDK | Application instrumentation schema changes | Observation source metadata | Nothing retroactively; older viewers retain unknown fields safely |
+| `themeVersion` | Desktop | Tokens, palette or contrast targets change | Theme definition | Rendered geometry and label caches only |
+
+```mermaid
+flowchart TD
+  raw[Raw admitted evidence] --> norm[normalizerContract]
+  schema[schemaFingerprint] --> norm
+  norm --> obs[Observation segments + derivationVersion]
+  obs --> ent[entityRevision]
+  ent --> corr[correlationRevision]
+  obs --> agg[Aggregates, tiles, ranking, graph]
+  corr --> agg
+  align[alignmentRevision] --> agg
+  agg --> cache[Query caches and cursors]
+  canon[canonicalizationVersion] --> cache
+```
+
+Rules: a cache key carries every axis its result depends on (§10.5); a snapshot lease pins the axes it was taken under, so a reader never observes a mixed set (R6); and the dependency graph above is declared in code with a test asserting that every derived artifact names its upstream axes. An artifact that cannot name them cannot be published.
+
+## 25. Non-goals and definition of done
+
+### 25.1 Non-goals for the first release
+
+Stating these once prevents them being rediscovered as scope: threat detection, malware classification or alerting as an organizing concept; a universal lossless feed of every message, memory access or payload; remote deployment, fleet control or live streaming between hosts; always-on background recording or a persistent service; kernel drivers and process injection in the baseline product; protocol decoders beyond hex, bounded text and structured source fields plus one synthetic fixture decoder; decryption of TLS, authenticated RPC, SMB or QUIC content; automated root-cause, deadlock or critical-path conclusions; any cloud service, telemetry upload or automatic network egress; forensic chain of custody or hostile-tamper resistance; and capture on non-Windows platforms. Each of these is either a later milestone with its own gates (§15) or explicitly out of scope.
+
+### 25.2 Definition of done for v1
+
+v1 is done when every item below is demonstrably true, each traceable to a named fixture or test (§13.5):
+
+- every `R<n>` rule and `I<n>` invariant is named by at least one passing test, and the CI coverage check reports no uncovered contract;
+- a standard user can open, explore and export a session with no elevation, and a single elevation starts capture;
+- a first-time user on a machine with no prior state reaches a live L0 overview by pressing one action, inside §12's first-feedback budget, with every §3.1 default correct and unmodified;
+- the §3.2 ladder descends and ascends one rung per gesture at every level, states its position, and restores viewport, selection, grouping and graph focus exactly;
+- §6.8's four latency windows are measured and met at tiers T1 and T3, and no analysis work blocks input, clears a populated view, or raises a modal;
+- scale invariants S1 through S7 hold at tiers T1 through T3, with the T3-versus-T1 reopen ratio and steady-state working set published;
+- no prohibition P1 through P28 is present in the shipped build, each covered by a test or a review checklist item;
+- each initial mechanism carries a measured tier from §14.2 for every supported build, published with the release;
+- graph and timeline hold equal prominence at every supported window size, both reachable by keyboard alone, with accessible table equivalents yielding identical result sets;
+- §6.7's navigation properties pass as property tests, and overscroll stays inside its allowance under randomized gesture sequences;
+- §6.6's contrast and perceptual-separation tests pass in dark, light and high-contrast modes and under three color-vision simulations;
+- timeline, graph, ranking, inspector and CLI agree on counts, byte sums and scope for every fixture, in the same units and domains;
+- unknown, unmeasured and observed-zero are visually and textually distinct everywhere they can occur;
+- all §21.1 scenarios pass as executable assertions rather than screenshots;
+- a 10-minute live session, a 10-million-observation reopen and a 100-million-observation qualification tier each meet §12's budgets on the reference machine, with published hardware and build;
+- the end-to-end latency budget of §12 is measured stage by stage and met;
+- injected loss at each of the provider, queue, decode and storage boundaries is attributed to the correct layer in the health ledger, and no gap is rendered as zero activity;
+- crash at each commit step recovers the last durable generation, replays committed batches exactly once, and leaves no unowned ETW session;
+- retention eviction, pinning and export never invalidate an open or pinned reference;
+- a metadata-only profile provably retains no unapproved bodies, and a redacted export contains no original payload or resolvable reference to one;
+- two independently recorded hosts can be imported, aligned, correlated and reopened with manual alignment preserved and no source timestamp altered;
+- an unjustified cross-host order, latency or causal claim is refused, and the refusal is visible rather than silent;
+- the broker rejects remote clients, unauthenticated clients, expired tokens and unsupported commands, with fixtures for each;
+- the CLI can capture, import, verify, query, workspace and export, returning the documented exit codes, and its machine output matches the UI;
+- every `TUNABLE:` value is a recorded setting with its measured basis, not a literal;
+- format v0 is frozen with a migration and refusal policy, and an older viewer refuses an unsupported required feature safely;
+- installation, update, uninstall and capture cleanup leave no orphaned session, driver, service or evidence the user did not ask to keep;
+- ADR-1 through ADR-16 exist, each recording evidence, alternatives and reversal cost;
+- the repository builds on the pinned SDK with no unexplained warnings, and the architecture fitness test passes.
+
+## 26. Solution layout, settings and operational defaults
+
+### 26.1 Suggested solution layout
+
+```text
+src/
+  InterCat.Domain/           Ids/ Time/ Measurements/ Filters/ Queries/ Capabilities/
+  InterCat.Storage/          Columns/ Segments/ Journal/ Manifests/ Recovery/
+  InterCat.Analysis/         Entities/ Correlation/ Alignment/ Aggregation/ Ranking/ Graph/
+  InterCat.Application/      UseCases/ Coordination/ Ports/ Snapshots/
+  InterCat.Capture.Windows/  Etw/ Tdh/ Inventory/ Profiles/ Adapters/
+  InterCat.CaptureBroker/
+  InterCat.Desktop/          Presentation/ Timeline/ Graph/ Views/ Theme/
+  InterCat.Cli/
+  InterCat.TestWorkloads/
+tests/
+  InterCat.Domain.Tests/                 pure, no platform
+  InterCat.Storage.Tests/                includes corruption and recovery fuzzing
+  InterCat.Analysis.Tests/               reference scan implementations
+  InterCat.Application.Tests/
+  InterCat.Capture.Windows.Tests/        Windows ETW lane
+  InterCat.Desktop.Tests/                transforms, palette, layout determinism
+  InterCat.Ui.Tests/                     rendering and accessibility lane
+  InterCat.Property.Tests/               navigation, boundaries, identity
+  InterCat.Architecture.Tests/           dependency direction (R19)
+bench/
+  InterCat.Benchmarks/
+tools/
+  InterCat.FixtureGen/  InterCat.SchemaProbe/
+fixtures/    contracts/    theme/    docs/adr/
+```
+
+Project names may change; the dependency direction of §9 may not.
+
+### 26.2 Consolidated tunable defaults
+
+Every value below is a recorded profile or workspace setting rather than a literal in code (§1.4). Capture-affecting settings belong to the capture manifest and the effective profile; view settings belong to the workspace. Changing a capture-affecting setting creates a new coverage epoch (§9.3).
+
+| Setting | Default | Scope | Section |
+|---|---|---|---|
+| Reorder grace | 2 s | Capture | §18.5 |
+| Health sampling interval | 1 s | Capture | §18.5 |
+| Pending-join expiry | 30 s | Capture | §18.5 |
+| Pending spill budget | 128 MiB per capture | Capture | §18.5 |
+| Segment flush rows | 250,000 | Storage | §20.1 |
+| Segment flush bytes | 64 MiB | Storage | §20.1 |
+| Mandatory compaction thresholds | 64 segments per time block; 512 per session | Storage | §20.1 |
+| Segment opens for initial viewport | 128 | Storage | §20.1 |
+| Acquisition queue budget | 256 MiB | Capture | §12 |
+| Analysis and cache budget | 512 MiB | Analysis | §12 |
+| UI and layout budget | 512 MiB | Desktop | §12 |
+| Gesture request coalescing | 30–50 ms | Desktop | §19.3 |
+| Live snapshot publication | up to 4 Hz | Application | §19.3 |
+| Live ranking refresh | up to 1 Hz | Desktop | §19.3 |
+| Graph display budget | 200 nodes, 500 edges | Workspace | §6.3 |
+| Cluster collapse threshold | 25 members | Workspace | §6.3 |
+| Layout caps | 300 iterations or 120 ms | Desktop | §19.4 |
+| Graph hit padding | 4 logical px | Desktop | §19.4 |
+| Occupied floor | 0.42 of lane height | Workspace | §6.2 |
+| Minimum drawn width | 5 logical px, ceiling 12 | Workspace | §6.2 |
+| Snap search cap | 128 columns | Desktop | §6.2 |
+| Minimum viewport span | 1 µs per device pixel, floor one native tick | Workspace | §6.2 |
+| Maximum viewport span | 1.1 × retained extent | Workspace | §6.2 |
+| Overscroll allowance | min(5% of extent, 10% of viewport) | Workspace | §6.2 |
+| Minimap columns | 2,000 | Workspace | §6.2 |
+| Minimap brush minimum | 8 logical px | Workspace | §6.2 |
+| Mark budget | 20,000 per frame, 2,000 per lane | Workspace | §6.2 |
+| Wheel zoom factor | 1.25 per notch | Workspace | §6.7 |
+| Double-click zoom factor | 2.0 | Workspace | §6.7 |
+| Arrow-key pan step | 10% of span | Workspace | §6.7 |
+| Minimum pane size | 420 × 320 logical px | Workspace | §6.1 |
+| Stacking breakpoint | 1,100 logical px | Workspace | §6.1 |
+| Selection animation | 120 ms | Workspace | §6.8 |
+| Level-change animation | 200 ms | Workspace | §6.8 |
+| First paint | 1 s | Desktop | §3.1 |
+| Reopen ratio T3 versus T1 | 2× | Storage | §12.1 |
+
+### 26.3 Settings storage
+
+Three scopes, three locations, and no hidden fourth:
+
+| Scope | Contents | Stored in |
+|---|---|---|
+| Application | Theme mode, units, default profile, update policy, enrichment opt-ins | A per-user configuration file |
+| Workspace | Layout, lane grouping, pins, sort, view filters, and every view-scoped tunable of §26.2 | The `.icat-workspace` manifest |
+| Capture | Effective profile, admission policy, budgets, retention, coverage epochs | The capture manifest, where they are evidence rather than preference |
+
+The format is documented, versioned and hand-editable. An unknown key is preserved and reported, never dropped. A capture setting is never mutated after the fact, because it describes what was collected (I9).
+
+## 27. Appendix A: illustrative session manifest
+
+Illustrative, not normative field-by-field; the contract is §10.1, §23 and §24. Tick values and 128-bit identities are encoded as strings regardless of magnitude, so no consumer silently loses precision (§20.5).
+
+```json
+{
+  "formatMajor": 1,
+  "formatMinor": 0,
+  "requiredFeatures": ["columns.v1", "journal.v1"],
+  "captureId": "9f1c4e0a7b2d4f11a3c6e58d90b7a412",
+  "kind": "LiveCapture",
+  "finalized": true,
+  "host": {
+    "hostId": "3a7f22c1d04b4e8e9c5f1b6a2d8e4470",
+    "bootId": "c41d8e2f5a6b47c0b9e3f7a1d2c5b806",
+    "windowsBuild": "10.0.26220.0",
+    "architecture": "x64",
+    "displayName": "recorded for the user, never used as identity"
+  },
+  "clocks": [
+    {
+      "clockId": 1,
+      "kind": "Qpc",
+      "frequencyHz": 10000000,
+      "consumerMode": "RawTimestamp",
+      "epochUtc": "2026-09-20T09:14:02.1183947Z",
+      "epochUncertaintyTicks": "1500"
+    }
+  ],
+  "profile": {
+    "requested": "explore",
+    "effective": "explore",
+    "admissionMode": "MetadataOnly",
+    "contentBudgetBytes": "0",
+    "omissions": [
+      { "mechanism": "NamedPipe", "reason": "DisabledByProfile", "detail": "overhead gate not met on this build" }
+    ]
+  },
+  "sources": [
+    {
+      "sourceId": 1,
+      "mechanism": "Rpc",
+      "provider": "{6ad52b32-d609-4be9-ae07-ce8dae937e39}",
+      "adapterVersion": "rpc-1.2.0",
+      "capabilityState": "Available",
+      "tier": "TrafficVisualization",
+      "schemaFingerprints": ["b91f7c0e", "7c02aa14"],
+      "fixtures": ["FX-RPC-001", "FX-RPC-004"]
+    }
+  ],
+  "versions": {
+    "normalizerContract": 3,
+    "derivationVersion": 5,
+    "entityRevision": 12,
+    "correlationRevision": 9,
+    "canonicalizationVersion": 1
+  },
+  "extent": { "startTicks": "0", "endTicks": "5988231004" },
+  "counts": {
+    "admittedRecords": 41822910,
+    "observations": 52310774,
+    "operations": 9118432,
+    "policyOmissions": 1204,
+    "undecodable": 17,
+    "reportedProviderLoss": 0
+  },
+  "coverageEpochs": [
+    { "epoch": 1, "startTicks": "0", "endTicks": "5988231004", "state": "Covered" }
+  ],
+  "retention": { "mode": "StopAtLimit", "limitBytes": "34359738368", "pinnedBytes": "0" },
+  "files": [
+    { "path": "observations/0001.seg", "bytes": "67108864", "sha256": "…" },
+    { "path": "sources/journal-0001.icj", "bytes": "134217728", "sha256": "…" }
+  ]
+}
+```
+
+## 28. Appendix B: illustrative analysis specification
+
+The same document drives `icat query` and the desktop UI (R18). Names come from §23; member order is the canonicalization order of §23's final entry.
+
+```json
+{
+  "specVersion": 1,
+  "snapshotVector": [ { "captureId": "9f1c4e0a7b2d4f11a3c6e58d90b7a412", "generation": 84 } ],
+  "versions": { "normalizerContract": 3, "entityRevision": 12, "correlationRevision": 9, "alignmentRevision": 2 },
+  "basis": "SourceObservations",
+  "metric": "BytesSent",
+  "byteDomain": "TransportObserved",
+  "accountingSide": "CanonicalOwner",
+  "evidencePolicy": "IncludeCorrelated",
+  "timeScope": { "kind": "AnalysisInterval", "startTicks": "1200000000", "endTicks": "1800000000" },
+  "graphProjection": "ProcessResourceProcess",
+  "grouping": "Executable",
+  "filter": {
+    "and": [
+      { "facet": "Mechanism", "include": ["Tcp", "Rpc"] },
+      { "facet": "ProcessInstance", "participant": ["7f0c5b3d914a42e8b0d61c2fa3845e19"] },
+      { "not": { "facet": "Direction", "include": ["Inbound"] } },
+      { "facet": "ByteValue", "isUnknown": false }
+    ]
+  },
+  "requestedRows": 100
+}
+```
+
+```text
+icat query capture.icat --spec analysis.json --format jsonl
+icat query capture.icat --spec analysis.json --print-canonical     # canonical bytes and hash
+```
+
+Reading it: count the send-side transport bytes that the canonical owner rule attributes, over TCP and RPC evidence, inside a named 60 ms analysis interval, for relations in which one selected process instance participates, excluding inbound direction and excluding observations whose byte value is unknown, grouped by executable, projected through resource hubs, top 100 rows. Every one of those choices is an explicit member: none of them has a silent default, and two specifications differing in any member are different queries with different identities (§10.5).

@@ -1,0 +1,2272 @@
+{
+  "reportVersion": "2",
+  "probedAtUtc": "2026-09-21T08:35:17.8371303+00:00",
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "buildId": "10.0.26220.0-x64",
+    "architecture": "X64",
+    "isSupportedBuild": false,
+    "isElevated": true,
+    "machineScope": "local machine"
+  },
+  "adapterVersion": "windows-etw-inventory-0.2.0",
+  "probeOnly": true,
+  "sources": [
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Network",
+      "displayName": "Kernel network (TCP and UDP transfer events)",
+      "kind": "ManifestProvider",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "mechanisms": [
+        "Tcp"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000010",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [
+          "KERNEL_NETWORK_KEYWORD_IPV4"
+        ],
+        "supportsCaptureSideProcessFilter": false,
+        "filteringNotes": "Scope is limited by keyword and event id. The provider exposes no capture-side process filter, so a process-focused view still pays whole-machine capture cost (section 9.4)."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-Kernel-Network",
+        "schemaFingerprint": "cff901c4b210c4cb5d17891e4010487a65eb7e4659e73f83c62360f572da2b77",
+        "declaredEventCount": 22,
+        "eventVersions": [
+          "0"
+        ]
+      },
+      "events": [
+        {
+          "eventId": 10,
+          "version": 0,
+          "opcode": 10,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 11,
+          "version": 0,
+          "opcode": 11,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 12,
+          "version": 0,
+          "opcode": 12,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 13,
+          "version": 0,
+          "opcode": 13,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 14,
+          "version": 0,
+          "opcode": 14,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 0,
+          "opcode": 15,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-001 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {7dd42a49-5329-4832-8dfd-43d979153a88}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "No rundown of established connections. A flow already open when capture starts is observed only from its next transfer, so its lifetime stays uncertain (section 18.5).",
+      "contractStatus": "Documented",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
+        "Measured on FX-TCP-001: addresses and ports arrive in network byte order, and the saddr and sport pair names the owning process\u0027s own endpoint on both send and receive descriptors.",
+        "Loopback traffic is observed on both endpoints; the canonical owner rule of section 5.3 decides the total."
+      ]
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Process",
+      "displayName": "Kernel process lifecycle",
+      "kind": "ManifestProvider",
+      "providerGuid": "22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716",
+      "mechanisms": [
+        "ProcessLifecycle"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000010",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [
+          "WINEVENT_KEYWORD_PROCESS"
+        ],
+        "supportsCaptureSideProcessFilter": true,
+        "filteringNotes": "Process-id filters are accepted by the provider, but lifecycle context for peers must stay collected or attribution degrades (section 9.4). The Explore plan therefore requests no filter."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-Kernel-Process",
+        "schemaFingerprint": "db98cb6a4457e903fc83e7363da0b7998f72736e845012727b5be5c520281201",
+        "declaredEventCount": 43,
+        "eventVersions": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      },
+      "events": [
+        {
+          "eventId": 1,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "ProcessStart",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 1,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "ProcessStart",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 1,
+          "version": 2,
+          "opcode": 0,
+          "taskName": "ProcessStart",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 1,
+          "version": 3,
+          "opcode": 0,
+          "taskName": "ProcessStart",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Non-reusable instance discriminator for PID reuse (I12)."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 1,
+          "version": 4,
+          "opcode": 0,
+          "taskName": "ProcessStart",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Non-reusable instance discriminator for PID reuse (I12)."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 2,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "ProcessStop",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitCode",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 2,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "ProcessStop",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitCode",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 2,
+          "version": 2,
+          "opcode": 0,
+          "taskName": "ProcessStop",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ExitCode",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "ProcessRundown",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "NotExposed",
+              "role": "CorrelationKey",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "ProcessRundown",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Non-reusable instance discriminator for PID reuse (I12)."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 2,
+          "opcode": 0,
+          "taskName": "ProcessRundown",
+          "keywords": [
+            "WINEVENT_KEYWORD_PROCESS"
+          ],
+          "fields": [
+            {
+              "name": "ProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Non-reusable instance discriminator for PID reuse (I12)."
+            },
+            {
+              "name": "CreateTime",
+              "availability": "Present",
+              "role": "Timing",
+              "schemaType": "win:FILETIME",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "FILETIME of process creation; part of the start key."
+            },
+            {
+              "name": "ParentProcessID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "ParentProcessSequenceNumber",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "SessionID",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "Processes started before the session are delivered only when the capture requests provider capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
+      "contractStatus": "Documented",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "ProcessSequenceNumber with CreateTime forms the start key that keeps reused PIDs from merging (I12, R22).",
+        "ThreadLifecycle needs WINEVENT_KEYWORD_THREAD, which this plan omits to keep the M0 volume bounded."
+      ]
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-RPC",
+      "displayName": "RPC client and server calls",
+      "kind": "ManifestProvider",
+      "providerGuid": "6ad52b32-d609-4be9-ae07-ce8dae937e39",
+      "mechanisms": [
+        "Rpc"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000000",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [],
+        "supportsCaptureSideProcessFilter": true,
+        "filteringNotes": "The provider declares no keywords, so a keyword mask cannot scope it. Scope must come from an event-id filter; events 10 and 11 carry binary fragments and stay denied by default (P28)."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-RPC",
+        "schemaFingerprint": "dd59e85a27fc17caf550c49bf2bd9cac69f6b281514c0b97e8ea4f5634c07b47",
+        "declaredEventCount": 17,
+        "eventVersions": [
+          "1"
+        ]
+      },
+      "events": [],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {6ad52b32-d609-4be9-ae07-ce8dae937e39}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "No rundown of calls in flight. A call open at capture start is censored, not failed (I20).",
+      "contractStatus": "Documented",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings.",
+        "No RPC measurement is claimed until a truth workload validates client and server pairing (IC-006)."
+      ]
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-TCPIP",
+      "displayName": "TCP/IP stack tracing",
+      "kind": "ManifestProvider",
+      "providerGuid": "2f07e2ee-15db-40f1-90ef-9d7ba282188a",
+      "mechanisms": [
+        "Tcp"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000000",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [],
+        "supportsCaptureSideProcessFilter": false,
+        "filteringNotes": "Not enabled by the M0 plan: its volume and field semantics are unmeasured."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-TCPIP",
+        "schemaFingerprint": "287b86fc1159f1a2edc132b5e40d09da31349c80b407213b04eb7fb7c61288ed",
+        "declaredEventCount": 753,
+        "eventVersions": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ]
+      },
+      "events": [],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {2f07e2ee-15db-40f1-90ef-9d7ba282188a}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "Unmeasured.",
+      "contractStatus": "Experimental",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "Inventoried as a second TCP lead so Kernel-Network findings can be cross-checked later (section 13.4)."
+      ]
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-File",
+      "displayName": "Kernel file operations (named pipe path)",
+      "kind": "ManifestProvider",
+      "providerGuid": "edd08927-9cc4-4e65-b970-c2560fb5c289",
+      "mechanisms": [
+        "NamedPipe"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x00000000000003F0",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [
+          "KERNEL_FILE_KEYWORD_FILENAME",
+          "KERNEL_FILE_KEYWORD_FILEIO",
+          "KERNEL_FILE_KEYWORD_OP_END",
+          "KERNEL_FILE_KEYWORD_CREATE",
+          "KERNEL_FILE_KEYWORD_READ",
+          "KERNEL_FILE_KEYWORD_WRITE"
+        ],
+        "supportsCaptureSideProcessFilter": true,
+        "filteringNotes": "The provider accepts a process-id filter, but a pipe peer lives in another process, so a process-scoped capture loses the peer side. The M0 plan therefore captures whole-machine file activity and discloses the cost (section 9.4)."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-Kernel-File",
+        "schemaFingerprint": "652d00b402e918f14715a3b0ff633289106e5dc9a78dd42d79f376319055b758",
+        "declaredEventCount": 43,
+        "eventVersions": [
+          "0",
+          "1"
+        ]
+      },
+      "events": [
+        {
+          "eventId": 10,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "NameCreate",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILENAME"
+          ],
+          "fields": [
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 12,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "Create",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_CREATE"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Instance handle of one open pipe or file. Reusable, so it is an identity only inside its observed lifetime (R22)."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "NotExposed",
+              "role": "ThreadAttribution",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "FileName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Bounded copy of the object path. A pipe name is metadata, not payload (section 18.2)."
+            }
+          ]
+        },
+        {
+          "eventId": 12,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "Create",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_CREATE"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Instance handle of one open pipe or file. Reusable, so it is an identity only inside its observed lifetime (R22)."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "Present",
+              "role": "ThreadAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Bounded copy of the object path. A pipe name is metadata, not payload (section 18.2)."
+            }
+          ]
+        },
+        {
+          "eventId": 14,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "Close",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "NotExposed",
+              "role": "ThreadAttribution",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            }
+          ]
+        },
+        {
+          "eventId": 14,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "Close",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "Present",
+              "role": "ThreadAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "Read",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_READ"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Name key of the object, stable across handles to one name."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "NotExposed",
+              "role": "ThreadAttribution",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "IOSize",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "RequestedIo",
+              "notes": "Requested bytes. It is never relabelled as transferred bytes (P3)."
+            },
+            {
+              "name": "ByteOffset",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 15,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "Read",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_READ"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Name key of the object, stable across handles to one name."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "Present",
+              "role": "ThreadAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "IOSize",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "RequestedIo",
+              "notes": "Requested bytes. It is never relabelled as transferred bytes (P3)."
+            },
+            {
+              "name": "ByteOffset",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 16,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "Write",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_WRITE"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Name key of the object, stable across handles to one name."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "NotExposed",
+              "role": "ThreadAttribution",
+              "schemaType": null,
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Not declared by the saved schema of this descriptor version."
+            },
+            {
+              "name": "IOSize",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "RequestedIo",
+              "notes": "Requested bytes. It is never relabelled as transferred bytes (P3)."
+            },
+            {
+              "name": "ByteOffset",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 16,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "Write",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_WRITE"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Pairs this operation with its OperationEnd completion."
+            },
+            {
+              "name": "FileObject",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "FileKey",
+              "availability": "Present",
+              "role": "ResourceHandle",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Name key of the object, stable across handles to one name."
+            },
+            {
+              "name": "IssuingThreadId",
+              "availability": "Present",
+              "role": "ThreadAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            },
+            {
+              "name": "IOSize",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "RequestedIo",
+              "notes": "Requested bytes. It is never relabelled as transferred bytes (P3)."
+            },
+            {
+              "name": "ByteOffset",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt64",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        },
+        {
+          "eventId": 24,
+          "version": 0,
+          "opcode": 0,
+          "taskName": "OperationEnd",
+          "keywords": [
+            "KERNEL_FILE_KEYWORD_FILEIO",
+            "KERNEL_FILE_KEYWORD_OP_END"
+          ],
+          "fields": [
+            {
+              "name": "Irp",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:Pointer",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The only link back to the operation this completion belongs to."
+            },
+            {
+              "name": "ExtraInformation",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:Pointer",
+              "unit": "Bytes",
+              "byteDomain": "CompletedIo",
+              "notes": "IO status information: completed bytes for a read or write completion."
+            },
+            {
+              "name": "Status",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": null
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {edd08927-9cc4-4e65-b970-c2560fb5c289}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "No rundown. A pipe opened before capture starts has no observed Create, so its name cannot be resolved from this source and its operations stay bound to an unnamed object (section 18.5).",
+      "contractStatus": "Experimental",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "Registration is not evidence of pipe traffic or peers; only a measured fixture assigns a tier (IC-005).",
+        "IOSize is requested bytes and OperationEnd carries completed bytes. The two are separate byte domains and are never summed or substituted (P3, I6).",
+        "Equal pipe names do not identify one instance: a FileObject binds an operation to one open instance only inside its observed lifetime (R22, I12).",
+        "This source observes the whole machine\u0027s file activity, which is the dominant overhead of the M0 plan."
+      ]
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Memory",
+      "displayName": "Kernel memory (shared section lead)",
+      "kind": "ManifestProvider",
+      "providerGuid": "d1d93ef7-e1f2-4f45-9943-03d245fe6c00",
+      "mechanisms": [
+        "SharedSection"
+      ],
+      "state": "Experimental",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000000",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [],
+        "supportsCaptureSideProcessFilter": false,
+        "filteringNotes": "Not enabled by the M0 plan."
+      },
+      "schema": {
+        "providerName": "Microsoft-Windows-Kernel-Memory",
+        "schemaFingerprint": "9b6a17394a92dc87b318f08a54b4a4515b1ef50cde743269e6c861848dfc2354",
+        "declaredEventCount": 24,
+        "eventVersions": [
+          "0",
+          "1",
+          "2"
+        ]
+      },
+      "events": [],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "Passed",
+          "detail": "Registered as {d1d93ef7-e1f2-4f45-9943-03d245fe6c00}. Registration proves nothing about emission (R21).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "Unmeasured.",
+      "contractStatus": "Experimental",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "Mapping size and committed pages are capacity, not transfer volume (section 5, P3).",
+        "Ordinary loads and stores through a mapped pointer produce no event stream (section 4.1)."
+      ]
+    },
+    {
+      "sourceId": "etw/kernel-flag/ALPC",
+      "displayName": "ALPC kernel flag group",
+      "kind": "KernelFlagGroup",
+      "providerGuid": null,
+      "mechanisms": [
+        "Alpc"
+      ],
+      "state": "Unsupported",
+      "unavailableReason": "This source is not a manifest provider, so the provider registry cannot confirm it. A kernel flag group, not a manifest provider: it needs a system logger session, which the M0 owned-session experiment does not create (section 18.2).",
+      "requiredPrivilege": "Administrator",
+      "admission": "MetadataOnly",
+      "enablement": {
+        "level": "win:Informational",
+        "matchAnyKeyword": "0x0000000000000000",
+        "matchAllKeyword": "0x0000000000000000",
+        "requestedKeywords": [],
+        "supportsCaptureSideProcessFilter": false,
+        "filteringNotes": "A kernel flag group, not a manifest provider: it needs a system logger session, which the M0 owned-session experiment does not create (section 18.2)."
+      },
+      "schema": null,
+      "events": [],
+      "checks": [
+        {
+          "kind": "Registration",
+          "outcome": "NotAttempted",
+          "detail": "Registration is inapplicable to a kernel flag group.",
+          "unavailableReason": "This source is not a manifest provider, so the provider registry cannot confirm it. A kernel flag group, not a manifest provider: it needs a system logger session, which the M0 owned-session experiment does not create (section 18.2)."
+        },
+        {
+          "kind": "Enablement",
+          "outcome": "NotAttempted",
+          "detail": "This report was produced without starting a capture, so enablement was not exercised.",
+          "unavailableReason": null
+        },
+        {
+          "kind": "ObservedHealth",
+          "outcome": "NotAttempted",
+          "detail": "No capture ran, so no event health was observed. Absence here is not an observed zero (R21, P1).",
+          "unavailableReason": null
+        },
+        {
+          "kind": "SemanticCoverage",
+          "outcome": "NotAttempted",
+          "detail": "No truth workload was measured against this source.",
+          "unavailableReason": null
+        }
+      ],
+      "startupBehaviour": "Unmeasured.",
+      "contractStatus": "Experimental",
+      "overhead": "Unmeasured",
+      "fixtureIds": [],
+      "notes": [
+        "There is no registered ALPC manifest provider to inventory, so its absence from the registry is expected.",
+        "Documented send and receive payloads expose a message identifier, not a size or content contract (section 4.1)."
+      ]
+    }
+  ],
+  "mechanisms": [
+    {
+      "mechanism": "ProcessLifecycle",
+      "state": "Experimental",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "ProcessLifecycle: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-Process"
+      ],
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "ThreadLifecycle",
+      "state": "DisabledByProfile",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "ThreadLifecycle: reachable from a registered source, but not requested by the M0 capture plan.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-Process"
+      ],
+      "unavailableReason": "A registered source could serve this mechanism, but the M0 plan does not request it.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "Tcp",
+      "state": "Experimental",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "Tcp: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-Network",
+        "etw/manifest/Microsoft-Windows-TCPIP"
+      ],
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "Udp",
+      "state": "DisabledByProfile",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "Udp: reachable from a registered source, but not requested by the M0 capture plan.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-Network"
+      ],
+      "unavailableReason": "A registered source could serve this mechanism, but the M0 plan does not request it.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "NamedPipe",
+      "state": "Experimental",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "NamedPipe: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-File"
+      ],
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "AnonymousPipe",
+      "state": "DisabledByProfile",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "AnonymousPipe: reachable from a registered source, but not requested by the M0 capture plan.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-File"
+      ],
+      "unavailableReason": "A registered source could serve this mechanism, but the M0 plan does not request it.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "Rpc",
+      "state": "Experimental",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "Rpc: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-RPC"
+      ],
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "Alpc",
+      "state": "Unsupported",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "Alpc: no validated source on this machine.",
+      "sourceIds": [
+        "etw/kernel-flag/ALPC"
+      ],
+      "unavailableReason": null,
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    },
+    {
+      "mechanism": "SharedSection",
+      "state": "Experimental",
+      "tier": "Unsupported",
+      "coverage": "UnknownCoverage",
+      "summary": "SharedSection: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
+      "sourceIds": [
+        "etw/manifest/Microsoft-Windows-Kernel-Memory"
+      ],
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
+      "measurement": null,
+      "tierAssessment": null,
+      "fixtureIds": []
+    }
+  ],
+  "diagnostics": [
+    "The machine reports 1237 published ETW providers. Registration breadth is not coverage (R21)."
+  ]
+}

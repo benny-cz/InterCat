@@ -55,3 +55,8 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Raw measurement runs contain whole-machine capture health data and are reproducible from
+# the seeded workload. Only curated, fixture-scoped evidence is committed (section 13.6).
+fixtures/**/runs/
+.vs/

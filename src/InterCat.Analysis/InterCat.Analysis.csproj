@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
+    <ProjectReference Include="../InterCat.Storage/InterCat.Storage.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,150 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:InterCat.Application"
+        xmlns:local="using:InterCat.Desktop"
+        x:Class="InterCat.Desktop.MainWindow"
+        x:DataType="local:WorkspaceViewModel"
+        Title="InterCat · IPC Explorer"
+        Width="1440"
+        Height="900"
+        MinWidth="1080"
+        MinHeight="700">
+  <Grid ColumnDefinitions="250,*,286" RowDefinitions="64,*,36">
+    <Border Grid.RowSpan="3" Background="#0B1624" BorderBrush="#21354A" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
+        <StackPanel Spacing="2">
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Width="27" Height="27" CornerRadius="8" Background="#1687D9">
+              <TextBlock Text="I" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="InterCat" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Margin="36,1,0,0" Text="IPC EXPLORER" Classes="eyebrow" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Margin="0,30,0,14" Spacing="6">
+          <TextBlock Text="RANKED PROCESSES" Classes="eyebrow" />
+          <TextBlock Text="Select a process to link every pane" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ListBox Grid.Row="2"
+                 ItemsSource="{Binding Snapshot.Processes}"
+                 SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 AutomationProperties.Name="Ranked processes">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="app:ProcessNode">
+              <Grid ColumnDefinitions="34,*,Auto" Margin="2,5" MinHeight="42">
+                <Border Width="28" Height="28" CornerRadius="14" Background="#173A52" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name[0]}" Foreground="#72C5F7" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="8,0,6,0" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Role}" Classes="muted" FontSize="11" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding ProcessId}" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Border Grid.Row="3" Margin="0,14,0,0" Padding="10" CornerRadius="8" Background="#101F30" BorderBrush="#284158" BorderThickness="1">
+          <StackPanel Spacing="4">
+            <TextBlock Text="PROTOTYPE DATA" Classes="eyebrow" />
+            <TextBlock Text="No live capture is running. Values are deterministic synthetic evidence." Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="1" Grid.ColumnSpan="2" Padding="20,11" BorderBrush="#21354A" BorderThickness="0,0,0,1" Background="#0A1421">
+      <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+        <StackPanel Spacing="1">
+          <TextBlock Text="{Binding Snapshot.Title}" FontSize="16" FontWeight="SemiBold" />
+          <TextBlock Text="Whole machine  ›  all processes  ›  24-second synthetic window" Classes="muted" FontSize="11" />
+        </StackPanel>
+        <Border Grid.Column="1" Margin="0,0,12,0" Padding="10,5" CornerRadius="12" Background="#152B3D" BorderBrush="#2A536C" BorderThickness="1">
+          <TextBlock Text="L0 · OVERVIEW" Foreground="#86D8C9" FontSize="11" FontWeight="SemiBold" />
+        </Border>
+        <Button Grid.Column="2" Content="Clear selection" Click="ClearSelection" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Column="1" Grid.Row="1" RowDefinitions="*,6,*" Margin="16">
+      <Border Grid.Row="0" CornerRadius="10" Background="#0E1A29" BorderBrush="#213A50" BorderThickness="1" ClipToBounds="True">
+        <Grid RowDefinitions="48,*">
+          <Border Padding="14,9" BorderBrush="#20384D" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Text="COMMUNICATION GRAPH" Classes="eyebrow" />
+                <TextBlock Text="Processes and qualified relationships" Classes="muted" FontSize="11" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Click a node · arrow keys move focus" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <local:GraphView x:Name="GraphSurface" Grid.Row="1" Focusable="True" AutomationProperties.Name="Communication graph" />
+        </Grid>
+      </Border>
+
+      <GridSplitter Grid.Row="1" Height="6" Background="Transparent" />
+
+      <Border Grid.Row="2" CornerRadius="10" Background="#0E1A29" BorderBrush="#213A50" BorderThickness="1" ClipToBounds="True">
+        <Grid RowDefinitions="48,*">
+          <Border Padding="14,9" BorderBrush="#20384D" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
+                <TextBlock Text="Observed records · 1 second buckets · unknown stays unknown" Classes="muted" FontSize="11" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="Wheel to zoom · arrows to pan" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <local:TimelineView x:Name="TimelineSurface" Grid.Row="1" Focusable="True" AutomationProperties.Name="Activity timeline" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Border Grid.Column="2" Grid.Row="1" Margin="0,16,16,16" Padding="16" CornerRadius="10" Background="#0D1927" BorderBrush="#213A50" BorderThickness="1">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+        <TextBlock Text="INSPECTOR" Classes="eyebrow" />
+        <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="4">
+          <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding SelectionSubtitle}" Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+        <Border Grid.Row="2" Margin="0,18,0,0" Padding="12" CornerRadius="8" Background="#111F30">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="Time scope" Classes="muted" />
+              <TextBlock Grid.Column="1" Text="{Binding IntervalLabel}" HorizontalAlignment="Right" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="Evidence" Classes="muted" />
+              <TextBlock Grid.Column="1" Text="{Binding EvidenceSummary}" HorizontalAlignment="Right" TextAlignment="Right" />
+            </Grid>
+          </StackPanel>
+        </Border>
+        <StackPanel Grid.Row="3" Margin="0,20,0,0" Spacing="8">
+          <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
+          <Border Padding="10" CornerRadius="7" Background="#17342F">
+            <TextBlock Text="● Direct transport evidence" Foreground="#8DE3C9" />
+          </Border>
+          <Border Padding="10" CornerRadius="7" Background="#392C18">
+            <TextBlock Text="◆ Candidate relationships stay qualified" Foreground="#F4C870" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+        <TextBlock Grid.Row="4" VerticalAlignment="Bottom" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                   Text="This screen validates interaction and visual hierarchy only. It makes no Windows capture coverage claim." />
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="2" Padding="16,0" Background="#0A1421" BorderBrush="#21354A" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+        <TextBlock Text="●" Foreground="#70D7B7" />
+        <TextBlock Grid.Column="1" Margin="6,0,18,0" Text="Synthetic snapshot ready" Foreground="#BBD1E4" FontSize="11" />
+        <TextBlock Grid.Column="2" Text="Coverage gap: 2 seconds · not extrapolated" Foreground="#EFC36E" FontSize="11" />
+        <TextBlock Grid.Column="3" Text="M0 interaction prototype" Classes="muted" FontSize="11" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
