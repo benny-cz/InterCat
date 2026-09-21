@@ -23,11 +23,22 @@ internal static partial class Program
             false,
             false,
             "default",
-            LoadSeries.Default);
+            LoadSeries.Default,
+            false,
+            3,
+            false,
+            false,
+            false);
         error = null;
         for (int index = 0; index < args.Length; index++)
         {
             string name = args[index];
+            if (name == "--impact")
+            {
+                options = options with { MeasureImpact = true };
+                continue;
+            }
+
             if (index + 1 >= args.Length)
             {
                 error = $"Option '{name}' requires a value.";
@@ -37,7 +48,7 @@ internal static partial class Program
             string value = args[++index];
             if (name == "--output")
             {
-                options = options with { OutputDirectory = value };
+                options = options with { OutputDirectory = value, OutputWasGiven = true };
             }
             else if (name == "--workload")
             {
@@ -65,17 +76,45 @@ internal static partial class Program
             }
             else if (name == "--series" && LoadSeries.Find(value) is { } series)
             {
-                options = options with { SeriesName = value, Levels = series };
+                options = options with { SeriesName = value, Levels = series, SeriesWasGiven = true };
             }
             else if (name == "--levels" && LoadSeries.Select(value) is { } chosen)
             {
-                options = options with { SeriesName = value, Levels = chosen };
+                options = options with { SeriesName = value, Levels = chosen, SeriesWasGiven = true };
+            }
+            else if (name == "--pairs" && TryBounded(value, 1, 15, out int pairs))
+            {
+                options = options with { ImpactPairs = pairs, PairsWasGiven = true };
             }
             else
             {
                 error = $"Unknown option or invalid value: {name} {value}";
                 return false;
             }
+        }
+
+        if (options.MeasureImpact && options.SeriesWasGiven)
+        {
+            error = "--impact uses its declared Explore workload; --series and --levels cannot be combined with it.";
+            return false;
+        }
+
+        if (!options.MeasureImpact && options.PairsWasGiven)
+        {
+            error = "--pairs changes only an --impact run.";
+            return false;
+        }
+
+        if (options.MeasureImpact && !options.OutputWasGiven)
+        {
+            options = options with
+            {
+                OutputDirectory = Path.Combine(
+                    root,
+                    "bench",
+                    "results",
+                    $"capture-impact-{DateTime.UtcNow:yyyyMMddTHHmmssZ}"),
+            };
         }
 
         if (options.RequestCallStacks && !options.GraceWasGiven)
@@ -101,7 +140,7 @@ internal static partial class Program
 
     private static void PrintHelp()
     {
-        Console.Error.WriteLine("InterCat IC-009 admitted-journal versus diagnostic-ETL load series");
+        Console.Error.WriteLine("InterCat capture evidence harness: IC-009 comparison and IC-010a impact");
         Console.Error.WriteLine();
         Console.Error.WriteLine("  dotnet run --project tools/InterCat.CaptureComparison -c Release -- [options]");
         Console.Error.WriteLine();
@@ -115,6 +154,8 @@ internal static partial class Program
         Console.Error.WriteLine("  --extended-data <bool>   Copy bounded EVENT_RECORD extended items (default true)");
         Console.Error.WriteLine("  --request-stacks <bool>  Ask ETW for call-stack extended items (default false;");
         Console.Error.WriteLine("                           materially raises per-event cost, so it is a separate series)");
+        Console.Error.WriteLine("  --impact                 Run IC-010a per-source capture/no-capture pairs instead");
+        Console.Error.WriteLine("  --pairs <1-15>           Pairs per source in impact mode (default 3; order alternates)");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Declared levels:");
         foreach (LoadLevel level in LoadSeries.Default)
@@ -128,6 +169,8 @@ internal static partial class Program
 
         Console.Error.WriteLine();
         Console.Error.WriteLine("Requires an elevated Windows shell. Existing output is never overwritten.");
+        Console.Error.WriteLine("Impact mode uses a fixed multi-second Explore workload; --series/--levels do not apply.");
+        Console.Error.WriteLine("Example: dotnet run --project tools/InterCat.CaptureComparison -c Release -- --impact");
     }
 
     private sealed record Options(
@@ -140,5 +183,10 @@ internal static partial class Program
         bool RequestCallStacks,
         bool GraceWasGiven,
         string SeriesName,
-        IReadOnlyList<LoadLevel> Levels);
+        IReadOnlyList<LoadLevel> Levels,
+        bool MeasureImpact,
+        int ImpactPairs,
+        bool SeriesWasGiven,
+        bool PairsWasGiven,
+        bool OutputWasGiven);
 }

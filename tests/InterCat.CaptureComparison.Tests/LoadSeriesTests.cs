@@ -33,6 +33,26 @@ public sealed class LoadSeriesTests
         Assert.Contains(LoadSeries.Default, level => level.JournalBatchRecords < first.JournalBatchRecords);
     }
 
+    [Fact(DisplayName = "R3: the impact workload is paced and long enough to measure separately")]
+    public void ImpactWorkloadIsDeclaredSeparately()
+    {
+        Assert.DoesNotContain(LoadSeries.Impact, LoadSeries.Default);
+        Assert.True(LoadSeries.Impact.InterMessageDelayMilliseconds > 0);
+        Assert.True(
+            LoadSeries.Impact.MessagesPerConnection * LoadSeries.Impact.InterMessageDelayMilliseconds >= 3_000,
+            "Each concurrent connection needs a multi-second processor-time interval.");
+        Assert.InRange(LoadSeries.Impact.DeclaredMessages, 1_000, 5_000);
+        Assert.Contains("paired", LoadSeries.Impact.Intent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "R3: impact summaries use the median without hiding signed observations")]
+    public void ImpactMedianKeepsTheMiddleReading()
+    {
+        Assert.Equal(-1, CaptureImpactMath.Median([-10, -1, 8]));
+        Assert.Equal(3, CaptureImpactMath.Median([2, 4]));
+        Assert.Throws<ArgumentException>(() => CaptureImpactMath.Median([]));
+    }
+
     [Fact(DisplayName = "R8: an unknown series or level is refused rather than silently reduced")]
     public void UnknownNamesAreRefused()
     {

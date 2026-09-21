@@ -104,4 +104,49 @@ public sealed class SourceClockAndStageTests
         Assert.True(read);
         Assert.True(reading.TotalTicks >= 0);
     }
+
+    [Fact(DisplayName = "R3: total-machine CPU subtracts idle from kernel time exactly once")]
+    public void MachineProcessorIntervalUsesWindowsClockSemantics()
+    {
+        bool measured = MachineProcessorTime.TryMeasure(
+            new(100, 300, 200),
+            new(160, 500, 300),
+            out MachineProcessorTimeInterval interval);
+
+        Assert.True(measured);
+        Assert.Equal(60, interval.IdleTicks);
+        Assert.Equal(300, interval.TotalTicks);
+        Assert.Equal(240, interval.BusyTicks);
+        Assert.Equal(80, interval.BusyPercentage);
+    }
+
+    [Fact(DisplayName = "R3: a reset or impossible total-machine clock is unmeasured")]
+    public void MachineProcessorIntervalRefusesInvalidReadings()
+    {
+        Assert.False(MachineProcessorTime.TryMeasure(
+            new(100, 300, 200),
+            new(99, 500, 300),
+            out _));
+        Assert.False(MachineProcessorTime.TryMeasure(
+            new(100, 300, 200),
+            new(301, 500, 300),
+            out _));
+    }
+
+    [Fact(DisplayName = "R21: total-machine processor time is readable or explicitly unavailable")]
+    public void MachineProcessorTimeIsReadableOrDeclaredUnavailable()
+    {
+        bool read = MachineProcessorTime.TryRead(out MachineProcessorTimeReading reading, out string? reason);
+
+        if (!MachineProcessorTime.IsAvailable)
+        {
+            Assert.False(read);
+            Assert.False(string.IsNullOrWhiteSpace(reason));
+            return;
+        }
+
+        Assert.True(read, reason);
+        Assert.Null(reason);
+        Assert.True(reading.KernelTicks >= reading.IdleTicks);
+    }
 }

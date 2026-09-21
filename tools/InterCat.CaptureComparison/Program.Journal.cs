@@ -36,7 +36,8 @@ internal static partial class Program
         IReadOnlyList<SourceAdmissionPlan> sources,
         IReadOnlyList<ProviderEnablementRequest> providers,
         ComparisonSettings settings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CaptureImpactMeter? impactMeter = null)
     {
         string directory = Path.Combine(root, "journal");
         Directory.CreateDirectory(directory);
@@ -60,9 +61,12 @@ internal static partial class Program
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
 
+        impactMeter?.Start();
         long acquisitionStarted = Stopwatch.GetTimestamp();
+        long workloadStarted = Stopwatch.GetTimestamp();
         int workloadExit = await RunWorkloadAsync(workload, directory, settings, cancellationToken)
             .ConfigureAwait(false);
+        impactMeter?.RecordWorkloadElapsed(Stopwatch.GetElapsedTime(workloadStarted));
         if (workloadExit != 0)
         {
             throw new InvalidOperationException($"Journal workload exited with code {workloadExit}.");
@@ -70,6 +74,7 @@ internal static partial class Program
 
         await Task.Delay(TimeSpan.FromSeconds(settings.ReorderGraceSeconds), cancellationToken)
             .ConfigureAwait(false);
+        impactMeter?.Complete();
         double acquisitionMilliseconds = Stopwatch.GetElapsedTime(acquisitionStarted).TotalMilliseconds;
 
         long finalizationStarted = Stopwatch.GetTimestamp();

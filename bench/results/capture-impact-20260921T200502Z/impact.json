@@ -1,0 +1,359 @@
+{
+  "schema": "intercat.capture-impact.v1",
+  "startedUtc": "2026-09-21T20:05:02.1694116+00:00",
+  "completedUtc": "2026-09-21T20:06:25.469262+00:00",
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "buildId": "10.0.26220.0-x64",
+    "architecture": "X64",
+    "isSupportedBuild": true,
+    "isElevated": true,
+    "machineScope": "local machine",
+    "support": {
+      "tier": "Primary",
+      "releaseName": "Windows 11 25H2 x64",
+      "isPrerelease": true,
+      "isSupported": true
+    }
+  },
+  "machine": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "architecture": "X64",
+    "logicalProcessors": 24,
+    "totalPhysicalMemoryBytes": 68659625984,
+    "storage": {
+      "volume": "E:\\",
+      "fileSystem": "NTFS",
+      "totalBytes": 1000186310656,
+      "availableBytes": 89304059904,
+      "probeBytes": 134217728,
+      "sequentialWriteBytesPerSecond": 1780938093.3741136,
+      "sequentialReadBytesPerSecond": 6824688073.627743,
+      "unavailableReason": null,
+      "meetsReferenceDevice": true
+    },
+    "referenceGaps": [],
+    "meetsReferenceMachine": true
+  },
+  "settings": {
+    "seed": 20260920,
+    "connections": 4,
+    "messagesPerConnection": 256,
+    "maximumMessageBytes": 4096,
+    "interMessageDelayMilliseconds": 15,
+    "concurrency": 4,
+    "reorderGraceSeconds": 2,
+    "queueCapacityRecords": 65536,
+    "journalBatchRecords": 4096,
+    "recordBudget": 500000,
+    "preserveExtendedData": true,
+    "requestCallStacks": false
+  },
+  "pairsPerSource": 3,
+  "planRefusals": [],
+  "sources": [
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Process",
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-then-capture",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1393281250,
+              "kernelTicks": 1462343750,
+              "userTicks": 116406250,
+              "totalTicks": 1578750000,
+              "busyTicks": 185468750,
+              "busyPercentage": 11.747822644497228
+            },
+            "wallClockMilliseconds": 6579.5597,
+            "workloadMilliseconds": 4566.4802,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 224.2427329477964
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1422031250,
+              "kernelTicks": 1474687500,
+              "userTicks": 91562500,
+              "totalTicks": 1566250000,
+              "busyTicks": 144218750,
+              "busyPercentage": 9.207901037509975
+            },
+            "wallClockMilliseconds": 6527.9758,
+            "workloadMilliseconds": 4526.2554,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 226.23557654302937
+          },
+          "observedCpuDifferencePercentagePoints": -2.539921606987253,
+          "captureImpactPercentagePoints": 0,
+          "observedThroughputRegressionPercent": -0.8886992987625102,
+          "throughputRegressionPercent": 0,
+          "health": {
+            "admittedRecords": 604,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Process\\pair-01\\capture\\journal\\capture.icatj"
+          }
+        },
+        {
+          "pair": 2,
+          "order": "capture-then-baseline",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1384062500,
+              "kernelTicks": 1456093750,
+              "userTicks": 180000000,
+              "totalTicks": 1636093750,
+              "busyTicks": 252031250,
+              "busyPercentage": 15.404450386782543
+            },
+            "wallClockMilliseconds": 6817.0043,
+            "workloadMilliseconds": 4812.5604,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 212.776550295348
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1316718750,
+              "kernelTicks": 1402500000,
+              "userTicks": 191250000,
+              "totalTicks": 1593750000,
+              "busyTicks": 277031250,
+              "busyPercentage": 17.38235294117647
+            },
+            "wallClockMilliseconds": 6640.2181,
+            "workloadMilliseconds": 4629.6278,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 221.18408741195137
+          },
+          "observedCpuDifferencePercentagePoints": 1.9779025543939284,
+          "captureImpactPercentagePoints": 1.9779025543939284,
+          "observedThroughputRegressionPercent": -3.9513457215718364,
+          "throughputRegressionPercent": 0,
+          "health": {
+            "admittedRecords": 644,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Process\\pair-02\\capture\\journal\\capture.icatj"
+          }
+        },
+        {
+          "pair": 3,
+          "order": "baseline-then-capture",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1348750000,
+              "kernelTicks": 1419218750,
+              "userTicks": 167031250,
+              "totalTicks": 1586250000,
+              "busyTicks": 237500000,
+              "busyPercentage": 14.972419227738376
+            },
+            "wallClockMilliseconds": 6608.554,
+            "workloadMilliseconds": 4604.5547,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 222.38849719821985
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1377343750,
+              "kernelTicks": 1454375000,
+              "userTicks": 138750000,
+              "totalTicks": 1593125000,
+              "busyTicks": 215781250,
+              "busyPercentage": 13.54452726559435
+            },
+            "wallClockMilliseconds": 6635.9562,
+            "workloadMilliseconds": 4620.7049,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 221.6112091468988
+          },
+          "observedCpuDifferencePercentagePoints": -1.4278919621440256,
+          "captureImpactPercentagePoints": 0,
+          "observedThroughputRegressionPercent": 0.34951810058244004,
+          "throughputRegressionPercent": 0.34951810058244004,
+          "health": {
+            "admittedRecords": 643,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Process\\pair-03\\capture\\journal\\capture.icatj"
+          }
+        }
+      ],
+      "medianObservedCpuDifferencePercentagePoints": -1.4278919621440256,
+      "medianCaptureImpactPercentagePoints": 0,
+      "medianObservedThroughputRegressionPercent": -0.8886992987625102,
+      "medianThroughputRegressionPercent": 0,
+      "overhead": "Low",
+      "cpuTargetMet": true,
+      "throughputTargetMet": true,
+      "lossFree": true,
+      "evidenceValid": true
+    },
+    {
+      "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Network",
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "baseline-then-capture",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1333125000,
+              "kernelTicks": 1425468750,
+              "userTicks": 146250000,
+              "totalTicks": 1571718750,
+              "busyTicks": 238593750,
+              "busyPercentage": 15.18043543095735
+            },
+            "wallClockMilliseconds": 6555.1109,
+            "workloadMilliseconds": 4540.3124,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 225.53514159069758
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1351406250,
+              "kernelTicks": 1424375000,
+              "userTicks": 166406250,
+              "totalTicks": 1590781250,
+              "busyTicks": 239375000,
+              "busyPercentage": 15.047637756605441
+            },
+            "wallClockMilliseconds": 6634.2045,
+            "workloadMilliseconds": 4626.6996,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 221.32407299579162
+          },
+          "observedCpuDifferencePercentagePoints": -0.13279767435190948,
+          "captureImpactPercentagePoints": 0,
+          "observedThroughputRegressionPercent": 1.8671452108107496,
+          "throughputRegressionPercent": 1.8671452108107496,
+          "health": {
+            "admittedRecords": 5559,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Network\\pair-01\\capture\\journal\\capture.icatj"
+          }
+        },
+        {
+          "pair": 2,
+          "order": "capture-then-baseline",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1371406250,
+              "kernelTicks": 1434687500,
+              "userTicks": 137343750,
+              "totalTicks": 1572031250,
+              "busyTicks": 200625000,
+              "busyPercentage": 12.76215087963423
+            },
+            "wallClockMilliseconds": 6555.9768,
+            "workloadMilliseconds": 4556.9642,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 224.71100387402646
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1431718750,
+              "kernelTicks": 1487500000,
+              "userTicks": 124687500,
+              "totalTicks": 1612187500,
+              "busyTicks": 180468750,
+              "busyPercentage": 11.194029850746269
+            },
+            "wallClockMilliseconds": 6717.3852,
+            "workloadMilliseconds": 4711.9115,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 217.321568964103
+          },
+          "observedCpuDifferencePercentagePoints": -1.568121028887962,
+          "captureImpactPercentagePoints": 0,
+          "observedThroughputRegressionPercent": 3.2884170256593226,
+          "throughputRegressionPercent": 3.2884170256593226,
+          "health": {
+            "admittedRecords": 5761,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Network\\pair-02\\capture\\journal\\capture.icatj"
+          }
+        },
+        {
+          "pair": 3,
+          "order": "baseline-then-capture",
+          "baseline": {
+            "processorTime": {
+              "idleTicks": 1407500000,
+              "kernelTicks": 1467968750,
+              "userTicks": 122031250,
+              "totalTicks": 1590000000,
+              "busyTicks": 182500000,
+              "busyPercentage": 11.477987421383649
+            },
+            "wallClockMilliseconds": 6615.3562,
+            "workloadMilliseconds": 4603.4918,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 222.43984446762784
+          },
+          "capture": {
+            "processorTime": {
+              "idleTicks": 1309687500,
+              "kernelTicks": 1387812500,
+              "userTicks": 172031250,
+              "totalTicks": 1559843750,
+              "busyTicks": 250156250,
+              "busyPercentage": 16.037263347691074
+            },
+            "wallClockMilliseconds": 6495.8369,
+            "workloadMilliseconds": 4495.7067,
+            "declaredMessages": 1024,
+            "messagesPerSecond": 227.7728660546294
+          },
+          "observedCpuDifferencePercentagePoints": 4.559275926307425,
+          "captureImpactPercentagePoints": 4.559275926307425,
+          "observedThroughputRegressionPercent": -2.397511830564906,
+          "throughputRegressionPercent": 0,
+          "health": {
+            "admittedRecords": 5351,
+            "providerReportedEventLoss": 0,
+            "consumerReportedBufferLoss": 0,
+            "applicationDrops": 0,
+            "exactAdmittedProjectionReplay": true,
+            "evidencePath": "sources\\etw-manifest-Microsoft-Windows-Kernel-Network\\pair-03\\capture\\journal\\capture.icatj"
+          }
+        }
+      ],
+      "medianObservedCpuDifferencePercentagePoints": -0.13279767435190948,
+      "medianCaptureImpactPercentagePoints": 0,
+      "medianObservedThroughputRegressionPercent": 1.8671452108107496,
+      "medianThroughputRegressionPercent": 1.8671452108107496,
+      "overhead": "Low",
+      "cpuTargetMet": true,
+      "throughputTargetMet": true,
+      "lossFree": true,
+      "evidenceValid": true
+    }
+  ],
+  "decisionReady": true,
+  "notes": [
+    "Each source is measured independently. A combined profile cost is not attributed to every source.",
+    "Every pair uses the same seeded workload once without capture and once through the admitted journal-v1 path; pair order alternates to reduce drift bias.",
+    "Total-machine CPU is the GetSystemTimes busy share: kernel plus user time with idle subtracted once. It includes kernel/provider work, unlike process CPU.",
+    "The measured CPU window starts after provider enablement and ends after the workload plus reorder grace. Capture stop and offline replay are excluded.",
+    "Signed observed differences remain in every pair. Only the non-negative cost used for budget and OverheadClass evaluation is clamped at zero.",
+    "The median of three pairs is the default. Every pair remains in the artifact so dispersion and background interference are inspectable.",
+    "A source is decision evidence only when every capture admitted records and replayed its admitted projection exactly.",
+    "No benchmark can prove that another profiler or tracing session was absent; run on a quiet machine and record that condition with the retained artifact."
+  ]
+}

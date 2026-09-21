@@ -145,6 +145,22 @@ internal static class LoadSeries
     /// <summary>The single paced level, for a quick check that does not claim to be a series.</summary>
     public static IReadOnlyList<LoadLevel> Quick { get; } = [Default[0]];
 
+    /// <summary>
+    /// The fixed Explore workload used by IC-010a. A few hundred 15 ms waits per connection produce a
+    /// multi-second interval on Windows without relying on sub-tick delays or creating enormous truth
+    /// logs. The setting is serialized beside every result.
+    /// </summary>
+    public static LoadLevel Impact { get; } = new(
+        "explore-impact",
+        "A multi-second, paced Explore workload for paired no-capture/capture processor-time evidence.",
+        Connections: 4,
+        MessagesPerConnection: 256,
+        MaximumMessageBytes: 4_096,
+        InterMessageDelayMilliseconds: 15,
+        QueueCapacityRecords: 65_536,
+        JournalBatchRecords: 4_096,
+        Concurrency: 4);
+
     /// <summary>Resolves a named series, or null when the name is not declared.</summary>
     public static IReadOnlyList<LoadLevel>? Find(string name) => name switch
     {

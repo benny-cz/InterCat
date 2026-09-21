@@ -80,6 +80,23 @@ public sealed class BaselineContractTests
             3);
     }
 
+    [Fact(DisplayName = "R3: paired impact preserves observed noise but never classifies a negative cost")]
+    public void PairedImpactClampsOnlyTheClassifiedCost()
+    {
+        Assert.Equal(3.5, OverheadClassCalculator.PairedImpactPercentagePoints(20, 23.5));
+        Assert.Equal(0, OverheadClassCalculator.PairedImpactPercentagePoints(23.5, 20));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => OverheadClassCalculator.PairedImpactPercentagePoints(-1, 2));
+    }
+
+    [Fact(DisplayName = "R3: paired throughput regression refuses no baseline and clamps only improvement")]
+    public void PairedThroughputNeedsABaseline()
+    {
+        Assert.Null(OverheadClassCalculator.ThroughputRegressionPercent(0, 10));
+        Assert.Equal(5, OverheadClassCalculator.ThroughputRegressionPercent(1_000, 950));
+        Assert.Equal(0, OverheadClassCalculator.ThroughputRegressionPercent(1_000, 1_100));
+    }
+
     [Fact(DisplayName = "R21: a machine that falls short of the reference names every way it does")]
     public void ReferenceGapsAreNamed()
     {

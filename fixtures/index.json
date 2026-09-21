@@ -541,7 +541,8 @@
         "R21: an unmeasured stage total reads as unknown rather than as zero",
         "R21: overhead stays unmeasured until something measures it",
         "R21: the record accessor either reaches the callback record or states why it cannot",
-        "R21: the replay sink reports an unreadable stage total as unknown, not as zero"
+        "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
+        "R21: total-machine processor time is readable or explicitly unavailable"
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
@@ -551,11 +552,17 @@
         "R3: CRC-32C matches its published vectors",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
+        "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
+        "R3: impact summaries use the median without hiding signed observations",
+        "R3: paired impact preserves observed noise but never classifies a negative cost",
+        "R3: paired throughput regression refuses no baseline and clamps only improvement",
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
         "R3: a single sample answers every quantile from the bucket it fell in",
+        "R3: the impact workload is paced and long enough to measure separately",
+        "R3: total-machine CPU subtracts idle from kernel time exactly once",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an empty latency histogram reports no quantile rather than zero",

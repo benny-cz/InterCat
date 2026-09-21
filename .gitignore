@@ -70,4 +70,8 @@ bench/results/**/*.ijp0
 # A load series writes one truth log per level, and the high levels reach tens of megabytes. The
 # series result carries every counter; the per-level oracles stay local and are reproducible.
 bench/results/**/levels/**/truth-*.jsonl
+
+# Capture-impact reports keep the aggregate impact.json at the run root. Per-pair source directories
+# contain whole-machine journals and reproducible truth logs, so they remain local (P16).
+bench/results/capture-impact-*/sources/
 .vs/

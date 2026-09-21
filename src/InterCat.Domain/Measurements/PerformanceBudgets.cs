@@ -264,4 +264,35 @@ public static class OverheadClassCalculator
             ? null
             : 100d * captureProcessorSeconds / (wallClockSeconds * logicalProcessors);
     }
+
+    /// <summary>
+    /// The non-negative processor-time cost of a paired capture run. The observed difference may be
+    /// negative because the rest of the machine was quieter during the capture run; that noise is not
+    /// rewritten in the evidence, but it cannot become a negative capture cost for classification.
+    /// </summary>
+    public static double PairedImpactPercentagePoints(
+        double baselineMachineCpuPercentage,
+        double captureMachineCpuPercentage)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(baselineMachineCpuPercentage, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(baselineMachineCpuPercentage, 100);
+        ArgumentOutOfRangeException.ThrowIfLessThan(captureMachineCpuPercentage, 0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(captureMachineCpuPercentage, 100);
+        return Math.Max(0, captureMachineCpuPercentage - baselineMachineCpuPercentage);
+    }
+
+    /// <summary>
+    /// The non-negative throughput regression of a paired run. A faster capture run stays visible in
+    /// the observed figures but contributes zero regression. A zero baseline cannot be compared (R3).
+    /// </summary>
+    public static double? ThroughputRegressionPercent(
+        double baselineUnitsPerSecond,
+        double captureUnitsPerSecond)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(baselineUnitsPerSecond);
+        ArgumentOutOfRangeException.ThrowIfNegative(captureUnitsPerSecond);
+        return baselineUnitsPerSecond == 0
+            ? null
+            : Math.Max(0, 100d * (baselineUnitsPerSecond - captureUnitsPerSecond) / baselineUnitsPerSecond);
+    }
 }

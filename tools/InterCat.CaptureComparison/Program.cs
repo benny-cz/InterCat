@@ -73,7 +73,8 @@ internal static partial class Program
         if (!environment.IsElevated)
         {
             Console.Error.WriteLine(
-                "The journal-versus-ETL comparison requires an elevated Windows shell; no capture was started.");
+                $"The {(options.MeasureImpact ? "capture-impact measurement" : "journal-versus-ETL comparison")} "
+                + "requires an elevated Windows shell; no capture was started.");
             return 3;
         }
 
@@ -119,6 +120,20 @@ internal static partial class Program
         {
             Console.Error.WriteLine("No provider request could be built from the admitted sources.");
             return 3;
+        }
+
+        if (options.MeasureImpact)
+        {
+            return await RunImpactAsync(
+                outputDirectory,
+                workload,
+                environment,
+                machine,
+                sources,
+                refusals,
+                options,
+                startedUtc,
+                cancellationToken).ConfigureAwait(false);
         }
 
         var levels = new List<CaptureComparisonResult>(options.Levels.Count);
