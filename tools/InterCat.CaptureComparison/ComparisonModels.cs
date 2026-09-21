@@ -1,4 +1,5 @@
 using InterCat.Analysis;
+using InterCat.Benchmarks;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -11,6 +12,7 @@ internal sealed record ComparisonSettings(
     int MessagesPerConnection,
     int MaximumMessageBytes,
     int InterMessageDelayMilliseconds,
+    int Concurrency,
     int ReorderGraceSeconds,
     int QueueCapacityRecords,
     int JournalBatchRecords,
@@ -151,6 +153,12 @@ internal sealed record CaptureSeriesResult
     public required IReadOnlyList<string> PlanRefusals { get; init; }
     public required IReadOnlyList<CaptureComparisonResult> Levels { get; init; }
     public required SeriesSaturationSummary Saturation { get; init; }
+
+    /// <summary>
+    /// Every §12 budget this series could evaluate, and every one it could not. A budget nothing measured
+    /// reports as unmeasured, which is an open item rather than a pass (IC-010).
+    /// </summary>
+    public required IReadOnlyList<BudgetResult> Budgets { get; init; }
     public required bool DecisionReady { get; init; }
     public required IReadOnlyList<string> DecisionBlockers { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }

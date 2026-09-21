@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InterCat.Benchmarks;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 
@@ -94,7 +95,7 @@ internal static partial class Program
         DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
 
         Console.Error.WriteLine("Measuring the output volume before any capture starts...");
-        MachineDescriptor machine = StorageProbe.Describe(outputDirectory);
+        MachineDescriptor machine = MachineProbe.Describe(outputDirectory);
 
         var probe = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
         string[] sourceIds =
@@ -156,6 +157,7 @@ internal static partial class Program
             PlanRefusals = refusals,
             Levels = levels,
             Saturation = saturation,
+            Budgets = EvaluateBudgets(levels),
             DecisionReady = blockers.Count == 0,
             DecisionBlockers = blockers,
             Notes = SeriesNotes,
@@ -190,6 +192,7 @@ internal static partial class Program
             level.MessagesPerConnection,
             level.MaximumMessageBytes,
             level.InterMessageDelayMilliseconds,
+            level.Concurrency,
             options.GraceSeconds,
             level.QueueCapacityRecords,
             level.JournalBatchRecords,

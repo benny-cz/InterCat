@@ -105,6 +105,7 @@ internal static partial class Program
         Add(start, "--messages", settings.MessagesPerConnection);
         Add(start, "--bytes", settings.MaximumMessageBytes);
         Add(start, "--delay", settings.InterMessageDelayMilliseconds);
+        Add(start, "--concurrency", settings.Concurrency);
         using Process process = Process.Start(start)
             ?? throw new InvalidOperationException("The truth workload process could not be started.");
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);

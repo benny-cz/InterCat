@@ -3,6 +3,7 @@
     <Project Path="src/InterCat.Domain/InterCat.Domain.csproj" />
     <Project Path="src/InterCat.Storage/InterCat.Storage.csproj" />
     <Project Path="src/InterCat.Analysis/InterCat.Analysis.csproj" />
+    <Project Path="src/InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <Project Path="src/InterCat.Application/InterCat.Application.csproj" />
     <Project Path="src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
     <Project Path="src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />

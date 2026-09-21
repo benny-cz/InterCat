@@ -1,5 +1,19 @@
 # InterCat benchmark artifacts
 
+The IC-010 baseline is one command and needs no elevation:
+
+```powershell
+dotnet run --project src/InterCat.Cli -- bench `
+  --series bench/results/capture-comparison-<run-id>-series/series.json `
+  --output bench/results/reference-machine-<date>.json --overwrite
+```
+
+It measures this machine against the section 12 reference, prints the whole section 12 budget table with
+what measured each entry, and lists which supported builds still owe the fixture corpus. Passing
+`--series` folds an IC-009 run's measurements in, so the baseline and the series agree instead of each
+carrying half the table. A budget nothing measured reports as unmeasured, which is an open item and never
+a pass.
+
 Benchmark results are evidence, not timeless product claims. Each committed result records its runtime,
 machine/build context, input size and limitations.
 

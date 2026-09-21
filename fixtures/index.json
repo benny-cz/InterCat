@@ -376,8 +376,11 @@
         "P24: the unknown grey is never reused for a supported mechanism"
       ],
       "P27": [
+        "P27: a build outside the matrix is untested, never probably working",
         "P27: a measurement on an untested build cannot promote past experimental evidence",
+        "P27: a release is listed by exact build numbers, so a near build is not accepted",
         "P27: a source that registers and enables but emits nothing stays unsupported",
+        "P27: a supported build states its release and whether it is a pre-release branch",
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
@@ -452,15 +455,20 @@
         "R20: the committed theme report matches what the palette computes today"
       ],
       "R21": [
+        "R21: a budget nothing measured reports as unmeasured, never as a pass",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
+        "R21: a machine that falls short of the reference names every way it does",
+        "R21: a machine that meets the reference has no gaps to name",
         "R21: a negative result records the control that proves the source was live",
         "R21: a probe file without a clock frame reports no clock rather than a default one",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
+        "R21: a report covers the whole budget table, so an absent budget cannot read as met",
         "R21: a variant with no queue reports no utilization rather than zero",
         "R21: an item with a declared size but no data is counted, not read at a guess",
         "R21: an unmeasured stage total reads as unknown rather than as zero",
+        "R21: overhead stays unmeasured until something measures it",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero"
       ],
@@ -469,6 +477,8 @@
         "R22: an operation on an unobserved create is left unresolved, not matched by name"
       ],
       "R3": [
+        "R3: a budget is met or missed against its own direction, not against a bare number",
+        "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a quantile is reported as the interval it fell in, never as an invented value",

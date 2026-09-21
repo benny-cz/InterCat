@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../InterCat.Application/InterCat.Application.csproj" />
     <ProjectReference Include="../InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />

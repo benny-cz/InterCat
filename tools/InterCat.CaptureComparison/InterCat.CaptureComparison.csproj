@@ -6,6 +6,7 @@
     <ProjectReference Include="../../src/InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
     <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
+    <ProjectReference Include="../../src/InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>

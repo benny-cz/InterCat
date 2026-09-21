@@ -1,7 +1,7 @@
 {
   "schema": "intercat.capture-comparison.v1",
-  "startedUtc": "2026-09-21T18:22:19.3993392+00:00",
-  "completedUtc": "2026-09-21T18:22:33.3483092+00:00",
+  "startedUtc": "2026-09-21T18:36:38.6119583+00:00",
+  "completedUtc": "2026-09-21T18:36:52.5673369+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
@@ -25,6 +25,7 @@
     "interMessageDelayMilliseconds": 15,
     "queueCapacityRecords": 65536,
     "journalBatchRecords": 4096,
+    "concurrency": 1,
     "declaredMessages": 16
   },
   "settings": {
@@ -33,6 +34,7 @@
     "messagesPerConnection": 8,
     "maximumMessageBytes": 4096,
     "interMessageDelayMilliseconds": 15,
+    "concurrency": 1,
     "reorderGraceSeconds": 6,
     "queueCapacityRecords": 65536,
     "journalBatchRecords": 4096,
@@ -44,7 +46,7 @@
   "journal": {
     "name": "admitted-journal-callback-envelope-v0",
     "captureId": {
-      "value": "87db5993-d88f-47b1-92b3-4c12280916d5"
+      "value": "e32d8006-b9ab-4b9c-bc2a-08997f8d8ff6"
     },
     "providers": [
       {
@@ -59,9 +61,9 @@
       }
     ],
     "health": {
-      "admittedRecords": 701,
-      "observedRecords": 788,
-      "policyOmissionsUnrequestedProvider": 87,
+      "admittedRecords": 957,
+      "observedRecords": 1069,
+      "policyOmissionsUnrequestedProvider": 112,
       "policyOmissionsDescriptorNotAdmitted": 0,
       "policyOmissionsDescriptorDenied": 0,
       "undecodableBodyShorterThanSchema": 0,
@@ -155,11 +157,11 @@
         ],
         "gaps": []
       },
-      "truthBytesSent": 42153,
-      "truthBytesReceived": 42089,
-      "observedBytesSent": 42153,
-      "observedBytesReceived": 42153,
-      "observationsOutsideScope": 114,
+      "truthBytesSent": 37313,
+      "truthBytesReceived": 37249,
+      "observedBytesSent": 37313,
+      "observedBytesReceived": 37313,
+      "observationsOutsideScope": 370,
       "truthOperations": 64,
       "operationsWithGaps": 0,
       "sampledOperationGaps": [],
@@ -169,29 +171,29 @@
       "notes": [
         "Operations were matched inside a 500 ms window on the same flow, owner process and observation kind.",
         "Transport byte totals are reported beside truth totals as evidence; they are different byte domains and are never summed or substituted (I6, P3).",
-        "114 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
+        "370 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
       ]
     },
     "evidence": {
       "kind": "journal-probe-v0",
       "relativePath": "journal\\callback-envelope.ijp0",
-      "bytes": 245224,
-      "records": 701,
+      "bytes": 348672,
+      "records": 957,
       "durableFlushes": 2,
       "complete": true
     },
     "timing": {
-      "acquisitionMilliseconds": 6716.8449,
-      "finalizationMilliseconds": 350.484,
-      "replayMilliseconds": 5.2669
+      "acquisitionMilliseconds": 6709.0731,
+      "finalizationMilliseconds": 375.8028,
+      "replayMilliseconds": 6.2455
     },
     "stages": {
       "acquisition": {
         "callbackLatency": {
-          "samples": 788,
-          "totalNanoseconds": 10234700,
+          "samples": 1069,
+          "totalNanoseconds": 10212400,
           "minimumNanoseconds": 0,
-          "maximumNanoseconds": 7814600,
+          "maximumNanoseconds": 7200600,
           "median": {
             "lowerNanoseconds": 1024,
             "upperNanoseconds": 2048
@@ -209,47 +211,47 @@
             {
               "lowerNanoseconds": 64,
               "upperNanoseconds": 128,
-              "samples": 71
+              "samples": 77
             },
             {
               "lowerNanoseconds": 128,
               "upperNanoseconds": 256,
-              "samples": 12
+              "samples": 28
             },
             {
               "lowerNanoseconds": 256,
               "upperNanoseconds": 512,
-              "samples": 21
+              "samples": 114
             },
             {
               "lowerNanoseconds": 512,
               "upperNanoseconds": 1024,
-              "samples": 3
+              "samples": 21
             },
             {
               "lowerNanoseconds": 1024,
               "upperNanoseconds": 2048,
-              "samples": 562
+              "samples": 573
             },
             {
               "lowerNanoseconds": 2048,
               "upperNanoseconds": 4096,
-              "samples": 76
+              "samples": 176
             },
             {
               "lowerNanoseconds": 4096,
               "upperNanoseconds": 8192,
-              "samples": 18
+              "samples": 41
             },
             {
               "lowerNanoseconds": 8192,
               "upperNanoseconds": 16384,
-              "samples": 5
+              "samples": 15
             },
             {
               "lowerNanoseconds": 16384,
               "upperNanoseconds": 32768,
-              "samples": 6
+              "samples": 9
             },
             {
               "lowerNanoseconds": 32768,
@@ -259,7 +261,7 @@
             {
               "lowerNanoseconds": 65536,
               "upperNanoseconds": 131072,
-              "samples": 1
+              "samples": 2
             },
             {
               "lowerNanoseconds": 131072,
@@ -277,62 +279,62 @@
               "samples": 1
             }
           ],
-          "meanNanoseconds": 12988.197969543147
+          "meanNanoseconds": 9553.227315247896
         },
-        "deliveryThreadAllocatedBytes": 1666072,
+        "deliveryThreadAllocatedBytes": 1673848,
         "deliveryThreadCpu": {
           "kernelTicks": 0,
-          "userTicks": 0,
-          "totalTicks": 0,
+          "userTicks": 312500,
+          "totalTicks": 312500,
           "kernel": "00:00:00",
-          "user": "00:00:00",
-          "total": "00:00:00"
+          "user": "00:00:00.0312500",
+          "total": "00:00:00.0312500"
         },
-        "queueHighWaterRecords": 609,
+        "queueHighWaterRecords": 638,
         "queueCapacityRecords": 65536,
-        "extendedItemsCopied": 203,
+        "extendedItemsCopied": 456,
         "extendedItemsOmitted": 0,
         "recordsWithUnreachableExtendedData": 0,
-        "recordsWithoutExtendedData": 498,
+        "recordsWithoutExtendedData": 501,
         "extendedDataUnavailableReason": null
       },
       "acquisitionNote": "Callback latency, allocations and processor time are the delivery thread\u0027s own totals; the queue high-water mark is sampled where the callback enqueues, not once a second.",
       "writer": {
-        "payloadBytesWritten": 245092,
+        "payloadBytesWritten": 348540,
         "encodeLatency": {
           "samples": 1,
-          "totalNanoseconds": 3742000,
-          "minimumNanoseconds": 3742000,
-          "maximumNanoseconds": 3742000,
+          "totalNanoseconds": 4408400,
+          "minimumNanoseconds": 4408400,
+          "maximumNanoseconds": 4408400,
           "median": {
-            "lowerNanoseconds": 2097152,
-            "upperNanoseconds": 4194304
+            "lowerNanoseconds": 4194304,
+            "upperNanoseconds": 8388608
           },
           "percentile99": {
-            "lowerNanoseconds": 2097152,
-            "upperNanoseconds": 4194304
+            "lowerNanoseconds": 4194304,
+            "upperNanoseconds": 8388608
           },
           "buckets": [
             {
-              "lowerNanoseconds": 2097152,
-              "upperNanoseconds": 4194304,
+              "lowerNanoseconds": 4194304,
+              "upperNanoseconds": 8388608,
               "samples": 1
             }
           ],
-          "meanNanoseconds": 3742000
+          "meanNanoseconds": 4408400
         },
         "durableFlushLatency": {
           "samples": 2,
-          "totalNanoseconds": 12327300,
-          "minimumNanoseconds": 1740600,
-          "maximumNanoseconds": 10586700,
+          "totalNanoseconds": 4539100,
+          "minimumNanoseconds": 1767200,
+          "maximumNanoseconds": 2771900,
           "median": {
             "lowerNanoseconds": 1048576,
             "upperNanoseconds": 2097152
           },
           "percentile99": {
-            "lowerNanoseconds": 8388608,
-            "upperNanoseconds": 16777216
+            "lowerNanoseconds": 2097152,
+            "upperNanoseconds": 4194304
           },
           "buckets": [
             {
@@ -341,15 +343,15 @@
               "samples": 1
             },
             {
-              "lowerNanoseconds": 8388608,
-              "upperNanoseconds": 16777216,
+              "lowerNanoseconds": 2097152,
+              "upperNanoseconds": 4194304,
               "samples": 1
             }
           ],
-          "meanNanoseconds": 6163650
+          "meanNanoseconds": 2269550
         },
         "writerThreadCpu": "00:00:00.0312500",
-        "writerThreadAllocatedBytes": 1546168
+        "writerThreadAllocatedBytes": 2114328
       },
       "writerNote": "One dedicated thread owns the file from its header to its terminal frame, so its processor time and allocations are the writer stage\u0027s own.",
       "replay": null,
@@ -358,7 +360,7 @@
     "clock": {
       "descriptor": {
         "id": {
-          "value": "cf1bfabb-18e2-4907-99d5-e0c819fc1f64"
+          "value": "9065ba13-0155-4b6a-93ab-8f97343212b6"
         },
         "hostId": {
           "value": "0a5bf6d0-2196-8277-8f7f-db1fb02ace99"
@@ -366,7 +368,7 @@
         "kind": "Monotonic",
         "encoding": "Qpc",
         "ticksPerSecond": 10000000,
-        "captureEpochNativeTicks": 18134727505289,
+        "captureEpochNativeTicks": 18143319652747,
         "rounding": "NearestEven",
         "maximumAbsoluteSessionNanoseconds": 604800000000000
       },
@@ -375,28 +377,28 @@
       "replayedIdentical": true
     },
     "extendedData": {
-      "copiedInCallback": 203,
+      "copiedInCallback": 456,
       "omittedInCallback": 0,
-      "persistedInEnvelopes": 203,
+      "persistedInEnvelopes": 456,
       "omittedByPersistencePolicy": 0,
-      "replayedIdentical": 203,
+      "replayedIdentical": 456,
       "typesObserved": [
         "stack-trace-64"
       ],
       "unavailableReason": null
     },
     "truthRecords": 77,
-    "replayedRecords": 701,
+    "replayedRecords": 957,
     "replayBudgetDrops": 0,
     "replaySourceEventsLost": 0,
     "exactAdmittedProjectionReplay": true,
     "saturation": {
       "outcome": "Headroom",
-      "evidence": "No loss, no drop, and the queue stayed at 0.9 % of its bound.",
-      "admittedRecordsPerSecond": 104.36447624389838,
-      "queueUtilization": 0.0092926025390625,
+      "evidence": "No loss, no drop, and the queue stayed at 1.0 % of its bound.",
+      "admittedRecordsPerSecond": 142.64265506363316,
+      "queueUtilization": 0.009735107421875,
       "sourceLossKnown": true,
-      "writerBusyFraction": 0.006487763324712173,
+      "writerBusyFraction": 0.005334432859287224,
       "writerKeptUp": true
     },
     "sourceLossKnown": true,
@@ -405,7 +407,7 @@
   "etl": {
     "name": "diagnostic-etl",
     "captureId": {
-      "value": "e1b3e707-72df-459e-b2ea-a5d65da6687b"
+      "value": "04110bcd-bc08-42e1-9695-75ce2dda0c32"
     },
     "providers": [
       {
@@ -420,8 +422,8 @@
       }
     ],
     "health": {
-      "admittedRecords": 710,
-      "observedRecords": 799,
+      "admittedRecords": 846,
+      "observedRecords": 935,
       "policyOmissionsUnrequestedProvider": 89,
       "policyOmissionsDescriptorNotAdmitted": 0,
       "policyOmissionsDescriptorDenied": 0,
@@ -516,11 +518,11 @@
         ],
         "gaps": []
       },
-      "truthBytesSent": 42153,
-      "truthBytesReceived": 42089,
-      "observedBytesSent": 42153,
-      "observedBytesReceived": 42153,
-      "observationsOutsideScope": 129,
+      "truthBytesSent": 37313,
+      "truthBytesReceived": 37249,
+      "observedBytesSent": 37313,
+      "observedBytesReceived": 37313,
+      "observationsOutsideScope": 256,
       "truthOperations": 64,
       "operationsWithGaps": 0,
       "sampledOperationGaps": [],
@@ -530,21 +532,21 @@
       "notes": [
         "Operations were matched inside a 500 ms window on the same flow, owner process and observation kind.",
         "Transport byte totals are reported beside truth totals as evidence; they are different byte domains and are never summed or substituted (I6, P3).",
-        "129 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
+        "256 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
       ]
     },
     "evidence": {
       "kind": "original-diagnostic-etl",
       "relativePath": "etl\\diagnostic-evidence.etl",
-      "bytes": 1835008,
-      "records": 710,
+      "bytes": 2359296,
+      "records": 846,
       "durableFlushes": 0,
       "complete": true
     },
     "timing": {
-      "acquisitionMilliseconds": 6703.3531,
-      "finalizationMilliseconds": 9.2293,
-      "replayMilliseconds": 4.6726
+      "acquisitionMilliseconds": 6687.7194,
+      "finalizationMilliseconds": 10.7995,
+      "replayMilliseconds": 5.8853
     },
     "stages": {
       "acquisition": null,
@@ -553,10 +555,10 @@
       "writerNote": "The ETW logger owns buffering and flushing; InterCat cannot attribute its cost.",
       "replay": {
         "callbackLatency": {
-          "samples": 799,
-          "totalNanoseconds": 461700,
+          "samples": 935,
+          "totalNanoseconds": 486600,
           "minimumNanoseconds": 0,
-          "maximumNanoseconds": 142100,
+          "maximumNanoseconds": 142700,
           "median": {
             "lowerNanoseconds": 256,
             "upperNanoseconds": 512
@@ -569,32 +571,32 @@
             {
               "lowerNanoseconds": 0,
               "upperNanoseconds": 1,
-              "samples": 39
+              "samples": 35
             },
             {
               "lowerNanoseconds": 64,
               "upperNanoseconds": 128,
-              "samples": 46
+              "samples": 51
             },
             {
               "lowerNanoseconds": 128,
               "upperNanoseconds": 256,
-              "samples": 275
+              "samples": 378
             },
             {
               "lowerNanoseconds": 256,
               "upperNanoseconds": 512,
-              "samples": 394
+              "samples": 440
             },
             {
               "lowerNanoseconds": 512,
               "upperNanoseconds": 1024,
-              "samples": 13
+              "samples": 17
             },
             {
               "lowerNanoseconds": 1024,
               "upperNanoseconds": 2048,
-              "samples": 20
+              "samples": 3
             },
             {
               "lowerNanoseconds": 2048,
@@ -602,9 +604,9 @@
               "samples": 8
             },
             {
-              "lowerNanoseconds": 4096,
-              "upperNanoseconds": 8192,
-              "samples": 2
+              "lowerNanoseconds": 8192,
+              "upperNanoseconds": 16384,
+              "samples": 1
             },
             {
               "lowerNanoseconds": 65536,
@@ -617,7 +619,7 @@
               "samples": 1
             }
           ],
-          "meanNanoseconds": 577.8473091364206
+          "meanNanoseconds": 520.427807486631
         },
         "deliveryThreadAllocatedBytes": 8304,
         "deliveryThreadCpu": {
@@ -628,12 +630,12 @@
           "user": "00:00:00",
           "total": "00:00:00"
         },
-        "queueHighWaterRecords": 710,
+        "queueHighWaterRecords": 846,
         "queueCapacityRecords": 500000,
-        "extendedItemsCopied": 218,
+        "extendedItemsCopied": 345,
         "extendedItemsOmitted": 0,
         "recordsWithUnreachableExtendedData": 0,
-        "recordsWithoutExtendedData": 492,
+        "recordsWithoutExtendedData": 501,
         "extendedDataUnavailableReason": null
       },
       "replayNote": "Offline replay runs the same admission callback as live capture, measured on the replaying thread."
@@ -645,25 +647,25 @@
       "replayedIdentical": null
     },
     "extendedData": {
-      "copiedInCallback": 218,
+      "copiedInCallback": 345,
       "omittedInCallback": 0,
       "persistedInEnvelopes": 0,
       "omittedByPersistencePolicy": 0,
-      "replayedIdentical": 218,
+      "replayedIdentical": 345,
       "typesObserved": [
         "stack-trace-64"
       ],
       "unavailableReason": null
     },
     "truthRecords": 77,
-    "replayedRecords": 710,
+    "replayedRecords": 846,
     "replayBudgetDrops": 0,
     "replaySourceEventsLost": 0,
     "exactAdmittedProjectionReplay": null,
     "saturation": {
       "outcome": "Headroom",
       "evidence": "No loss, no drop, and the queue stayed at 0.0 % of its bound.",
-      "admittedRecordsPerSecond": 105.91714167645442,
+      "admittedRecordsPerSecond": 126.50052273425229,
       "queueUtilization": null,
       "sourceLossKnown": true,
       "writerBusyFraction": null,

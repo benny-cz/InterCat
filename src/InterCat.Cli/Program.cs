@@ -27,6 +27,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "capabilities" => await CapabilitiesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
         };
     }
@@ -71,6 +72,12 @@ static void PrintHelp()
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat bench [--output <path>] [--series <series.json>] [--overwrite] [--json]");
+    ConsoleUi.Line("             [--no-storage-probe]");
+    ConsoleUi.Line("      Publishes the IC-010 baseline: this machine against the section 12 reference,");
+    ConsoleUi.Line("      every section 12 budget with what measured it, and the per-build validation");
+    ConsoleUi.Line("      backlog. Starts no capture and needs no elevation.");
     ConsoleUi.Line();
     ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
     ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled.");

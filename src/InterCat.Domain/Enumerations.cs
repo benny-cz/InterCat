@@ -86,4 +86,7 @@ public enum MeasurementUnit
     Bytes = 2,
     Seconds = 3,
     BytesPerSecond = 4,
+    Milliseconds = 5,
+    Nanoseconds = 6,
+    CountPerSecond = 7,
 }

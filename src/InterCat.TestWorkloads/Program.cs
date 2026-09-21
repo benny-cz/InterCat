@@ -50,6 +50,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         MessagesPerConnection = Integer(args, "--messages") ?? 8,
         MaximumMessageBytes = Integer(args, "--bytes") ?? 4_096,
         InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 15,
+        Concurrency = Integer(args, "--concurrency") ?? 1,
         Port = Integer(args, "--port") ?? 0,
     };
 
@@ -124,10 +125,12 @@ static void PrintHelp()
     Console.WriteLine("InterCat truth workloads (M0)");
     Console.WriteLine();
     Console.WriteLine("  tcp-loopback --truth <dir> [--seed n] [--connections n] [--messages n] [--bytes n]");
-    Console.WriteLine("                             [--delay milliseconds]");
+    Console.WriteLine("                             [--delay milliseconds] [--concurrency n]");
     Console.WriteLine("      FX-TCP-001: a seeded two-process loopback exchange. Each process writes its own");
     Console.WriteLine("      independent truth log; neither reads InterCat state. --delay 0 removes the");
-    Console.WriteLine("      default 15 ms pacing so the exchange runs as fast as the sockets allow.");
+    Console.WriteLine("      default 15 ms pacing so the exchange runs as fast as the sockets allow, and");
+    Console.WriteLine("      --concurrency runs that many connections at once so the machine rather than");
+    Console.WriteLine("      the fixture decides the rate.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

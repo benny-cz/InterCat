@@ -16,7 +16,8 @@ internal sealed record LoadLevel(
     int MaximumMessageBytes,
     int InterMessageDelayMilliseconds,
     int QueueCapacityRecords,
-    int JournalBatchRecords)
+    int JournalBatchRecords,
+    int Concurrency)
 {
     /// <summary>Messages the workload exchanges at this level, before any observation.</summary>
     public int DeclaredMessages => Connections * MessagesPerConnection;
@@ -97,25 +98,28 @@ internal static class LoadSeries
             MaximumMessageBytes: 4_096,
             InterMessageDelayMilliseconds: 15,
             QueueCapacityRecords: 65_536,
-            JournalBatchRecords: 4_096),
+            JournalBatchRecords: 4_096,
+            Concurrency: 1),
         new(
             "steady",
-            "Unpaced at a moderate message count.",
+            "Unpaced at a moderate message count, four connections at a time.",
             Connections: 4,
             MessagesPerConnection: 512,
             MaximumMessageBytes: 4_096,
             InterMessageDelayMilliseconds: 0,
             QueueCapacityRecords: 65_536,
-            JournalBatchRecords: 4_096),
+            JournalBatchRecords: 4_096,
+            Concurrency: 4),
         new(
             "peak",
-            "The highest unconstrained rate in the series.",
+            "The highest unconstrained rate in the series, with every connection in flight at once.",
             Connections: 8,
             MessagesPerConnection: 2_048,
             MaximumMessageBytes: 4_096,
             InterMessageDelayMilliseconds: 0,
             QueueCapacityRecords: 65_536,
-            JournalBatchRecords: 4_096),
+            JournalBatchRecords: 4_096,
+            Concurrency: 8),
         new(
             "queue-bound",
             "The peak rate against a deliberately small queue, so the bound is reached and its drops counted.",
@@ -124,7 +128,8 @@ internal static class LoadSeries
             MaximumMessageBytes: 4_096,
             InterMessageDelayMilliseconds: 0,
             QueueCapacityRecords: 512,
-            JournalBatchRecords: 4_096),
+            JournalBatchRecords: 4_096,
+            Concurrency: 8),
         new(
             "disk-bound",
             "The peak rate with a durable flush every 32 records, so the writer sets the pace.",
@@ -133,7 +138,8 @@ internal static class LoadSeries
             MaximumMessageBytes: 4_096,
             InterMessageDelayMilliseconds: 0,
             QueueCapacityRecords: 65_536,
-            JournalBatchRecords: 32),
+            JournalBatchRecords: 32,
+            Concurrency: 8),
     ];
 
     /// <summary>The single paced level, for a quick check that does not claim to be a series.</summary>

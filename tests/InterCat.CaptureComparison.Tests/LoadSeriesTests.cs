@@ -1,3 +1,4 @@
+using InterCat.Benchmarks;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using Xunit;
@@ -138,9 +139,9 @@ public sealed class LoadSeriesTests
     [Fact(DisplayName = "R3: a throughput with no elapsed time is unmeasured rather than infinite")]
     public void RateRefusesAZeroInterval()
     {
-        Assert.Null(StorageProbe.Rate(1_000, TimeSpan.Zero));
-        Assert.Null(StorageProbe.Rate(0, TimeSpan.FromSeconds(1)));
-        Assert.Equal(1_000d, StorageProbe.Rate(1_000, TimeSpan.FromSeconds(1)));
+        Assert.Null(MachineProbe.Rate(1_000, TimeSpan.Zero));
+        Assert.Null(MachineProbe.Rate(0, TimeSpan.FromSeconds(1)));
+        Assert.Equal(1_000d, MachineProbe.Rate(1_000, TimeSpan.FromSeconds(1)));
     }
 
     private static CaptureHealthSnapshot Health(

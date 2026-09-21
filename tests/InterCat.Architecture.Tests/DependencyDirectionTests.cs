@@ -11,11 +11,12 @@ public sealed class DependencyDirectionTests
             ["InterCat.Domain"] = [],
             ["InterCat.Storage"] = ["InterCat.Domain"],
             ["InterCat.Analysis"] = ["InterCat.Domain", "InterCat.Storage"],
+            ["InterCat.Benchmarks"] = ["InterCat.Domain"],
             ["InterCat.Application"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Analysis"],
             ["InterCat.Capture.Windows"] = ["InterCat.Domain"],
             ["InterCat.CaptureBroker"] = ["InterCat.Domain", "InterCat.Capture.Windows"],
             ["InterCat.Desktop"] = ["InterCat.Domain", "InterCat.Application"],
-            ["InterCat.Cli"] = ["InterCat.Domain", "InterCat.Application", "InterCat.Capture.Windows"],
+            ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Application", "InterCat.Capture.Windows"],
             ["InterCat.TestWorkloads"] = ["InterCat.Domain"],
         };
 
@@ -61,7 +62,7 @@ public sealed class DependencyDirectionTests
     public void PortableCoreHasNoPlatformImports()
     {
         string root = FindRepositoryRoot();
-        string[] portableProjects = ["InterCat.Domain", "InterCat.Storage", "InterCat.Analysis"];
+        string[] portableProjects = ["InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Benchmarks"];
         string[] prohibited = ["using Avalonia", "using Microsoft.Diagnostics.Tracing", "using System.Windows"];
         foreach (string project in portableProjects)
         {

@@ -25,6 +25,14 @@ internal sealed record TcpLoopbackOptions
     /// because a rate without its pacing is not a measurement (section 12).
     /// </summary>
     public int InterMessageDelayMilliseconds { get; init; } = 15;
+
+    /// <summary>
+    /// How many connections are in flight at once. One keeps the original sequential exchange, where the
+    /// fixture's own round trips set the rate. A higher value lets the machine rather than the fixture
+    /// decide the rate, which is what a benchmark needs before any section 12 ingest budget can be judged
+    /// (IC-010).
+    /// </summary>
+    public int Concurrency { get; init; } = 1;
     public int Port { get; init; }
 }
 
@@ -82,6 +90,7 @@ internal static class TcpLoopbackScenario
             options.MinimumMessageBytes,
             options.MaximumMessageBytes,
             options.InterMessageDelayMilliseconds,
+            options.Concurrency,
             port,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -114,11 +123,42 @@ internal static class TcpLoopbackScenario
             string.Create(CultureInfo.InvariantCulture, $"{{\"port\":{port}}}")).ConfigureAwait(false);
         await Console.Out.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-        byte[] buffer = new byte[options.MaximumMessageBytes + LengthPrefixBytes];
-        byte[] ack = new byte[AckBytes];
+        // Accept every connection first, then serve them together. Accepting inside the serve loop would
+        // make the fixture sequential no matter what concurrency was asked for (IC-010).
+        int concurrency = Math.Clamp(options.Concurrency, 1, Math.Max(1, options.Connections));
+        var pending = new List<Task>(concurrency);
         for (int connection = 0; connection < options.Connections; connection++)
         {
-            using Socket accepted = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
+            Socket accepted = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
+            int index = connection;
+            pending.Add(Task.Run(
+                () => ServeAsync(accepted, index, options, truth, cancellationToken),
+                cancellationToken));
+            if (pending.Count >= concurrency)
+            {
+                Task finished = await Task.WhenAny(pending).ConfigureAwait(false);
+                await finished.ConfigureAwait(false);
+                pending.Remove(finished);
+            }
+        }
+
+        await Task.WhenAll(pending).ConfigureAwait(false);
+        truth.Write(TruthEventKind.ProcessExiting);
+        return 0;
+    }
+
+    /// <summary>Serves one accepted connection. Several of these run at once when concurrency is above one.</summary>
+    private static async Task ServeAsync(
+        Socket accepted,
+        int connection,
+        TcpLoopbackOptions options,
+        TruthLog truth,
+        CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[options.MaximumMessageBytes + LengthPrefixBytes];
+        byte[] ack = new byte[AckBytes];
+        using (accepted)
+        {
             accepted.NoDelay = true;
             var local = (IPEndPoint)accepted.LocalEndPoint!;
             var remote = (IPEndPoint)accepted.RemoteEndPoint!;
@@ -169,9 +209,6 @@ internal static class TcpLoopbackScenario
                 localPort: local.Port,
                 remotePort: remote.Port);
         }
-
-        truth.Write(TruthEventKind.ProcessExiting);
-        return 0;
     }
 
     public static async Task<int> RunClientAsync(TcpLoopbackOptions options, CancellationToken cancellationToken)
@@ -182,9 +219,38 @@ internal static class TcpLoopbackScenario
             "client");
         truth.Write(TruthEventKind.ProcessStarted);
 
-        var sizes = new Random(options.Seed);
-        byte[] ack = new byte[AckBytes];
+        int concurrency = Math.Clamp(options.Concurrency, 1, Math.Max(1, options.Connections));
+        var pending = new List<Task>(concurrency);
         for (int connection = 0; connection < options.Connections; connection++)
+        {
+            int index = connection;
+            pending.Add(Task.Run(() => ExchangeAsync(index, options, truth, cancellationToken), cancellationToken));
+            if (pending.Count >= concurrency)
+            {
+                Task finished = await Task.WhenAny(pending).ConfigureAwait(false);
+                await finished.ConfigureAwait(false);
+                pending.Remove(finished);
+            }
+        }
+
+        await Task.WhenAll(pending).ConfigureAwait(false);
+        truth.Write(TruthEventKind.ProcessExiting);
+        return 0;
+    }
+
+    /// <summary>
+    /// Runs one connection's exchange. Each connection draws its sizes from its own generator, seeded
+    /// from the run seed and the connection index, so a concurrent run is as reproducible as a sequential
+    /// one: interleaving cannot change which bytes a connection sends (I14).
+    /// </summary>
+    private static async Task ExchangeAsync(
+        int connection,
+        TcpLoopbackOptions options,
+        TruthLog truth,
+        CancellationToken cancellationToken)
+    {
+        var sizes = new Random(options.Seed + connection);
+        byte[] ack = new byte[AckBytes];
         {
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             await socket.ConnectAsync(new IPEndPoint(IPAddress.Loopback, options.Port), cancellationToken)
@@ -240,9 +306,6 @@ internal static class TcpLoopbackScenario
                 localPort: local.Port,
                 remotePort: remote.Port);
         }
-
-        truth.Write(TruthEventKind.ProcessExiting);
-        return 0;
     }
 
     private static Process StartChild(
@@ -271,6 +334,8 @@ internal static class TcpLoopbackScenario
         start.ArgumentList.Add(options.MaximumMessageBytes.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--delay");
         start.ArgumentList.Add(options.InterMessageDelayMilliseconds.ToString(CultureInfo.InvariantCulture));
+        start.ArgumentList.Add("--concurrency");
+        start.ArgumentList.Add(options.Concurrency.ToString(CultureInfo.InvariantCulture));
         if (port > 0)
         {
             start.ArgumentList.Add("--port");
