@@ -50,6 +50,7 @@ public sealed record WindowsSourceDefinition
     public ulong MatchAllKeyword { get; init; }
     public required IReadOnlyList<string> RequestedKeywords { get; init; }
     public bool SupportsCaptureSideProcessFilter { get; init; }
+    public ValidatedContentSourceContract? ContentContract { get; init; }
     public required string FilteringNotes { get; init; }
     public required string StartupBehaviour { get; init; }
 

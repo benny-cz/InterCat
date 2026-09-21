@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 13, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 13 makes wider-capture consent explicit for process-focused requests: a view focus cannot authorize or masquerade as provider-enforced retention scope.
+**Status:** reviewed product architecture and implementation blueprint, revision 14, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 14 separates a bounded Content request preview from an enforceable production admission policy: validating requested limits is useful, but it cannot make an unvalidated payload source available.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -813,6 +813,8 @@ plus validated network metadata. RPC, ALPC and pipe breadth remains requested-bu
 has both a bounded adapter and capture-impact evidence. Never substitute a different profile or body mode.
 
 Capture-side filtering and view filtering are different. If a provider cannot filter on PID before emission, or required peer/lifecycle context must remain broader, disclose the per-source effective scope and block start until the operator explicitly accepts the wider metadata collection. Consent is attached to the exact compiled request; it is not inferred from choosing a process-focused view. Capture enough peer/lifecycle context to explain selected activity, while recording any excluded context.
+
+Request-contract availability and capture availability are separate states. A Content request may be validated and previewed so the operator can review exact source/process/channel selectors, per-record and session limits, retention, inspection consent, truncation and unknown-schema behavior. That preview keeps `bodyPolicy` and provider requests absent and remains unable to start until the selected source has approved content descriptors/classifications, enforces the requested scope before persistence, and carries capture-impact evidence measured with its payload-producing settings. A metadata-only benchmark does not qualify a content enablement.
 
 ## 10. Storage, snapshots and query implementation
 

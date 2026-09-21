@@ -42,7 +42,7 @@ public sealed record SourceRuntimeEvidence(
 /// </summary>
 public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimeProvider? clock = null)
 {
-    public const string AdapterVersion = "windows-etw-inventory-0.4.0";
+    public const string AdapterVersion = "windows-etw-inventory-0.5.0";
     public const string ReportVersion = "2";
 
     private readonly IEtwMetadataSource metadata =

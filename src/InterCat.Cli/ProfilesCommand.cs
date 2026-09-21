@@ -22,11 +22,17 @@ internal static class ProfilesCommand
         string? profileId = command.TakePositional();
         string? outputPath = command.TakeOption("--output");
         string? mechanismText = command.TakeOption("--mechanism");
+        string? contentSourceId = command.TakeOption("--source");
+        string? maximumRecordBytesText = command.TakeOption("--max-record-bytes");
+        string? maximumSessionBytesText = command.TakeOption("--max-session-bytes");
+        string? retentionText = command.TakeOption("--retention");
+        string? inspectionText = command.TakeOption("--inspection");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool diagnosticEtl = command.TryTakeFlag("--diagnostic-etl");
         bool allowBroaderCapture = command.TryTakeFlag("--allow-broader-capture");
         var processIds = new List<int>();
+        var channelSelectors = new List<string>();
         string? rawProcessId;
         while ((rawProcessId = command.TakeOption("--pid")) is not null)
         {
@@ -46,16 +52,70 @@ internal static class ProfilesCommand
             processIds.Add(processId);
         }
 
+        string? channelSelector;
+        while ((channelSelector = command.TakeOption("--channel")) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(channelSelector)
+                || channelSelector.Length > ContentCapturePolicyCompiler.MaximumChannelSelectorLength
+                || channelSelector.Any(char.IsControl))
+            {
+                ConsoleUi.Failure(
+                    $"Each --channel selector must contain 1 to {ContentCapturePolicyCompiler.MaximumChannelSelectorLength} printable characters.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            if (channelSelectors.Contains(channelSelector, StringComparer.Ordinal))
+            {
+                ConsoleUi.Failure($"Channel selector '{channelSelector}' was supplied more than once.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            channelSelectors.Add(channelSelector);
+        }
+
         if (processIds.Count > 64)
         {
-            ConsoleUi.Failure("A focused preview accepts at most 64 --pid values.");
+            ConsoleUi.Failure("A profile preview accepts at most 64 --pid values.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (channelSelectors.Count > ContentCapturePolicyCompiler.MaximumChannelSelectors)
+        {
+            ConsoleUi.Failure(
+                $"A content preview accepts at most {ContentCapturePolicyCompiler.MaximumChannelSelectors} --channel values.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        int? maximumRecordBytes = ParsePositiveInt(maximumRecordBytesText, "--max-record-bytes");
+        if (maximumRecordBytesText is not null && maximumRecordBytes is null)
+        {
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        long? maximumSessionBytes = ParsePositiveLong(maximumSessionBytesText, "--max-session-bytes");
+        if (maximumSessionBytesText is not null && maximumSessionBytes is null)
+        {
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        ContentRetentionMode? retention = ParseContentRetention(retentionText);
+        if (retentionText is not null && retention is null)
+        {
+            ConsoleUi.Failure($"Unknown content retention: {retentionText}. Use stop-at-limit.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        ContentInspectionMode? inspection = ParseContentInspection(inspectionText);
+        if (inspectionText is not null && inspection is null)
+        {
+            ConsoleUi.Failure($"Unknown content inspection: {inspectionText}. Use disabled or hex-text.");
             return InterCatExitCode.InvalidInvocation;
         }
 
         Mechanism? mechanism = ParseMechanism(mechanismText);
         if (mechanismText is not null && mechanism is null)
         {
-            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Focused transport currently accepts tcp.");
+            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Known names are tcp, udp, and rpc; availability is checked per profile.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -75,7 +135,11 @@ internal static class ProfilesCommand
 
         if (profileId is null)
         {
-            if (diagnosticEtl || mechanism is not null || processIds.Count > 0 || allowBroaderCapture)
+            if (diagnosticEtl
+                || mechanism is not null
+                || processIds.Count > 0
+                || allowBroaderCapture
+                || HasContentOptions())
             {
                 ConsoleUi.Failure("Profile options require one profile name. List profiles without additional options.");
                 return InterCatExitCode.InvalidInvocation;
@@ -104,35 +168,91 @@ internal static class ProfilesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (selected.Kind != CaptureProfileKind.FocusedTransport
-            && (mechanism is not null || processIds.Count > 0 || allowBroaderCapture))
+        ContentCaptureRequest? contentRequest = null;
+        if (selected.Kind == CaptureProfileKind.FocusedTransport)
         {
-            ConsoleUi.Failure("--mechanism, --pid and --allow-broader-capture apply only to focused-transport.");
-            return InterCatExitCode.InvalidInvocation;
-        }
+            if (HasContentOptions())
+            {
+                ConsoleUi.Failure("Content source, channel, budget, retention and inspection options apply only to content.");
+                return InterCatExitCode.InvalidInvocation;
+            }
 
-        if (selected.Kind == CaptureProfileKind.FocusedTransport && mechanism is null)
-        {
-            ConsoleUi.Failure("focused-transport requires --mechanism tcp.");
-            PrintHelp();
-            return InterCatExitCode.InvalidInvocation;
-        }
+            if (mechanism is null)
+            {
+                ConsoleUi.Failure("focused-transport requires --mechanism tcp.");
+                PrintHelp();
+                return InterCatExitCode.InvalidInvocation;
+            }
 
-        if (allowBroaderCapture && processIds.Count == 0)
+            if (allowBroaderCapture && processIds.Count == 0)
+            {
+                ConsoleUi.Failure("--allow-broader-capture is meaningful only with at least one --pid selection.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+        else if (selected.Kind == CaptureProfileKind.Content)
         {
-            ConsoleUi.Failure("--allow-broader-capture is meaningful only with at least one --pid selection.");
+            if (allowBroaderCapture)
+            {
+                ConsoleUi.Failure("Content scope never accepts --allow-broader-capture; an unenforceable content scope is refused.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            if (mechanism is null
+                || contentSourceId is null
+                || processIds.Count == 0
+                || channelSelectors.Count == 0
+                || maximumRecordBytes is null
+                || maximumSessionBytes is null
+                || retention is null
+                || inspection is null)
+            {
+                ConsoleUi.Failure(
+                    "content requires --source, --mechanism, at least one --pid and --channel, both byte limits, --retention, and --inspection.");
+                PrintHelp();
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            contentRequest = new()
+            {
+                SourceId = contentSourceId,
+                Mechanism = mechanism.Value,
+                ProcessIds = processIds,
+                ChannelSelectors = channelSelectors,
+                MaximumRecordBytes = maximumRecordBytes.Value,
+                MaximumSessionBytes = maximumSessionBytes.Value,
+                Retention = retention.Value,
+                Inspection = inspection.Value,
+            };
+
+            string? contentRefusal = ContentCapturePolicyCompiler.Validate(contentRequest);
+            if (contentRefusal is not null)
+            {
+                ConsoleUi.Failure(contentRefusal);
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+        else if (mechanism is not null || processIds.Count > 0 || allowBroaderCapture || HasContentOptions())
+        {
+            ConsoleUi.Failure("Mechanism, process and content-scope options apply only to focused-transport or content.");
             return InterCatExitCode.InvalidInvocation;
         }
 
         ConsoleUi.Progress(
-            selected.CompilationAvailable
+            selected.RequestPreviewAvailable
                 ? $"Compiling the requested {selected.DisplayName} settings from local schemas. No capture is started."
                 : $"Checking the declared availability of {selected.DisplayName}. No capture is started.");
         var host = new TraceEventSessionHost();
         ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
         var inventory = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
         EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
-            new(selected.Kind, diagnosticEtl, mechanism, processIds, allowBroaderCapture),
+            new(
+                selected.Kind,
+                diagnosticEtl,
+                FocusedMechanism: selected.Kind == CaptureProfileKind.FocusedTransport ? mechanism : null,
+                FocusedProcessIds: selected.Kind == CaptureProfileKind.FocusedTransport ? processIds : null,
+                AllowBroaderCapture: allowBroaderCapture,
+                Content: contentRequest),
             inventory,
             environment);
         cancellationToken.ThrowIfCancellationRequested();
@@ -158,6 +278,14 @@ internal static class ProfilesCommand
             || plan.Diagnostics.Count > 0
                 ? InterCatExitCode.PartialResultSuccess
                 : InterCatExitCode.Success;
+
+        bool HasContentOptions() =>
+            contentSourceId is not null
+            || channelSelectors.Count > 0
+            || maximumRecordBytesText is not null
+            || maximumSessionBytesText is not null
+            || retentionText is not null
+            || inspectionText is not null;
     }
 
     private static void RenderCatalog(IReadOnlyList<CaptureProfileDescriptor> profiles)
@@ -170,7 +298,9 @@ internal static class ProfilesCommand
             [
                 profile.Id,
                 profile.Admission.ToString(),
-                profile.CompilationAvailable ? "preview available" : "not available",
+                profile.CompilationAvailable
+                    ? "capture preview"
+                    : profile.RequestPreviewAvailable ? "request preview only" : "not available",
                 profile.Summary,
             ]);
         }
@@ -178,6 +308,7 @@ internal static class ProfilesCommand
         ConsoleUi.Table(["Profile", "Admission", "State", "Intent or refusal"], rows);
         ConsoleUi.Note("Preview a profile before capture: icat profiles explore");
         ConsoleUi.Note("Focused TCP preview: icat profiles focused-transport --mechanism tcp [--pid <id>]");
+        ConsoleUi.Note("Content request preview: icat profiles content --help");
         ConsoleUi.Note("No profile command enables a provider or starts a capture.");
     }
 
@@ -200,40 +331,80 @@ internal static class ProfilesCommand
             ConsoleUi.Note($"Body policy {plan.BodyPolicy.PolicyId}: {plan.BodyPolicy.Summary}");
         }
 
-        ConsoleUi.Heading("Capture scope");
-        string mechanism = plan.Scope.EffectiveMechanism?.ToString()
-            ?? (plan.Scope.RequestedMechanism is null
-                ? "profile-defined"
-                : $"{plan.Scope.RequestedMechanism} requested — not available");
-        ConsoleUi.Field("Mechanism", mechanism);
-        ConsoleUi.Field(
-            "Process focus",
-            plan.Scope.RequestedProcessIds.Count == 0
-                ? "all processes"
-                : string.Join(", ", plan.Scope.RequestedProcessIds));
-        ConsoleUi.Field("Broader collection", plan.Scope.CapturesOutsideRequestedProcesses ? "yes" : "no");
-        ConsoleUi.Field(
-            "Broader consent",
-            !plan.Scope.BroaderCaptureNeedsConsent
-                ? "not needed"
-                : plan.Scope.BroaderCaptureAccepted ? "accepted" : "required before start");
-        ConsoleUi.Note(plan.Scope.Disclosure);
-        if (plan.Scope.Sources.Count > 0)
+        if (plan.Content is null)
         {
-            var scopeRows = new List<IReadOnlyList<string>>(plan.Scope.Sources.Count);
-            foreach (ProviderScopeDecision source in plan.Scope.Sources)
+            ConsoleUi.Heading("Capture scope");
+            string mechanism = plan.Scope.EffectiveMechanism?.ToString()
+                ?? (plan.Scope.RequestedMechanism is null
+                    ? "profile-defined"
+                    : $"{plan.Scope.RequestedMechanism} requested — not available");
+            ConsoleUi.Field("Mechanism", mechanism);
+            ConsoleUi.Field(
+                "Process focus",
+                plan.Scope.RequestedProcessIds.Count == 0
+                    ? "all processes"
+                    : string.Join(", ", plan.Scope.RequestedProcessIds));
+            bool scopeEvaluated = plan.Scope.EffectiveMechanism is not null || plan.Scope.Sources.Count > 0;
+            ConsoleUi.Field(
+                "Broader collection",
+                scopeEvaluated ? plan.Scope.CapturesOutsideRequestedProcesses ? "yes" : "no" : "not evaluated — no capture plan");
+            ConsoleUi.Field(
+                "Broader consent",
+                !scopeEvaluated
+                    ? "not applicable"
+                    : !plan.Scope.BroaderCaptureNeedsConsent
+                        ? "not needed"
+                        : plan.Scope.BroaderCaptureAccepted ? "accepted" : "required before start");
+            ConsoleUi.Note(plan.Scope.Disclosure);
+            if (plan.Scope.Sources.Count > 0)
             {
-                scopeRows.Add(
-                [
-                    source.SourceId,
-                    source.ProcessScope.ToString(),
-                    source.AppliedProcessIds.Count == 0 ? "none" : string.Join(",", source.AppliedProcessIds),
-                    source.CapturesOutsideRequestedProcesses ? "yes" : "no",
-                    source.Reason,
-                ]);
+                var scopeRows = new List<IReadOnlyList<string>>(plan.Scope.Sources.Count);
+                foreach (ProviderScopeDecision source in plan.Scope.Sources)
+                {
+                    scopeRows.Add(
+                    [
+                        source.SourceId,
+                        source.ProcessScope.ToString(),
+                        source.AppliedProcessIds.Count == 0 ? "none" : string.Join(",", source.AppliedProcessIds),
+                        source.CapturesOutsideRequestedProcesses ? "yes" : "no",
+                        source.Reason,
+                    ]);
+                }
+
+                ConsoleUi.Table(["Source", "Capture scope", "Provider PID filter", "Broader", "Reason"], scopeRows);
+            }
+        }
+
+        if (plan.Content is not null)
+        {
+            ContentCaptureDecision content = plan.Content;
+            ConsoleUi.Heading("Content request boundaries");
+            ConsoleUi.Field("Source", content.SourceId);
+            ConsoleUi.Field("Mechanism", content.Mechanism.ToString());
+            ConsoleUi.Field("Process selectors", string.Join(", ", content.ProcessIds));
+            ConsoleUi.Field("Channel selectors", string.Join(", ", content.ChannelSelectors));
+            ConsoleUi.Field("Per-record limit", ConsoleUi.Bytes(content.MaximumRecordBytes));
+            ConsoleUi.Field("Session limit", ConsoleUi.Bytes(content.MaximumSessionBytes));
+            ConsoleUi.Field("At record limit", "retain prefix; record original length and truncation");
+            ConsoleUi.Field("At session limit", "stop before exceeding the limit");
+            ConsoleUi.Field("Unknown schema", "omit body; keep header and diagnostic");
+            ConsoleUi.Field(
+                "Inspection",
+                content.Inspection == ContentInspectionMode.Disabled ? "disabled" : "bounded inert hex/text only");
+            ConsoleUi.Field("Approved events", content.ApprovedEventIds.Count == 0 ? "none" : string.Join(", ", content.ApprovedEventIds));
+            ConsoleUi.Field("Approved body fields", content.ApprovedSourceFields.Count == 0 ? "none" : string.Join(", ", content.ApprovedSourceFields));
+            ConsoleUi.Field("Body contract", content.SourceBodyContractAvailable ? "available" : "unavailable");
+            ConsoleUi.Field("Scope enforcement", content.ScopeEnforceable ? "validated" : "not validated");
+            ConsoleUi.Field("Capture impact", content.CaptureImpactMeasured ? "measured" : "unmeasured");
+            if (content.CaptureImpactEvidence is not null)
+            {
+                ConsoleUi.Field("Impact evidence", content.CaptureImpactEvidence);
             }
 
-            ConsoleUi.Table(["Source", "Capture scope", "Provider PID filter", "Broader", "Reason"], scopeRows);
+            ConsoleUi.Field("Source evidence", content.SourceEvidenceComplete ? "complete" : "incomplete");
+            ConsoleUi.Field("Admission policy", content.AdmissionPolicyAvailable ? "available" : "not compiled");
+            ConsoleUi.Note(content.Disclosure);
+            ConsoleUi.Note(content.AvailabilityReason);
         }
 
         ConsoleUi.Heading("Source decisions");
@@ -314,6 +485,7 @@ internal static class ProfilesCommand
         CollectionStatement = plan.CollectionStatement,
         BodyPolicy = plan.BodyPolicy,
         Scope = plan.Scope,
+        Content = plan.Content,
         Sources = plan.SourceDecisions,
         Providers =
         [
@@ -341,6 +513,10 @@ internal static class ProfilesCommand
         ConsoleUi.Line("icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("icat profiles focused-transport --mechanism tcp [--pid <id> ...]");
         ConsoleUi.Line("              [--allow-broader-capture] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("icat profiles content --source <source-id> --mechanism <name> --pid <id> ...");
+        ConsoleUi.Line("              --channel <selector> ... --max-record-bytes <bytes>");
+        ConsoleUi.Line("              --max-session-bytes <bytes> --retention stop-at-limit");
+        ConsoleUi.Line("              --inspection <disabled|hex-text> [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  With no profile, lists every capture intent and whether it is available.");
         ConsoleUi.Line("  With a profile, compiles requested/effective sources, body policy and omissions");
@@ -349,6 +525,8 @@ internal static class ProfilesCommand
         ConsoleUi.Line("  instead of silently falling back to a sanitized journal.");
         ConsoleUi.Line("  --pid requests process focus. If any provider must collect more broadly, the");
         ConsoleUi.Line("  preview blocks until --allow-broader-capture records explicit acknowledgement.");
+        ConsoleUi.Line("  Content requires source/process/channel scope and explicit byte limits. Its request");
+        ConsoleUi.Line("  contract can be reviewed, but capture remains blocked until a payload adapter is validated.");
     }
 
     private static Mechanism? ParseMechanism(string? value)
@@ -366,6 +544,55 @@ internal static class ProfilesCommand
             _ => null,
         };
     }
+
+    private static int? ParsePositiveInt(string? value, string option)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        ConsoleUi.Failure($"{option} requires a positive decimal integer.");
+        return null;
+    }
+
+    private static long? ParsePositiveLong(string? value, string option)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        ConsoleUi.Failure($"{option} requires a positive decimal integer.");
+        return null;
+    }
+
+    private static ContentRetentionMode? ParseContentRetention(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            null => null,
+            "stop-at-limit" => ContentRetentionMode.StopAtLimit,
+            _ => null,
+        };
+
+    private static ContentInspectionMode? ParseContentInspection(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            null => null,
+            "disabled" => ContentInspectionMode.Disabled,
+            "hex-text" => ContentInspectionMode.HexAndText,
+            _ => null,
+        };
 
     private sealed record ProviderRequestPreview(
         string SourceId,
@@ -394,6 +621,7 @@ internal static class ProfilesCommand
         public required string CollectionStatement { get; init; }
         public CompiledBodyAdmissionPolicy? BodyPolicy { get; init; }
         public required CaptureScopeDecision Scope { get; init; }
+        public ContentCaptureDecision? Content { get; init; }
         public required IReadOnlyList<ProfileSourceDecision> Sources { get; init; }
         public required IReadOnlyList<ProviderRequestPreview> Providers { get; init; }
         public required OriginalEvidenceDecision OriginalEvidence { get; init; }

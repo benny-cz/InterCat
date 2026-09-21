@@ -12,7 +12,7 @@ InterCat is a Windows IPC visualizer for exploring which processes communicate, 
 - a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
-A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient. Focused transport compiles validated TCP only. A PID selection is an initial-view focus, not a false retention guarantee: because the network provider cannot filter by PID and lifecycle context remains machine-wide, the preview blocks until the operator explicitly accepts broader metadata collection.
+A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient. Focused transport compiles validated TCP only. A PID selection is an initial-view focus, not a false retention guarantee: because the network provider cannot filter by PID and lifecycle context remains machine-wide, the preview blocks until the operator explicitly accepts broader metadata collection. Content can compile a complete request-only preview with exact scope, budgets, truncation, retention and separate inspection consent, but it remains blocked: no payload source has an approved body contract and payload-specific impact measurement.
 
 ## Build and run
 
@@ -33,6 +33,11 @@ dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism 
 # --allow-broader-capture only after reviewing the per-source disclosure.
 dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242
 dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242 --allow-broader-capture
+
+# Review a bounded Content request. This intentionally returns a blocked plan and starts nothing.
+dotnet run --project src/InterCat.Cli -- profiles content --source etw/manifest/Microsoft-Windows-RPC `
+  --mechanism rpc --pid 4242 --channel rpc-interface:12345678-1234-1234-1234-123456789abc `
+  --max-record-bytes 4096 --max-session-bytes 67108864 --retention stop-at-limit --inspection disabled
 
 # Measured vertical paths. Each starts one owned ETW session; needs an elevated shell.
 dotnet run --project src/InterCat.Cli -- measure tcp

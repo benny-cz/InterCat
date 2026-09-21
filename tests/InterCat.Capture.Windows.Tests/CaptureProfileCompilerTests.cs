@@ -19,7 +19,79 @@ public sealed class CaptureProfileCompilerTests
         CaptureProfileDescriptor content = CaptureProfileCatalog.Find("content")!;
         Assert.Equal(AdmissionMode.ScopedContent, content.Admission);
         Assert.False(content.CompilationAvailable);
-        Assert.Contains("scope", content.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+        Assert.True(content.RequestPreviewAvailable);
+        Assert.Contains("bounded request", content.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: Content compiles complete boundaries without inventing an admission policy")]
+    public void ContentRequestCompilesBoundariesButRemainsUnavailable()
+    {
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Content, Content: ValidContentRequest()),
+            new SourcePlanCompilation([], []));
+
+        Assert.False(plan.CanStart);
+        Assert.Null(plan.EffectiveProfileId);
+        Assert.Null(plan.EffectiveAdmission);
+        Assert.Null(plan.BodyPolicy);
+        Assert.Empty(plan.Providers);
+        ContentCaptureDecision content = Assert.IsType<ContentCaptureDecision>(plan.Content);
+        Assert.Equal(WindowsSourceCatalog.RpcSourceId, content.SourceId);
+        Assert.Equal(Mechanism.Rpc, content.Mechanism);
+        Assert.Equal([84, 4242], content.ProcessIds);
+        Assert.Equal(["rpc-interface:12345678-1234-1234-1234-123456789abc"], content.ChannelSelectors);
+        Assert.Equal(4096, content.MaximumRecordBytes);
+        Assert.Equal(64 * 1024 * 1024, content.MaximumSessionBytes);
+        Assert.Equal(ContentRecordLimitBehavior.RetainPrefixAndRecordTruncation, content.RecordLimitBehavior);
+        Assert.Equal(UnknownContentSchemaBehavior.OmitBodyAndKeepHeaderDiagnostic, content.UnknownSchemaBehavior);
+        Assert.False(content.SourceBodyContractAvailable);
+        Assert.False(content.ScopeEnforceable);
+        Assert.False(content.CaptureImpactMeasured);
+        Assert.False(content.SourceEvidenceComplete);
+        Assert.False(content.AdmissionPolicyAvailable);
+        Assert.Empty(content.ApprovedEventIds);
+        Assert.Empty(content.ApprovedSourceFields);
+        Assert.Contains("remain denied", content.AvailabilityReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Mechanism.Rpc, plan.Scope.RequestedMechanism);
+        Assert.Equal([84, 4242], plan.Scope.RequestedProcessIds);
+    }
+
+    [Fact(DisplayName = "IC-012: Content refuses incomplete or internally inconsistent boundaries")]
+    public void ContentRequestValidatesEveryBoundary()
+    {
+        EffectiveCapturePlan missing = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Content),
+            new SourcePlanCompilation([], []));
+        EffectiveCapturePlan undersizedSession = CaptureProfileCompiler.Compile(
+            new(
+                CaptureProfileKind.Content,
+                Content: ValidContentRequest() with
+                {
+                    MaximumRecordBytes = 4096,
+                    MaximumSessionBytes = 1024,
+                }),
+            new SourcePlanCompilation([], []));
+
+        Assert.False(missing.CanStart);
+        Assert.Null(missing.Content);
+        Assert.Contains("explicit source", Assert.Single(missing.Diagnostics), StringComparison.OrdinalIgnoreCase);
+        Assert.False(undersizedSession.CanStart);
+        Assert.Null(undersizedSession.Content);
+        Assert.Contains("at least the per-record", Assert.Single(undersizedSession.Diagnostics), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: Content source and mechanism must describe the same catalog capability")]
+    public void ContentRequestRejectsSourceMechanismMismatch()
+    {
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(
+                CaptureProfileKind.Content,
+                Content: ValidContentRequest() with { Mechanism = Mechanism.Tcp }),
+            new SourcePlanCompilation([], []));
+
+        Assert.False(plan.CanStart);
+        Assert.Null(plan.Content);
+        Assert.Contains("does not describe Tcp", Assert.Single(plan.Diagnostics), StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "IC-012: Focused TCP compiles one mechanism and required lifecycle context")]
@@ -348,4 +420,16 @@ public sealed class CaptureProfileCompilerTests
                 AllowBroaderCapture: allowBroaderCapture),
             new SourcePlanCompilation([process, network], []));
     }
+
+    private static ContentCaptureRequest ValidContentRequest() => new()
+    {
+        SourceId = WindowsSourceCatalog.RpcSourceId,
+        Mechanism = Mechanism.Rpc,
+        ProcessIds = [4242, 84],
+        ChannelSelectors = ["rpc-interface:12345678-1234-1234-1234-123456789abc"],
+        MaximumRecordBytes = 4096,
+        MaximumSessionBytes = 64 * 1024 * 1024,
+        Retention = ContentRetentionMode.StopAtLimit,
+        Inspection = ContentInspectionMode.HexAndText,
+    };
 }

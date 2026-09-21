@@ -64,6 +64,7 @@ static void PrintHelp()
     ConsoleUi.Line("      Read-only source inventory. Starts no capture.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("  icat profiles content --help");
     ConsoleUi.Line("      Lists capture intents or previews requested/effective settings and omissions.");
     ConsoleUi.Line("      Reads schemas only; never enables a provider or starts a capture.");
     ConsoleUi.Line("      Focused TCP: focused-transport --mechanism tcp [--pid <id> ...]");

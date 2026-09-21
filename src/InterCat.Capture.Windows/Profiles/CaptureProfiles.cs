@@ -17,6 +17,7 @@ public sealed record CaptureProfileDescriptor
     public required string Summary { get; init; }
     public required AdmissionMode Admission { get; init; }
     public required bool CompilationAvailable { get; init; }
+    public required bool RequestPreviewAvailable { get; init; }
     public string? UnavailableReason { get; init; }
     public required IReadOnlyList<ProfileSourceRequirement> Sources { get; init; }
     public required bool PreserveExtendedData { get; init; }
@@ -36,6 +37,7 @@ public static class CaptureProfileCatalog
             Summary = "Process lifecycle and validated communication metadata for a safe first look.",
             Admission = AdmissionMode.MetadataOnly,
             CompilationAvailable = true,
+            RequestPreviewAvailable = true,
             Sources =
             [
                 new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
@@ -58,6 +60,7 @@ public static class CaptureProfileCatalog
             Summary = "One validated transport with optional process focus and explicit wider-capture consent.",
             Admission = AdmissionMode.MetadataOnly,
             CompilationAvailable = true,
+            RequestPreviewAvailable = true,
             Sources =
             [
                 new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Lifecycle context required to identify selected and peer processes."),
@@ -80,7 +83,8 @@ public static class CaptureProfileCatalog
             "content",
             "Content",
             AdmissionMode.ScopedContent,
-            "No payload-capable source has an approved scope, byte budget, retention and inspection contract yet."),
+            "A bounded request can be previewed, but no payload-capable source has an approved body contract, enforceable scope and measured impact.",
+            requestPreviewAvailable: true),
         Unavailable(
             CaptureProfileKind.FlightRecorder,
             "flight-recorder",
@@ -112,7 +116,8 @@ public static class CaptureProfileCatalog
         string id,
         string displayName,
         AdmissionMode admission,
-        string reason) => new()
+        string reason,
+        bool requestPreviewAvailable = false) => new()
         {
             Kind = kind,
             Id = id,
@@ -120,11 +125,14 @@ public static class CaptureProfileCatalog
             Summary = reason,
             Admission = admission,
             CompilationAvailable = false,
+            RequestPreviewAvailable = requestPreviewAvailable,
             UnavailableReason = reason,
             Sources = [],
             PreserveExtendedData = false,
             RequestCallStacks = false,
-            CollectionStatement = "Starts no capture because this profile cannot yet enforce its stated guarantees.",
+            CollectionStatement = requestPreviewAvailable
+                ? "Compiles bounded requested content rules for review, but starts no capture and retains no content because no source can enforce them yet."
+                : "Starts no capture because this profile cannot yet enforce its stated guarantees.",
         };
 }
 
@@ -133,7 +141,8 @@ public sealed record CaptureProfileRequest(
     bool RequestOriginalDiagnosticEtl = false,
     Mechanism? FocusedMechanism = null,
     IReadOnlyList<int>? FocusedProcessIds = null,
-    bool AllowBroaderCapture = false);
+    bool AllowBroaderCapture = false,
+    ContentCaptureRequest? Content = null);
 
 public enum ProfileSourceDecisionState
 {
@@ -207,6 +216,7 @@ public sealed record EffectiveCapturePlan
     public required IReadOnlyList<ProviderEnablementRequest> Providers { get; init; }
     public required IReadOnlyList<ProfileSourceDecision> SourceDecisions { get; init; }
     public required CaptureScopeDecision Scope { get; init; }
+    public ContentCaptureDecision? Content { get; init; }
     public required OriginalEvidenceDecision OriginalEvidence { get; init; }
     public required bool PreserveExtendedData { get; init; }
     public required bool RequestCallStacks { get; init; }
@@ -267,6 +277,10 @@ public static class CaptureProfileCompiler
                 requestRefusal);
         }
 
+        ContentCaptureDecision? contentDecision = request.Profile == CaptureProfileKind.Content
+            ? ContentCapturePolicyCompiler.Compile(request.Content!)
+            : null;
+
         if (!profile.CompilationAvailable)
         {
             return Refused(
@@ -275,7 +289,8 @@ public static class CaptureProfileCompiler
                 originalEvidence,
                 environment,
                 compiledAtUtc,
-                profile.UnavailableReason ?? "Profile is unavailable.");
+                contentDecision?.AvailabilityReason ?? profile.UnavailableReason ?? "Profile is unavailable.",
+                contentDecision);
         }
 
         CompiledBodyAdmissionPolicy bodyPolicy = profile.Admission switch
@@ -388,6 +403,7 @@ public static class CaptureProfileCompiler
                 processFilters),
             SourceDecisions = orderedDecisions,
             Scope = scope,
+            Content = null,
             OriginalEvidence = originalEvidence,
             PreserveExtendedData = profile.PreserveExtendedData,
             RequestCallStacks = profile.RequestCallStacks,
@@ -400,6 +416,18 @@ public static class CaptureProfileCompiler
     private static string? ValidateRequest(CaptureProfileRequest request)
     {
         IReadOnlyList<int> processIds = request.FocusedProcessIds ?? [];
+        if (request.Profile != CaptureProfileKind.Content && request.Content is not null)
+        {
+            return "Content scope and budgets apply only to the Content profile.";
+        }
+
+        if (request.Profile == CaptureProfileKind.Content)
+        {
+            return request.FocusedMechanism is not null || processIds.Count > 0 || request.AllowBroaderCapture
+                ? "Focused transport settings cannot be combined with a Content request."
+                : ContentCapturePolicyCompiler.Validate(request.Content);
+        }
+
         if (processIds.Count > 64)
         {
             return "A focused profile accepts at most 64 process IDs per capture request.";
@@ -566,7 +594,8 @@ public static class CaptureProfileCompiler
         OriginalEvidenceDecision originalEvidence,
         ProbeEnvironment environment,
         DateTimeOffset compiledAtUtc,
-        string reason) => new()
+        string reason,
+        ContentCaptureDecision? content = null) => new()
         {
             CompiledAtUtc = compiledAtUtc,
             Environment = environment,
@@ -581,9 +610,9 @@ public static class CaptureProfileCompiler
             SourceDecisions = [],
             Scope = new()
             {
-                RequestedMechanism = request.FocusedMechanism,
+                RequestedMechanism = request.FocusedMechanism ?? request.Content?.Mechanism,
                 EffectiveMechanism = null,
-                RequestedProcessIds = [.. (request.FocusedProcessIds ?? []).Order()],
+                RequestedProcessIds = [.. (request.FocusedProcessIds ?? request.Content?.ProcessIds ?? []).Order()],
                 InitialViewProcessIds = [],
                 CapturesOutsideRequestedProcesses = false,
                 BroaderCaptureNeedsConsent = false,
@@ -591,6 +620,7 @@ public static class CaptureProfileCompiler
                 Sources = [],
                 Disclosure = reason,
             },
+            Content = content,
             OriginalEvidence = originalEvidence,
             PreserveExtendedData = false,
             RequestCallStacks = false,
