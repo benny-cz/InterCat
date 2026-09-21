@@ -100,9 +100,12 @@ public static class PerformanceBudgets
             CallbackAllocation,
             "Callback allocation, per record",
             BudgetStatistic.Maximum,
-            0,
+            1,
             MeasurementUnit.Bytes,
-            "No unpooled allocation on the callback path (R9, R11)."),
+            "No unpooled allocation on the callback path (R9, R11). Measured as the slope of admission's "
+            + "allocation against records admitted, so a fixed setup cost is not read as a per-record one. "
+            + "One byte per record is the resolution at which a slope tells growth from noise; the adapter's "
+            + "own allocation is a separate quantity and is never added to this one (ADR-009)."),
         new(
             RecordToBatch,
             "Admitted record to committed journal batch",

@@ -7,9 +7,9 @@
   "maximumMessageBytes": 4096,
   "interMessageDelayMilliseconds": 0,
   "concurrency": 4,
-  "port": 16557,
-  "serverProcessId": 50296,
-  "clientProcessId": 82284,
+  "port": 53972,
+  "serverProcessId": 83488,
+  "clientProcessId": 44204,
   "serverExitCode": 0,
   "clientExitCode": 0
 }

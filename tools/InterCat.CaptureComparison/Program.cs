@@ -141,6 +141,7 @@ internal static partial class Program
         }
 
         SeriesSaturationSummary saturation = Summarize(levels);
+        AllocationSlope? slope = MeasureAllocationSlope(levels);
         List<string> blockers = BuildSeriesBlockers(levels, saturation, machine, environment);
         var series = new CaptureSeriesResult
         {
@@ -157,7 +158,8 @@ internal static partial class Program
             PlanRefusals = refusals,
             Levels = levels,
             Saturation = saturation,
-            Budgets = EvaluateBudgets(levels),
+            Budgets = EvaluateBudgets(levels, slope),
+            AllocationSlope = slope,
             DecisionReady = blockers.Count == 0,
             DecisionBlockers = blockers,
             Notes = SeriesNotes,

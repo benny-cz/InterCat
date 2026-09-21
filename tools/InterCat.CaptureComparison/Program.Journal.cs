@@ -161,6 +161,7 @@ internal static partial class Program
                 TypesObserved = [.. outcome.ExtendedTypes.Select(EtwExtendedDataTypes.Describe)],
                 UnavailableReason = captureStages.ExtendedDataUnavailableReason,
             },
+            Allocations = null,
             TruthRecords = truth.Count,
             ReplayedRecords = replayed.Records.Count,
             ReplayBudgetDrops = replayed.Records.Count - admittedRecords.Count,

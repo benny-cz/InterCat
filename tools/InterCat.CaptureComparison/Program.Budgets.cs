@@ -10,7 +10,39 @@ internal static partial class Program
     /// the stages after the journal do not exist yet, and a budget nothing measured says so rather than
     /// being left out, because an absent budget would read as satisfied (IC-010, R21).
     /// </summary>
-    private static IReadOnlyList<BudgetResult> EvaluateBudgets(List<CaptureComparisonResult> levels)
+    /// <summary>
+    /// Fits admission's allocation against the number of records admitted, using the two levels whose
+    /// record counts differ most. One level cannot tell a fixed cost from a per-record one.
+    /// </summary>
+    private static AllocationSlope? MeasureAllocationSlope(List<CaptureComparisonResult> levels)
+    {
+        CaptureComparisonResult[] measured =
+        [
+            .. levels
+                .Where(level => level.Etl.Allocations is not null)
+                .OrderBy(level => level.Etl.Allocations!.RecordsObserved),
+        ];
+        if (measured.Length < 2)
+        {
+            return null;
+        }
+
+        AllocationAttribution smallest = measured[0].Etl.Allocations!;
+        AllocationAttribution largest = measured[^1].Etl.Allocations!;
+        return new()
+        {
+            SmallestLevel = measured[0].Level.Name,
+            LargestLevel = measured[^1].Level.Name,
+            SmallestRecords = smallest.RecordsObserved,
+            LargestRecords = largest.RecordsObserved,
+            SmallestAdmissionBytes = smallest.AdmissionBytes,
+            LargestAdmissionBytes = largest.AdmissionBytes,
+        };
+    }
+
+    private static IReadOnlyList<BudgetResult> EvaluateBudgets(
+        List<CaptureComparisonResult> levels,
+        AllocationSlope? slope)
     {
         var results = new List<BudgetResult>();
         CaptureComparisonResult? busiest = levels
@@ -25,15 +57,22 @@ internal static partial class Program
                 stage.CallbackLatency.Percentile99?.UpperNanoseconds,
                 level + " The bucket's upper bound is compared, so a met budget is met by the whole bucket."));
 
-            long admitted = busiest.Journal.Health.AdmittedRecords;
-            double? perRecord = stage.DeliveryThreadAllocatedBytes is { } bytes && admitted > 0
-                ? (double)bytes / admitted
-                : null;
+            // R9 and R11 are rules about InterCat's callback work. The delivery thread's total includes
+            // the adapter's dispatch, which InterCat does not control and cannot pool, so the budget is
+            // evaluated against the attributed figure and the adapter's is reported beside it.
+            string slopeEvidence = slope is null
+                ? "Two levels with different record counts are needed to tell a fixed cost from a "
+                    + "per-record one, and this series has fewer."
+                : $"Fitted across levels '{slope.SmallestLevel}' and '{slope.LargestLevel}': "
+                    + $"{slope.SmallestAdmissionBytes:N0} bytes over {slope.SmallestRecords:N0} records "
+                    + $"against {slope.LargestAdmissionBytes:N0} bytes over {slope.LargestRecords:N0}. "
+                    + $"About {slope.FixedBytes:N0} bytes of that does not grow with the record count. "
+                    + "Both runs replay the same evidence through the same adapter, once with the "
+                    + "admission table and once with none, so what is left is admission's own cost.";
             results.Add(PerformanceBudgets.Evaluate(
                 PerformanceBudgets.Find(PerformanceBudgets.CallbackAllocation),
-                perRecord,
-                level + $" {stage.DeliveryThreadAllocatedBytes:N0} bytes allocated on the delivery thread "
-                    + $"across {admitted:N0} admitted records."));
+                slope?.BytesPerRecord,
+                slopeEvidence));
 
             results.Add(PerformanceBudgets.Evaluate(
                 PerformanceBudgets.Find(PerformanceBudgets.SustainedIngest),

@@ -58,6 +58,53 @@ internal sealed record VariantClockEvidence
     public required bool? ReplayedIdentical { get; init; }
 }
 
+/// <summary>
+/// Where a replay's allocations came from. The same ETL is replayed twice through the same adapter: once
+/// with the real admission table and once with an empty one, where every record is refused at the first
+/// check before any InterCat work. The difference is admission's own cost; the remainder belongs to the
+/// adapter that dispatches the record. R9 and R11 are rules about InterCat's callback work, so they are
+/// evaluated against the first figure and the second is reported beside it (section 18.3).
+/// </summary>
+internal sealed record AllocationAttribution
+{
+    public required long RecordsObserved { get; init; }
+    public required long DispatchOnlyBytes { get; init; }
+    public required long FullAdmissionBytes { get; init; }
+
+    public long AdmissionBytes => Math.Max(0, FullAdmissionBytes - DispatchOnlyBytes);
+
+    public double? AdapterBytesPerRecord =>
+        RecordsObserved > 0 ? (double)DispatchOnlyBytes / RecordsObserved : null;
+
+    public double? AdmissionBytesPerRecord =>
+        RecordsObserved > 0 ? (double)AdmissionBytes / RecordsObserved : null;
+}
+
+/// <summary>
+/// How admission's allocation grows with the number of records it admits, measured across the series'
+/// levels. A fixed setup cost divided by a record count looks like per-record allocation and is not one;
+/// the slope between the smallest and the largest level is what "no unpooled allocation" means (R9, R11).
+/// </summary>
+internal sealed record AllocationSlope
+{
+    public required string SmallestLevel { get; init; }
+    public required string LargestLevel { get; init; }
+    public required long SmallestRecords { get; init; }
+    public required long LargestRecords { get; init; }
+    public required long SmallestAdmissionBytes { get; init; }
+    public required long LargestAdmissionBytes { get; init; }
+
+    /// <summary>Bytes of admission allocation per additional record. Null when the levels are too alike.</summary>
+    public double? BytesPerRecord => LargestRecords > SmallestRecords
+        ? (double)(LargestAdmissionBytes - SmallestAdmissionBytes) / (LargestRecords - SmallestRecords)
+        : null;
+
+    /// <summary>The part that does not grow: what admission costs once, whatever the record count.</summary>
+    public double? FixedBytes => BytesPerRecord is { } slope
+        ? SmallestAdmissionBytes - (slope * SmallestRecords)
+        : null;
+}
+
 /// <summary>Extended-data outcomes, counted separately at each stage so no count implies another.</summary>
 internal sealed record VariantExtendedDataEvidence
 {
@@ -82,6 +129,12 @@ internal sealed record CaptureComparisonVariant
     public required VariantStageMetrics Stages { get; init; }
     public required VariantClockEvidence Clock { get; init; }
     public required VariantExtendedDataEvidence ExtendedData { get; init; }
+
+    /// <summary>
+    /// Which part of a replay's allocation belongs to InterCat and which to the adapter. Null for a
+    /// variant that runs no replay of its own.
+    /// </summary>
+    public required AllocationAttribution? Allocations { get; init; }
     public required long TruthRecords { get; init; }
     public required long ReplayedRecords { get; init; }
     public required long ReplayBudgetDrops { get; init; }
@@ -159,6 +212,9 @@ internal sealed record CaptureSeriesResult
     /// reports as unmeasured, which is an open item rather than a pass (IC-010).
     /// </summary>
     public required IReadOnlyList<BudgetResult> Budgets { get; init; }
+
+    /// <summary>How admission's allocation grows with records, or null when no two levels differ enough.</summary>
+    public required AllocationSlope? AllocationSlope { get; init; }
     public required bool DecisionReady { get; init; }
     public required IReadOnlyList<string> DecisionBlockers { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }

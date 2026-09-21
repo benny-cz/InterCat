@@ -137,6 +137,23 @@ public sealed class BaselineContractTests
         Assert.True(reference.Storage.MeetsReferenceDevice);
     }
 
+    [Fact(DisplayName = "R9: the callback allocation budget is measurable, so it can be met")]
+    public void TheAllocationBudgetIsMeasurable()
+    {
+        PerformanceBudget budget = PerformanceBudgets.Find(PerformanceBudgets.CallbackAllocation);
+
+        // A budget stated as exactly zero cannot be met by any measurement, because every measurement
+        // carries a fixed setup cost. ADR-009 states the bound at the slope's resolution instead.
+        Assert.True(budget.Target > 0, "a budget that cannot be met is not a budget");
+        Assert.True(budget.Target <= 1, "the bound must stay far below anything that matters at rate");
+        Assert.Equal(
+            BudgetOutcome.Met,
+            PerformanceBudgets.Evaluate(budget, 0.0009, "the measured slope").Outcome);
+        Assert.Equal(
+            BudgetOutcome.Missed,
+            PerformanceBudgets.Evaluate(budget, 1_400, "a thread total that includes the adapter").Outcome);
+    }
+
     [Fact(DisplayName = "P27: a build outside the matrix is untested, never probably working")]
     public void AnUnlistedBuildIsUntested()
     {

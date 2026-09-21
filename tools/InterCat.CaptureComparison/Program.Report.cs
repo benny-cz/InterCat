@@ -143,6 +143,10 @@ internal static partial class Program
             CallbackCost(result.Journal.Stages.Replay),
             CallbackCost(result.Etl.Stages.Replay));
         Row("extended items read / kept", ExtendedItems(result.Journal), ExtendedItems(result.Etl));
+        Row(
+            "allocation admission / adapter",
+            Allocations(result.Journal.Allocations),
+            Allocations(result.Etl.Allocations));
         Row("source clock", Clock(result.Journal.Clock), Clock(result.Etl.Clock));
 
         if (result.Journal.ExtendedData.TypesObserved.Count > 0)
@@ -193,6 +197,16 @@ internal static partial class Program
             : variant.ExtendedData.PersistedInEnvelopes.ToString("N0", CultureInfo.InvariantCulture);
         return $"{read} / {kept}";
     }
+
+    /// <summary>
+    /// Bytes per record InterCat's admission allocated, and bytes per record the adapter allocated
+    /// dispatching the same evidence. They are different costs and are never added (section 18.3).
+    /// </summary>
+    private static string Allocations(AllocationAttribution? attribution) => attribution is null
+        ? "not attributed"
+        : string.Create(
+            CultureInfo.InvariantCulture,
+            $"{attribution.AdmissionBytesPerRecord:N0} B / {attribution.AdapterBytesPerRecord:N0} B per record");
 
     private static string Pair(long left, long right) => string.Create(
         CultureInfo.InvariantCulture,

@@ -516,7 +516,8 @@
       ],
       "R9": [
         "R9: admitted fields compile to fixed offsets with a minimum body length",
-        "R9: an admitted record owns its extended bytes after the source buffer changes"
+        "R9: an admitted record owns its extended bytes after the source buffer changes",
+        "R9: the callback allocation budget is measurable, so it can be met"
       ]
     },
     "uncovered": {

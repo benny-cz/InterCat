@@ -3,6 +3,33 @@ using InterCat.Capture.Windows;
 namespace InterCat.CaptureComparison;
 
 /// <summary>
+/// Counts what a replay delivers and keeps nothing. Attribution replays both runs through this, because a
+/// sink that stores records would swamp the difference it is trying to measure with its own list.
+/// </summary>
+internal sealed class CountingSink : IAdmittedEventSink
+{
+    public long Observed { get; private set; }
+
+    public long Admitted { get; private set; }
+
+    public void OnObserved() => Observed++;
+
+    public bool Admit(in AdmittedEvent admitted)
+    {
+        Admitted++;
+        return true;
+    }
+
+    public void OnOmitted(OmissionReason reason)
+    {
+    }
+
+    public void OnUndecodable(UndecodableReason reason)
+    {
+    }
+}
+
+/// <summary>
 /// Collects admitted records from offline replay and measures the same stage the live callback measures,
 /// so the two variants are compared by one instrumented admission path rather than two.
 /// </summary>

@@ -199,14 +199,23 @@ What the measurements do **not** support, and what this decision therefore does 
 - **No size claim.** The journal is nine times smaller than the ETL when nearly empty, about twice its
   size at volume without extended data, and half its size with call stacks. The relationship follows from
   the admission policy and the enablement; no ratio may be quoted from one load point.
-- **The allocation budget is missed.** The delivery thread allocated about 1.2 KiB per admitted record,
-  99 MiB across a peak level. §12 asks for p99 under 50 µs *and* no unpooled allocation: the latency half
-  is met at every level, the allocation half is not.
+- **The allocation budget looked missed, and the measurement was wrong.** This ADR originally recorded
+  about 1.2 KiB of allocation per admitted record on the delivery thread and treated it as InterCat's.
+  The delivery thread runs the adapter's dispatch and InterCat's admission on the same stack, so that
+  total could not say which of them allocated. ADR-009 separated them by replaying the same evidence
+  twice with only the admission table differing: **admission allocates about 0.0009 bytes per record**,
+  and the budget is met. The allocation on the live delivery thread belongs to the managed adapter's
+  real-time dispatch, which §18.3 already allows replacing and IC-019 now evaluates.
 
 **IC-011 may now begin, under three conditions.** It freezes `RecordEnvelopeV1`; it replaces the
-disposable framing with pooled buffer ownership so the R9/R11 allocation budget is met, which is the one
-measured debt this decision carries; and it keeps identity, ownership, corruption and counter tests
-passing across the swap. `journal-probe-v0` and `callback-envelope-candidate-v0` remain disposable and
+disposable framing with production buffer ownership and explicit lifetimes; and it keeps identity,
+ownership, corruption and counter tests passing across the swap.
+
+*Amended 2026-09-21:* the second condition originally read "pooled buffer ownership so the R9/R11
+allocation budget is met". ADR-009 showed that budget was already met and that the figure behind the
+condition was the adapter's allocation, not InterCat's. Pooled ownership stays worth doing for the writer
+stage and for buffer lifetime discipline; it is not what the allocation budget was waiting for, and
+IC-011 should not be judged on a debt that measurement says does not exist. `journal-probe-v0` and `callback-envelope-candidate-v0` remain disposable and
 must never be recognized as an `.icat` journal.
 
 The comparison must not call the admitted journal byte-identical to ETL: policy intentionally removes

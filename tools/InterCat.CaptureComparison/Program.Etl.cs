@@ -7,6 +7,39 @@ namespace InterCat.CaptureComparison;
 
 internal static partial class Program
 {
+    /// <summary>
+    /// Measures what admission itself allocates, by replaying the same evidence through the same adapter
+    /// with an empty admission table. R9 and R11 are rules about InterCat's callback work, and a figure
+    /// that includes the adapter's dispatch cannot say whether they are met (section 18.3).
+    /// </summary>
+    private static AllocationAttribution AttributeAllocations(
+        string evidencePath,
+        OwnedSessionPlan sessionPlan,
+        CancellationToken cancellationToken)
+    {
+        // Both runs use a sink that keeps nothing. A sink that stored its records would allocate more
+        // than either path under measurement and would swamp the difference being measured.
+        (long dispatchBytes, long dispatchObserved) = Replay(
+            sessionPlan with { Sources = [], Providers = [] });
+        (long admissionBytes, long admissionObserved) = Replay(sessionPlan);
+        return new()
+        {
+            RecordsObserved = Math.Max(dispatchObserved, admissionObserved),
+            DispatchOnlyBytes = dispatchBytes,
+            FullAdmissionBytes = admissionBytes,
+        };
+
+        (long Bytes, long Observed) Replay(OwnedSessionPlan plan)
+        {
+            var counting = new CountingSink();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            _ = EtlAdmissionReplay.Replay(evidencePath, plan, counting, cancellationToken);
+            return (GC.GetAllocatedBytesForCurrentThread() - before, counting.Observed);
+        }
+    }
+
     private static async Task<CaptureComparisonVariant> RunEtlAsync(
         string root,
         string workload,
@@ -59,6 +92,7 @@ internal static partial class Program
         CaptureStageSnapshot replayStages = sink.ReadStages(
             GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart,
             replayCpu);
+        AllocationAttribution allocations = AttributeAllocations(evidencePath, sessionPlan, cancellationToken);
         CaptureHealthSnapshot health = sink.Snapshot(stop.EventsLost ?? 0, 0);
         IReadOnlyList<TruthRecord> truth = await ReadTruthAsync(directory, cancellationToken).ConfigureAwait(false);
         var table = new EventAdmissionTable(sources);
@@ -121,6 +155,7 @@ internal static partial class Program
                 TypesObserved = [.. extendedTypes.Select(EtwExtendedDataTypes.Describe)],
                 UnavailableReason = replayStages.ExtendedDataUnavailableReason,
             },
+            Allocations = allocations,
             TruthRecords = truth.Count,
             ReplayedRecords = sink.Records.Count,
             ReplayBudgetDrops = health.ApplicationDrops,

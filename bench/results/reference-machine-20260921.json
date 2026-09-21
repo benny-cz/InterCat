@@ -1,6 +1,6 @@
 {
   "schema": "intercat.baseline.v1",
-  "producedUtc": "2026-09-21T18:38:46.2884475+00:00",
+  "producedUtc": "2026-09-21T18:57:42.3807492+00:00",
   "machine": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "architecture": "X64",
@@ -10,10 +10,10 @@
       "volume": "E:\\",
       "fileSystem": "NTFS",
       "totalBytes": 1000186310656,
-      "availableBytes": 90117033984,
+      "availableBytes": 90105815040,
       "probeBytes": 134217728,
-      "sequentialWriteBytesPerSecond": 1991363904.100748,
-      "sequentialReadBytesPerSecond": 7020269685.018778,
+      "sequentialWriteBytesPerSecond": 2084038836.8810627,
+      "sequentialReadBytesPerSecond": 8513976301.032706,
       "unavailableReason": null,
       "meetsReferenceDevice": true
     },
@@ -54,14 +54,14 @@
         "id": "callback-allocation",
         "stage": "Callback allocation, per record",
         "statistic": "Maximum",
-        "target": 0,
+        "target": 1,
         "unit": "Bytes",
-        "requirement": "No unpooled allocation on the callback path (R9, R11).",
+        "requirement": "No unpooled allocation on the callback path (R9, R11). Measured as the slope of admission\u0027s allocation against records admitted, so a fixed setup cost is not read as a per-record one. One byte per record is the resolution at which a slope tells growth from noise; the adapter\u0027s own allocation is a separate quantity and is never added to this one (ADR-009).",
         "lowerIsBetter": true
       },
-      "outcome": "Missed",
-      "measured": 1400.7732185505527,
-      "evidence": "Busiest level \u0027peak\u0027. 103\u00A0812\u00A0704 bytes allocated on the delivery thread across 74\u00A0111 admitted records. Series \u0027capture-comparison-20260921-series\u0027."
+      "outcome": "Met",
+      "measured": 0.0008516074089844582,
+      "evidence": "Fitted across levels \u0027paced\u0027 and \u0027queue-bound\u0027: 1\u00A0616 bytes over 736 records against 1\u00A0680 bytes over 75\u00A0888. About 1\u00A0615 bytes of that does not grow with the record count. Both runs replay the same evidence through the same adapter, once with the admission table and once with none, so what is left is admission\u0027s own cost. Series \u0027capture-comparison-20260921-series\u0027."
     },
     {
       "budget": {
@@ -158,7 +158,7 @@
         "lowerIsBetter": false
       },
       "outcome": "Missed",
-      "measured": 24473.701973443403,
+      "measured": 24495.625554360657,
       "evidence": "Busiest level \u0027peak\u0027. This is the fixture\u0027s rate, not the pipeline\u0027s ceiling, and the interval is seconds rather than the ten minutes the budget names. Series \u0027capture-comparison-20260921-series\u0027."
     },
     {
@@ -247,8 +247,8 @@
     "The reference device is defined by sustained throughput, so this measures the volume rather than quoting a model name.",
     "OverheadClass stays Unmeasured until a capture-impact measurement exists; this baseline starts no capture."
   ],
-  "budgetsMet": 2,
-  "budgetsMissed": 2,
+  "budgetsMet": 3,
+  "budgetsMissed": 1,
   "budgetsUnmeasured": 6,
   "everyBudgetMet": false
 }
