@@ -18,14 +18,12 @@ internal static partial class Program
             null,
             20_260_920,
             2,
-            8,
-            4_096,
-            2,
-            4_096,
             500_000,
             true,
             false,
-            false);
+            false,
+            "default",
+            LoadSeries.Default);
         error = null;
         for (int index = 0; index < args.Length; index++)
         {
@@ -49,25 +47,9 @@ internal static partial class Program
             {
                 options = options with { Seed = seed };
             }
-            else if (name == "--connections" && TryBounded(value, 1, 1_024, out int connections))
-            {
-                options = options with { Connections = connections };
-            }
-            else if (name == "--messages" && TryBounded(value, 1, 100_000, out int messages))
-            {
-                options = options with { Messages = messages };
-            }
-            else if (name == "--bytes" && TryBounded(value, 1, 1_048_576, out int maximumBytes))
-            {
-                options = options with { MaximumBytes = maximumBytes };
-            }
             else if (name == "--grace" && TryBounded(value, 0, 60, out int grace))
             {
                 options = options with { GraceSeconds = grace, GraceWasGiven = true };
-            }
-            else if (name == "--batch-records" && TryBounded(value, 1, 100_000, out int batch))
-            {
-                options = options with { JournalBatchRecords = batch };
             }
             else if (name == "--record-budget" && TryBounded(value, 1, 1_000_000, out int budget))
             {
@@ -81,6 +63,14 @@ internal static partial class Program
             {
                 options = options with { RequestCallStacks = requestStacks };
             }
+            else if (name == "--series" && LoadSeries.Find(value) is { } series)
+            {
+                options = options with { SeriesName = value, Levels = series };
+            }
+            else if (name == "--levels" && LoadSeries.Select(value) is { } chosen)
+            {
+                options = options with { SeriesName = value, Levels = chosen };
+            }
             else
             {
                 error = $"Unknown option or invalid value: {name} {value}";
@@ -90,7 +80,7 @@ internal static partial class Program
 
         if (options.RequestCallStacks && !options.GraceWasGiven)
         {
-            // Stack walking slows delivery enough that the default grace truncates the run and reports a
+            // Stack walking slows delivery enough that the default grace truncates a level and reports a
             // coverage collapse that is an artefact of the grace, not of the source. The larger default is
             // recorded in the result like any other capture-affecting setting (section 1.4).
             options = options with { GraceSeconds = StackGraceSeconds };
@@ -102,8 +92,7 @@ internal static partial class Program
         return true;
     }
 
-    private static bool TryBoolean(string value, out bool parsed) =>
-        bool.TryParse(value, out parsed);
+    private static bool TryBoolean(string value, out bool parsed) => bool.TryParse(value, out parsed);
 
     private static bool TryBounded(string value, int minimum, int maximum, out int parsed) =>
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parsed)
@@ -112,22 +101,31 @@ internal static partial class Program
 
     private static void PrintHelp()
     {
-        Console.Error.WriteLine("InterCat IC-009 admitted-journal versus diagnostic-ETL comparison");
+        Console.Error.WriteLine("InterCat IC-009 admitted-journal versus diagnostic-ETL load series");
         Console.Error.WriteLine();
         Console.Error.WriteLine("  dotnet run --project tools/InterCat.CaptureComparison -c Release -- [options]");
         Console.Error.WriteLine();
         Console.Error.WriteLine("  --output <new-dir>       Immutable result directory (default: timestamped bench/results path)");
         Console.Error.WriteLine("  --workload <exe>         InterCat.TestWorkloads.exe override");
-        Console.Error.WriteLine("  --seed <n>               Seed used identically by both runs");
-        Console.Error.WriteLine("  --connections <n>        TCP connections per run");
-        Console.Error.WriteLine("  --messages <n>           Messages per connection");
-        Console.Error.WriteLine("  --bytes <n>              Maximum message bytes");
+        Console.Error.WriteLine("  --seed <n>               Seed used identically by every run");
+        Console.Error.WriteLine("  --series <name>          Declared series to run: default, quick");
+        Console.Error.WriteLine("  --levels <a,b,...>       Explicit levels from the default series");
         Console.Error.WriteLine("  --grace <seconds>        Reorder grace after each workload");
-        Console.Error.WriteLine("  --batch-records <n>      Records per durable journal-probe batch");
         Console.Error.WriteLine("  --record-budget <n>      Bounded replay/coverage record budget");
         Console.Error.WriteLine("  --extended-data <bool>   Copy bounded EVENT_RECORD extended items (default true)");
         Console.Error.WriteLine("  --request-stacks <bool>  Ask ETW for call-stack extended items (default false;");
-        Console.Error.WriteLine("                           materially raises per-event cost, so it is a separate load point)");
+        Console.Error.WriteLine("                           materially raises per-event cost, so it is a separate series)");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Declared levels:");
+        foreach (LoadLevel level in LoadSeries.Default)
+        {
+            Console.Error.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"  {level.Name,-12} {level.DeclaredMessages,8:N0} messages, {level.InterMessageDelayMilliseconds,3} ms pacing, "
+                + $"queue {level.QueueCapacityRecords,6:N0}, batch {level.JournalBatchRecords,5:N0}"));
+            Console.Error.WriteLine($"               {level.Intent}");
+        }
+
         Console.Error.WriteLine();
         Console.Error.WriteLine("Requires an elevated Windows shell. Existing output is never overwritten.");
     }
@@ -136,13 +134,11 @@ internal static partial class Program
         string OutputDirectory,
         string? WorkloadPath,
         int Seed,
-        int Connections,
-        int Messages,
-        int MaximumBytes,
         int GraceSeconds,
-        int JournalBatchRecords,
         int RecordBudget,
         bool PreserveExtendedData,
         bool RequestCallStacks,
-        bool GraceWasGiven);
+        bool GraceWasGiven,
+        string SeriesName,
+        IReadOnlyList<LoadLevel> Levels);
 }

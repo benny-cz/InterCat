@@ -33,10 +33,25 @@ enablement, so without it no record carries an extended item and envelope fideli
 stays untested. Stack walking also slows delivery, so the reorder grace defaults to 6 seconds when
 stacks are requested.
 
-`capture-comparison-20260921-baseline` and `capture-comparison-20260921-stacks` are the two runs ADR-008
-cites. Both still emit `decisionReady: false`: one configured load point is not the queue and disk
-saturation series the gate requires, and the host build is outside the section 1.3 support matrix.
+Without `--series` or `--levels` the harness runs the declared five-level series: `paced`, `steady` and
+`peak` raise the workload's own rate, while `queue-bound` and `disk-bound` hold the peak rate and shrink
+a bound instead, because a machine faster than the fixture never reaches its queue by running the fixture
+harder. `--help` prints every level with its settings and its intent. `--series quick` runs the paced
+level alone and says in its blockers that a point is not a series.
+
+Before any capture starts, the harness measures the volume it will write to and reports it against the
+section 12 reference device. A rate without its machine is not a measurement.
+
+Four runs are committed. `capture-comparison-20260921-baseline` and `-stacks` are single points in the
+older `intercat.capture-comparison.v0` shape, which wrote every truth operation into the result.
+`capture-comparison-20260921-series` and `-series-stacks` are the five-level series ADR-008 cites; their
+per-level documents use `intercat.capture-comparison.v1`, which keeps every counter and criterion whole
+and reduces the per-operation rows to the ones that failed, bounded and counted. All four still emit
+`decisionReady: false`: the host build is outside the section 1.3 support matrix, and this build refuses
+to read the ETL session's own loss counters at stop.
 
 Only counters are committed. A run's `.ijp0` journal and `.etl` file hold records from every process on
-the machine, so they are gitignored and stay local (P16). The fixture's own truth logs are committed,
-because they are the independent expected result the run is scored against.
+the machine, so they are gitignored and stay local (P16). The single-point runs commit their fixture
+truth logs, because they are the independent expected result those runs are scored against; a series'
+per-level truth logs are gitignored instead, because its high levels reach tens of megabytes and every
+one of them is reproducible from the recorded seed and level.

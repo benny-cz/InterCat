@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using InterCat.Capture.Windows;
@@ -12,6 +13,17 @@ internal static partial class Program
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
     };
+
+    private static readonly string[] SeriesNotes =
+    [
+        "journal-probe-v0 and callback-envelope-candidate-v0 are disposable IC-009 formats, not journal-v1.",
+        "The ETL is separately labeled original diagnostic evidence and is not claimed to be metadata-only.",
+        "Coverage is evaluated independently against each level's own truth log; records from two runs are never merged.",
+        "Loss, application drops and policy omissions remain separate counters and are never summed.",
+        "Per-thread processor time comes from the Windows thread clock, whose tick is about 15.6 ms; a zero reading means below one tick, not free.",
+        "Extended-data items are opt-in per provider enablement, so a run that does not request them observes none. That is a setting, not an absence of items.",
+        "A constrained level shrinks a bound instead of raising the rate. Its drops are the bound working, not a source failure, and the constraint is recorded with them.",
+    ];
 
     public static async Task<int> Main(string[] args)
     {
@@ -81,13 +93,16 @@ internal static partial class Program
         Directory.CreateDirectory(outputDirectory);
         DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
 
+        Console.Error.WriteLine("Measuring the output volume before any capture starts...");
+        MachineDescriptor machine = StorageProbe.Describe(outputDirectory);
+
         var probe = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
         string[] sourceIds =
         [
             WindowsSourceCatalog.KernelProcessSourceId,
             WindowsSourceCatalog.KernelNetworkSourceId,
         ];
-        Console.Error.WriteLine("Compiling one admission plan for both evidence variants...");
+        Console.Error.WriteLine("Compiling one admission plan for every level and both evidence variants...");
         IReadOnlyList<SourceAdmissionPlan> sources = probe.CompilePlans(
             sourceIds,
             out IReadOnlyList<string> refusals);
@@ -104,70 +119,123 @@ internal static partial class Program
             return 3;
         }
 
+        var levels = new List<CaptureComparisonResult>(options.Levels.Count);
+        for (int index = 0; index < options.Levels.Count; index++)
+        {
+            LoadLevel level = options.Levels[index];
+            Console.Error.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"Level {index + 1}/{options.Levels.Count} '{level.Name}': {level.DeclaredMessages:N0} messages, "
+                + $"queue {level.QueueCapacityRecords:N0}, batch {level.JournalBatchRecords:N0}..."));
+            levels.Add(await RunLevelAsync(
+                outputDirectory,
+                workload,
+                environment,
+                sources,
+                providers,
+                refusals,
+                options,
+                level,
+                cancellationToken).ConfigureAwait(false));
+        }
+
+        SeriesSaturationSummary saturation = Summarize(levels);
+        List<string> blockers = BuildSeriesBlockers(levels, saturation, machine, environment);
+        var series = new CaptureSeriesResult
+        {
+            Schema = "intercat.capture-comparison-series.v0",
+            StartedUtc = startedUtc,
+            CompletedUtc = DateTimeOffset.UtcNow,
+            Environment = environment,
+            Machine = machine,
+            SeriesName = options.SeriesName,
+            Seed = options.Seed,
+            RecordBudget = options.RecordBudget,
+            PreserveExtendedData = options.PreserveExtendedData,
+            RequestCallStacks = options.RequestCallStacks,
+            PlanRefusals = refusals,
+            Levels = levels,
+            Saturation = saturation,
+            DecisionReady = blockers.Count == 0,
+            DecisionBlockers = blockers,
+            Notes = SeriesNotes,
+        };
+
+        await File.WriteAllTextAsync(
+            Path.Combine(outputDirectory, "series.json"),
+            JsonSerializer.Serialize(series, Json),
+            cancellationToken).ConfigureAwait(false);
+
+        Console.WriteLine(JsonSerializer.Serialize(series, Json));
+        PrintSeriesSummary(series, outputDirectory);
+        return series.DecisionReady ? 0 : 1;
+    }
+
+    private static async Task<CaptureComparisonResult> RunLevelAsync(
+        string outputDirectory,
+        string workload,
+        ProbeEnvironment environment,
+        IReadOnlyList<SourceAdmissionPlan> sources,
+        IReadOnlyList<ProviderEnablementRequest> providers,
+        IReadOnlyList<string> refusals,
+        Options options,
+        LoadLevel level,
+        CancellationToken cancellationToken)
+    {
+        string levelDirectory = Path.Combine(outputDirectory, "levels", level.Name);
+        Directory.CreateDirectory(levelDirectory);
         var settings = new ComparisonSettings(
             options.Seed,
-            options.Connections,
-            options.Messages,
-            options.MaximumBytes,
+            level.Connections,
+            level.MessagesPerConnection,
+            level.MaximumMessageBytes,
+            level.InterMessageDelayMilliseconds,
             options.GraceSeconds,
-            options.JournalBatchRecords,
+            level.QueueCapacityRecords,
+            level.JournalBatchRecords,
             options.RecordBudget,
             options.PreserveExtendedData,
             options.RequestCallStacks);
 
-        Console.Error.WriteLine("Running admitted-journal projection variant...");
+        DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
+        Console.Error.WriteLine("  admitted-journal callback envelope...");
         CaptureComparisonVariant journal = await RunJournalAsync(
-            outputDirectory,
+            levelDirectory,
             workload,
             sources,
             providers,
             settings,
             cancellationToken).ConfigureAwait(false);
 
-        Console.Error.WriteLine("Running diagnostic ETL variant...");
+        Console.Error.WriteLine("  diagnostic ETL...");
         CaptureComparisonVariant etl = await RunEtlAsync(
-            outputDirectory,
+            levelDirectory,
             workload,
             sources,
             providers,
             settings,
             cancellationToken).ConfigureAwait(false);
 
-        List<string> blockers = BuildDecisionBlockers(journal, etl);
         var result = new CaptureComparisonResult
         {
-            Schema = "intercat.capture-comparison.v0",
+            Schema = "intercat.capture-comparison.v1",
             StartedUtc = startedUtc,
             CompletedUtc = DateTimeOffset.UtcNow,
             Environment = environment,
+            Level = level,
             Settings = settings,
             PlanRefusals = refusals,
             Journal = journal,
             Etl = etl,
             SameSeededWorkload = true,
-            DecisionReady = blockers.Count == 0,
-            DecisionBlockers = blockers,
-            Notes =
-            [
-                "journal-probe-v0 and callback-envelope-candidate-v0 are disposable IC-009 formats, not journal-v1.",
-                "Extended-data items are copied as bounded byte prefixes; a longer item keeps its original length and a truncation flag.",
-                "A denied extended type is a counted policy omission, not an unexplained gap; its bytes are never persisted.",
-                "The ETL is separately labeled original diagnostic evidence and is not claimed to be metadata-only.",
-                "Coverage is evaluated independently against each seeded run's truth log; records from the two runs are never merged.",
-                "Loss, application drops and policy omissions remain separate counters and are never summed.",
-                "Per-thread processor time comes from the Windows thread clock, whose tick is about 15.6 ms; a zero reading means below one tick, not free.",
-                "Extended-data items are opt-in per provider enablement, so a run that does not request them observes none. That is a setting, not an absence of items.",
-            ],
+            LevelBlockers = BuildLevelBlockers(level, journal, etl),
+            Notes = SeriesNotes,
         };
 
-        string resultPath = Path.Combine(outputDirectory, "comparison.json");
         await File.WriteAllTextAsync(
-            resultPath,
+            Path.Combine(levelDirectory, "comparison.json"),
             JsonSerializer.Serialize(result, Json),
             cancellationToken).ConfigureAwait(false);
-
-        Console.WriteLine(JsonSerializer.Serialize(result, Json));
-        PrintSummary(result, outputDirectory);
-        return result.DecisionReady ? 0 : 1;
+        return result;
     }
 }

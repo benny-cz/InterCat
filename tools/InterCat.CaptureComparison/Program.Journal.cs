@@ -122,7 +122,7 @@ internal static partial class Program
             CaptureId = identity.CaptureId,
             Providers = start.Providers,
             Health = stop.Health,
-            Coverage = coverage,
+            Coverage = CoverageSummary.From(coverage),
             Evidence = new(
                 "journal-probe-v0",
                 Path.GetRelativePath(root, evidencePath),
@@ -166,6 +166,15 @@ internal static partial class Program
             ReplayBudgetDrops = replayed.Records.Count - admittedRecords.Count,
             ReplaySourceEventsLost = 0,
             ExactAdmittedProjectionReplay = exact,
+            Saturation = LoadSeries.Assess(
+                stop.Health,
+                captureStages,
+                new(
+                    fileSummary.DurableFlushes,
+                    fileSummary.Writer.DurableFlushLatency.TotalNanoseconds / 1_000_000d,
+                    fileSummary.Writer.WriterThreadCpu?.TotalMilliseconds ?? 0),
+                acquisitionMilliseconds),
+            SourceLossKnown = true,
             Degradations = stop.Degradations,
         };
     }

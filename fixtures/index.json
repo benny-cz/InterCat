@@ -216,17 +216,18 @@
     {
       "id": "FX-JOURNAL-001",
       "title": "Callback envelope admission, extended data and clock replay probe",
-      "scenario": "Sections 18.1–18.2: known metadata, an unknown schema with opaque bytes, known content under a metadata-only policy, header-only evidence, allowlisted and denied extended items, a real EVENT_RECORD extended-data array read in bounded copies, and the capture source clock persisted with the file.",
+      "scenario": "Sections 18.1–18.2: known metadata, an unknown schema with opaque bytes, known content under a metadata-only policy, header-only evidence, allowlisted and denied extended items, a real EVENT_RECORD extended-data array read in bounded copies, and the capture source clock persisted with the file. The IC-009 harness then drives a declared load series through both evidence variants, so the bounded queue reaches its limit and the writer becomes the pacing stage.",
       "milestone": "M0",
       "backlog": [
         "IC-009"
       ],
       "covers": {
         "rules": [
-          "R3",
-          "R9",
           "R17",
-          "R21"
+          "R21",
+          "R3",
+          "R8",
+          "R9"
         ],
         "invariants": [
           "I8",
@@ -250,7 +251,7 @@
           "build": "portable",
           "supportTier": "NotApplicable",
           "date": "2026-09-21",
-          "result": "The version-0 probe round-trips admitted identity, extended items and the source clock descriptor, excludes unapproved bodies and denied extended types, and rejects checksum corruption. The extended-data walker is asserted against a synthetic EVENT_RECORD, not against a live capture. It is not journal-v1 or an ETL comparison."
+          "result": "The version-0 probe round-trips admitted identity, extended items and the source clock descriptor, excludes unapproved bodies and denied extended types, and rejects checksum corruption. The extended-data walker is asserted against a synthetic EVENT_RECORD, not against a live capture. It is not journal-v1 or an ETL comparison. The load series, its saturation classifier and the storage probe arithmetic are asserted portably; the elevated runs they describe are recorded under bench/results/."
         }
       ],
       "provenance": {
@@ -268,7 +269,16 @@
         "R3: a record that declares no extended item is distinguished from an unreadable one",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "I8: a probe file carries the capture's source clock and replays it unchanged",
-        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor"
+        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor",
+        "R8: a series declares every setting that changes what it measures",
+        "R8: an unknown series or level is refused rather than silently reduced",
+        "R8: a full bounded queue is reported as a counted drop, not as loss",
+        "R8: loss before admission outranks every queue outcome",
+        "R8: a queue past half its bound is pressure, and below it is headroom",
+        "R8: a writer whose flushes outlast the acquisition window set the pace",
+        "R21: a variant with no queue reports no utilization rather than zero",
+        "R3: an unreadable loss counter leaves loss unknown rather than zero",
+        "R3: a throughput with no elapsed time is unmeasured rather than infinite"
       ]
     }
   ],
@@ -400,6 +410,7 @@
         "R21: a probe file without a clock frame reports no clock rather than a default one",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
+        "R21: a variant with no queue reports no utilization rather than zero",
         "R21: an item with a declared size but no data is counted, not read at a guess",
         "R21: an unmeasured stage total reads as unknown rather than as zero",
         "R21: the record accessor either reaches the callback record or states why it cannot",
@@ -415,9 +426,11 @@
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
         "R3: a single sample answers every quantile from the bucket it fell in",
+        "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an empty latency histogram reports no quantile rather than zero",
         "R3: an operation without a paired completion keeps completed bytes unknown",
+        "R3: an unreadable loss counter leaves loss unknown rather than zero",
         "R3: unknown and observed zero remain distinct"
       ],
       "R5": [
@@ -432,8 +445,14 @@
         "R8: a capture moves Idle to Recording to Closed and reports its own counters",
         "R8: a capture reports per-thread processor time or says the host cannot",
         "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
+        "R8: a full bounded queue is reported as a counted drop, not as loss",
+        "R8: a queue past half its bound is pressure, and below it is headroom",
+        "R8: a series declares every setting that changes what it measures",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
+        "R8: a writer whose flushes outlast the acquisition window set the pace",
+        "R8: an unknown series or level is refused rather than silently reduced",
         "R8: invalid ETL bounds and ambiguous output paths are refused",
+        "R8: loss before admission outranks every queue outcome",
         "R8: source-reported loss is read into its own counter, never merged with drops",
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],

@@ -59,7 +59,7 @@ internal static partial class Program
         CaptureStageSnapshot replayStages = sink.ReadStages(
             GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart,
             replayCpu);
-        CaptureHealthSnapshot health = sink.Snapshot(stop.EventsLost, 0);
+        CaptureHealthSnapshot health = sink.Snapshot(stop.EventsLost ?? 0, 0);
         IReadOnlyList<TruthRecord> truth = await ReadTruthAsync(directory, cancellationToken).ConfigureAwait(false);
         var table = new EventAdmissionTable(sources);
         TcpCoverageResult coverage = BuildCoverage(truth, sink.Records, table, identity.CaptureId);
@@ -78,7 +78,7 @@ internal static partial class Program
             CaptureId = identity.CaptureId,
             Providers = start.Providers,
             Health = health,
-            Coverage = coverage,
+            Coverage = CoverageSummary.From(coverage),
             Evidence = new(
                 "original-diagnostic-etl",
                 Path.GetRelativePath(root, evidencePath),
@@ -126,6 +126,13 @@ internal static partial class Program
             ReplayBudgetDrops = health.ApplicationDrops,
             ReplaySourceEventsLost = replay.SourceEventsLost,
             ExactAdmittedProjectionReplay = null,
+            Saturation = LoadSeries.Assess(
+                health,
+                null,
+                null,
+                acquisitionMilliseconds,
+                sourceLossKnown: stop.EventsLost is not null),
+            SourceLossKnown = stop.EventsLost is not null,
             Degradations = stop.Degradations,
         };
     }

@@ -19,6 +19,11 @@ internal sealed record TcpLoopbackOptions
     public int MessagesPerConnection { get; init; } = 8;
     public int MaximumMessageBytes { get; init; } = 4_096;
     public int MinimumMessageBytes { get; init; } = 64;
+    /// <summary>
+    /// Pacing between messages. The 15 ms default keeps the fixture readable; a load series sets it to
+    /// zero so the workload, rather than the pacing, decides the rate. It is recorded with every run,
+    /// because a rate without its pacing is not a measurement (section 12).
+    /// </summary>
     public int InterMessageDelayMilliseconds { get; init; } = 15;
     public int Port { get; init; }
 }
@@ -76,6 +81,7 @@ internal static class TcpLoopbackScenario
             options.MessagesPerConnection,
             options.MinimumMessageBytes,
             options.MaximumMessageBytes,
+            options.InterMessageDelayMilliseconds,
             port,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -263,6 +269,8 @@ internal static class TcpLoopbackScenario
         start.ArgumentList.Add(options.MessagesPerConnection.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--bytes");
         start.ArgumentList.Add(options.MaximumMessageBytes.ToString(CultureInfo.InvariantCulture));
+        start.ArgumentList.Add("--delay");
+        start.ArgumentList.Add(options.InterMessageDelayMilliseconds.ToString(CultureInfo.InvariantCulture));
         if (port > 0)
         {
             start.ArgumentList.Add("--port");

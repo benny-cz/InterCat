@@ -15,7 +15,12 @@ public sealed record EtlCaptureStopResult(
     CaptureLifecycle State,
     string OutputPath,
     long FileLengthBytes,
-    long EventsLost,
+
+    /// <summary>
+    /// Provider-reported loss, or null when the session's counters could not be read at stop. Null is not
+    /// zero: an unreadable counter leaves the loss unknown, and a degradation records why (R3, R21).
+    /// </summary>
+    long? EventsLost,
     DateTimeOffset RecordingStartedUtc,
     DateTimeOffset RecordingStoppedUtc,
     bool DurationLimitReached,
@@ -40,7 +45,7 @@ public sealed class OwnedEtlFileCapture : IAsyncDisposable
     private string outputPath = string.Empty;
     private DateTimeOffset recordingStartedUtc;
     private DateTimeOffset recordingStoppedUtc;
-    private long eventsLost;
+    private long? eventsLost;
     private bool durationLimitReached;
     private bool disposed;
 
@@ -278,7 +283,7 @@ public sealed class OwnedEtlFileCapture : IAsyncDisposable
         try
         {
             current.StopSession();
-            eventsLost = Math.Max(eventsLost, current.ReadEventsLost());
+            eventsLost = Math.Max(eventsLost ?? 0, current.ReadEventsLost());
         }
         catch (EtwSessionException exception)
         {

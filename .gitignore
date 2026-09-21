@@ -64,4 +64,8 @@ fixtures/**/runs/
 # the fixture's. Their counters are committed; their records never are (P16).
 bench/results/**/*.etl
 bench/results/**/*.ijp0
+
+# A load series writes one truth log per level, and the high levels reach tens of megabytes. The
+# series result carries every counter; the per-level oracles stay local and are reproducible.
+bench/results/**/levels/**/truth-*.jsonl
 .vs/

@@ -932,6 +932,8 @@ Export presets: metadata-only derived report, redacted normalized session, or or
 
 These are proposed engineering acceptance budgets, not measured results. Revise them openly through an ADR with measured evidence rather than quietly dropping a benchmark. Report broker, analysis and UI costs separately, including OS ETW buffers and mapped-file residency.
 
+A result states whether the machine it ran on met this reference, measured rather than asserted: throughput is what defines the device here, so a harness measures the volume it will write to before it starts capturing, and reports the figures next to the budgets they are compared against.
+
 Reference machine for every number in this section, confirmed or revised in M0: an x64 desktop-class CPU with 8 physical cores and 16 threads; 32 GiB RAM; an NVMe SSD sustaining at least 2 GB/s sequential read and 1 GB/s write; a 2560 × 1440 display at 100% scaling; the primary supported build of §1.3; and no other profiler or tracing session running. Publish the exact CPU and storage models, Windows build, source schema versions, workload seed and distributions with every result: a number without them is not a measurement.
 
 | Area | Initial target and measurement |
@@ -1659,6 +1661,8 @@ Error categories, each with its own presentation and its own counter. Presentati
 | `Internal` | A violated invariant | Fail loudly in debug; contain and report in release, naming the rule or invariant ID |
 
 Defect counters are session statistics, written to the manifest and surfaced in the health strip: admitted records; policy omissions by reason; undecodable records by reason; provider-reported loss; ETW buffer loss; broker drops; application drops; unresolved-join evictions; quarantined timestamps; dictionary, cache and spill evictions; and capability transitions per source. A counter is never folded into another, and no total is presented that adds overlapping counters (§9.3).
+
+A counter that could not be read is unknown, not zero. When a source refuses its own counters — a session whose loss counters cannot be read at stop, a host without a per-thread processor clock — the quantity is recorded as unmeasured with the reason, the health strip shows it as unknown, and no session carrying one may be called loss-free. Reporting a failed read as a zero would turn a diagnostic failure into a clean result, which is the one direction an error must never take (R3, R21).
 
 Structured diagnostics obey R11: no logging on the callback, decode, aggregate or paint path — counters instead. The support bundle contains manifests, capability reports, counters, versions and timings, and by default contains no payloads, endpoint strings, command lines or raw events (P16). Its contents are listed before it is written.
 

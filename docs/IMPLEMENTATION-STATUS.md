@@ -1,14 +1,14 @@
 # InterCat implementation status
 
 Last updated: 2026-09-21  
-Plan revision: 6
+Plan revision: 7
 Current milestone: M0 — feasibility and product proof
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
 ## Current outcome
 
-The repository has a buildable .NET 10 solution, enforced module boundaries, a schema-driven capability inventory, an owned ETW session with an independent health ledger, seeded truth workloads, and measured TCP, named-pipe and RPC feasibility results whose coverage tiers are computed rather than argued. IC-007 supplies the production identity and local-clock foundation. IC-009 has now been measured, not merely made runnable: the owned callback envelope copies bounded arbitrary ETW extended-data items, persists the identity-v1 source clock descriptor with the file, and carries an isolated per-stage overhead ledger, and `InterCat.CaptureComparison` has run twice from an elevated shell against the same seeded workload. Both runs replayed with an identical ordered fingerprint and both remain `decisionReady: false`: the baseline run states three blockers and the call-stack run two, and none of them is hidden. Durable production sessions, journal-v1, the broker and mechanism breadth beyond the measured probes are still not implemented.
+The repository has a buildable .NET 10 solution, enforced module boundaries, a schema-driven capability inventory, an owned ETW session with an independent health ledger, seeded truth workloads, and measured TCP, named-pipe and RPC feasibility results whose coverage tiers are computed rather than argued. IC-007 supplies the production identity and local-clock foundation. IC-009 has now been measured across a declared load series, not at a single point: the owned callback envelope copies bounded arbitrary ETW extended-data items, persists the identity-v1 source clock descriptor with the file, and carries an isolated per-stage overhead ledger, and `InterCat.CaptureComparison` runs five declared levels through both evidence variants from an elevated shell. The series reaches the bounded queue's limit and counts its drops without loss, and makes the writer the pacing stage. Every level of both series replayed with an identical ordered fingerprint. Four of ADR-008's five gate inputs are now recorded; what remains is a supported build and the ETL's own loss counters, which this build refuses to read at stop. Durable production sessions, journal-v1, the broker and mechanism breadth beyond the measured probes are still not implemented.
 
 The first measured run of `FX-TCP-001` met all six §14.2 criteria at 100% with zero false peer attributions and byte totals equal to the truth log. It was taken on build `10.0.26220.0-x64`, which is outside the §1.3 support matrix, so TCP stays at tier `ExperimentalEvidence`: the thresholds were met, the build was not one we support.
 
@@ -30,24 +30,22 @@ The workspace prototype now carries a measured palette, randomized navigation an
 | IC-006 ALPC/RPC feasibility | RPC measured; ALPC not measurable in M0 | `icat measure rpc` runs `FX-RPC-001` twice in one session and computes the tier: 8 of 8 calls observed, bound and completion-paired, tier `ExperimentalEvidence`, gaps recorded in ADR-004. Server-side records arrive but share no activity id with the client, so peers stay unresolved rather than inferred. ALPC remains a kernel flag group with no registered manifest provider and no tier claimed. |
 | IC-007 IDs and clocks | Complete for its live/local M0 scope | `contracts/identity-v1.md`, ADR-005 and ADR-006 define raw and normalized observation IDs, process/resource lifecycle epochs, alias revisions and native/local/wall/workspace time. `FX-IDENTITY-001` asserts PID and resource reuse, late old-key resolution, cross-host isolation, immutable alignment, checked QPC conversion and quarantine. The full I1/I2 standalone-ETL proof remains correctly assigned to IC-013 rather than being claimed here. |
 | IC-008 interaction prototype | Near complete for M0 | Equal panes, ranked selection, inspector, legend with glyphs, table equivalents for graph and timeline, keyboard and automation paths, a measured theme (`theme/`) whose thresholds are enforced by tests, 41 randomized §6.7 and boundary property tests, and the scored §17 review in `docs/reviews/M0-interaction-review.md` (11 of 20, with 7 defects found and fixed). Remaining: the L0–L5 ladder, a per-edge evidence list, the diagonal coverage hatch, and a headless UI test lane for keyboard shortcuts. |
-| IC-009 journal/admission validation | In progress; envelope, clock and stage ledger measured on real callbacks | `FX-JOURNAL-001` asserts unknown-schema/content omission, per-record attribution, extended-data replay, owned copies, corruption refusal and clock-frame refusal. The callback envelope copies up to four extended items of up to 64 bytes with original lengths and truncation flags, persists the source clock descriptor as the file's first frame, and reports callback latency, delivery-thread CPU and allocations, queue high-water, writer CPU and per-flush latency as separate quantities. Two elevated runs are recorded in `bench/results/`. Remaining: a declared load series to queue and disk saturation on the reference device, and a repeat on a supported build. ADR-008 stays proposed; no production format is frozen. |
+| IC-009 journal/admission validation | In progress; envelope, clock, stage ledger and saturation series measured | `FX-JOURNAL-001` asserts unknown-schema/content omission, per-record attribution, extended-data replay, owned copies, corruption refusal and clock-frame refusal. The callback envelope copies up to four extended items of up to 64 bytes with original lengths and truncation flags, persists the source clock descriptor as the file's first frame, and reports callback latency, delivery-thread CPU and allocations, queue high-water, writer CPU and per-flush latency as separate quantities. `LoadSeries` declares five levels: three raise the workload's rate and two shrink a bound instead, because a machine faster than the fixture never reaches its queue by running the fixture harder. `StorageProbe` measures the output volume against the §12 reference device before any capture starts. Four single-point and series runs are recorded in `bench/results/`. Remaining: a repeat on a supported build, and a build whose ETL loss counters can be read. ADR-008 stays proposed; no production format is frozen. |
 | IC-010 benchmark baseline | Not started | Reference hardware and stage budgets are still unmeasured; `OverheadClass` is reported as `Unmeasured` everywhere. |
 
 M1 and later items have not started. `InterCat.Storage` contains only explicitly disposable IC-009 batch/file probes; journal-v1, segments, manifests and production recovery remain unimplemented.
 
-The two elevated IC-009 runs of 2026-09-21 are the current state of the evidence gate:
+The IC-009 load series of 2026-09-21 is the current state of the evidence gate. The host measured 24 logical processors, 64 GiB and an `E:\` volume at about 2.0 GB/s sequential write and 8.6 GB/s read, which meets the §12 reference machine and device:
 
-| | baseline | call stacks requested |
-|---|---|---|
-| Journal observed / admitted | 707 / 707 | 909 / 822 |
-| ETL observed / admitted | 854 / 852 | 849 / 759 |
-| Loss, drops | none in either variant | none in either variant |
-| Evidence size, journal vs ETL | 226 KiB vs 1.63 MiB | 277 KiB vs 1.75 MiB |
-| Extended items copied / persisted / replayed | 0 / 0 / 0 (none requested) | 190 / 190 / 190 `STACK_TRACE64` |
-| Source clock | confirmed and replayed identical | confirmed and replayed identical |
-| Callback p50 / p99 | [1.02, 2.05) µs / [8.19, 16.38) µs | [1.02, 2.05) µs / [16.38, 32.77) µs |
-| Queue high-water | 706 of 65,536 | 657 of 65,536 |
-| Decision blockers | 3 | 2 |
+| Level | messages | admitted/s | queue high-water | drops | journal vs ETL | outcome |
+|---|---|---|---|---|---|---|
+| paced | 16 | 248 | 665 of 65,536 | 0 | 0.21 vs 1.88 MiB | headroom |
+| steady | 2,048 | 4,183 | 6,718 of 65,536 | 0 | 3.37 vs 3.38 MiB | headroom |
+| peak | 16,384 | 21,028 | 41,605 of 65,536 | 0 | 25.75 vs 11.12 MiB | queue pressure |
+| queue-bound | 16,384 | 1,567 | 512 of 512 | 76,315 | 1.94 vs 11.25 MiB | queue saturated |
+| disk-bound | 16,384 | 20,930 | 60,988 of 65,536 | 0 | 25.83 vs 11.38 MiB | queue pressure |
+
+The same series with call stacks requested copied, persisted and replayed 72,285 of 72,285 extended items at its highest level. The clean series states three decision blockers and the call-stack series two.
 
 ## Implemented structure
 
@@ -62,7 +60,7 @@ The two elevated IC-009 runs of 2026-09-21 are the current state of the evidence
 - `InterCat.TestWorkloads`: the FX-TCP-001, FX-PIPE-001 and FX-RPC-001 scenarios and their truth log writer.
 - `tools/InterCat.ThemeReport`: regenerates `theme/tokens.json`, `theme/contrast-report.json` and `theme/README.md`.
 - `tools/InterCat.JournalProbe`: runs the portable Release admission/replay measurement and writes a self-limiting benchmark artifact.
-- `tools/InterCat.CaptureComparison`: elevated IC-009 same-seed journal/ETL harness. It maps callbacks into the envelope candidate on a dedicated writer thread, prints a side-by-side stage ledger with numbered decision blockers, refuses existing output, and emits `decisionReady: false` until every gate input is present.
+- `tools/InterCat.CaptureComparison`: elevated IC-009 same-seed journal/ETL harness. It runs a declared load series, maps callbacks into the envelope candidate on a dedicated writer thread, measures the output volume against the §12 reference device before capturing, classifies each level's saturation outcome from its own counters, prints a per-level table and a side-by-side stage ledger with numbered decision blockers, refuses existing output, and emits `decisionReady: false` until every gate input is present.
 - tests: Domain, Storage, Analysis, Application, Capture.Windows, CaptureComparison, Desktop, Property and Architecture.
 
 ## Decisions and plan corrections
@@ -76,6 +74,7 @@ The two elevated IC-009 runs of 2026-09-21 are the current state of the evidence
 - Per-thread processor time is the only honest attribution for a callback's cost, and the Windows thread clock advances about every 15.6 ms. A stage below one tick is reported as such, never as zero.
 - A denied extended type is a counted policy omission whose bytes never reach the file, and replay reproduces the omission instead of inventing the item. SIDs, TraceLogging schema items and provider traits are denied under metadata-only admission.
 - Plan revision 5 preserves revision 4's ADR/identity corrections and removes the IC-009/IC-011 cycle. IC-009 may implement a disposable real-callback envelope candidate needed for the evidence gate; IC-011 begins only after ADR-008 closes and owns the production `journal-v1` contract and implementation.
+- Plan revision 7 adds two rules the series made necessary: §20.6 states that a counter which could not be read is unknown rather than zero, and that no session carrying one may be called loss-free; §12 states that a result says whether its machine met the reference device, measured before capture rather than asserted.
 - Plan revision 6 corrects three things the implementation found: §18.1 now requires the capture's source clock descriptor to be persisted once per journal rather than only named per record, states that extended-data items are opt-in per enablement and must be recorded as a setting, and calls the item's second header field a linkage bit rather than a general flags word; §18.2's `ProviderPlan` names what `EnableProperties` decides; and §12 states how a quantized per-thread processor reading and a bucketed latency distribution are reported.
 - Admission offsets are compiled from the machine's own TDH manifest rather than from constants, so a schema change turns into a refusal with a reason instead of a misread field.
 - Measured field semantics for `Microsoft-Windows-Kernel-Network`: addresses and ports arrive in network byte order, and `saddr`/`sport` names the owning process's own endpoint on send and receive alike. The manifest message wording does not describe which side is local.
@@ -103,16 +102,16 @@ dotnet run --project src/InterCat.Cli --no-build -- measure rpc --calls 8
 dotnet run --project src/InterCat.Cli --no-build -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence --overwrite
 dotnet run --project tools/InterCat.ThemeReport --no-build -- theme
 dotnet run --project tools/InterCat.JournalProbe -c Release -- bench/results/journal-probe-portable.json 10000 7
-dotnet run --project tools/InterCat.CaptureComparison -c Release -- --output bench/results/capture-comparison-<run-id>
-dotnet run --project tools/InterCat.CaptureComparison -c Release -- --output bench/results/capture-comparison-<run-id>-stacks --request-stacks true
+dotnet run --project tools/InterCat.CaptureComparison -c Release -- --output bench/results/capture-comparison-<run-id>-series
+dotnet run --project tools/InterCat.CaptureComparison -c Release -- --output bench/results/capture-comparison-<run-id>-series-stacks --request-stacks true
 dotnet run --project src/InterCat.Desktop --no-build
 ```
 
 Results on 2026-09-21:
 
 - build: passed, 0 warnings, 0 errors across 21 projects, in Debug and Release;
-- tests: 162 passed, 0 failed (41 Property, 37 Domain, 36 Capture.Windows, 14 Analysis, 12 Storage, 10 Desktop, 5 Architecture, 5 CaptureComparison, 2 Application);
-- comparison harness: two elevated Release runs recorded under `bench/results/`, exit code 1 in both because decision blockers remain; 0 InterCat ETW sessions were left behind after either run;
+- tests: 171 passed, 0 failed (41 Property, 37 Domain, 36 Capture.Windows, 14 Analysis, 14 CaptureComparison, 12 Storage, 10 Desktop, 5 Architecture, 2 Application);
+- comparison harness: four elevated Release runs recorded under `bench/results/` - two single points and two five-level series - exit code 1 in every one because decision blockers remain; 0 InterCat ETW sessions were left behind;
 - journal probe: 10,000 records, 7 Release iterations; median combined admit/encode/decode rate 215,720 records/s, exact identity and extended-data replay, 0 unapproved bodies retained, complete attribution. This allocated about 33.7 MB per iteration and is not callback-path code;
 - theme verification: every recorded threshold met in both modes;
 - capability probe: passed; 1,237 published providers seen, 6 of 7 catalog sources registered and schema-readable;
@@ -120,7 +119,9 @@ Results on 2026-09-21:
 - coverage: 48 of 48 truth operations observed and bound to a flow instance with a byte measurement, 4 peer attributions with 0 false, 2 of 2 connections discovered with lifecycle, 4 of 4 memberships resolved, tier `ExperimentalEvidence`;
 - IC-009 elevated comparison `capture-comparison-20260921-baseline`: journal 707 observed and 707 admitted with no loss, drops or undecodable records; ETL 854 observed and 852 admitted; 226 KiB of admitted journal against 1.63 MiB of unfiltered ETL for the same fixture; the ordered envelope fingerprint replayed identically; the source clock was confirmed against a delivered record and read back identically; no record declared an extended item, because none was requested;
 - IC-009 elevated comparison `capture-comparison-20260921-stacks`: 190 `STACK_TRACE64` extended items copied in the callback, persisted in envelopes and replayed identically, plus 87 records from the unrequested kernel stack-walk provider counted as policy omissions rather than loss; both variants still met all six §14.2 criteria;
-- IC-009 stage ledger at that load point: callback p50 in [1.02, 2.05) µs and p99 in [8.19, 16.38) µs without stacks and [16.38, 32.77) µs with them, mean about 11 µs, maximum 6.6–7.3 ms on the first callbacks; delivery thread allocated about 1.59 MiB per run, which is the §12 allocation budget missed and IC-011's pooling obligation; queue high-water 706 of 65,536; writer thread 16 ms of processor time, 2 durable flushes, flush p99 in [4.19, 8.39) ms;
+- IC-009 load series `capture-comparison-20260921-series`: five declared levels, no source loss at any level; `queue-bound` delivered 82,530 records against a 512-record queue and counted 76,315 application drops with zero loss and zero undecodable records; `disk-bound` performed 2,577 durable flushes and kept the writer busy for 107% of its acquisition window while the queue rose to 93% without dropping; the unconstrained ceiling was 21,028 admitted records per second at 63% queue depth;
+- IC-009 load series `capture-comparison-20260921-series-stacks`: the same five levels with call stacks requested; 72,285 of 72,285 extended items copied, persisted and replayed identically at the highest level, and every level replayed with an identical ordered envelope fingerprint;
+- IC-009 stage ledger at the single load point: callback p50 in [1.02, 2.05) µs and p99 in [8.19, 16.38) µs without stacks and [16.38, 32.77) µs with them, mean about 11 µs, maximum 6.6–7.3 ms on the first callbacks; delivery thread allocated about 1.59 MiB per run, which is the §12 allocation budget missed and IC-011's pooling obligation; queue high-water 706 of 65,536; writer thread 16 ms of processor time, 2 durable flushes, flush p99 in [4.19, 8.39) ms;
 - byte agreement: truth completed 28,527 B sent; observed transport 28,527 B sent (reported side by side, never summed across domains);
 - process evidence: both workload processes observed with start, exit and a non-reusable sequence number;
 - measured run `20260921T083314Z` (FX-PIPE-001): session `InterCat-m0pipe`, 13,198 records observed and admitted, zero loss, zero drops, zero undecodable;
@@ -128,15 +129,17 @@ Results on 2026-09-21:
 - measured run (FX-RPC-001): 8 of 8 truth calls observed, bound to interface `367abb81-9844-35f1-ad32-98f038001003` and completion-paired; 164 server-side records observed but 0 peers paired; reproduced across two runs; tier `ExperimentalEvidence`;
 - desktop: launched and driven at 1456 × 939 and at the 1080 × 700 minimum; the accessibility tree was read and the table toggle invoked through UI Automation; seven layout, drawing and keyboard defects were found and fixed, and three remain open in the review.
 
-Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observations, verification result), `fixtures/FX-PIPE-001/evidence/` (truth logs, scenario parameters, measurement counters), `fixtures/FX-RPC-001/evidence/`, the portable `fixtures/FX-IDENTITY-001/` scenario, and `fixtures/FX-JOURNAL-001/` plus its benchmarks under `bench/results/`. Raw runs stay local under `fixtures/**/runs/` and are gitignored; the pipe run's raw observations are deliberately not committed because they carry unrelated machine file paths (P16). The two comparison runs commit their `comparison.json` counters and their fixture truth logs; their `.ijp0` and `.etl` records are gitignored because they hold records from every process on the machine.
+Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observations, verification result), `fixtures/FX-PIPE-001/evidence/` (truth logs, scenario parameters, measurement counters), `fixtures/FX-RPC-001/evidence/`, the portable `fixtures/FX-IDENTITY-001/` scenario, and `fixtures/FX-JOURNAL-001/` plus its benchmarks under `bench/results/`. Raw runs stay local under `fixtures/**/runs/` and are gitignored; the pipe run's raw observations are deliberately not committed because they carry unrelated machine file paths (P16). The comparison runs commit their `comparison.json` and `series.json` counters; their `.ijp0` and `.etl` records are gitignored because they hold records from every process on the machine, and a series' per-level truth logs are gitignored because the high levels reach tens of megabytes and are reproducible from the seed.
 
 ## Known limitations and cautions
 
 - The host build `10.0.26220.0` is outside the §1.3 support matrix. Every measured claim here is evidence on an untested build, and the tier calculator caps promotion accordingly (P27).
 - The M0 live path admits a bounded eight-slot field projection plus at most four extended-data items of at most 64 bytes each, not `RecordEnvelopeV1`. An item longer than the bound is kept as a flagged prefix with its original length, and an item past the fourth is counted as an omission. The bounds are deliberate and are not the production envelope, so this still cannot prove final-envelope fidelity.
 - Extended data is opt-in per enablement, so the baseline run observed none. The 190 items that prove the envelope path came from requesting call stacks, which is a different and more expensive load point, not the default profile.
-- `journal-probe-v0`, its `.ijp0` file framing and `callback-envelope-candidate-v0` are deliberately disposable. The elevated harness now records fidelity, separate loss counters and the full stage ledger, but it exercises one load point whose queue never exceeded 1.1% of capacity. Nothing here justifies a throughput claim, and ADR-008 stays proposed until a saturation series runs on the reference device and on a supported build.
-- The callback allocated about 1.59 MiB per run on the delivery thread. The §12 callback budget asks for p99 under 50 µs *and* no unpooled allocation: the latency half is met at this load, the allocation half is not, and pooled ownership remains IC-011's work.
+- `journal-probe-v0`, its `.ijp0` file framing and `callback-envelope-candidate-v0` are deliberately disposable. The series records fidelity, separate loss counters, the full stage ledger and behaviour at the queue and writer bounds, but the 21,000 admitted records per second it reached is a fifth of §12's ingest target and is limited by the fixture, whose loopback server serves its connections sequentially. No throughput claim follows from it, and ADR-008 stays proposed until the series runs on a supported build.
+- The ETL variant's provider loss cannot be read at stop on this build (`0x80071069` from WMI). Its loss is therefore unknown, not zero, at every level; the harness reports it as unknown and blocks the decision on it.
+- The journal is not uniformly smaller than an ETL. It is 9x smaller at the paced level, about twice the size at the peak level, and half the size again once call stacks are attached. The relationship follows from the admission policy and the enablement, so no size claim may be made from one load point.
+- The callback allocated about 99 MiB on the delivery thread for roughly 82,000 records, about 1.2 KiB each. The §12 callback budget asks for p99 under 50 µs *and* no unpooled allocation: the latency half is met at every level, the allocation half is missed at every level, and pooled ownership remains IC-011's work.
 - The extended-data accessor reaches the callback record through a skip-visibility binding to a private TraceEvent field. It is a disposable IC-009 adapter detail: if a future TraceEvent build removes that field, every record reports extended data as unavailable with the reason, rather than reporting that records carried none. A production capture should use the native consumer path of §18.3 instead.
 - Stopping the diagnostic ETL session reports a degradation on this build: its loss counters cannot be read through WMI at stop (`0x80071069`). The ETL variant's provider loss is therefore unknown rather than zero, and the degradation is recorded in both runs.
 - Existing pre-contract evidence using `{rawRecordId,factIndex}` remains readable. New builders and serialized output use normalizer version plus a deterministic 128-bit fact key. Removing the compatibility reader requires an explicit fixture migration.
@@ -153,10 +156,10 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. Extend `InterCat.CaptureComparison` to a declared load series rather than one point: a sequence of workload rates that drives the bounded queue to saturation and the writer to disk saturation, each level recorded with its own stage ledger and its own loss counters. The queue reached 1.1% of capacity in both current runs, so nothing measured so far says what happens at the limit.
-2. Run that series on the §12 reference storage device and publish the device, the rates and the seed with it. Accept or reject ADR-008 only from the complete ledger; it stays proposed until then.
-3. Only after ADR-008 closes, start IC-011: freeze `RecordEnvelopeV1`, replace the disposable framing with pooled production ownership so the §12 allocation budget is met, and keep identity, ownership, corruption and counter tests passing across the swap.
-4. Re-run `FX-TCP-001` and both comparison runs on Windows 11 24H2 x64 and record the second environment row. Promotion to `TrafficVisualization` needs that run plus a repeat run setting `reproduced`.
+1. Re-run `FX-TCP-001` and both load series on Windows 11 24H2 x64. That is the last gate input ADR-008 is missing, and it is also the second environment row `FX-TCP-001` needs before any promotion past `ExperimentalEvidence`. Check there whether the ETL session's loss counters can be read at stop; if they can, the ETL's loss stops being unknown and the last blocker after the build is gone.
+2. Accept or reject ADR-008 from the complete ledger. Until it closes, nothing may freeze a journal format.
+3. Only after ADR-008 closes, start IC-011: freeze `RecordEnvelopeV1`, replace the disposable framing with pooled production ownership so the §12 allocation budget is met, and keep identity, ownership, corruption and counter tests passing across the swap. The series shows exactly what pooling must fix: about 1.2 KiB allocated per admitted record on the delivery thread.
+4. Raise the series ceiling when the pipeline, not the fixture, becomes the limit. The loopback workload serves connections sequentially, so 21,000 records per second is its ceiling rather than the capture path's; a concurrent-connection workload is what IC-010 needs before any §12 ingest budget can be judged.
 5. Independently of the gate, IC-008 still owes the L0–L5 ladder, a per-edge evidence list, the diagonal coverage hatch and a headless UI lane for keyboard shortcuts.
 
 Do not begin journal format freezing beyond IC-011's contract, or live viewer/broker integration (M2), until the journal-vs-ETL evidence gate of IC-009 is complete.
