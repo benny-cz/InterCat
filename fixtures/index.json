@@ -304,10 +304,74 @@
         "R3: an unreadable loss counter leaves loss unknown rather than zero",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite"
       ]
+    },
+    {
+      "id": "FX-JOURNAL-002",
+      "title": "The frozen journal-v1 framing and its buffer ownership",
+      "scenario": "Sections 18.1 and 20.1: a fixed corpus of record envelopes written as a journal-v1 file, with a source clock frame, a schema and policy table, two batches, a retained body, a policy-omitted body, a truncated extended item, and a terminal frame.",
+      "milestone": "M1",
+      "backlog": [
+        "IC-011"
+      ],
+      "covers": {
+        "rules": [
+          "R3",
+          "R9"
+        ],
+        "invariants": [
+          "I1",
+          "I21"
+        ],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "Deterministic checked-in corpus in InterCat.Storage.Tests",
+        "seed": 0,
+        "log": "contracts/journal-v1.md",
+        "independence": "Every value in the corpus is fixed in the test, so the bytes it produces are decided by the format rather than by a run."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-JOURNAL-002/golden/journal-v1.icatj",
+        "note": "The golden file is the contract. A change to the format changes these bytes, and changing this file is a deliberate act that needs an ADR."
+      },
+      "environment": [
+        {
+          "build": "portable",
+          "supportTier": "NotApplicable",
+          "date": "2026-09-21",
+          "result": "The corpus round-trips every field, a truncated file is refused as an interrupted capture, a flipped byte fails the per-record integrity check, another format major is refused, and every pooled buffer is returned by the writer."
+        }
+      ],
+      "provenance": {
+        "adapter": "journal-v1",
+        "shareable": true,
+        "contents": "Synthetic identifiers, header fields, extended items and body bytes. Nothing captured."
+      },
+      "tests": [
+        "I1: a journal-v1 file has exactly the bytes its golden corpus records",
+        "I1: replaying a journal preserves every field of every record",
+        "I1: a batch declares the first and last identity it actually carries",
+        "I1: a journal without its terminal frame is refused as an interrupted capture",
+        "I1: a corrupted record fails its own integrity check, naming the record",
+        "I1: a journal from another format major is refused, never read at a guessed layout",
+        "R9: an envelope owns its bytes after the source memory changes",
+        "R9: a returned buffer refuses every read rather than handing out another owner's bytes",
+        "R9: writing a batch returns every buffer the records held",
+        "R9: a writer that is disposed mid-batch returns the buffers it was holding",
+        "R3: CRC-32C matches its published vectors"
+      ]
     }
   ],
   "contractCoverage": {
     "covered": {
+      "I1": [
+        "I1: a batch declares the first and last identity it actually carries",
+        "I1: a corrupted record fails its own integrity check, naming the record",
+        "I1: a journal from another format major is refused, never read at a guessed layout",
+        "I1: a journal without its terminal frame is refused as an interrupted capture",
+        "I1: a journal-v1 file has exactly the bytes its golden corpus records",
+        "I1: replaying a journal preserves every field of every record"
+      ],
       "I12": [
         "I12: PID and resource reuse produce distinct lifecycle epochs",
         "I12: a late record with an old start key resolves to the earlier epoch",
@@ -477,6 +541,7 @@
         "R22: an operation on an unobserved create is left unresolved, not matched by name"
       ],
       "R3": [
+        "R3: CRC-32C matches its published vectors",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a matched observation without bytes stays unknown",
@@ -515,16 +580,16 @@
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],
       "R9": [
+        "R9: a returned buffer refuses every read rather than handing out another owner's bytes",
+        "R9: a writer that is disposed mid-batch returns the buffers it was holding",
         "R9: admitted fields compile to fixed offsets with a minimum body length",
         "R9: an admitted record owns its extended bytes after the source buffer changes",
-        "R9: the callback allocation budget is measurable, so it can be met"
+        "R9: an envelope owns its bytes after the source memory changes",
+        "R9: the callback allocation budget is measurable, so it can be met",
+        "R9: writing a batch returns every buffer the records held"
       ]
     },
     "uncovered": {
-      "I1": {
-        "reason": "Raw-record key stability across replay needs the journal of IC-011.",
-        "plannedBy": "IC-011"
-      },
       "I10": {
         "reason": "Cross-host alignment invariance belongs to M4.",
         "plannedBy": "M4"
