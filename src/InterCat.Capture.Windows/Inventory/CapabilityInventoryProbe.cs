@@ -42,13 +42,17 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         string buildId = string.Create(
             CultureInfo.InvariantCulture,
             $"{System.Environment.OSVersion.Version}-{architecture.ToLowerInvariant()}");
+        BuildSupport support = SupportedBuilds.Resolve(build, architecture);
         return new(
             RuntimeInformation.OSDescription,
             buildId,
             architecture,
-            SupportedBuilds.IsSupported(build, architecture),
+            support.IsSupported,
             isElevated ?? false,
-            "local machine");
+            "local machine")
+        {
+            Support = support,
+        };
     }
 
     public CapabilityReport Probe(
@@ -481,7 +485,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         }
 
         string buildNote = environment.IsSupportedBuild
-            ? $"measured on supported build {environment.BuildId}"
+            ? $"measured on {environment.BuildId} ({environment.Support.Describe()})"
             : $"measured on untested build {environment.BuildId}";
         return $"{mechanism}: tier {assessment.Tier}, {buildNote}.";
     }

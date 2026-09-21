@@ -46,9 +46,10 @@ Four runs are committed. `capture-comparison-20260921-baseline` and `-stacks` ar
 older `intercat.capture-comparison.v0` shape, which wrote every truth operation into the result.
 `capture-comparison-20260921-series` and `-series-stacks` are the five-level series ADR-008 cites; their
 per-level documents use `intercat.capture-comparison.v1`, which keeps every counter and criterion whole
-and reduces the per-operation rows to the ones that failed, bounded and counted. All four still emit
-`decisionReady: false`: the host build is outside the section 1.3 support matrix, and this build refuses
-to read the ETL session's own loss counters at stop.
+and reduces the per-operation rows to the ones that failed, bounded and counted. `capture-comparison-20260921-series-stacks` is the run ADR-008 is accepted on: it reports
+`decisionReady: true` with no blockers. The clean series reports one, which is the statement that it did
+not request extended data - a setting rather than a gap. The two single-point runs predate ADR-007 and
+still carry their "outside the support matrix" blocker; they are kept as the evidence they were.
 
 Only counters are committed. A run's `.ijp0` journal and `.etl` file hold records from every process on
 the machine, so they are gitignored and stay local (P16). The single-point runs commit their fixture

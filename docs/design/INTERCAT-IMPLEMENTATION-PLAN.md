@@ -60,11 +60,11 @@ Supported build candidates for the first release, revisable by ADR-007 once M0 m
 
 | Tier | Builds | Meaning |
 |---|---|---|
-| Primary | Windows 11 24H2 x64 | Development target and per-pull-request CI gate |
+| Primary | Windows 11 25H2 x64 (26200, and the 26220 pre-release branch); Windows 11 24H2 x64 (26100) | Development target and per-pull-request CI gate |
 | Secondary | Windows 11 23H2 x64; Windows Server 2025 x64 | Fixture corpus maintained; release gate |
 | Candidate | Windows Server 2022 x64; Windows 11 24H2 ARM64 | Qualified in M13; may ship as a separate edition |
 
-Support named builds from this matrix, not a blanket “Windows 10+” assertion.
+Support named builds from this matrix, not a blanket “Windows 10+” assertion. A release is listed by its exact build numbers rather than by a range, because a range would silently accept a build nobody has run the fixture corpus on. Where a pre-release servicing branch of a supported release is listed, it is supported on the same terms and every result states which of the two it was measured on: "supported" alone would hide the difference between a retail build and a branch that can still change under it. ADR-007 owns this matrix and records why each entry is on it.
 
 ### 1.4 How this document binds an implementation
 

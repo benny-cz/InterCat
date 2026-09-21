@@ -280,10 +280,21 @@ public sealed class OwnedEtlFileCapture : IAsyncDisposable
             return;
         }
 
+        // The counters belong to a running session. Reading them after the stop asks Windows about a
+        // session that no longer exists, which fails and leaves the loss unknown for no reason: read
+        // first, then stop (section 9.3).
+        try
+        {
+            eventsLost = Math.Max(eventsLost ?? 0, current.ReadEventsLost());
+        }
+        catch (EtwSessionException exception)
+        {
+            AddDegradation($"The owned ETL session's loss counters could not be read: {exception.Message}");
+        }
+
         try
         {
             current.StopSession();
-            eventsLost = Math.Max(eventsLost ?? 0, current.ReadEventsLost());
         }
         catch (EtwSessionException exception)
         {

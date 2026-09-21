@@ -78,7 +78,7 @@ internal static class CapabilitiesCommand
         ConsoleUi.Field(
             "Support tier",
             report.Environment.IsSupportedBuild
-                ? "supported build from section 1.3"
+                ? report.Environment.Support.Describe()
                 : "untested build: every result below is evidence on this machine only");
         ConsoleUi.Field("Elevated", report.Environment.IsElevated ? "yes" : "no");
         ConsoleUi.Field("Adapter", report.AdapterVersion);

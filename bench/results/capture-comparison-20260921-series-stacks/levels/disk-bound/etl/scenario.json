@@ -6,9 +6,9 @@
   "minimumMessageBytes": 64,
   "maximumMessageBytes": 4096,
   "interMessageDelayMilliseconds": 0,
-  "port": 15274,
-  "serverProcessId": 69264,
-  "clientProcessId": 8760,
+  "port": 53158,
+  "serverProcessId": 33908,
+  "clientProcessId": 81992,
   "serverExitCode": 0,
   "clientExitCode": 0
 }

@@ -1,14 +1,20 @@
 {
   "schema": "intercat.capture-comparison.v1",
-  "startedUtc": "2026-09-21T14:19:40.2784219+00:00",
-  "completedUtc": "2026-09-21T14:20:01.5614216+00:00",
+  "startedUtc": "2026-09-21T18:23:13.9682753+00:00",
+  "completedUtc": "2026-09-21T18:23:35.7412695+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
     "architecture": "X64",
-    "isSupportedBuild": false,
+    "isSupportedBuild": true,
     "isElevated": true,
-    "machineScope": "local machine"
+    "machineScope": "local machine",
+    "support": {
+      "tier": "Primary",
+      "releaseName": "Windows 11 25H2 x64",
+      "isPrerelease": true,
+      "isSupported": true
+    }
   },
   "level": {
     "name": "queue-bound",
@@ -38,7 +44,7 @@
   "journal": {
     "name": "admitted-journal-callback-envelope-v0",
     "captureId": {
-      "value": "652c8d1a-86a2-4562-9106-dce0efb7a1f6"
+      "value": "ce37ea1f-a9a6-417c-a506-55dcffc84850"
     },
     "providers": [
       {
@@ -53,9 +59,9 @@
       }
     ],
     "health": {
-      "admittedRecords": 13103,
-      "observedRecords": 144348,
-      "policyOmissionsUnrequestedProvider": 71716,
+      "admittedRecords": 9512,
+      "observedRecords": 144571,
+      "policyOmissionsUnrequestedProvider": 71885,
       "policyOmissionsDescriptorNotAdmitted": 0,
       "policyOmissionsDescriptorDenied": 0,
       "undecodableBodyShorterThanSchema": 0,
@@ -64,7 +70,7 @@
       "undecodablePointerWidthMismatch": 0,
       "providerReportedEventLoss": 0,
       "consumerReportedBufferLoss": 0,
-      "applicationDrops": 59529,
+      "applicationDrops": 63174,
       "quarantinedTimestamps": 0,
       "queueDepth": 0,
       "queueCapacity": 512,
@@ -75,16 +81,16 @@
         "fixtureId": "FX-TCP-001",
         "buildId": "10.0.26220.0-x64",
         "reproduced": false,
-        "measuredOnSupportedBuild": false,
+        "measuredOnSupportedBuild": true,
         "truthOperations": 65536,
-        "truthOperationsWithAdmittedObservation": 12299,
-        "truthOperationsBoundToResourceInstance": 12299,
+        "truthOperationsWithAdmittedObservation": 8776,
+        "truthOperationsBoundToResourceInstance": 8776,
         "peerAttributions": 12,
         "falsePeerAttributions": 0,
         "byteEligibleOperations": 65536,
-        "byteMeasuredOperations": 12299,
+        "byteMeasuredOperations": 8776,
         "truthResources": 8,
-        "discoveredResourcesWithLifetime": 2,
+        "discoveredResourcesWithLifetime": 3,
         "expectedMemberships": 16,
         "resolvedMemberships": 12,
         "claimsBytesOrOperations": true
@@ -95,20 +101,20 @@
           {
             "name": "AdmittedObservations",
             "requirement": "at least 95% of truth operations produce an admitted observation",
-            "numerator": 12299,
+            "numerator": 8776,
             "denominator": 65536,
-            "measured": 0.1876678466796875,
+            "measured": 0.1339111328125,
             "satisfied": false,
-            "gap": "AdmittedObservations: measured 18,8 % of 65536, below the required 95 %."
+            "gap": "AdmittedObservations: measured 13,4 % of 65536, below the required 95 %."
           },
           {
             "name": "ResourceInstanceBinding",
             "requirement": "at least 90% of truth operations bind to a specific resource instance",
-            "numerator": 12299,
+            "numerator": 8776,
             "denominator": 65536,
-            "measured": 0.1876678466796875,
+            "measured": 0.1339111328125,
             "satisfied": false,
-            "gap": "ResourceInstanceBinding: measured 18,8 % of 65536, below the required 90 %."
+            "gap": "ResourceInstanceBinding: measured 13,4 % of 65536, below the required 90 %."
           },
           {
             "name": "FalsePeerAttribution",
@@ -122,20 +128,20 @@
           {
             "name": "ByteMeasurement",
             "requirement": "a byte measurement in a named domain on at least 90% of eligible operations",
-            "numerator": 12299,
+            "numerator": 8776,
             "denominator": 65536,
-            "measured": 0.1876678466796875,
+            "measured": 0.1339111328125,
             "satisfied": false,
-            "gap": "ByteMeasurement: measured 18,8 % of 65536, below the required 90 %."
+            "gap": "ByteMeasurement: measured 13,4 % of 65536, below the required 90 %."
           },
           {
             "name": "ResourceDiscovery",
             "requirement": "at least 95% of truth resources discovered with their lifetimes",
-            "numerator": 2,
+            "numerator": 3,
             "denominator": 8,
-            "measured": 0.25,
+            "measured": 0.375,
             "satisfied": false,
-            "gap": "ResourceDiscovery: measured 25,0 % of 8, below the required 95 %."
+            "gap": "ResourceDiscovery: measured 37,5 % of 8, below the required 95 %."
           },
           {
             "name": "MembershipResolution",
@@ -148,304 +154,304 @@
           }
         ],
         "gaps": [
-          "AdmittedObservations: measured 18,8 % of 65536, below the required 95 %.",
-          "ResourceInstanceBinding: measured 18,8 % of 65536, below the required 90 %.",
-          "ByteMeasurement: measured 18,8 % of 65536, below the required 90 %.",
-          "ResourceDiscovery: measured 25,0 % of 8, below the required 95 %.",
+          "AdmittedObservations: measured 13,4 % of 65536, below the required 95 %.",
+          "ResourceInstanceBinding: measured 13,4 % of 65536, below the required 90 %.",
+          "ByteMeasurement: measured 13,4 % of 65536, below the required 90 %.",
+          "ResourceDiscovery: measured 37,5 % of 8, below the required 95 %.",
           "MembershipResolution: measured 75,0 % of 16, below the required 100 %."
         ]
       },
       "truthBytesSent": 34263014,
       "truthBytesReceived": 34197478,
-      "observedBytesSent": 4688867,
-      "observedBytesReceived": 6217464,
-      "observationsOutsideScope": 206,
+      "observedBytesSent": 3471417,
+      "observedBytesReceived": 4357402,
+      "observationsOutsideScope": 236,
       "truthOperations": 65536,
-      "operationsWithGaps": 53237,
+      "operationsWithGaps": 56760,
       "sampledOperationGaps": [
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 458,
+          "role": "server",
+          "processId": 11152,
+          "callId": 438,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 737,
-          "completedBytes": 737,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 459,
+          "role": "server",
+          "processId": 11152,
+          "callId": 439,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 3596,
-          "completedBytes": 3596,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 460,
+          "role": "server",
+          "processId": 11152,
+          "callId": 440,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 583,
-          "completedBytes": 583,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 461,
+          "role": "server",
+          "processId": 11152,
+          "callId": 441,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 2088,
-          "completedBytes": 2088,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 462,
+          "role": "server",
+          "processId": 11152,
+          "callId": 442,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 3701,
-          "completedBytes": 3701,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 463,
+          "role": "server",
+          "processId": 11152,
+          "callId": 443,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 3846,
-          "completedBytes": 3846,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 464,
+          "role": "server",
+          "processId": 11152,
+          "callId": 444,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 2537,
-          "completedBytes": 2537,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 465,
+          "role": "server",
+          "processId": 11152,
+          "callId": 445,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 2737,
-          "completedBytes": 2737,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 466,
+          "role": "server",
+          "processId": 11152,
+          "callId": 446,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 2079,
-          "completedBytes": 2079,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 467,
+          "role": "server",
+          "processId": 11152,
+          "callId": 447,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 3241,
-          "completedBytes": 3241,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 468,
+          "role": "server",
+          "processId": 11152,
+          "callId": 448,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 907,
-          "completedBytes": 907,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 469,
+          "role": "server",
+          "processId": 11152,
+          "callId": 449,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 804,
-          "completedBytes": 804,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 470,
+          "role": "server",
+          "processId": 11152,
+          "callId": 450,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 1313,
-          "completedBytes": 1313,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 471,
+          "role": "server",
+          "processId": 11152,
+          "callId": 451,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 1087,
-          "completedBytes": 1087,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 472,
+          "role": "server",
+          "processId": 11152,
+          "callId": 452,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 1606,
-          "completedBytes": 1606,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
           "gap": "No admitted observation of this kind was found for this flow inside the match window."
         },
         {
-          "role": "client",
-          "processId": 33228,
-          "callId": 473,
+          "role": "server",
+          "processId": 11152,
+          "callId": 453,
           "expectedKind": "Send",
           "flow": {
             "localAddress": 2130706433,
-            "localPort": 53759,
+            "localPort": 57056,
             "remoteAddress": 2130706433,
-            "remotePort": 53758
+            "remotePort": 57057
           },
-          "declaredBytes": 2783,
-          "completedBytes": 2783,
+          "declaredBytes": 8,
+          "completedBytes": 8,
           "matchedObservations": 0,
           "observedBytes": null,
           "boundToFlowInstance": false,
@@ -458,29 +464,29 @@
       "notes": [
         "Operations were matched inside a 500 ms window on the same flow, owner process and observation kind.",
         "Transport byte totals are reported beside truth totals as evidence; they are different byte domains and are never summed or substituted (I6, P3).",
-        "206 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
+        "236 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
       ]
     },
     "evidence": {
       "kind": "journal-probe-v0",
       "relativePath": "journal\\callback-envelope.ijp0",
-      "bytes": 5260680,
-      "records": 13103,
-      "durableFlushes": 5,
+      "bytes": 3814176,
+      "records": 9512,
+      "durableFlushes": 4,
       "complete": true
     },
     "timing": {
-      "acquisitionMilliseconds": 7479.1699,
-      "finalizationMilliseconds": 582.8176,
-      "replayMilliseconds": 29.6966
+      "acquisitionMilliseconds": 7613.46,
+      "finalizationMilliseconds": 491.4639,
+      "replayMilliseconds": 23.888
     },
     "stages": {
       "acquisition": {
         "callbackLatency": {
-          "samples": 144348,
-          "totalNanoseconds": 21823400,
+          "samples": 144571,
+          "totalNanoseconds": 21752700,
           "minimumNanoseconds": 0,
-          "maximumNanoseconds": 221800,
+          "maximumNanoseconds": 70000,
           "median": {
             "lowerNanoseconds": 128,
             "upperNanoseconds": 256
@@ -493,126 +499,94 @@
             {
               "lowerNanoseconds": 0,
               "upperNanoseconds": 1,
-              "samples": 39318
+              "samples": 39148
             },
             {
               "lowerNanoseconds": 64,
               "upperNanoseconds": 128,
-              "samples": 32377
+              "samples": 32717
             },
             {
               "lowerNanoseconds": 128,
               "upperNanoseconds": 256,
-              "samples": 46233
+              "samples": 47275
             },
             {
               "lowerNanoseconds": 256,
               "upperNanoseconds": 512,
-              "samples": 25667
+              "samples": 24534
             },
             {
               "lowerNanoseconds": 512,
               "upperNanoseconds": 1024,
-              "samples": 629
+              "samples": 712
             },
             {
               "lowerNanoseconds": 1024,
               "upperNanoseconds": 2048,
-              "samples": 93
+              "samples": 142
             },
             {
               "lowerNanoseconds": 2048,
               "upperNanoseconds": 4096,
-              "samples": 10
+              "samples": 16
             },
             {
               "lowerNanoseconds": 4096,
               "upperNanoseconds": 8192,
-              "samples": 7
+              "samples": 9
             },
             {
               "lowerNanoseconds": 8192,
               "upperNanoseconds": 16384,
-              "samples": 8
+              "samples": 7
             },
             {
               "lowerNanoseconds": 16384,
               "upperNanoseconds": 32768,
-              "samples": 5
+              "samples": 7
             },
             {
-              "lowerNanoseconds": 131072,
-              "upperNanoseconds": 262144,
+              "lowerNanoseconds": 32768,
+              "upperNanoseconds": 65536,
+              "samples": 3
+            },
+            {
+              "lowerNanoseconds": 65536,
+              "upperNanoseconds": 131072,
               "samples": 1
             }
           ],
-          "meanNanoseconds": 151.18602266744256
+          "meanNanoseconds": 150.4637859598398
         },
         "deliveryThreadAllocatedBytes": 814520,
         "deliveryThreadCpu": {
-          "kernelTicks": 312500,
-          "userTicks": 312500,
-          "totalTicks": 625000,
-          "kernel": "00:00:00.0312500",
-          "user": "00:00:00.0312500",
-          "total": "00:00:00.0625000"
+          "kernelTicks": 468750,
+          "userTicks": 0,
+          "totalTicks": 468750,
+          "kernel": "00:00:00.0468750",
+          "user": "00:00:00",
+          "total": "00:00:00.0468750"
         },
         "queueHighWaterRecords": 512,
         "queueCapacityRecords": 512,
-        "extendedItemsCopied": 71991,
+        "extendedItemsCopied": 72192,
         "extendedItemsOmitted": 0,
         "recordsWithUnreachableExtendedData": 0,
-        "recordsWithoutExtendedData": 641,
+        "recordsWithoutExtendedData": 494,
         "extendedDataUnavailableReason": null
       },
       "acquisitionNote": "Callback latency, allocations and processor time are the delivery thread\u0027s own totals; the queue high-water mark is sampled where the callback enqueues, not once a second.",
       "writer": {
-        "payloadBytesWritten": 5260536,
+        "payloadBytesWritten": 3814036,
         "encodeLatency": {
-          "samples": 4,
-          "totalNanoseconds": 22010100,
-          "minimumNanoseconds": 994000,
-          "maximumNanoseconds": 12523300,
+          "samples": 3,
+          "totalNanoseconds": 12977200,
+          "minimumNanoseconds": 1667600,
+          "maximumNanoseconds": 5700100,
           "median": {
-            "lowerNanoseconds": 2097152,
-            "upperNanoseconds": 4194304
-          },
-          "percentile99": {
-            "lowerNanoseconds": 8388608,
-            "upperNanoseconds": 16777216
-          },
-          "buckets": [
-            {
-              "lowerNanoseconds": 524288,
-              "upperNanoseconds": 1048576,
-              "samples": 1
-            },
-            {
-              "lowerNanoseconds": 2097152,
-              "upperNanoseconds": 4194304,
-              "samples": 1
-            },
-            {
-              "lowerNanoseconds": 4194304,
-              "upperNanoseconds": 8388608,
-              "samples": 1
-            },
-            {
-              "lowerNanoseconds": 8388608,
-              "upperNanoseconds": 16777216,
-              "samples": 1
-            }
-          ],
-          "meanNanoseconds": 5502525
-        },
-        "durableFlushLatency": {
-          "samples": 5,
-          "totalNanoseconds": 13808700,
-          "minimumNanoseconds": 1701100,
-          "maximumNanoseconds": 5576500,
-          "median": {
-            "lowerNanoseconds": 2097152,
-            "upperNanoseconds": 4194304
+            "lowerNanoseconds": 4194304,
+            "upperNanoseconds": 8388608
           },
           "percentile99": {
             "lowerNanoseconds": 4194304,
@@ -622,23 +596,45 @@
             {
               "lowerNanoseconds": 1048576,
               "upperNanoseconds": 2097152,
-              "samples": 2
-            },
-            {
-              "lowerNanoseconds": 2097152,
-              "upperNanoseconds": 4194304,
-              "samples": 2
+              "samples": 1
             },
             {
               "lowerNanoseconds": 4194304,
               "upperNanoseconds": 8388608,
-              "samples": 1
+              "samples": 2
             }
           ],
-          "meanNanoseconds": 2761740
+          "meanNanoseconds": 4325733.333333333
         },
-        "writerThreadCpu": "00:00:00.0781250",
-        "writerThreadAllocatedBytes": 61374504
+        "durableFlushLatency": {
+          "samples": 4,
+          "totalNanoseconds": 18275300,
+          "minimumNanoseconds": 1685700,
+          "maximumNanoseconds": 5887200,
+          "median": {
+            "lowerNanoseconds": 4194304,
+            "upperNanoseconds": 8388608
+          },
+          "percentile99": {
+            "lowerNanoseconds": 4194304,
+            "upperNanoseconds": 8388608
+          },
+          "buckets": [
+            {
+              "lowerNanoseconds": 1048576,
+              "upperNanoseconds": 2097152,
+              "samples": 1
+            },
+            {
+              "lowerNanoseconds": 4194304,
+              "upperNanoseconds": 8388608,
+              "samples": 3
+            }
+          ],
+          "meanNanoseconds": 4568825
+        },
+        "writerThreadCpu": "00:00:00.0468750",
+        "writerThreadAllocatedBytes": 42121336
       },
       "writerNote": "One dedicated thread owns the file from its header to its terminal frame, so its processor time and allocations are the writer stage\u0027s own.",
       "replay": null,
@@ -647,7 +643,7 @@
     "clock": {
       "descriptor": {
         "id": {
-          "value": "0910ca27-4552-4cdc-a533-a2088fa7c7a7"
+          "value": "7679f220-3f58-4320-86f4-0b9661b564ae"
         },
         "hostId": {
           "value": "0a5bf6d0-2196-8277-8f7f-db1fb02ace99"
@@ -655,7 +651,7 @@
         "kind": "Monotonic",
         "encoding": "Qpc",
         "ticksPerSecond": 10000000,
-        "captureEpochNativeTicks": 17989135934205,
+        "captureEpochNativeTicks": 18135272834667,
         "rounding": "NearestEven",
         "maximumAbsoluteSessionNanoseconds": 604800000000000
       },
@@ -664,28 +660,28 @@
       "replayedIdentical": true
     },
     "extendedData": {
-      "copiedInCallback": 71991,
+      "copiedInCallback": 72192,
       "omittedInCallback": 0,
-      "persistedInEnvelopes": 12510,
+      "persistedInEnvelopes": 9019,
       "omittedByPersistencePolicy": 0,
-      "replayedIdentical": 12510,
+      "replayedIdentical": 9019,
       "typesObserved": [
         "stack-trace-64"
       ],
       "unavailableReason": null
     },
     "truthRecords": 65573,
-    "replayedRecords": 13103,
+    "replayedRecords": 9512,
     "replayBudgetDrops": 0,
     "replaySourceEventsLost": 0,
     "exactAdmittedProjectionReplay": true,
     "saturation": {
       "outcome": "QueueSaturated",
-      "evidence": "The bounded queue reached its limit and counted 59529 drops of 512 capacity.",
-      "admittedRecordsPerSecond": 1751.9323902509557,
+      "evidence": "The bounded queue reached its limit and counted 63174 drops of 512 capacity.",
+      "admittedRecordsPerSecond": 1249.36625397651,
       "queueUtilization": 1,
       "sourceLossKnown": true,
-      "writerBusyFraction": 0.01229196571667666,
+      "writerBusyFraction": 0.008557252550088922,
       "writerKeptUp": true
     },
     "sourceLossKnown": true,
@@ -694,7 +690,7 @@
   "etl": {
     "name": "diagnostic-etl",
     "captureId": {
-      "value": "4e9ea78e-216a-4fab-95e9-ce87e7238395"
+      "value": "7d1985bc-135b-4a50-8c98-f62fc76fd92c"
     },
     "providers": [
       {
@@ -709,9 +705,9 @@
       }
     ],
     "health": {
-      "admittedRecords": 73687,
-      "observedRecords": 146430,
-      "policyOmissionsUnrequestedProvider": 72743,
+      "admittedRecords": 74391,
+      "observedRecords": 147881,
+      "policyOmissionsUnrequestedProvider": 73490,
       "policyOmissionsDescriptorNotAdmitted": 0,
       "policyOmissionsDescriptorDenied": 0,
       "undecodableBodyShorterThanSchema": 0,
@@ -731,7 +727,7 @@
         "fixtureId": "FX-TCP-001",
         "buildId": "10.0.26220.0-x64",
         "reproduced": false,
-        "measuredOnSupportedBuild": false,
+        "measuredOnSupportedBuild": true,
         "truthOperations": 65536,
         "truthOperationsWithAdmittedObservation": 65536,
         "truthOperationsBoundToResourceInstance": 65536,
@@ -746,7 +742,7 @@
         "claimsBytesOrOperations": true
       },
       "assessment": {
-        "tier": "ExperimentalEvidence",
+        "tier": "TrafficVisualization",
         "criteria": [
           {
             "name": "AdmittedObservations",
@@ -803,15 +799,13 @@
             "gap": null
           }
         ],
-        "gaps": [
-          "Build 10.0.26220.0-x64 is not one of the supported builds of section 1.3, so the measured thresholds cannot promote this mechanism beyond experimental evidence."
-        ]
+        "gaps": []
       },
       "truthBytesSent": 34263014,
       "truthBytesReceived": 34197478,
       "observedBytesSent": 34263014,
       "observedBytesReceived": 34263014,
-      "observationsOutsideScope": 287,
+      "observationsOutsideScope": 397,
       "truthOperations": 65536,
       "operationsWithGaps": 0,
       "sampledOperationGaps": [],
@@ -821,21 +815,21 @@
       "notes": [
         "Operations were matched inside a 500 ms window on the same flow, owner process and observation kind.",
         "Transport byte totals are reported beside truth totals as evidence; they are different byte domains and are never summed or substituted (I6, P3).",
-        "287 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
+        "397 admitted observations belonged to flows outside this fixture. Whole-machine capture is expected to see unrelated traffic; it is scope, not error."
       ]
     },
     "evidence": {
       "kind": "original-diagnostic-etl",
       "relativePath": "etl\\diagnostic-evidence.etl",
-      "bytes": 62390272,
-      "records": 73687,
+      "bytes": 63176704,
+      "records": 74391,
       "durableFlushes": 0,
       "complete": true
     },
     "timing": {
-      "acquisitionMilliseconds": 7499.9592,
-      "finalizationMilliseconds": 4.1601,
-      "replayMilliseconds": 161.6485
+      "acquisitionMilliseconds": 7758.9682,
+      "finalizationMilliseconds": 11.7008,
+      "replayMilliseconds": 177.5637
     },
     "stages": {
       "acquisition": null,
@@ -844,10 +838,10 @@
       "writerNote": "The ETW logger owns buffering and flushing; InterCat cannot attribute its cost.",
       "replay": {
         "callbackLatency": {
-          "samples": 146430,
-          "totalNanoseconds": 35306500,
+          "samples": 147881,
+          "totalNanoseconds": 38800900,
           "minimumNanoseconds": 0,
-          "maximumNanoseconds": 6318000,
+          "maximumNanoseconds": 8256100,
           "median": {
             "lowerNanoseconds": 128,
             "upperNanoseconds": 256
@@ -860,57 +854,57 @@
             {
               "lowerNanoseconds": 0,
               "upperNanoseconds": 1,
-              "samples": 39173
+              "samples": 37984
             },
             {
               "lowerNanoseconds": 64,
               "upperNanoseconds": 128,
-              "samples": 33461
+              "samples": 35296
             },
             {
               "lowerNanoseconds": 128,
               "upperNanoseconds": 256,
-              "samples": 42564
+              "samples": 38812
             },
             {
               "lowerNanoseconds": 256,
               "upperNanoseconds": 512,
-              "samples": 29402
+              "samples": 34288
             },
             {
               "lowerNanoseconds": 512,
               "upperNanoseconds": 1024,
-              "samples": 929
+              "samples": 975
             },
             {
               "lowerNanoseconds": 1024,
               "upperNanoseconds": 2048,
-              "samples": 390
+              "samples": 398
             },
             {
               "lowerNanoseconds": 2048,
               "upperNanoseconds": 4096,
-              "samples": 430
+              "samples": 80
             },
             {
               "lowerNanoseconds": 4096,
               "upperNanoseconds": 8192,
-              "samples": 73
+              "samples": 36
             },
             {
               "lowerNanoseconds": 8192,
               "upperNanoseconds": 16384,
-              "samples": 3
+              "samples": 5
             },
             {
-              "lowerNanoseconds": 32768,
-              "upperNanoseconds": 65536,
+              "lowerNanoseconds": 16384,
+              "upperNanoseconds": 32768,
               "samples": 1
             },
             {
               "lowerNanoseconds": 65536,
               "upperNanoseconds": 131072,
-              "samples": 1
+              "samples": 3
             },
             {
               "lowerNanoseconds": 1048576,
@@ -918,33 +912,28 @@
               "samples": 1
             },
             {
-              "lowerNanoseconds": 2097152,
-              "upperNanoseconds": 4194304,
-              "samples": 1
-            },
-            {
               "lowerNanoseconds": 4194304,
               "upperNanoseconds": 8388608,
-              "samples": 1
+              "samples": 2
             }
           ],
-          "meanNanoseconds": 241.1152086321109
+          "meanNanoseconds": 262.3792103109933
         },
         "deliveryThreadAllocatedBytes": 181674184,
         "deliveryThreadCpu": {
-          "kernelTicks": 468750,
-          "userTicks": 312500,
-          "totalTicks": 781250,
-          "kernel": "00:00:00.0468750",
-          "user": "00:00:00.0312500",
-          "total": "00:00:00.0781250"
+          "kernelTicks": 0,
+          "userTicks": 625000,
+          "totalTicks": 625000,
+          "kernel": "00:00:00",
+          "user": "00:00:00.0625000",
+          "total": "00:00:00.0625000"
         },
-        "queueHighWaterRecords": 73687,
+        "queueHighWaterRecords": 74391,
         "queueCapacityRecords": 500000,
-        "extendedItemsCopied": 73038,
+        "extendedItemsCopied": 73897,
         "extendedItemsOmitted": 0,
         "recordsWithUnreachableExtendedData": 0,
-        "recordsWithoutExtendedData": 649,
+        "recordsWithoutExtendedData": 494,
         "extendedDataUnavailableReason": null
       },
       "replayNote": "Offline replay runs the same admission callback as live capture, measured on the replaying thread."
@@ -956,34 +945,32 @@
       "replayedIdentical": null
     },
     "extendedData": {
-      "copiedInCallback": 73038,
+      "copiedInCallback": 73897,
       "omittedInCallback": 0,
       "persistedInEnvelopes": 0,
       "omittedByPersistencePolicy": 0,
-      "replayedIdentical": 73038,
+      "replayedIdentical": 73897,
       "typesObserved": [
         "stack-trace-64"
       ],
       "unavailableReason": null
     },
     "truthRecords": 65573,
-    "replayedRecords": 73687,
+    "replayedRecords": 74391,
     "replayBudgetDrops": 0,
     "replaySourceEventsLost": 0,
     "exactAdmittedProjectionReplay": null,
     "saturation": {
       "outcome": "Headroom",
-      "evidence": "No loss this process could read, no drop, and the queue stayed at 0.0 % of its bound.",
-      "admittedRecordsPerSecond": 9824.986781261423,
+      "evidence": "No loss, no drop, and the queue stayed at 0.0 % of its bound.",
+      "admittedRecordsPerSecond": 9587.743896153615,
       "queueUtilization": null,
-      "sourceLossKnown": false,
+      "sourceLossKnown": true,
       "writerBusyFraction": null,
       "writerKeptUp": null
     },
-    "sourceLossKnown": false,
-    "degradations": [
-      "The owned ETL session did not stop cleanly: ETL loss counters could not be read: The instance name passed was not recognized as valid by a WMI data provider. (0x80071069)"
-    ]
+    "sourceLossKnown": true,
+    "degradations": []
   },
   "sameSeededWorkload": true,
   "levelBlockers": [],

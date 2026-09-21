@@ -1,13 +1,19 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-21T09:13:31.1659322+00:00",
+  "probedAtUtc": "2026-09-21T18:20:02.9877994+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
     "architecture": "X64",
-    "isSupportedBuild": false,
+    "isSupportedBuild": true,
     "isElevated": true,
-    "machineScope": "local machine"
+    "machineScope": "local machine",
+    "support": {
+      "tier": "Primary",
+      "releaseName": "Windows 11 25H2 x64",
+      "isPrerelease": true,
+      "isSupported": true
+    }
   },
   "adapterVersion": "windows-etw-inventory-0.2.0",
   "probeOnly": true,

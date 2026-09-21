@@ -22,7 +22,18 @@ public sealed record ProbeEnvironment(
     string Architecture,
     bool IsSupportedBuild,
     bool IsElevated,
-    string MachineScope);
+    string MachineScope)
+{
+    /// <summary>
+    /// What the section 1.3 matrix says about this build: its tier, the release it belongs to, and
+    /// whether it is that release's retail build or a pre-release servicing branch of it. A result that
+    /// says only "supported" hides which of the two was measured (ADR-007).
+    /// </summary>
+    public BuildSupport Support { get; init; } = new(
+        IsSupportedBuild ? BuildSupportTier.Primary : BuildSupportTier.Untested,
+        null,
+        false);
+}
 
 /// <summary>
 /// The machine-readable capability report of IC-002 and §21.2.1. <c>ProbeOnly</c> states whether any

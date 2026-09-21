@@ -13,6 +13,7 @@ internal sealed class TruthLog : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions Options = CreateOptions();
 
+    private readonly Lock gate = new();
     private readonly StreamWriter writer;
     private readonly string scenarioId;
     private readonly string role;
@@ -45,6 +46,11 @@ internal sealed class TruthLog : IAsyncDisposable
 
     public long ProcessStartFileTime => processStartFileTime;
 
+    /// <summary>
+    /// Appends one truth record. A concurrent workload writes from several connection tasks at once, so
+    /// the sequence number and the line are taken under one lock: a truth log with interleaved halves of
+    /// two records could not contradict anything (section 13.1).
+    /// </summary>
     public void Write(
         TruthEventKind kind,
         long? callId = null,
@@ -54,6 +60,22 @@ internal sealed class TruthLog : IAsyncDisposable
         long? completedBytes = null,
         string? status = null,
         string? resourceName = null)
+    {
+        lock (gate)
+        {
+            WriteLocked(kind, callId, localPort, remotePort, declaredBytes, completedBytes, status, resourceName);
+        }
+    }
+
+    private void WriteLocked(
+        TruthEventKind kind,
+        long? callId,
+        int? localPort,
+        int? remotePort,
+        long? declaredBytes,
+        long? completedBytes,
+        string? status,
+        string? resourceName)
     {
         var record = new TruthRecord
         {
@@ -79,6 +101,11 @@ internal sealed class TruthLog : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        lock (gate)
+        {
+            writer.Flush();
+        }
+
         await writer.FlushAsync().ConfigureAwait(false);
         await writer.DisposeAsync().ConfigureAwait(false);
     }

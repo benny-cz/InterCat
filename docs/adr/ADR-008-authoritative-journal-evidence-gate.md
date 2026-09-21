@@ -1,9 +1,9 @@
 # ADR-008: Authoritative journal versus ETL evidence gate
 
-- Status: proposed; the elevated load series has run, the decision is blocked on a supported build and on unreadable ETL loss counters
+- Status: accepted for M1. The gate is complete: the load series ran on a supported build with every counter readable.
 - Date: 2026-09-21
 - Decision owners: InterCat maintainers
-- Relates to: ADR-002 (owned ETW capture), ADR-005 (identity), ADR-006 (clocks)
+- Relates to: ADR-002 (owned ETW capture), ADR-005 (identity), ADR-006 (clocks), ADR-007 (supported builds)
 
 ## Context
 
@@ -152,25 +152,62 @@ clock back unchanged. Seven findings follow, and none was assumed:
     fails with `0x80071069`, so its provider loss is not zero, it is unreadable. The harness now reports
     it as unknown and blocks the decision on it rather than printing a default.
 
-## Decision
+### The gate closed, 2026-09-21
 
-No authoritative-source decision is accepted yet. The planned admitted-journal direction remains the
-candidate, not a measured conclusion. `journal-probe-v0` is disposable and must never be recognized as
-an `.icat` journal.
+Two things changed and the gate completed. ADR-007 put Windows 11 25H2 into the §1.3 matrix, so the
+measurements stopped being evidence on an untested build. And the ETL session's loss counters turned out
+to be readable all along: the adapter was asking Windows about the session *after* stopping it, which
+fails, so an unreadable counter was being recorded where a real zero belonged. Reading before the stop
+fixed it, and the ETL's loss is now measured at every level of both series rather than unknown.
 
-Four of the five gate inputs are now recorded. The blockers that remain are the reason this ADR stays
-proposed:
+The re-run series carries the final numbers. `capture-comparison-20260921-series-stacks` reports
+`decisionReady: true` with no blockers; the clean series reports one, which is the statement that it did
+not request extended data — a setting, not a gap, and the stacks series covers it.
 
 | Gate input | State |
 |---|---|
-| Truth-to-source and source-to-replay fidelity, including extended items | Recorded: identical ordered fingerprint at every level, 72,285 of 72,285 extended items replayed at the highest |
-| Provider loss, consumer-buffer loss, application drops and policy omissions kept separate | Recorded for the journal. **Partly missing for the ETL:** its provider counters cannot be read at stop on this build |
-| Callback time, queue high-water, writer CPU, allocations, bytes written and flush latency | Recorded at every level of both series |
-| Behavior under queue and disk saturation | Recorded: the queue reached its bound and counted 76,315 drops without loss; the writer reached 107% of an acquisition window |
-| Exact Windows build, adapter version, profile, buffers, storage device and command line | Recorded, including a measured volume that meets the §12 reference device. **The build is outside the §1.3 support matrix** |
+| Truth-to-source and source-to-replay fidelity, including extended items | **Recorded.** Identical ordered fingerprint at every level of both series; 74,682 of 74,682 extended items copied, persisted and replayed at the highest level |
+| Provider loss, consumer-buffer loss, application drops and policy omissions kept separate | **Recorded.** Four independent counters, never summed, and the ETL's provider loss is now a measured zero rather than an unreadable default |
+| Callback time, queue high-water, writer CPU, allocations, bytes written and flush latency | **Recorded** at every level of both series |
+| Behaviour under queue and disk saturation | **Recorded.** The queue reached its bound and counted 71,107 drops with zero loss and zero undecodable records; the writer reached 104% of an acquisition window |
+| Exact Windows build, adapter version, profile, buffers, storage device and command line | **Recorded,** on Windows 11 25H2 x64 (pre-release branch 26220), a machine and a volume that both meet the §12 reference |
 
-Close this ADR only after the series is repeated on a supported build with readable ETL loss counters.
-Nothing else the gate asked for is outstanding.
+## Decision
+
+**The admitted journal is InterCat's authoritative live source.** A companion ETL stays available as
+separately labelled original diagnostic evidence, never merged into the journal.
+
+What the measurements support, and only this:
+
+1. **Fidelity is not the risk.** Every level of both series replayed with an identical ordered envelope
+   fingerprint, including real extended-data items from real callbacks and the capture's own source clock
+   read back unchanged. Nothing about the journal's semantics is unproven at these loads.
+2. **The bound behaves.** At `queue-bound` the source delivered 82,458 records against a 512-record queue;
+   InterCat admitted 11,351 and counted 71,107 drops, with zero source loss and zero undecodable records.
+   Bounded memory with counted drops is what R8 asks for, and it is what happened.
+3. **Policy before persistence is the property ETL cannot offer.** An unfiltered ETL cannot be called
+   metadata-only whatever is done to it afterwards, and the size comparison shows why that matters: with
+   call stacks attached the ETL grew to 59 MiB while the journal, keeping a bounded 64-byte prefix per
+   item, stayed at 28 MiB.
+
+What the measurements do **not** support, and what this decision therefore does not claim:
+
+- **No throughput claim.** The unconstrained ceiling measured here is about 20,000 admitted records per
+  second, a fifth of §12's ingest target, and it is the fixture's ceiling rather than the pipeline's: the
+  loopback workload serves its connections sequentially. §12's ingest budget stays unjudged until IC-010
+  has a concurrent workload.
+- **No size claim.** The journal is nine times smaller than the ETL when nearly empty, about twice its
+  size at volume without extended data, and half its size with call stacks. The relationship follows from
+  the admission policy and the enablement; no ratio may be quoted from one load point.
+- **The allocation budget is missed.** The delivery thread allocated about 1.2 KiB per admitted record,
+  99 MiB across a peak level. §12 asks for p99 under 50 µs *and* no unpooled allocation: the latency half
+  is met at every level, the allocation half is not.
+
+**IC-011 may now begin, under three conditions.** It freezes `RecordEnvelopeV1`; it replaces the
+disposable framing with pooled buffer ownership so the R9/R11 allocation budget is met, which is the one
+measured debt this decision carries; and it keeps identity, ownership, corruption and counter tests
+passing across the swap. `journal-probe-v0` and `callback-envelope-candidate-v0` remain disposable and
+must never be recognized as an `.icat` journal.
 
 The comparison must not call the admitted journal byte-identical to ETL: policy intentionally removes
 unapproved bodies. It compares preservation of approved evidence and independent truth, while recording
@@ -195,10 +232,10 @@ existing output directory, and exits non-zero while any decision blocker remains
 ## Alternatives
 
 - **ETL authoritative:** simpler source fidelity and standard tooling, and the series shows it costs this
-  process nothing during acquisition because Windows owns the writer. Against it: metadata-only
-  sanitation cannot be claimed for an unfiltered ETL, its own loss counters could not be read at stop on
-  this build, it was more than twice the journal's size once call stacks were attached, and growing-file
-  live access remains a separate problem.
+  process nothing during acquisition because Windows owns the writer — the strongest argument against the
+  decision taken, and the reason a companion ETL stays available. Against it: metadata-only sanitation
+  cannot be claimed for an unfiltered ETL, it was more than twice the journal's size once call stacks were
+  attached, and growing-file live access remains a separate problem.
 - **Admitted journal authoritative:** applies policy before persistence, keeps one live/replay ID,
   measured identical replay with real extended items at every level, and held a counted bound under
   saturation. Against it: InterCat owns durability, framing, pooling and performance risk; the callback's
@@ -209,6 +246,8 @@ existing output directory, and exits non-zero while any decision blocker remains
 
 ## Reversal cost
 
-Before journal-v1, reversal is cheap because the probe has no supported format. After journal-v1, a
-change of authority affects broker ownership, identity continuity, privacy claims, recovery and import;
-it requires a new ADR, fixture updates and a migration/refusal policy.
+Until IC-011 freezes `RecordEnvelopeV1`, reversal is still cheap: the probe formats are disposable and no
+supported journal exists. After journal-v1, a change of authority affects broker ownership, identity
+continuity, privacy claims, recovery and import; it requires a new ADR, fixture updates and a
+migration/refusal policy. The window in which this decision is cheap to undo closes with IC-011's first
+frozen record, which is the point at which the conditions above stop being advice and become defects.

@@ -95,7 +95,7 @@ internal static partial class Program
     {
         Console.Error.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"  build {environment.BuildId} ({(environment.IsSupportedBuild ? "supported" : "untested")})"
+            $"  build {environment.BuildId} ({environment.Support.Describe()})"
             + $"   {machine.LogicalProcessors} logical processors"
             + $"   {machine.TotalPhysicalMemoryBytes / (1024d * 1024 * 1024):F0} GiB"));
         StorageMeasurement storage = machine.Storage;
