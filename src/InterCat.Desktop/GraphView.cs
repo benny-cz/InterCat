@@ -4,20 +4,45 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
 public sealed class GraphView : Control
 {
-    private static readonly IBrush DirectBrush = Brush.Parse("#58B7F5");
-    private static readonly IBrush CorrelatedBrush = Brush.Parse("#70D7B7");
-    private static readonly IBrush CandidateBrush = Brush.Parse("#EFC36E");
-    private static readonly IBrush NodeBrush = Brush.Parse("#173A52");
-    private static readonly IBrush NodeBorderBrush = Brush.Parse("#65C8F5");
-    private static readonly IBrush SelectedBrush = Brush.Parse("#F6D27C");
-    private static readonly IBrush TextBrush = Brush.Parse("#E8F0FA");
-    private static readonly IBrush MutedTextBrush = Brush.Parse("#91A4BA");
+    private const ThemeMode Mode = ThemeMode.Dark;
+
+    /// <summary>Below this pane width the graph drops secondary labels instead of overlapping them.</summary>
+    private const double NarrowPaneWidth = 620;
+
+    /// <summary>Half the drawn label width, kept clear on both sides so no name is clipped at an edge.</summary>
+    private const double LabelInset = 52;
+
+    private static readonly IBrush NodeBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
+    private static readonly IBrush NodeBorderBrush = Token(ThemePalette.Surfaces(Mode).Accent);
+    private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
+    private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).Ink);
+    private static readonly IBrush MutedTextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
+
+    private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
+
+    /// <summary>Mechanism owns hue; evidence quality owns the dash pattern, never a hue (section 6.6).</summary>
+    private static SolidColorBrush MechanismBrush(Mechanism mechanism) =>
+        new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode));
+
+    private static Pen EvidencePen(Mechanism mechanism, RelationStrength strength, double thickness)
+    {
+        var pen = new Pen(MechanismBrush(mechanism), thickness);
+        pen.DashStyle = strength switch
+        {
+            RelationStrength.Direct => null,
+            RelationStrength.Correlated => new DashStyle([6, 3], 0),
+            _ => new DashStyle([2, 3], 0),
+        };
+
+        return pen;
+    }
     private int keyboardIndex;
 
     public override void Render(DrawingContext context)
@@ -34,14 +59,11 @@ public sealed class GraphView : Control
         {
             Point source = positions[edge.SourceId];
             Point target = positions[edge.TargetId];
-            IBrush brush = edge.Strength switch
-            {
-                RelationStrength.Direct => DirectBrush,
-                RelationStrength.Correlated => CorrelatedBrush,
-                _ => CandidateBrush,
-            };
+            // Hue states the mechanism, thickness states magnitude and the dash pattern states evidence
+            // quality. No channel carries two meanings, and none of them is colour alone (section 6.6, R14).
+            SolidColorBrush brush = MechanismBrush(edge.Mechanism);
             double thickness = edge.Strength == RelationStrength.Direct ? 3 : 1.5;
-            context.DrawLine(new Pen(brush, thickness), source, target);
+            context.DrawLine(EvidencePen(edge.Mechanism, edge.Strength, thickness), source, target);
             Point middle = new((source.X + target.X) / 2, (source.Y + target.Y) / 2);
             if (edge.Strength is RelationStrength.Candidate or RelationStrength.Unresolved)
             {
@@ -60,8 +82,21 @@ public sealed class GraphView : Control
             }
 
             context.DrawEllipse(NodeBrush, new Pen(NodeBorderBrush, index == keyboardIndex && IsFocused ? 3 : 1.5), point, 24, 24);
+        }
+
+        // Labels are a second pass so a later node's circle can never overdraw an earlier node's name.
+        bool roomForDetail = Bounds.Width >= NarrowPaneWidth;
+        foreach (ProcessNode node in nodes)
+        {
+            Point point = positions[node.Id];
             DrawText(context, node.Name, new(point.X - 36, point.Y + 31), 12, TextBrush, 76);
-            DrawText(context, $"PID {node.ProcessId}", new(point.X - 31, point.Y + 47), 10, MutedTextBrush, 70);
+
+            // A narrow pane drops the secondary line rather than letting two labels collide. The value is
+            // never lost: the ranked list and the relationship table still carry the process id (R15).
+            if (roomForDetail)
+            {
+                DrawText(context, $"PID {node.ProcessId}", new(point.X - 31, point.Y + 47), 10, MutedTextBrush, 70);
+            }
         }
     }
 
@@ -115,8 +150,12 @@ public sealed class GraphView : Control
         }
     }
 
+    /// <summary>
+    /// Places a node so that its label fits inside the pane. The inset is the label half-width, so a node
+    /// near an edge keeps its name readable instead of having it clipped (§6.8 legibility).
+    /// </summary>
     private Point Position(ProcessNode node) => new(
-        48 + (node.X * Math.Max(0, Bounds.Width - 96)),
+        LabelInset + (node.X * Math.Max(0, Bounds.Width - (LabelInset * 2))),
         38 + (node.Y * Math.Max(0, Bounds.Height - 98)));
 
     private static void DrawText(DrawingContext context, string text, Point origin, double size, IBrush brush, double width)

@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -11,10 +13,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     private readonly WorkspaceSelectionCoordinator selection = new();
     private ProcessNode? selectedProcess;
     private TimeRange? selectedInterval;
+    private RelationshipRow? selectedRelationship;
+    private IntervalRow? selectedIntervalRow;
+    private bool showTables;
 
     public WorkspaceViewModel()
     {
         Snapshot = SyntheticWorkspace.Create();
+        Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
+        Relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        Intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = Snapshot.Processes[0];
         selection.SelectProcess(selectedProcess.Id);
@@ -23,6 +31,62 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public WorkspaceSnapshot Snapshot { get; }
+
+    /// <summary>Mechanism legend with glyphs, the redundant channel beside hue (R14).</summary>
+    public IReadOnlyList<LegendEntry> Legend { get; }
+
+    /// <summary>Table equivalent of the graph. It yields the same relationships the canvas draws (R15).</summary>
+    public IReadOnlyList<RelationshipRow> Relationships { get; }
+
+    /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
+    public IReadOnlyList<IntervalRow> Intervals { get; }
+
+    /// <summary>Whether the table equivalents are shown. They are always reachable, never a hidden mode.</summary>
+    public bool ShowTables
+    {
+        get => showTables;
+        set
+        {
+            if (showTables == value)
+            {
+                return;
+            }
+
+            showTables = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TableToggleLabel));
+        }
+    }
+
+    public string TableToggleLabel => showTables ? "Hide tables (T)" : "Show tables (T)";
+
+    public RelationshipRow? SelectedRelationship
+    {
+        get => selectedRelationship;
+        set
+        {
+            selectedRelationship = value;
+            OnPropertyChanged();
+            if (value is not null)
+            {
+                SelectProcess(value.SourceId);
+            }
+        }
+    }
+
+    public IntervalRow? SelectedIntervalRow
+    {
+        get => selectedIntervalRow;
+        set
+        {
+            selectedIntervalRow = value;
+            OnPropertyChanged();
+            if (value is not null)
+            {
+                SelectInterval(value.Interval);
+            }
+        }
+    }
 
     public ProcessNode? SelectedProcess
     {

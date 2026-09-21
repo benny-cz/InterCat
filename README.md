@@ -8,7 +8,7 @@ InterCat is a Windows IPC visualizer for exploring which processes communicate, 
 - a schema-driven capability inventory that keeps registration, enablement, observed health and validated semantics as four separate checks;
 - an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
 - seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
-- a synthetic Avalonia graph/timeline prototype with linked selection;
+- a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
 A registered ETW provider is reported separately from a validated capability tier. The first measured TCP run met every §14.2 threshold but was taken on a build outside the supported matrix, so TCP is reported as `ExperimentalEvidence`, not as supported traffic visualization. The named-pipe measurement came back negative with its control intact, so named pipes are reported as `Unsupported` and the scope decision is recorded in ADR-003.
@@ -42,6 +42,8 @@ dotnet run --project src/InterCat.Desktop
 | `fixtures/index.json` | Fixture traceability matrix and the contract-coverage ledger |
 | `fixtures/FX-TCP-001/evidence/` | Curated truth log, scoped observations and verification result |
 | `fixtures/FX-PIPE-001/evidence/` | Curated truth logs and the measured named-pipe result |
+| `theme/` | Theme tokens and their recorded contrast and separation measurements |
+| `docs/reviews/` | Scored interaction reviews with the screens they were taken from |
 | `docs/adr/` | Architecture decisions, including the M0 capture-session strategy |
 | `docs/IMPLEMENTATION-STATUS.md` | Where implementation stands and what comes next |
 

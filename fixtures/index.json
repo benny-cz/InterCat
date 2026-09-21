@@ -116,10 +116,19 @@
         "I14: one admitted record cannot satisfy two truth operations"
       ],
       "I19": [
-        "I19: clearing view selection does not mutate source data"
+        "I19: clearing view selection does not mutate source data",
+        "I19: navigation math depends only on its inputs, never on workspace state"
       ],
       "I3": [
+        "I3: bucket boundaries are half-open and contiguous",
         "I3: time ranges are half-open"
+      ],
+      "I4": [
+        "I4: every eligible point belongs to exactly one bucket",
+        "I4: the covered extent contains the requested one, including the final observation"
+      ],
+      "I5": [
+        "I5: cell counts match the records those cells resolve to"
       ],
       "P14": [
         "P14: a capture never adopts or stops a session it did not create",
@@ -127,6 +136,10 @@
       ],
       "P16": [
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints"
+      ],
+      "P24": [
+        "P24: every mechanism resolves to exactly one family, and every family has a glyph",
+        "P24: the unknown grey is never reused for a supported mechanism"
       ],
       "P27": [
         "P27: a measurement on an untested build cannot promote past experimental evidence",
@@ -146,8 +159,17 @@
       ],
       "R10": [
         "R10: inverse zoom restores the viewport within rounding tolerance",
+        "R10: no sequence of pans escapes the retained extent",
+        "R10: panning and back restores the viewport",
         "R10: panning cannot escape the retained extent",
-        "R10: pointer-focused zoom preserves its time focus"
+        "R10: pointer-focused zoom preserves its time focus",
+        "R10: the time under the pointer survives a zoom across generated viewports",
+        "R10: zooming in and back out restores the viewport unless a clamp intervened"
+      ],
+      "R14": [
+        "R14: adjacent families stay separable under every simulated vision model",
+        "R14: every fill clears 3 to 1 against the ground it is drawn on",
+        "R14: every ink token clears 4.5 to 1 against every surface it can land on"
       ],
       "R16": [
         "R16: a capture attempt without elevation creates nothing and says why"
@@ -158,7 +180,10 @@
         "R19: project references follow the inward dependency map"
       ],
       "R20": [
-        "R20: an unchanged layout keeps one schema fingerprint across formatting differences"
+        "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
+        "R20: colour measurements match published reference values",
+        "R20: greyscale simulation keeps luminance and drops chroma",
+        "R20: the committed theme report matches what the palette computes today"
       ],
       "R21": [
         "R21: a descriptor the schema does not declare is refused with a reason",
@@ -245,14 +270,6 @@
         "reason": "Redacted export belongs to M5.",
         "plannedBy": "M5"
       },
-      "I4": {
-        "reason": "Cell membership needs the aggregate contract of IC-015.",
-        "plannedBy": "IC-015"
-      },
-      "I5": {
-        "reason": "Cell counts versus detail rows need the aggregate contract of IC-015.",
-        "plannedBy": "IC-015"
-      },
       "I6": {
         "reason": "Byte-domain conservation needs the metric contributions of IC-015.",
         "plannedBy": "IC-015"
@@ -325,10 +342,6 @@
         "reason": "In-flight analysis states are asserted with IC-017.",
         "plannedBy": "IC-017"
       },
-      "P24": {
-        "reason": "Colour-only meaning is asserted with the theme work of IC-008.",
-        "plannedBy": "IC-008"
-      },
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",
         "plannedBy": "M2"
@@ -372,10 +385,6 @@
       "R13": {
         "reason": "Data-space hit testing arrives with IC-017.",
         "plannedBy": "IC-017"
-      },
-      "R14": {
-        "reason": "Redundant visual encoding is asserted once the theme tokens of IC-008 are frozen.",
-        "plannedBy": "IC-008"
       },
       "R15": {
         "reason": "Accessible table equivalents arrive with the remaining IC-008 work.",

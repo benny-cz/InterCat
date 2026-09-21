@@ -4,20 +4,21 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
 public sealed class TimelineView : Control
 {
-    private static readonly IBrush TcpBrush = Brush.Parse("#58B7F5");
-    private static readonly IBrush PipeBrush = Brush.Parse("#A889F4");
-    private static readonly IBrush RpcBrush = Brush.Parse("#70D7B7");
-    private static readonly IBrush AlpcBrush = Brush.Parse("#EFC36E");
-    private static readonly IBrush GapBrush = Brush.Parse("#F19A66");
-    private static readonly IBrush SelectedBrush = Brush.Parse("#F6D27C");
-    private static readonly IBrush GridBrush = Brush.Parse("#23384C");
-    private static readonly IBrush TextBrush = Brush.Parse("#91A4BA");
+    private const ThemeMode Mode = ThemeMode.Dark;
+
+    private static readonly IBrush GapBrush = Token(ThemePalette.TokensFor(Mode, MechanismFamily.RemoteCall).Ink);
+    private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
+    private static readonly IBrush GridBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
+    private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
+
+    private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
     private TimeRange? viewport;
 
     public override void Render(DrawingContext context)
@@ -60,7 +61,7 @@ public sealed class TimelineView : Control
             double width = Math.Max(1, x2 - x1 - 2);
             if (bucket.Coverage != CoverageState.Covered)
             {
-                context.DrawRectangle(Brush.Parse("#30251F"), new Pen(GapBrush, 1), new(x1, top, width, plotHeight));
+                context.DrawRectangle(Token(ThemePalette.Surfaces(Mode).Elevated), new Pen(GapBrush, 1), new(x1, top, width, plotHeight));
                 context.DrawLine(new Pen(GapBrush, 1.5), new(x1, top), new(x1 + width, bottom));
                 context.DrawLine(new Pen(GapBrush, 1.5), new(x1 + width, top), new(x1, bottom));
                 continue;
@@ -154,13 +155,9 @@ public sealed class TimelineView : Control
     private static bool Intersects(TimeRange left, TimeRange right) =>
         left.StartTicks < right.EndTicks && right.StartTicks < left.EndTicks;
 
-    private static IBrush BrushFor(Mechanism mechanism) => mechanism switch
-    {
-        Mechanism.Tcp => TcpBrush,
-        Mechanism.NamedPipe => PipeBrush,
-        Mechanism.Rpc => RpcBrush,
-        _ => AlpcBrush,
-    };
+    /// <summary>Hue comes from the mechanism's family token; nothing else may assign it (section 6.6, R5).</summary>
+    private static SolidColorBrush BrushFor(Mechanism mechanism) =>
+        new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode));
 
     private static void DrawText(DrawingContext context, string text, Point origin)
     {

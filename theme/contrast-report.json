@@ -1,0 +1,1702 @@
+{
+  "themeVersion": "1.0.0",
+  "generatedUtc": "2026-09-21T08:58:43.4815553+00:00",
+  "modes": [
+    {
+      "mode": "Dark",
+      "inkContrast": [
+        {
+          "token": "Tcp ink",
+          "surface": "canvas",
+          "tokenHex": "#A7D0FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 11.55,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "panel",
+          "tokenHex": "#A7D0FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 11.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "plot",
+          "tokenHex": "#A7D0FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 10.94,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "elevated",
+          "tokenHex": "#A7D0FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 9.07,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "canvas",
+          "tokenHex": "#01B9B5",
+          "surfaceHex": "#0A1421",
+          "ratio": 7.58,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "panel",
+          "tokenHex": "#01B9B5",
+          "surfaceHex": "#0D1927",
+          "ratio": 7.26,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "plot",
+          "tokenHex": "#01B9B5",
+          "surfaceHex": "#0E1A29",
+          "ratio": 7.18,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "elevated",
+          "tokenHex": "#01B9B5",
+          "surfaceHex": "#152B3D",
+          "ratio": 5.96,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "canvas",
+          "tokenHex": "#D7C2FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 11.5,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "panel",
+          "tokenHex": "#D7C2FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 11.01,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "plot",
+          "tokenHex": "#D7C2FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 10.89,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "elevated",
+          "tokenHex": "#D7C2FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 9.03,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "canvas",
+          "tokenHex": "#D9A85F",
+          "surfaceHex": "#0A1421",
+          "ratio": 8.56,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "panel",
+          "tokenHex": "#D9A85F",
+          "surfaceHex": "#0D1927",
+          "ratio": 8.2,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "plot",
+          "tokenHex": "#D9A85F",
+          "surfaceHex": "#0E1A29",
+          "ratio": 8.11,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "elevated",
+          "tokenHex": "#D9A85F",
+          "surfaceHex": "#152B3D",
+          "ratio": 6.73,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "canvas",
+          "tokenHex": "#8EE4A6",
+          "surfaceHex": "#0A1421",
+          "ratio": 12.16,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "panel",
+          "tokenHex": "#8EE4A6",
+          "surfaceHex": "#0D1927",
+          "ratio": 11.64,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "plot",
+          "tokenHex": "#8EE4A6",
+          "surfaceHex": "#0E1A29",
+          "ratio": 11.51,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "elevated",
+          "tokenHex": "#8EE4A6",
+          "surfaceHex": "#152B3D",
+          "ratio": 9.55,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "canvas",
+          "tokenHex": "#F698D0",
+          "surfaceHex": "#0A1421",
+          "ratio": 9.09,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "panel",
+          "tokenHex": "#F698D0",
+          "surfaceHex": "#0D1927",
+          "ratio": 8.71,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "plot",
+          "tokenHex": "#F698D0",
+          "surfaceHex": "#0E1A29",
+          "ratio": 8.61,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "elevated",
+          "tokenHex": "#F698D0",
+          "surfaceHex": "#152B3D",
+          "ratio": 7.14,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "canvas",
+          "tokenHex": "#B5C0FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 10.53,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "panel",
+          "tokenHex": "#B5C0FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 10.08,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "plot",
+          "tokenHex": "#B5C0FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 9.97,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "elevated",
+          "tokenHex": "#B5C0FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 8.27,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "canvas",
+          "tokenHex": "#7CACC4",
+          "surfaceHex": "#0A1421",
+          "ratio": 7.54,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "panel",
+          "tokenHex": "#7CACC4",
+          "surfaceHex": "#0D1927",
+          "ratio": 7.22,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "plot",
+          "tokenHex": "#7CACC4",
+          "surfaceHex": "#0E1A29",
+          "ratio": 7.14,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "elevated",
+          "tokenHex": "#7CACC4",
+          "surfaceHex": "#152B3D",
+          "ratio": 5.92,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "canvas",
+          "tokenHex": "#ABABAB",
+          "surfaceHex": "#0A1421",
+          "ratio": 8.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "panel",
+          "tokenHex": "#ABABAB",
+          "surfaceHex": "#0D1927",
+          "ratio": 7.71,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "plot",
+          "tokenHex": "#ABABAB",
+          "surfaceHex": "#0E1A29",
+          "ratio": 7.63,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "elevated",
+          "tokenHex": "#ABABAB",
+          "surfaceHex": "#152B3D",
+          "ratio": 6.33,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "canvas",
+          "tokenHex": "#E8F0F8",
+          "surfaceHex": "#0A1421",
+          "ratio": 16.08,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "panel",
+          "tokenHex": "#E8F0F8",
+          "surfaceHex": "#0D1927",
+          "ratio": 15.4,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "plot",
+          "tokenHex": "#E8F0F8",
+          "surfaceHex": "#0E1A29",
+          "ratio": 15.23,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "elevated",
+          "tokenHex": "#E8F0F8",
+          "surfaceHex": "#152B3D",
+          "ratio": 12.63,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "canvas",
+          "tokenHex": "#9FB3C6",
+          "surfaceHex": "#0A1421",
+          "ratio": 8.58,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "panel",
+          "tokenHex": "#9FB3C6",
+          "surfaceHex": "#0D1927",
+          "ratio": 8.21,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "plot",
+          "tokenHex": "#9FB3C6",
+          "surfaceHex": "#0E1A29",
+          "ratio": 8.13,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "elevated",
+          "tokenHex": "#9FB3C6",
+          "surfaceHex": "#152B3D",
+          "ratio": 6.74,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "canvas",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 9.59,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "panel",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 9.18,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "plot",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 9.08,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "elevated",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 7.53,
+          "required": 4.5,
+          "satisfied": true
+        }
+      ],
+      "fillContrast": [
+        {
+          "token": "Tcp fill",
+          "surface": "plot",
+          "tokenHex": "#0BA2F7",
+          "surfaceHex": "#0E1A29",
+          "ratio": 6.28,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Udp fill",
+          "surface": "plot",
+          "tokenHex": "#017775",
+          "surfaceHex": "#0E1A29",
+          "ratio": 3.25,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe fill",
+          "surface": "plot",
+          "tokenHex": "#A083E3",
+          "surfaceHex": "#0E1A29",
+          "ratio": 5.72,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall fill",
+          "surface": "plot",
+          "tokenHex": "#9C6B00",
+          "surfaceHex": "#0E1A29",
+          "ratio": 3.77,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc fill",
+          "surface": "plot",
+          "tokenHex": "#4EAA6C",
+          "surfaceHex": "#0E1A29",
+          "ratio": 6.08,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection fill",
+          "surface": "plot",
+          "tokenHex": "#C54599",
+          "surfaceHex": "#0E1A29",
+          "ratio": 3.91,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket fill",
+          "surface": "plot",
+          "tokenHex": "#6F8AE2",
+          "surfaceHex": "#0E1A29",
+          "ratio": 5.35,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc fill",
+          "surface": "plot",
+          "tokenHex": "#427389",
+          "surfaceHex": "#0E1A29",
+          "ratio": 3.38,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism fill",
+          "surface": "plot",
+          "tokenHex": "#868686",
+          "surfaceHex": "#0E1A29",
+          "ratio": 4.81,
+          "required": 3,
+          "satisfied": true
+        }
+      ],
+      "separations": [
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Normal",
+          "distance": 54.18,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Protanopia",
+          "distance": 52.68,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Deuteranopia",
+          "distance": 54.23,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Tritanopia",
+          "distance": 12.9,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Greyscale",
+          "distance": 19.16,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Normal",
+          "distance": 72.35,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Protanopia",
+          "distance": 51.06,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Deuteranopia",
+          "distance": 42.76,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Tritanopia",
+          "distance": 70.18,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Greyscale",
+          "distance": 16.12,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Normal",
+          "distance": 103.51,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Protanopia",
+          "distance": 105.22,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Deuteranopia",
+          "distance": 105.69,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Tritanopia",
+          "distance": 72.71,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Greyscale",
+          "distance": 12.1,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 64.03,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Protanopia",
+          "distance": 30.27,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Deuteranopia",
+          "distance": 36.37,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Tritanopia",
+          "distance": 126.59,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Greyscale",
+          "distance": 14,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Normal",
+          "distance": 110.42,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Protanopia",
+          "distance": 68.76,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Deuteranopia",
+          "distance": 38.08,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Tritanopia",
+          "distance": 131.49,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Greyscale",
+          "distance": 12.81,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Normal",
+          "distance": 53.71,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Protanopia",
+          "distance": 23.81,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Deuteranopia",
+          "distance": 39.22,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Tritanopia",
+          "distance": 136.91,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Greyscale",
+          "distance": 8.99,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Normal",
+          "distance": 41.49,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Protanopia",
+          "distance": 38.06,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Deuteranopia",
+          "distance": 36.16,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Tritanopia",
+          "distance": 15.45,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Greyscale",
+          "distance": 12.99,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Normal",
+          "distance": 22.27,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Protanopia",
+          "distance": 17.43,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Deuteranopia",
+          "distance": 22.96,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Tritanopia",
+          "distance": 65.27,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Greyscale",
+          "distance": 9.89,
+          "required": 6,
+          "satisfied": true
+        }
+      ],
+      "satisfied": true
+    },
+    {
+      "mode": "Light",
+      "inkContrast": [
+        {
+          "token": "Tcp ink",
+          "surface": "canvas",
+          "tokenHex": "#026399",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 6.47,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "panel",
+          "tokenHex": "#026399",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 6.03,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "plot",
+          "tokenHex": "#026399",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 6.3,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Tcp ink",
+          "surface": "elevated",
+          "tokenHex": "#026399",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 5.49,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "canvas",
+          "tokenHex": "#00504E",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 9.3,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "panel",
+          "tokenHex": "#00504E",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 8.67,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "plot",
+          "tokenHex": "#00504E",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 9.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Udp ink",
+          "surface": "elevated",
+          "tokenHex": "#00504E",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 7.9,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "canvas",
+          "tokenHex": "#6C53AE",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 6.02,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "panel",
+          "tokenHex": "#6C53AE",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 5.61,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "plot",
+          "tokenHex": "#6C53AE",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 5.86,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe ink",
+          "surface": "elevated",
+          "tokenHex": "#6C53AE",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 5.12,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "canvas",
+          "tokenHex": "#644300",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 8.96,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "panel",
+          "tokenHex": "#644300",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 8.35,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "plot",
+          "tokenHex": "#644300",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 8.72,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall ink",
+          "surface": "elevated",
+          "tokenHex": "#644300",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 7.61,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "canvas",
+          "tokenHex": "#0A753C",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 5.8,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "panel",
+          "tokenHex": "#0A753C",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 5.4,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "plot",
+          "tokenHex": "#0A753C",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 5.64,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc ink",
+          "surface": "elevated",
+          "tokenHex": "#0A753C",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 4.92,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "canvas",
+          "tokenHex": "#8A1A67",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 8.66,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "panel",
+          "tokenHex": "#8A1A67",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 8.07,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "plot",
+          "tokenHex": "#8A1A67",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 8.43,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection ink",
+          "surface": "elevated",
+          "tokenHex": "#8A1A67",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 7.36,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "canvas",
+          "tokenHex": "#3259AA",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 6.68,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "panel",
+          "tokenHex": "#3259AA",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 6.22,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "plot",
+          "tokenHex": "#3259AA",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 6.5,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket ink",
+          "surface": "elevated",
+          "tokenHex": "#3259AA",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 5.67,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "canvas",
+          "tokenHex": "#0D485C",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 10.01,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "panel",
+          "tokenHex": "#0D485C",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 9.32,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "plot",
+          "tokenHex": "#0D485C",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 9.74,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc ink",
+          "surface": "elevated",
+          "tokenHex": "#0D485C",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 8.5,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "canvas",
+          "tokenHex": "#393939",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 11.55,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "panel",
+          "tokenHex": "#393939",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 10.76,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "plot",
+          "tokenHex": "#393939",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 11.24,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism ink",
+          "surface": "elevated",
+          "tokenHex": "#393939",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 9.81,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "canvas",
+          "tokenHex": "#101922",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 17.73,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "panel",
+          "tokenHex": "#101922",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 16.52,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "plot",
+          "tokenHex": "#101922",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 17.26,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "body ink",
+          "surface": "elevated",
+          "tokenHex": "#101922",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 15.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "canvas",
+          "tokenHex": "#455565",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 7.66,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "panel",
+          "tokenHex": "#455565",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 7.14,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "plot",
+          "tokenHex": "#455565",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 7.46,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "muted ink",
+          "surface": "elevated",
+          "tokenHex": "#455565",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 6.51,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "canvas",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 7.58,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "panel",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 7.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "plot",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 7.38,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "accent",
+          "surface": "elevated",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 6.44,
+          "required": 4.5,
+          "satisfied": true
+        }
+      ],
+      "fillContrast": [
+        {
+          "token": "Tcp fill",
+          "surface": "plot",
+          "tokenHex": "#0182C8",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 4.07,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Udp fill",
+          "surface": "plot",
+          "tokenHex": "#026A67",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 6.27,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Pipe fill",
+          "surface": "plot",
+          "tokenHex": "#8D71CF",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 3.79,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "RemoteCall fill",
+          "surface": "plot",
+          "tokenHex": "#865B00",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 5.82,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "Alpc fill",
+          "surface": "plot",
+          "tokenHex": "#3A975B",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 3.55,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "SharedSection fill",
+          "surface": "plot",
+          "tokenHex": "#AA2A81",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 6.09,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "OtherSocket fill",
+          "surface": "plot",
+          "tokenHex": "#5573C9",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 4.37,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "LegacyIpc fill",
+          "surface": "plot",
+          "tokenHex": "#2A5D72",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 7.03,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "UnknownMechanism fill",
+          "surface": "plot",
+          "tokenHex": "#404040",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 10.09,
+          "required": 3,
+          "satisfied": true
+        }
+      ],
+      "separations": [
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Normal",
+          "distance": 46.3,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Protanopia",
+          "distance": 44.19,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Deuteranopia",
+          "distance": 45.47,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Tritanopia",
+          "distance": 21.71,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
+          "second": "Udp",
+          "model": "Greyscale",
+          "distance": 12.11,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Normal",
+          "distance": 71.06,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Protanopia",
+          "distance": 51.29,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Deuteranopia",
+          "distance": 43.33,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Tritanopia",
+          "distance": 60.53,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
+          "second": "Pipe",
+          "model": "Greyscale",
+          "distance": 14.07,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Normal",
+          "distance": 97.89,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Protanopia",
+          "distance": 99.41,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Deuteranopia",
+          "distance": 99.69,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Tritanopia",
+          "distance": 68.52,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "RemoteCall",
+          "model": "Greyscale",
+          "distance": 12.01,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 60.3,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Protanopia",
+          "distance": 26.03,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Deuteranopia",
+          "distance": 30.8,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Tritanopia",
+          "distance": 126.06,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "Greyscale",
+          "distance": 13.96,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Normal",
+          "distance": 110.08,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Protanopia",
+          "distance": 69.15,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Deuteranopia",
+          "distance": 38.49,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Tritanopia",
+          "distance": 129.45,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "Alpc",
+          "second": "SharedSection",
+          "model": "Greyscale",
+          "distance": 15.2,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Normal",
+          "distance": 53.33,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Protanopia",
+          "distance": 24.12,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Deuteranopia",
+          "distance": 40.4,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Tritanopia",
+          "distance": 132.76,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "SharedSection",
+          "second": "OtherSocket",
+          "model": "Greyscale",
+          "distance": 9.3,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Normal",
+          "distance": 42.05,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Protanopia",
+          "distance": 38.5,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Deuteranopia",
+          "distance": 36.97,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Tritanopia",
+          "distance": 19.32,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "OtherSocket",
+          "second": "LegacyIpc",
+          "model": "Greyscale",
+          "distance": 13.05,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Normal",
+          "distance": 22.18,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Protanopia",
+          "distance": 19.24,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Deuteranopia",
+          "distance": 22.4,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Tritanopia",
+          "distance": 63.25,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "LegacyIpc",
+          "second": "UnknownMechanism",
+          "model": "Greyscale",
+          "distance": 9.89,
+          "required": 6,
+          "satisfied": true
+        }
+      ],
+      "satisfied": true
+    }
+  ],
+  "thresholds": [
+    "Ink against every surface token: at least 4.5 to 1",
+    "Fill against its plot ground: at least 3.0 to 1",
+    "Adjacent families in normal vision: at least 18 CIE76",
+    "Adjacent families under each simulated deficiency: at least 10 CIE76",
+    "Adjacent families in greyscale: at least 6 CIELAB lightness",
+    "Hatches and warning patterns are reserved for coverage and quality; no family may use one.",
+    "The unknown grey is never reused for a supported mechanism."
+  ],
+  "satisfied": true
+}
