@@ -26,6 +26,7 @@ dotnet run --project src/InterCat.Cli -- capabilities
 # Measured vertical paths. Each starts one owned ETW session; needs an elevated shell.
 dotnet run --project src/InterCat.Cli -- measure tcp
 dotnet run --project src/InterCat.Cli -- measure pipe
+dotnet run --project src/InterCat.Cli -- measure rpc
 
 # Offline re-evaluation into shareable, fixture-scoped evidence.
 dotnet run --project src/InterCat.Cli -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence
@@ -42,6 +43,7 @@ dotnet run --project src/InterCat.Desktop
 | `fixtures/index.json` | Fixture traceability matrix and the contract-coverage ledger |
 | `fixtures/FX-TCP-001/evidence/` | Curated truth log, scoped observations and verification result |
 | `fixtures/FX-PIPE-001/evidence/` | Curated truth logs and the measured named-pipe result |
+| `fixtures/FX-RPC-001/evidence/` | Curated truth log, scoped call records and the measured RPC result |
 | `theme/` | Theme tokens and their recorded contrast and separation measurements |
 | `docs/reviews/` | Scored interaction reviews with the screens they were taken from |
 | `docs/adr/` | Architecture decisions, including the M0 capture-session strategy |

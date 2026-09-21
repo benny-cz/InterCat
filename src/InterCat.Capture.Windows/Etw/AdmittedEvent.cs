@@ -33,9 +33,11 @@ public struct AdmittedEvent
 
     private AdmittedSlotBuffer slots;
     private AdmittedNameBuffer name;
+    private Guid identifier;
     private byte knownMask;
     private byte nameLength;
     private bool nameTruncated;
+    private bool identifierKnown;
 
     public int SourceIndex { get; set; }
     public int EventId { get; set; }
@@ -57,6 +59,15 @@ public struct AdmittedEvent
 
     /// <summary>Monotonic ordinal within the capture stream, assigned in the callback (section 18.1).</summary>
     public long RecordOrdinal { get; set; }
+
+    /// <summary>
+    /// The event header's activity id. Several sources relate a start to its completion only through this
+    /// field, so it is preserved rather than dropped with the rest of the header (section 18.1).
+    /// </summary>
+    public Guid ActivityId { get; set; }
+
+    /// <summary>The header's related activity id, which links a nested activity to its parent.</summary>
+    public Guid RelatedActivityId { get; set; }
 
     public readonly byte KnownSlotMask => knownMask;
 
@@ -80,6 +91,18 @@ public struct AdmittedEvent
 
     /// <summary>True when a bounded resource name was copied for this record.</summary>
     public readonly bool HasName => nameLength > 0;
+
+    /// <summary>True when the descriptor carried an admitted identifier such as an interface UUID.</summary>
+    public readonly bool HasIdentifier => identifierKnown;
+
+    /// <summary>The admitted identifier. Unknown stays unknown: an absent one is never an empty GUID (R3).</summary>
+    public readonly Guid Identifier => identifier;
+
+    public void SetIdentifier(Guid value)
+    {
+        identifier = value;
+        identifierKnown = true;
+    }
 
     /// <summary>True when the name was longer than the bounded copy; the value is a prefix (I21).</summary>
     public readonly bool NameTruncated => nameTruncated;
@@ -118,5 +141,6 @@ public struct AdmittedEvent
         knownMask = 0;
         nameLength = 0;
         nameTruncated = false;
+        identifierKnown = false;
     }
 }

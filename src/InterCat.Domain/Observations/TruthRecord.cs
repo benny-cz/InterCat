@@ -12,6 +12,12 @@ public enum TruthEventKind
     ConnectionClosed = 7,
     ProcessExiting = 8,
     Failure = 9,
+
+    /// <summary>A call the workload issued, for mechanisms whose unit of work is a call rather than a message.</summary>
+    CallIssued = 10,
+
+    /// <summary>The completion the workload observed for a call it issued.</summary>
+    CallCompleted = 11,
 }
 
 /// <summary>

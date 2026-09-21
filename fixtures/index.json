@@ -108,6 +108,57 @@
         "R21: a negative result records the control that proves the source was live",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed"
       ]
+    },
+    {
+      "id": "FX-RPC-001",
+      "title": "Local RPC calls to the Windows service control manager",
+      "scenario": "Section 13.1 scenario 5: local RPC with a known client, a Windows service host as the server, and the fixture run twice inside one capture.",
+      "milestone": "M0",
+      "backlog": [
+        "IC-006"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2",
+          "P7",
+          "P8",
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads rpc-local",
+        "seed": 0,
+        "log": "fixtures/FX-RPC-001/evidence/truth-client.jsonl",
+        "independence": "The client logs every call it issues through the documented service API; it never reads InterCat state. The server is a Windows service host, which the scenario file states explicitly."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-RPC-001/evidence/measurement.json",
+        "note": "8 of 8 calls observed and bound to the expected interface with their completions paired, no byte domain on any descriptor, and no client-to-server peer paired. Tier ExperimentalEvidence; scope recorded in ADR-004."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Untested",
+          "date": "2026-09-21",
+          "result": "Reproduced across two runs in one capture. Gaps: no byte measurement exists on this source, and an interface has no lifetime to discover."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.2.0",
+        "shareable": true,
+        "contents": "The client's truth log, the scenario parameters, the measurement counters, and the call records belonging to the fixture's own process and activities. Unrelated machine RPC is never written (P16)."
+      },
+      "tests": [
+        "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
+        "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",
+        "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
+        "R22: a call to another interface is scope, not a match",
+        "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
+      ]
     }
   ],
   "contractCoverage": {
@@ -137,6 +188,9 @@
       "P16": [
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints"
       ],
+      "P2": [
+        "P2: an RPC call never reports a byte value, and the byte criterion stays not measured"
+      ],
       "P24": [
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
         "P24: the unknown grey is never reused for a supported mechanism"
@@ -146,16 +200,19 @@
         "P27: a source that registers and enables but emits nothing stays unsupported",
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
-        "P27: false peer attribution above one percent blocks traffic visualization"
+        "P27: false peer attribution above one percent blocks traffic visualization",
+        "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
       ],
       "P3": [
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
       "P7": [
+        "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed"
       ],
       "P8": [
-        "P8: a completion is paired by I/O request identity, not by time proximity"
+        "P8: a completion is paired by I/O request identity, not by time proximity",
+        "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown"
       ],
       "R10": [
         "R10: inverse zoom restores the viewport within rounding tolerance",
@@ -192,6 +249,7 @@
         "R21: a refused state rundown degrades the capture instead of hiding the gap"
       ],
       "R22": [
+        "R22: a call to another interface is scope, not a match",
         "R22: an operation on an unobserved create is left unresolved, not matched by name"
       ],
       "R3": [
@@ -321,10 +379,6 @@
       "P19": {
         "reason": "Broker authentication is asserted with IC-014.",
         "plannedBy": "IC-014"
-      },
-      "P2": {
-        "reason": "Substitution of a missing measurement is asserted with IC-015.",
-        "plannedBy": "IC-015"
       },
       "P20": {
         "reason": "Intrusive peer resolution is asserted with IC-005.",

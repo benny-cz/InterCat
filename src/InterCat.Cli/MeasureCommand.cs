@@ -69,9 +69,15 @@ internal static partial class MeasureCommand
             return await RunPipeAsync(command, cancellationToken).ConfigureAwait(false);
         }
 
+        if (string.Equals(mechanism, "rpc", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RunRpcAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!string.Equals(mechanism, "tcp", StringComparison.OrdinalIgnoreCase))
         {
-            ConsoleUi.Failure($"Only 'tcp' and 'pipe' are measurable in this milestone. Unknown mechanism: {mechanism}");
+            ConsoleUi.Failure(
+                $"Only 'tcp', 'pipe' and 'rpc' are measurable in this milestone. Unknown mechanism: {mechanism}");
             return InterCatExitCode.InvalidInvocation;
         }
 

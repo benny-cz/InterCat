@@ -61,6 +61,9 @@ static void PrintHelp()
     ConsoleUi.Line("  icat capabilities [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Read-only source inventory. Starts no capture.");
     ConsoleUi.Line();
+    ConsoleUi.Line("  icat measure <tcp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Runs the named fixture under one owned ETW session and computes its tier.");
+    ConsoleUi.Line();
     ConsoleUi.Line("  icat measure tcp [--output <dir>] [--seed <n>] [--connections <n>] [--messages <n>]");
     ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");

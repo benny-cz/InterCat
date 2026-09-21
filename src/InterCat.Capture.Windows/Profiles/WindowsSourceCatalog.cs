@@ -129,6 +129,18 @@ public static class WindowsSourceCatalog
         new("Status", FieldRole.Status),
     ];
 
+    private static readonly IReadOnlyList<AdmittedFieldIntent> RpcCallStartFields =
+    [
+        new("InterfaceUuid", FieldRole.CorrelationKey, Notes: "The RPC interface the call targets. It identifies an interface, never a process (R22)."),
+        new("ProcNum", FieldRole.CorrelationKey, Notes: "Operation number within the interface."),
+        new("Protocol", FieldRole.Unclassified, Notes: "Transport sequence identifier, which says whether the call stayed local."),
+    ];
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> RpcCallStopFields =
+    [
+        new("Status", FieldRole.Status, Notes: "Call status. The descriptor carries no size, so no byte value exists to report (R3)."),
+    ];
+
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStartFields =
     [
         new("ProcessID", FieldRole.ProcessAttribution),
@@ -257,11 +269,20 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
             DeniedEventIds = [10, 11],
-            AdmittedEvents = [],
+            AdmittedEvents =
+            [
+                new(5, 1, "RPC client call start", Mechanism.Rpc, ObservationKind.RequestStart, Direction.Outbound, RpcCallStartFields),
+                new(6, 1, "RPC server call start", Mechanism.Rpc, ObservationKind.RequestStart, Direction.Inbound, RpcCallStartFields),
+                new(7, 1, "RPC client call stop", Mechanism.Rpc, ObservationKind.RequestEnd, Direction.Outbound, RpcCallStopFields),
+                new(8, 1, "RPC server call stop", Mechanism.Rpc, ObservationKind.RequestEnd, Direction.Inbound, RpcCallStopFields),
+            ],
             Notes =
             [
-                "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings.",
-                "No RPC measurement is claimed until a truth workload validates client and server pairing (IC-006).",
+                "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings, "
+                + "so those three are admitted and the endpoint strings are not.",
+                "Stop events carry a status and no size. RPC therefore yields operations, never a byte volume, "
+                + "and an RPC annotation never adds transport bytes (I11, P4).",
+                "A call is paired with its completion through the event activity id, not by time proximity (P8).",
             ],
         };
 

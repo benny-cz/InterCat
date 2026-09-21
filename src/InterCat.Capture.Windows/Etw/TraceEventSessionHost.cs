@@ -77,10 +77,13 @@ public sealed class TraceEventSessionHost : IEtwSessionHost
                 var options = new TraceEventProviderOptions();
                 if (request.EventIdsToEnable.Count > 0)
                 {
+                    // One ETW event-id filter is either an allow list or a deny list, never both, and a
+                    // provider refuses the request when both are supplied. An allow list already excludes
+                    // every other descriptor, and the deny list stays in the plan and in the callback so a
+                    // denied descriptor is refused even if the source delivers it anyway (P28).
                     options.EventIDsToEnable = [.. request.EventIdsToEnable];
                 }
-
-                if (request.EventIdsToDisable.Count > 0)
+                else if (request.EventIdsToDisable.Count > 0)
                 {
                     options.EventIDsToDisable = [.. request.EventIdsToDisable];
                 }
@@ -257,6 +260,8 @@ public sealed class TraceEventSessionHost : IEtwSessionHost
             admitted.TimestampQpc = data.TimeStampQPC;
 #pragma warning restore CS0618
             admitted.TimestampUtcTicks = data.TimeStamp.ToUniversalTime().Ticks;
+            admitted.ActivityId = data.ActivityID;
+            admitted.RelatedActivityId = data.RelatedActivityID;
             admitted.HeaderProcessId = data.ProcessID;
             admitted.HeaderThreadId = data.ThreadID;
             admitted.ProcessorNumber = data.ProcessorNumber;
@@ -276,6 +281,12 @@ public sealed class TraceEventSessionHost : IEtwSessionHost
                 if (slot.Kind == AdmittedSlotKind.ResourceName)
                 {
                     ReadBoundedName(body, slot.Offset, data.EventDataLength, ref admitted);
+                    continue;
+                }
+
+                if (slot.Kind == AdmittedSlotKind.Identifier)
+                {
+                    ReadIdentifier(body, slot.Offset, ref admitted);
                     continue;
                 }
 
@@ -332,6 +343,18 @@ public sealed class TraceEventSessionHost : IEtwSessionHost
             {
                 admitted.SetName(buffer[..length], truncated);
             }
+        }
+
+        /// <summary>Copies a 16-byte identifier out of callback memory with a bounded, fixed-size read.</summary>
+        private static void ReadIdentifier(IntPtr body, int offset, ref AdmittedEvent admitted)
+        {
+            Span<byte> buffer = stackalloc byte[16];
+            for (int index = 0; index < buffer.Length; index++)
+            {
+                buffer[index] = Marshal.ReadByte(body, offset + index);
+            }
+
+            admitted.SetIdentifier(new Guid(buffer));
         }
 
         private readonly record struct DeniedKey(Guid ProviderGuid, int EventId);

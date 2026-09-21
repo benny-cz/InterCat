@@ -26,6 +26,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    var rpcOptions = new RpcLocalOptions
+    {
+        TruthDirectory = truth,
+        Calls = Integer(args, "--calls") ?? 12,
+        ServiceName = Option(args, "--service") ?? "Schedule",
+    };
+
     var pipeOptions = new PipeLoopbackOptions
     {
         TruthDirectory = truth,
@@ -60,6 +67,11 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await PipeLoopbackScenario.RunClientAsync(pipeOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback" or "pipe-loopback-server" or "pipe-loopback-client" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "rpc-local" when OperatingSystem.IsWindows() =>
+                await RpcLocalScenario.RunCoordinatorAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
+            "rpc-local-client" when OperatingSystem.IsWindows() =>
+                await RpcLocalScenario.RunClientAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
+            "rpc-local" or "rpc-local-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             _ => await UnknownAsync(args[0]).ConfigureAwait(false),
         };
     }
@@ -117,6 +129,10 @@ static void PrintHelp()
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");
     Console.WriteLine("      deliberately short read so requested and completed sizes differ.");
+    Console.WriteLine();
+    Console.WriteLine("  rpc-local --truth <dir> [--calls n] [--service <name>]");
+    Console.WriteLine("      FX-RPC-001: a known number of local RPC calls to the Windows service control");
+    Console.WriteLine("      manager through the ordinary service API, with the client logging every call.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

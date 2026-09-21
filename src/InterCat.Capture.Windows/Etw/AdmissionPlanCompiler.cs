@@ -111,6 +111,7 @@ public static class AdmissionPlanCompiler
         var report = new List<FieldCapability>();
         int minimumLength = 0;
         bool nameSlotTaken = false;
+        bool identifierSlotTaken = false;
 
         foreach (AdmittedFieldIntent fieldIntent in intent.Fields)
         {
@@ -143,12 +144,27 @@ public static class AdmissionPlanCompiler
             bool isName = resolved.Field.WidthKind == FieldWidthKind.Variable
                 && fieldIntent.Role == FieldRole.ResourceName
                 && string.Equals(resolved.Field.InType, "win:UnicodeString", StringComparison.Ordinal);
+            bool isIdentifier = string.Equals(resolved.Field.InType, "win:GUID", StringComparison.Ordinal)
+                && fieldIntent.Role is FieldRole.CorrelationKey or FieldRole.ResourceName;
             int resolvedWidth = resolved.Field.WidthKind switch
             {
                 FieldWidthKind.Fixed => resolved.Field.FixedWidth,
                 FieldWidthKind.PointerSized => pointerSize,
                 _ => 0,
             };
+
+            if (isIdentifier && identifierSlotTaken)
+            {
+                report.Add(new(
+                    fieldIntent.FieldName,
+                    FieldAvailability.ProfileDisabled,
+                    fieldIntent.Role,
+                    resolved.Field.InType,
+                    fieldIntent.Unit,
+                    fieldIntent.ByteDomain,
+                    "A bounded admission copies at most one identifier per descriptor."));
+                continue;
+            }
 
             if (isName && nameSlotTaken)
             {
@@ -163,7 +179,7 @@ public static class AdmissionPlanCompiler
                 continue;
             }
 
-            if (!isName && (resolved.Field.WidthKind == FieldWidthKind.Variable || resolvedWidth > MaximumSlotWidth))
+            if (!isName && !isIdentifier && (resolved.Field.WidthKind == FieldWidthKind.Variable || resolvedWidth > MaximumSlotWidth))
             {
                 report.Add(new(
                     fieldIntent.FieldName,
@@ -197,9 +213,14 @@ public static class AdmissionPlanCompiler
                 fieldIntent.Unit,
                 fieldIntent.ByteDomain,
                 fieldIntent.Transform,
-                isName ? AdmittedSlotKind.ResourceName : AdmittedSlotKind.Numeric));
+                isName
+                    ? AdmittedSlotKind.ResourceName
+                    : isIdentifier ? AdmittedSlotKind.Identifier : AdmittedSlotKind.Numeric));
             nameSlotTaken |= isName;
-            minimumLength = Math.Max(minimumLength, resolved.Offset + (isName ? 2 : resolvedWidth));
+            identifierSlotTaken |= isIdentifier;
+            minimumLength = Math.Max(
+                minimumLength,
+                resolved.Offset + (isName ? 2 : isIdentifier ? 16 : resolvedWidth));
             report.Add(new(
                 resolved.Field.Name,
                 FieldAvailability.Present,

@@ -1,0 +1,10 @@
+{
+  "scenarioId": "FX-RPC-001",
+  "calls": 8,
+  "serviceName": "Schedule",
+  "expectedInterfaceUuid": "367abb81-9844-35f1-ad32-98f038001003",
+  "clientProcessId": 77496,
+  "expectedServerProcessId": 1960,
+  "serverNote": "The RPC server is the Windows service control manager host, not a workload process. Its process id is recorded so peer attribution can be checked, not assumed.",
+  "clientExitCode": 0
+}

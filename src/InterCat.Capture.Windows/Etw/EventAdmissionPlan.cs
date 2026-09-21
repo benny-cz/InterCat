@@ -23,6 +23,9 @@ public enum AdmittedSlotKind
 
     /// <summary>A UTF-16 resource name, truncated to the bounded name length with truncation recorded.</summary>
     ResourceName = 2,
+
+    /// <summary>A 16-byte identifier such as an interface UUID, copied whole into the record.</summary>
+    Identifier = 3,
 }
 
 /// <summary>A compiled admission plan for exactly one event descriptor version.</summary>

@@ -1,6 +1,6 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-21T08:35:17.8371303+00:00",
+  "probedAtUtc": "2026-09-21T09:13:31.1659322+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
@@ -1311,7 +1311,116 @@
           "1"
         ]
       },
-      "events": [],
+      "events": [
+        {
+          "eventId": 5,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "RpcClientCall",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:GUID",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The RPC interface the call targets. It identifies an interface, never a process (R22)."
+            },
+            {
+              "name": "ProcNum",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Operation number within the interface."
+            },
+            {
+              "name": "Protocol",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Transport sequence identifier, which says whether the call stayed local."
+            }
+          ]
+        },
+        {
+          "eventId": 6,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "RpcServerCall",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:GUID",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The RPC interface the call targets. It identifies an interface, never a process (R22)."
+            },
+            {
+              "name": "ProcNum",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Operation number within the interface."
+            },
+            {
+              "name": "Protocol",
+              "availability": "Present",
+              "role": "Unclassified",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Transport sequence identifier, which says whether the call stayed local."
+            }
+          ]
+        },
+        {
+          "eventId": 7,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "RpcClientCall",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "Status",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Call status. The descriptor carries no size, so no byte value exists to report (R3)."
+            }
+          ]
+        },
+        {
+          "eventId": 8,
+          "version": 1,
+          "opcode": 0,
+          "taskName": "RpcServerCall",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "Status",
+              "availability": "Present",
+              "role": "Status",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Call status. The descriptor carries no size, so no byte value exists to report (R3)."
+            }
+          ]
+        }
+      ],
       "checks": [
         {
           "kind": "Registration",
@@ -1343,8 +1452,9 @@
       "overhead": "Unmeasured",
       "fixtureIds": [],
       "notes": [
-        "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings.",
-        "No RPC measurement is claimed until a truth workload validates client and server pairing (IC-006)."
+        "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings, so those three are admitted and the endpoint strings are not.",
+        "Stop events carry a status and no size. RPC therefore yields operations, never a byte volume, and an RPC annotation never adds transport bytes (I11, P4).",
+        "A call is paired with its completion through the event activity id, not by time proximity (P8)."
       ]
     },
     {
