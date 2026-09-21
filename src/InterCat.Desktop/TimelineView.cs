@@ -61,9 +61,7 @@ public sealed class TimelineView : Control
             double width = Math.Max(1, x2 - x1 - 2);
             if (bucket.Coverage != CoverageState.Covered)
             {
-                context.DrawRectangle(Token(ThemePalette.Surfaces(Mode).Elevated), new Pen(GapBrush, 1), new(x1, top, width, plotHeight));
-                context.DrawLine(new Pen(GapBrush, 1.5), new(x1, top), new(x1 + width, bottom));
-                context.DrawLine(new Pen(GapBrush, 1.5), new(x1 + width, top), new(x1, bottom));
+                DrawCoverageGap(context, new(x1, top, width, plotHeight));
                 continue;
             }
 
@@ -79,6 +77,28 @@ public sealed class TimelineView : Control
         DrawText(context, $"{visible.StartTicks / 10_000_000m:N1}s", new(left, bottom + 7));
         DrawText(context, $"{visible.EndTicks / 10_000_000m:N1}s", new(right - 38, bottom + 7));
         DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
+    }
+
+    /// <summary>
+    /// A coverage gap is drawn as the section 6.6 diagonal hatch: a texture, not a colour and not a
+    /// symbol, so it survives greyscale and a colour-vision difference and never looks like a value. The
+    /// cell is never filled with an interpolated height, because a gap has no measurement to draw (P26).
+    /// </summary>
+    private static void DrawCoverageGap(DrawingContext context, Rect cell)
+    {
+        const double spacing = 7;
+        context.DrawRectangle(Token(ThemePalette.Surfaces(Mode).Elevated), new Pen(GapBrush, 1), cell);
+        using (context.PushClip(cell))
+        {
+            var pen = new Pen(GapBrush, 1);
+            for (double offset = -cell.Height; offset < cell.Width; offset += spacing)
+            {
+                context.DrawLine(
+                    pen,
+                    new(cell.X + offset, cell.Bottom),
+                    new(cell.X + offset + cell.Height, cell.Top));
+            }
+        }
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

@@ -1,0 +1,65 @@
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
+using InterCat.Desktop;
+using Xunit;
+
+namespace InterCat.Ui.Tests;
+
+/// <summary>
+/// Renders the window without a screen. A review of a desktop application otherwise depends on someone
+/// having a display; this lane produces the frame as a file, so the layout can be looked at from a build
+/// and a defect found by looking is reproducible (section 17).
+/// </summary>
+public sealed class WindowRenderTests
+{
+    /// <summary>The section 1.3 minimum window, and a size a reviewer is likely to use.</summary>
+    public static TheoryData<int, int> Sizes => new() { { 1080, 700 }, { 1456, 939 } };
+
+    [AvaloniaTheory(DisplayName = "R15: the window renders at its minimum size and at a review size")]
+    [MemberData(nameof(Sizes))]
+    public void WindowRendersAtEverySupportedSize(int width, int height)
+    {
+        var window = new MainWindow { Width = width, Height = height };
+        window.Show();
+        Dispatch();
+
+        WriteableBitmap? frame = window.CaptureRenderedFrame();
+
+        Assert.NotNull(frame);
+        Assert.True(frame!.PixelSize.Width >= width - 1, $"rendered width {frame.PixelSize.Width}");
+        Assert.True(frame.PixelSize.Height >= height - 1, $"rendered height {frame.PixelSize.Height}");
+        Save(frame, $"window-{width}x{height}.png");
+    }
+
+    [AvaloniaTheory(DisplayName = "R15: the window renders every rung of the ladder down to evidence")]
+    [MemberData(nameof(Sizes))]
+    public void EveryRungRenders(int width, int height)
+    {
+        var window = new MainWindow { Width = width, Height = height };
+        window.Show();
+        var viewModel = (WorkspaceViewModel)window.DataContext!;
+
+        for (int depth = 0; depth < 5 && !viewModel.IsEmptyRung; depth++)
+        {
+            viewModel.SelectedRung = viewModel.RungRows[0];
+            Assert.True(viewModel.Descend(), $"the ladder refused to descend at depth {depth}");
+            Dispatch();
+            WriteableBitmap? frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            Save(frame!, $"rung-{depth + 1}-{width}x{height}.png");
+        }
+
+        Assert.Equal("L5 · EVIDENCE", viewModel.LevelBadge);
+    }
+
+    private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+    private static void Save(WriteableBitmap frame, string name)
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "rendered");
+        Directory.CreateDirectory(directory);
+        frame.Save(Path.Combine(directory, name));
+    }
+}

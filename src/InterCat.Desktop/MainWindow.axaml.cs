@@ -39,12 +39,44 @@ public sealed partial class MainWindow : Window
                 viewModel.ShowTables = !viewModel.ShowTables;
                 e.Handled = true;
                 break;
+            case Key.Enter:
+                e.Handled = viewModel.Descend();
+                break;
+            case Key.E:
+                e.Handled = viewModel.ShowEvidence();
+                break;
             case Key.Escape:
-                viewModel.ClearSelection();
+                _ = viewModel.Ascend();
                 e.Handled = true;
+                break;
+            case Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
+                e.Handled = viewModel.Ascend();
+                break;
+            case Key.Delete:
+                e.Handled = viewModel.RemoveSelectedFilter();
                 break;
             default:
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The pointer equivalent of Enter. Descending and ascending never need a menu or a mode, so both
+    /// gestures exist at every rung (section 3.2).
+    /// </summary>
+    private void DescendFromRow(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            _ = viewModel.Descend();
+        }
+    }
+
+    private void AscendOrClear(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            _ = viewModel.Ascend();
         }
     }
 
@@ -53,14 +85,6 @@ public sealed partial class MainWindow : Window
         if (DataContext is WorkspaceViewModel viewModel)
         {
             viewModel.ShowTables = !viewModel.ShowTables;
-        }
-    }
-
-    private void ClearSelection(object? sender, RoutedEventArgs eventArgs)
-    {
-        if (DataContext is WorkspaceViewModel viewModel)
-        {
-            viewModel.ClearSelection();
         }
     }
 }

@@ -226,9 +226,9 @@ Ladder invariants, each property-tested:
 - **One gesture per rung.** Descending and ascending never require a menu, a mode switch, or a hand-typed query.
 - **Position is always stated.** A breadcrumb names the level and the selection at each rung, and the effective time range, basis and metric stay on screen at every level (§6.4).
 - **Reversible.** Ascending restores the previous viewport, selection, lane grouping and graph focus as one navigation state. The user never loses their place (§6.7).
-- **The same numbers.** A level change alters grouping and lane composition, never eligibility: an L1 total is the sum of its L2 constituents under the same specification, and any difference has a named denominator (§19.1).
+- **The same numbers.** A level change alters grouping and lane composition, never eligibility: an L1 total is the sum of its L2 constituents under the same specification, and any difference has a named denominator (§19.1). A sum is only available where the rung's rows partition it. Rows attributed to a canonical owner do partition; rows attributed to endpoint activity do not, because a channel belongs to both of its participants. A rung whose rows overlap states its accounting side and reports no single total, rather than printing a number that counts the same observations twice (§5.1, `EN-AccountingSide`).
 - **A level is not a filter.** Descending sets scope and grouping; it never silently adds a predicate. Where a descent does imply a filter, that filter appears in the filter bar where it can be seen and removed.
-- **Evidence is always one step away.** Every rung reaches L5 in at most one step from its selection, because “show me the actual records” is the question the product exists to answer.
+- **Evidence is always one step away.** Every rung reaches L5 in at most one step from its selection, because “show me the actual records” is the question the product exists to answer. That step has its own gesture at every rung, and it carries the rung's scope into the filter bar so the jump is visible rather than implicit.
 - **No dead ends.** A level with no data for a selection names the source that would supply it (§4.3) instead of showing an empty pane.
 
 ### 3.3 Discover the machine

@@ -11,7 +11,7 @@
         MinWidth="1080"
         MinHeight="700"
         Background="{DynamicResource Surface.Canvas}">
-  <Grid ColumnDefinitions="250,*,286" RowDefinitions="64,Auto,*,36">
+  <Grid ColumnDefinitions="250,*,286" RowDefinitions="Auto,Auto,*,36">
 
     <!-- Left rail: ranked processes. Every canvas selection is reachable from this list (R15). -->
     <Border Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
@@ -28,37 +28,57 @@
           <TextBlock Margin="36,1,0,0" Text="IPC EXPLORER" Classes="eyebrow" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Margin="0,30,0,14" Spacing="6">
-          <TextBlock Text="RANKED PROCESSES" Classes="eyebrow" />
-          <TextBlock Text="Select a process to link every pane" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="1" Margin="0,26,0,10" Spacing="5">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="RANKED TABLE" Classes="eyebrow" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding LevelBadge}" Classes="eyebrow"
+                       Foreground="{DynamicResource Ink.Accent}" VerticalAlignment="Center" />
+          </Grid>
+          <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
         </StackPanel>
 
-        <ListBox Grid.Row="2"
-                 ItemsSource="{Binding Snapshot.Processes}"
-                 SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
-                 Background="Transparent"
-                 BorderThickness="0"
-                 AutomationProperties.Name="Ranked processes">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="app:ProcessNode">
-              <Grid ColumnDefinitions="34,*,Auto" Margin="2,5" MinHeight="42">
-                <Border Width="28" Height="28" CornerRadius="14" Background="{DynamicResource Surface.Elevated}"
-                        VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Name[0]}" Foreground="{DynamicResource Ink.Accent}"
-                             FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-                <StackPanel Grid.Column="1" Margin="8,0,6,0" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding Role}" Classes="muted" FontSize="11" />
-                </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding ProcessId}" Classes="muted" FontSize="11"
-                           VerticalAlignment="Center" />
-              </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <Grid Grid.Row="2">
+          <ListBox x:Name="RungList"
+                   ItemsSource="{Binding RungRows}"
+                   SelectedItem="{Binding SelectedRung, Mode=TwoWay}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   IsVisible="{Binding !IsEmptyRung}"
+                   DoubleTapped="DescendFromRow"
+                   AutomationProperties.Name="Ranked table for the current level">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="pres:RungRow">
+                <Grid ColumnDefinitions="22,*,Auto" Margin="2,5" MinHeight="44"
+                      AutomationProperties.Name="{Binding AccessibleName}">
+                  <TextBlock Text="{Binding Glyph}" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Margin="6,0,6,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding Observations}" FontSize="11" TextAlignment="Right" />
+                    <TextBlock Text="{Binding Coverage}" Classes="muted" FontSize="10" TextAlignment="Right" />
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
 
-        <Border Grid.Row="3" Margin="0,14,0,0" Padding="10" CornerRadius="8"
+          <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2). -->
+          <Border Padding="12" CornerRadius="8" VerticalAlignment="Top"
+                  Background="{DynamicResource Surface.Elevated}"
+                  IsVisible="{Binding IsEmptyRung}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="NOTHING AT THIS LEVEL" Classes="eyebrow" />
+              <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                         AutomationProperties.Name="Why this level has no rows" />
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <Border Grid.Row="3" Margin="0,12,0,0" Padding="10" CornerRadius="8"
                 Background="{DynamicResource Surface.Elevated}">
           <StackPanel Spacing="4">
             <TextBlock Text="PROTOTYPE DATA" Classes="eyebrow" />
@@ -74,18 +94,49 @@
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1"
             Background="{DynamicResource Surface.Panel}">
       <Grid ColumnDefinitions="*,Auto,Auto,Auto" VerticalAlignment="Center">
-        <StackPanel Spacing="1">
-          <TextBlock Text="{Binding Snapshot.Title}" FontSize="16" FontWeight="SemiBold" />
-          <TextBlock Text="Whole machine  ›  all processes  ›  24-second synthetic window"
-                     Classes="muted" FontSize="11" />
+        <StackPanel Spacing="2" ClipToBounds="True">
+          <TextBlock Text="{Binding Snapshot.Title}" FontSize="16" FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis" />
+          <!-- The breadcrumb states the position at every rung, and each crumb returns to it (section 3.2).
+               It scrolls rather than pushing the header wider, so a deep rung cannot overrun the title. -->
+          <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+          <ListBox x:Name="CrumbList"
+                   ItemsSource="{Binding Crumbs}"
+                   SelectedItem="{Binding SelectedCrumb, Mode=TwoWay}"
+                   Background="Transparent" BorderThickness="0" Padding="0"
+                   AutomationProperties.Name="Breadcrumb of the detail ladder">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="2" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="pres:CrumbRow">
+                <TextBlock Text="{Binding Label}" FontSize="11" Padding="4,1"
+                           AutomationProperties.Name="{Binding AccessibleName}"
+                           TextTrimming="CharacterEllipsis" MaxWidth="220" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          </ScrollViewer>
         </StackPanel>
         <Border Grid.Column="1" Margin="0,0,12,0" Padding="10,5" CornerRadius="12"
+                VerticalAlignment="Center"
                 Background="{DynamicResource Surface.Elevated}">
-          <TextBlock Text="L0 · OVERVIEW" Foreground="{DynamicResource Ink.Accent}" FontSize="11" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding LevelBadge}" Foreground="{DynamicResource Ink.Accent}"
+                     FontSize="11" FontWeight="SemiBold" />
         </Border>
         <Button Grid.Column="2" Margin="0,0,8,0" Content="{Binding TableToggleLabel}" Click="ToggleTables"
                 AutomationProperties.Name="Toggle the accessible table equivalents" />
-        <Button Grid.Column="3" Content="Clear selection (Esc)" Click="ClearSelection" />
+        <Button Grid.Column="3" Content="{Binding AscendLabel}" Click="AscendOrClear"
+                MaxWidth="280"
+                AutomationProperties.Name="Go back one level, or clear the selection at the machine level">
+          <Button.Styles>
+            <Style Selector="Button > ContentPresenter > TextBlock">
+              <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+          </Button.Styles>
+        </Button>
       </Grid>
     </Border>
 
@@ -93,8 +144,8 @@
     <Border Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" Padding="20,8"
             Background="{DynamicResource Surface.Canvas}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1">
-      <StackPanel Orientation="Horizontal" Spacing="16"
-                  AutomationProperties.Name="Mechanism legend">
+      <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="6"
+                 AutomationProperties.Name="Mechanism legend">
         <TextBlock Text="LEGEND" Classes="eyebrow" VerticalAlignment="Center" />
         <ItemsControl ItemsSource="{Binding Legend}"
                       AutomationProperties.Name="Mechanism legend entries">
@@ -112,9 +163,31 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock Text="Hatch means a coverage gap · open outline means unmeasured"
+        <TextBlock Text="Diagonal hatch means a coverage gap · open outline means unmeasured"
                    Classes="muted" FontSize="11" VerticalAlignment="Center" />
-      </StackPanel>
+        <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). -->
+        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasFilters}">
+          <TextBlock Text="FILTERS" Classes="eyebrow" VerticalAlignment="Center" />
+          <ListBox x:Name="FilterList"
+                   ItemsSource="{Binding Filters}"
+                   SelectedItem="{Binding SelectedFilter, Mode=TwoWay}"
+                   Background="Transparent" BorderThickness="0" Padding="0"
+                   AutomationProperties.Name="Filters this descent implied. Select one and press Delete to remove it.">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="4" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="pres:FilterRow">
+                <TextBlock FontSize="11" Padding="4,1" MaxWidth="220" TextTrimming="CharacterEllipsis"
+                           AutomationProperties.Name="{Binding AccessibleName}"
+                           Text="{Binding Label}" ToolTip.Tip="{Binding Reason}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </WrapPanel>
     </Border>
 
     <!-- Panes -->
@@ -180,8 +253,13 @@
                          TextWrapping="Wrap" TextAlignment="Right" />
             </Grid>
             <StackPanel Spacing="3">
-              <TextBlock Text="Evidence" Classes="muted" />
+              <TextBlock Text="Selected process" Classes="muted" />
               <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="{Binding LevelBadge}" Classes="muted" />
+              <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"
+                         AutomationProperties.Name="What the current level accounts for" />
             </StackPanel>
           </StackPanel>
         </Border>

@@ -47,6 +47,35 @@ public enum FieldAvailability { Present = 1, NotExposed = 2, ProfileDisabled = 3
 public enum CapabilityState { Available = 1, Experimental = 2, Unsupported = 3, PermissionDenied = 4, DisabledByProfile = 5, SchemaUnknown = 6, ProviderFailed = 7 }
 public enum CapabilityTier { TrafficVisualization = 1, TopologyOnly = 2, ExperimentalEvidence = 3, Unsupported = 4 }
 public enum RelationStrength { Direct = 1, Correlated = 2, Candidate = 3, Unresolved = 4, Conflicting = 5 }
+
+/// <summary>
+/// <c>EN-OperationState</c> (section 23). A heuristic timeout yields the last known state, never a
+/// Windows timeout error (section 18.5).
+/// </summary>
+public enum OperationState
+{
+    Started = 1,
+    Completed = 2,
+    ExplicitlyFailed = 3,
+    OrphanCompletion = 4,
+    OpenAtBoundary = 5,
+    Ambiguous = 6,
+    EvictedUnresolved = 7,
+}
+
+/// <summary><c>EN-Grouping</c> (section 23): how lanes and graph clusters are grouped at a rung.</summary>
+public enum LaneGrouping
+{
+    InstanceOnly = 1,
+    Executable = 2,
+    ServiceContainer = 3,
+    UserSession = 4,
+    Host = 5,
+    Mechanism = 6,
+    Endpoint = 7,
+    Package = 8,
+}
+
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }
 public enum InterCatExitCode { Success = 0, PartialResultSuccess = 1, InvalidInvocation = 2, PermissionOrCapabilityFailure = 3, CorruptedInput = 4, Cancelled = 5 }
