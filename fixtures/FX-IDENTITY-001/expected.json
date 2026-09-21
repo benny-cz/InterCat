@@ -1,0 +1,8 @@
+{
+  "samePidDifferentStartKeys": "distinct",
+  "sameResourceValueDifferentEpochs": "distinct",
+  "lateOldStartKey": "first",
+  "sameProcessKeyDifferentHost": "distinct",
+  "pidOnlyAfterReuse": "unresolved",
+  "qpcSampleSessionNanoseconds": 1234500
+}

@@ -159,10 +159,130 @@
         "R22: a call to another interface is scope, not a match",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
       ]
+    },
+    {
+      "id": "FX-IDENTITY-001",
+      "title": "Process, resource and clock identity collisions",
+      "scenario": "Section 7.2 and 8.1: PID and resource-key reuse, a late record carrying the earlier start key, an equal key on another host, and a fixed QPC conversion.",
+      "milestone": "M0",
+      "backlog": [
+        "IC-007"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [
+          "I8",
+          "I9",
+          "I12"
+        ],
+        "prohibitions": [
+          "P6",
+          "P10"
+        ]
+      },
+      "truth": {
+        "generator": "Deterministic checked-in identity scenario",
+        "seed": 0,
+        "log": "fixtures/FX-IDENTITY-001/scenario.json",
+        "independence": "The input contains only fixed source identities, lifetimes and native clock values; it does not depend on InterCat output."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-IDENTITY-001/expected.json",
+        "note": "Expected relationships are deliberately semantic: distinct, first epoch, or unresolved. They do not bless a platform-specific object address or wall-clock guess."
+      },
+      "environment": [
+        {
+          "build": "portable",
+          "supportTier": "NotApplicable",
+          "date": "2026-09-21",
+          "result": "The pure domain fixture passes without Windows, ETW or UI dependencies."
+        }
+      ],
+      "provenance": {
+        "adapter": "identity-v1",
+        "shareable": true,
+        "contents": "Synthetic GUIDs, numeric source keys, lifecycle intervals and clock values only."
+      },
+      "tests": [
+        "I12: PID and resource reuse produce distinct lifecycle epochs",
+        "P6: reusable values never resolve an instance without lifecycle evidence",
+        "I12: a late record with an old start key resolves to the earlier epoch",
+        "I12: equal process keys on different hosts never collide",
+        "I8: native clock, local time and workspace time remain distinct",
+        "I9: alignment revisions never rewrite source time",
+        "P10: applying alignment creates a projection and leaves source time unchanged"
+      ]
+    },
+    {
+      "id": "FX-JOURNAL-001",
+      "title": "Callback envelope admission, extended data and clock replay probe",
+      "scenario": "Sections 18.1–18.2: known metadata, an unknown schema with opaque bytes, known content under a metadata-only policy, header-only evidence, allowlisted and denied extended items, a real EVENT_RECORD extended-data array read in bounded copies, and the capture source clock persisted with the file.",
+      "milestone": "M0",
+      "backlog": [
+        "IC-009"
+      ],
+      "covers": {
+        "rules": [
+          "R3",
+          "R9",
+          "R17",
+          "R21"
+        ],
+        "invariants": [
+          "I8",
+          "I13",
+          "I21"
+        ],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "Deterministic checked-in admission corpus",
+        "seed": 0,
+        "log": "fixtures/FX-JOURNAL-001/scenario.json",
+        "independence": "The corpus declares original bytes and policy inputs before admission; expected dispositions are stored separately."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-JOURNAL-001/expected.json",
+        "note": "All four headers remain attributable. Only approved metadata survives; unknown and content bodies and a denied extended item have explicit omission outcomes; an over-long extended item keeps its original length; and the persisted source clock replays byte-for-byte."
+      },
+      "environment": [
+        {
+          "build": "portable",
+          "supportTier": "NotApplicable",
+          "date": "2026-09-21",
+          "result": "The version-0 probe round-trips admitted identity, extended items and the source clock descriptor, excludes unapproved bodies and denied extended types, and rejects checksum corruption. The extended-data walker is asserted against a synthetic EVENT_RECORD, not against a live capture. It is not journal-v1 or an ETL comparison."
+        }
+      ],
+      "provenance": {
+        "adapter": "journal-probe-v0 + callback-envelope-candidate-v0",
+        "shareable": true,
+        "contents": "Synthetic headers, schemas, content markers, extended items, a synthetic EVENT_RECORD layout and expected policy dispositions."
+      },
+      "tests": [
+        "R17: metadata-only admission persists no body for an unknown or content schema",
+        "I13: every journal probe record has retained evidence or an explicit omission",
+        "I13: every declared extended item is copied or counted as an omission",
+        "R17: an extended item the policy denies keeps its type and loses its bytes",
+        "I21: an over-long extended item keeps its original length and a truncation flag",
+        "R9: an admitted record owns its extended bytes after the source buffer changes",
+        "R3: a record that declares no extended item is distinguished from an unreadable one",
+        "R21: a record whose extended items were unreachable replays as unavailable",
+        "I8: a probe file carries the capture's source clock and replays it unchanged",
+        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor"
+      ]
     }
   ],
   "contractCoverage": {
     "covered": {
+      "I12": [
+        "I12: PID and resource reuse produce distinct lifecycle epochs",
+        "I12: a late record with an old start key resolves to the earlier epoch",
+        "I12: equal process keys on different hosts never collide"
+      ],
+      "I13": [
+        "I13: every declared extended item is copied or counted as an omission",
+        "I13: every journal probe record has retained evidence or an explicit omission"
+      ],
       "I14": [
         "I14: one admitted record cannot satisfy two truth operations"
       ],
@@ -170,8 +290,12 @@
         "I19: clearing view selection does not mutate source data",
         "I19: navigation math depends only on its inputs, never on workspace state"
       ],
+      "I21": [
+        "I21: an over-long extended item keeps its original length and a truncation flag"
+      ],
       "I3": [
         "I3: bucket boundaries are half-open and contiguous",
+        "I3: histogram buckets are half-open, contiguous and contain their samples",
         "I3: time ranges are half-open"
       ],
       "I4": [
@@ -181,9 +305,28 @@
       "I5": [
         "I5: cell counts match the records those cells resolve to"
       ],
+      "I8": [
+        "I8: a capture clock stays unconfirmed until a delivered record is checked against it",
+        "I8: a checked clock is never re-checked by a later record",
+        "I8: a corrupted clock frame is refused instead of yielding a partial descriptor",
+        "I8: a probe file carries the capture's source clock and replays it unchanged",
+        "I8: a reading from this process's own clock confirms the capture's encoding",
+        "I8: a reading on another clock refuses the assumed encoding instead of converting it",
+        "I8: native clock, local time and workspace time remain distinct"
+      ],
+      "I9": [
+        "I9: alignment revisions never rewrite source time"
+      ],
+      "P10": [
+        "P10: applying alignment creates a projection and leaves source time unchanged"
+      ],
       "P14": [
         "P14: a capture never adopts or stops a session it did not create",
-        "P14: a failed start stops only the session that attempt created"
+        "P14: a failed start stops only the session that attempt created",
+        "P14: a host returning a foreign handle is not stopped or disposed",
+        "P14: a same-name machine session is never adopted by ETL capture",
+        "P14: an ETL capture stops and disposes only its exact owned session",
+        "P14: failed ETL provider setup cleans up the exact session it created"
       ],
       "P16": [
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints"
@@ -205,6 +348,9 @@
       ],
       "P3": [
         "P3: requested and completed pipe bytes stay in separate domains"
+      ],
+      "P6": [
+        "P6: reusable values never resolve an instance without lifecycle evidence"
       ],
       "P7": [
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
@@ -229,7 +375,12 @@
         "R14: every ink token clears 4.5 to 1 against every surface it can land on"
       ],
       "R16": [
-        "R16: a capture attempt without elevation creates nothing and says why"
+        "R16: a capture attempt without elevation creates nothing and says why",
+        "R16: unelevated ETL capture creates no session and explains the refusal"
+      ],
+      "R17": [
+        "R17: an extended item the policy denies keeps its type and loses its bytes",
+        "R17: metadata-only admission persists no body for an unknown or content schema"
       ],
       "R19": [
         "R19: platform packages stay in their owning adapters",
@@ -246,7 +397,13 @@
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
         "R21: a negative result records the control that proves the source was live",
-        "R21: a refused state rundown degrades the capture instead of hiding the gap"
+        "R21: a probe file without a clock frame reports no clock rather than a default one",
+        "R21: a record whose extended items were unreachable replays as unavailable",
+        "R21: a refused state rundown degrades the capture instead of hiding the gap",
+        "R21: an item with a declared size but no data is counted, not read at a guess",
+        "R21: an unmeasured stage total reads as unknown rather than as zero",
+        "R21: the record accessor either reaches the callback record or states why it cannot",
+        "R21: the replay sink reports an unreadable stage total as unknown, not as zero"
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
@@ -254,7 +411,12 @@
       ],
       "R3": [
         "R3: a matched observation without bytes stays unknown",
+        "R3: a negative duration is a defect, never a clamped zero",
+        "R3: a quantile is reported as the interval it fell in, never as an invented value",
+        "R3: a record that declares no extended item is distinguished from an unreadable one",
+        "R3: a single sample answers every quantile from the bucket it fell in",
         "R3: an absent denominator is reported as not measured rather than as a pass",
+        "R3: an empty latency histogram reports no quantile rather than zero",
         "R3: an operation without a paired completion keeps completed bytes unknown",
         "R3: unknown and observed zero remain distinct"
       ],
@@ -266,13 +428,18 @@
         "R6: linked panes observe one atomic selection state"
       ],
       "R8": [
+        "R8: ETL replay sink records its own bounded-budget drops",
         "R8: a capture moves Idle to Recording to Closed and reports its own counters",
+        "R8: a capture reports per-thread processor time or says the host cannot",
         "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
-        "R8: source-reported loss is read into its own counter, never merged with drops"
+        "R8: invalid ETL bounds and ambiguous output paths are refused",
+        "R8: source-reported loss is read into its own counter, never merged with drops",
+        "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],
       "R9": [
-        "R9: admitted fields compile to fixed offsets with a minimum body length"
+        "R9: admitted fields compile to fixed offsets with a minimum body length",
+        "R9: an admitted record owns its extended bytes after the source buffer changes"
       ]
     },
     "uncovered": {
@@ -287,14 +454,6 @@
       "I11": {
         "reason": "Layer accounting needs application and transport projections from IC-015.",
         "plannedBy": "IC-015"
-      },
-      "I12": {
-        "reason": "Instance epochs are observed in FX-TCP-001 but not yet asserted by a PID-reuse fixture (IC-007).",
-        "plannedBy": "IC-007"
-      },
-      "I13": {
-        "reason": "Full record attribution needs the journal and admission ledger of IC-009.",
-        "plannedBy": "IC-009"
       },
       "I15": {
         "reason": "Atomic snapshot publication needs the storage commit protocol of IC-016.",
@@ -320,10 +479,6 @@
         "reason": "Boundary censoring needs the checkpoint work of IC-016.",
         "plannedBy": "IC-016"
       },
-      "I21": {
-        "reason": "Retained content fields arrive with IC-012.",
-        "plannedBy": "IC-012"
-      },
       "I22": {
         "reason": "Redacted export belongs to M5.",
         "plannedBy": "M5"
@@ -336,21 +491,9 @@
         "reason": "Acquisition versus display order needs the import metadata of IC-013.",
         "plannedBy": "IC-013"
       },
-      "I8": {
-        "reason": "Four distinguishable time bases need the clock contract of IC-007.",
-        "plannedBy": "IC-007"
-      },
-      "I9": {
-        "reason": "Alignment revisions cannot rewrite source fields until IC-007 defines them.",
-        "plannedBy": "IC-007"
-      },
       "P1": {
         "reason": "Absence versus observed zero in aggregates is asserted with IC-015.",
         "plannedBy": "IC-015"
-      },
-      "P10": {
-        "reason": "Source-record rewriting is asserted with IC-007.",
-        "plannedBy": "IC-007"
       },
       "P11": {
         "reason": "Quality dimensions stay separate once IC-015 publishes them.",
@@ -416,10 +559,6 @@
         "reason": "Retransmit folding is asserted with the transport correlators of IC-006.",
         "plannedBy": "IC-006"
       },
-      "P6": {
-        "reason": "Identity from a reusable value is asserted with the reuse fixtures of IC-007.",
-        "plannedBy": "IC-007"
-      },
       "P9": {
         "reason": "Cross-host ordering claims belong to M4.",
         "plannedBy": "M4"
@@ -443,10 +582,6 @@
       "R15": {
         "reason": "Accessible table equivalents arrive with the remaining IC-008 work.",
         "plannedBy": "IC-008"
-      },
-      "R17": {
-        "reason": "Per-record content admission arrives with IC-012.",
-        "plannedBy": "IC-012"
       },
       "R18": {
         "reason": "UI and CLI answer one specification only after IC-018.",

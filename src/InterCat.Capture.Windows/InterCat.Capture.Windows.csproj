@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- The ETW adapter reads EVENT_RECORD and its extended-data items directly (section 18.1). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />

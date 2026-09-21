@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 3, 2026-09-20. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim.
+**Status:** reviewed product architecture and implementation blueprint, revision 5, 2026-09-21. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 5 keeps the revision-4 ADR and identity corrections and removes an IC-009/IC-011 dependency cycle: IC-009 explicitly owns a disposable, non-production envelope candidate needed to measure real callback/extended-data fidelity; IC-011 owns the production contract and implementation only after ADR-008 closes.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -46,17 +46,17 @@ Use a new repository and solution. Target Windows x64 first; validate native ARM
 
 Stack: C#/.NET for domain, query engine, desktop, and capture orchestration; Avalonia with custom Skia drawing for timeline and graph; Microsoft TraceEvent behind a capture adapter, supplemented by Windows TDH metadata decoding.
 
-Pin the following before the first production commit and record the choice and upgrade policy in ADR-1. “Pinned” means a failing build rather than a silent upgrade:
+Pin the following before the first production commit and record the choice and upgrade policy in ADR-001. “Pinned” means a failing build rather than a silent upgrade:
 
 | Item | Initial pin | Policy |
 |---|---|---|
-| .NET SDK | .NET SDK 10.0.401, pinned in `global.json` with roll-forward disabled | Move only on an LTS boundary, through ADR-1 |
+| .NET SDK | .NET SDK 10.0.401, pinned in `global.json` with roll-forward disabled | Move only on an LTS boundary, through ADR-001 |
 | Language and compiler settings | C# latest of the pinned SDK; nullable reference types enabled and warnings as errors solution-wide | No per-project suppression without a recorded reason |
 | UI framework | Avalonia 11.3.22, centrally pinned; custom drawing uses Avalonia's Skia-backed rendering path | A major-line change is an ADR |
 | ETW adapter | Microsoft TraceEvent 3.2.6, centrally pinned and referenced only by `InterCat.Capture.Windows` | Replaceable by a native TDH consumer if M0 fixtures show a semantic or throughput gap (§18.3) |
 | Static analysis | Compiler analyzers plus an architecture fitness test enforcing §9's dependency direction (R19) | A failing fitness test blocks the build |
 
-Supported build candidates for the first release, revisable by ADR-2 once M0 measures them. A build is supported only when its fixture corpus (§13.4) passes on it; every other build is reported as untested, never as probably working:
+Supported build candidates for the first release, revisable by ADR-007 once M0 measures them. A build is supported only when its fixture corpus (§13.4) passes on it; every other build is reported as untested, never as probably working:
 
 | Tier | Builds | Meaning |
 |---|---|---|
@@ -671,7 +671,7 @@ Source-derived facts remain immutable; subsequently resolved identities live in 
 
 ### 7.4 Correlation contracts
 
-Every correlator states its join keys, lifecycle scope, timeout, cardinality, ambiguity policy and evidence requirements. The concrete keys per mechanism cannot be settled from documentation alone: they are an M0 measurement, recorded in that adapter's capability descriptor (§4.3) and fixed in ADR-6 before the correlator is implemented. The contracts below constrain what any such rule may conclude. Produce `Direct`, `Correlated`, `Candidate`, `Unresolved` or `Conflicting` relationships with explanations.
+Every correlator states its join keys, lifecycle scope, timeout, cardinality, ambiguity policy and evidence requirements. The concrete keys per mechanism cannot be settled from documentation alone: they are an M0 measurement, recorded in that adapter's capability descriptor (§4.3) and fixed in ADR-010 before the correlator is implemented. The contracts below constrain what any such rule may conclude. Produce `Direct`, `Correlated`, `Candidate`, `Unresolved` or `Conflicting` relationships with explanations.
 
 * **Network:** join compatible tuples within host/compartment and connection lifetimes, using provider connection identifiers where validated. Account for reconnect and port reuse. Local loopback endpoints can identify both local owners when corresponding evidence exists. UDP association is scoped by observations, not fabricated connection state.
 * **Pipes:** use object/lifetime evidence to identify instances. Name alone creates an endpoint grouping. Keep multiple same-name instances distinct; never pair each client with every server.
@@ -961,6 +961,8 @@ End-to-end live latency budget, so that “first useful overview within 3 second
 
 Derived requirement from these budgets and the memory table: at 100,000 observations per second and 128 bytes per normalized observation, a 256 MiB acquisition budget holds roughly 20 seconds of full-rate data. The pipeline must therefore survive a 20-second analysis stall without application drops, report lag before half that budget is consumed, and turn the remainder into explicit counted loss rather than an unbounded queue (R8).
 
+Per-stage processor time is measured on the thread that does the work, not on the process, so a callback's cost is attributable to the callback. The Windows thread clock advances in ticks of roughly 15.6 ms, so a stage that consumes less than one tick reports "below one clock tick" rather than zero, and a stage measured on a host without a per-thread clock reports the quantity as unmeasured. A latency distribution is published as bucket bounds and an exact total, never as an interpolated percentile the histogram cannot support (R3).
+
 Common-query budgets apply to documented indexed predicates and visible row budgets. Arbitrary regex, full-content search, or novel graph expansion may take longer; they must remain cancellable, progressive and honest about exactness. Measure cold and warm caches separately and publish hardware, Windows build, source schema versions, workload seed and distributions.
 
 At 100,000 observations/second, 128 bytes per normalized observation alone is about 12.8 MB/s or 46 GB/hour, before raw evidence and indices. Use actual measured sizes to estimate retention in the UI. Large recordings require disk planning and bounded retention, not a claim that memory mapping makes storage cost disappear.
@@ -1140,11 +1142,11 @@ Every item names the milestone that owns it and the items it depends on, so the 
 | IC-004 | M0 | IC-001 | Build seeded two-process TCP and local RPC truth workloads | Shareable fixtures with independent expected results | I14 |
 | IC-005 | M0 | IC-003, IC-004 | Spike named/anonymous pipes and section discovery | Tested matrix of events, names, instance/peer attribution, bytes and gaps; tier assignment | R22, I12 |
 | IC-006 | M0 | IC-003, IC-004 | Spike ALPC and RPC pairing/content semantics | Ambiguity cases and proven metadata/content boundaries | R4, R17 |
-| IC-007 | M0 | IC-004 | Define process/resource/observation IDs and clock contract | Reuse, late-start and cross-host collision tests | I1, I2, I8, I12 |
+| IC-007 | M0 | IC-004 | Define live process/resource/observation IDs and local clock contract | Reuse, late-start, cross-host collision and timestamp quarantine tests; canonical ETL identity remains IC-013 | I8, I9, I12 |
 | IC-008 | M0 | IC-001 | Prototype equal graph/timeline layout, pure transforms, and the §3.2 ladder over synthetic data | §6.7 property tests, §6.6 palette contrast tests, ladder reversibility tests, scored interaction review | R10, R13, R14 |
-| IC-009 | M0 | IC-003 | Validate authoritative journal and content admission | ADR-3 and benchmarks; extended-data replay and unknown-schema policy tests | R17, I13 |
+| IC-009 | M0 | IC-003 | Build a disposable owned-envelope candidate and validate authoritative journal/content admission against diagnostic ETL | ADR-008 and same-seed benchmarks; real callback extended-data replay, unknown-schema policy, stage-overhead and saturation tests | R9, R17, I13 |
 | IC-010 | M0 | IC-004 | Establish benchmarks, reference machine and Windows support candidates | Reproducible baseline and explicit release-build validation backlog | §12 budgets |
-| IC-011 | M1 | IC-009 | Implement owned journal envelopes and schema persistence | Extended-data round-trip, buffer ownership and callback-lifetime tests | R9, I1 |
+| IC-011 | M1 | IC-009 | Freeze the accepted journal-v1 contract and implement production owned envelopes/schema persistence | Golden framing plus extended-data round-trip, buffer ownership and callback-lifetime tests | R9, I1 |
 | IC-012 | M1 | IC-009, IC-011 | Compile capture profiles and enforce body admission | Unknown-schema omission, content scope and original-evidence policy fixtures | R17, I13, I21 |
 | IC-013 | M1 | IC-007, IC-011 | Implement canonical ETL import and multi-fact identity | Equal-time/multiplicity replay and normalizer-revision tests | I2, I7, I14 |
 | IC-014 | M1 | IC-003 | Implement broker protocol, leases and idempotency | Duplicate start/stop, disconnect, permission and crash fixtures | R16 |
@@ -1346,7 +1348,7 @@ Success is deeper trustworthy exploration: each added source should make an actu
 | Retention evicts referenced evidence | Broken bookmarks or irreproducible reports | Generation leases and explicit pin storage policy |
 | Session growth outruns disk, reopen and overview budgets | A long capture becomes unopenable or unusable exactly when it is most valuable | §12.1 tiers and invariants; persisted overview pyramid; measured T1/T3 reopen ratio; growth disclosure and retention with boundary checkpoints |
 | Interaction latency degrades as data grows | The product feels slower the longer it runs, which reads as unreliability | §6.8 latency windows measured per tier; cached geometry on the input path; coarse-then-exact publication; S2 and S3 |
-| Graph interaction design unvalidated | The pane given equal product prominence is the one with no proven interaction contract | ADR-13; deterministic bounded layout; M0 scored usability gate on the §17 questions before breadth work |
+| Graph interaction design unvalidated | The pane given equal product prominence is the one with no proven interaction contract | ADR-016; deterministic bounded layout; M0 scored usability gate on the §17 questions before breadth work |
 | Palette and encoding collisions | Four meanings competing for the same channels become unreadable, especially under color-vision differences | §6.6 channel allocation with redundant encodings and measured contrast enforced by tests (R14) |
 | Oversized first release | Delay before useful tool | Deliver M2 preview while keeping M3/M4 requirements visible for full v1 |
 
@@ -1354,22 +1356,25 @@ Required ADRs, each recorded before the corresponding implementation and each st
 
 | ID | Decision |
 |---|---|
-| ADR-1 | Stack, toolchain pins and UI framework (§1.3) |
-| ADR-2 | Supported build policy and compatibility matrix (§1.3) |
-| ADR-3 | Raw-evidence strategy: authoritative journal versus ETL (§9.3) |
-| ADR-4 | Identities, instance epochs and lifetimes (§7.2) |
-| ADR-5 | Byte accounting: domains, sides and canonical ownership (§5.3) |
-| ADR-6 | Correlation quality model (§7.4) |
-| ADR-7 | Clocks, alignment and uncertainty (§8) |
-| ADR-8 | Broker trust boundary and client authentication (§20.3) |
-| ADR-9 | Content policy and privacy (§11) |
-| ADR-10 | Indices, tiles and cache budgets (§10.2) |
-| ADR-11 | Snapshot publication and query scheduling (§19.3) |
-| ADR-12 | Retention, pinning and export (§20.2) |
-| ADR-13 | Graph projection, layout algorithm and determinism (§19.4) |
-| ADR-14 | Query identity and canonical specification form (§10.5) |
-| ADR-15 | Visual encoding, palette and accessibility targets (§6.6) |
-| ADR-16 | Fixture naming and traceability scheme (§13.5) |
+| ADR-001 | Stack, toolchain pins and UI framework (§1.3) |
+| ADR-002 | Owned ETW session lifecycle and safety strategy (§9.2, §18.2) |
+| ADR-003 | Named-pipe coverage scope after M0 measurement (§4, §14.2) |
+| ADR-004 | RPC coverage scope after M0 measurement (§4, §14.2) |
+| ADR-005 | Identities, instance epochs and alias revisions (§7.2) |
+| ADR-006 | Native clocks, local conversion and timestamp quarantine (§8, §18.3) |
+| ADR-007 | Supported build policy and compatibility matrix (§1.3) |
+| ADR-008 | Raw-evidence strategy: authoritative journal versus ETL (§9.3) |
+| ADR-009 | Byte accounting: domains, sides and canonical ownership (§5.3) |
+| ADR-010 | Correlation quality model (§7.4) |
+| ADR-011 | Broker trust boundary and client authentication (§20.3) |
+| ADR-012 | Content policy and privacy (§11) |
+| ADR-013 | Indices, tiles and cache budgets (§10.2) |
+| ADR-014 | Snapshot publication and query scheduling (§19.3) |
+| ADR-015 | Retention, pinning and export (§20.2) |
+| ADR-016 | Graph projection, layout algorithm and determinism (§19.4) |
+| ADR-017 | Query identity and canonical specification form (§10.5) |
+| ADR-018 | Visual encoding, palette and accessibility targets (§6.6) |
+| ADR-019 | Fixture naming and traceability scheme (§13.5) |
 
 ## 17. Remaining conceptual choices to revisit after the prototype
 
@@ -1406,7 +1411,11 @@ RecordEnvelopeV1
   SchemaReference?, AdmissionPolicyId, IntegrityChecksum
 ```
 
-Copy the contents of permitted extended-data items, not native addresses. Preserve fields needed for related activities, architecture/pointer-width interpretation and embedded decoding metadata. Do not serialize `UserContext` or other callback pointers. Windows defines header, extended data and user data separately in `EVENT_RECORD`; serializing only its user-data buffer loses potentially important decoding/correlation context. [EVENT_RECORD contract](https://learn.microsoft.com/en-us/windows/win32/api/evntcons/ns-evntcons-event_record).
+The per-record `ClockId` names a clock; it does not describe one. Persist the capture's full source clock descriptor of §8.1 once per journal, before its first record batch, so a reader converts native ticks offline without the session that produced them. A journal whose records name a clock the file does not describe is incomplete evidence, and replay says so rather than assuming the reader's own clock.
+
+Extended-data items are opt-in per provider enablement, not a property of an event: `EnableTraceEx2` enable properties decide whether Windows attaches a SID, a terminal-services id, a process start key, an event key or a call stack to a record. A capture therefore records which enable properties it requested alongside its records, because without that setting "no extended items were observed" describes the capture's configuration rather than the source. Measured on build `10.0.26220.0-x64`: `Microsoft-Windows-Kernel-Network` and `Microsoft-Windows-Kernel-Process` emit no extended item at all under a plain enablement, and emit `STACK_TRACE64` items once call stacks are requested.
+
+Copy the contents of permitted extended-data items, not native addresses. An item's second header field is a linkage bit, not a general flags word; keep it, because it is what marks a continued item. Preserve fields needed for related activities, architecture/pointer-width interpretation and embedded decoding metadata. Do not serialize `UserContext` or other callback pointers. Windows defines header, extended data and user data separately in `EVENT_RECORD`; serializing only its user-data buffer loses potentially important decoding/correlation context. [EVENT_RECORD contract](https://learn.microsoft.com/en-us/windows/win32/api/evntcons/ns-evntcons-event_record).
 
 Every buffer has a single owner at a time: callback -> queue -> journal writer -> returned pool. Use explicit disposable leases with failure-path tests. Do not keep TraceEvent callback objects or spans into callback memory for later asynchronous work. All allocations and copies are bounded by envelope limits, including extended items; do not assume an event's user-data limit bounds its complete serialized envelope.
 
@@ -1417,7 +1426,8 @@ Compile a profile into an immutable `EffectiveCapturePlan` before starting:
 ```text
 ProviderPlan
   Identity, SessionKind, Level, MatchAnyKeyword, MatchAllKeyword
-  EnableProperties, SupportedSourceFilters, RequiredLifecycleSources
+  EnableProperties (which extended-data items the capture asks Windows to attach)
+  SupportedSourceFilters, RequiredLifecycleSources
   AllowedDescriptorsAndSchemaContracts, AdmissionPolicy, FieldPolicy
   ClockMode, BufferBudget, FlushPolicy, ContentBudget, ValidationFixtureIds
 ```
@@ -1680,6 +1690,8 @@ Metric examples with both endpoints assume a proven transfer association; withou
 
 Produce each contract below before its governed production format or behavior is frozen or promoted beyond an explicitly labeled spike. M0 feasibility probes and disposable prototypes may precede a contract, but they cannot become the production implementation until the applicable contract and fixture exist. This removes a sequencing contradiction with IC-011–IC-018 while preserving the rule that a contract must not merely document an accidental shipped design:
 
+IC-009 therefore owns the minimum disposable version-0 capture envelope required to compare real ETW callbacks with ETL, including arbitrary extended items and owned callback-lifetime copies. It may be checksummed and replayable for measurement, but it is not `RecordEnvelopeV1`, is never opened as an `.icat` session, and has no compatibility promise. IC-011 begins only after ADR-008 accepts an authority direction; it turns the measured choice into `journal-v1` and the production pooled implementation. This experimental/production split prevents the old cycle in which IC-009 required fidelity evidence that only its dependent IC-011 was allowed to implement.
+
 1. `capabilities/<build>/<adapter>.json`: supported descriptors, exact fields, units, attribution, enablement and profile admission rules, with links to fixtures.
 2. `contracts/journal-v1.md`: complete framing, bounds, checksum, extended-data and replay contract; golden binary files and corruption tests.
 3. `contracts/identity-v1.md`: live/import/subrecord IDs, process/resource epochs, alias revisions and canonical ETL tie handling.
@@ -1914,7 +1926,7 @@ v1 is done when every item below is demonstrably true, each traceable to a named
 - every `TUNABLE:` value is a recorded setting with its measured basis, not a literal;
 - format v0 is frozen with a migration and refusal policy, and an older viewer refuses an unsupported required feature safely;
 - installation, update, uninstall and capture cleanup leave no orphaned session, driver, service or evidence the user did not ask to keep;
-- ADR-1 through ADR-16 exist, each recording evidence, alternatives and reversal cost;
+- ADR-001 through ADR-019 exist, each recording evidence, alternatives and reversal cost;
 - the repository builds on the pinned SDK with no unexplained warnings, and the architecture fitness test passes.
 
 ## 26. Solution layout, settings and operational defaults

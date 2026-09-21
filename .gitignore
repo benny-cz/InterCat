@@ -59,4 +59,9 @@ nunit-*.xml
 # Raw measurement runs contain whole-machine capture health data and are reproducible from
 # the seeded workload. Only curated, fixture-scoped evidence is committed (section 13.6).
 fixtures/**/runs/
+
+# A diagnostic ETL and a probe journal hold records from every process on the machine, not only
+# the fixture's. Their counters are committed; their records never are (P16).
+bench/results/**/*.etl
+bench/results/**/*.ijp0
 .vs/

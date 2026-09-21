@@ -11,6 +11,8 @@
     <Project Path="src/InterCat.TestWorkloads/InterCat.TestWorkloads.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/InterCat.CaptureComparison/InterCat.CaptureComparison.csproj" />
+    <Project Path="tools/InterCat.JournalProbe/InterCat.JournalProbe.csproj" />
     <Project Path="tools/InterCat.ThemeReport/InterCat.ThemeReport.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -18,8 +20,10 @@
     <Project Path="tests/InterCat.Application.Tests/InterCat.Application.Tests.csproj" />
     <Project Path="tests/InterCat.Analysis.Tests/InterCat.Analysis.Tests.csproj" />
     <Project Path="tests/InterCat.Capture.Windows.Tests/InterCat.Capture.Windows.Tests.csproj" />
+    <Project Path="tests/InterCat.CaptureComparison.Tests/InterCat.CaptureComparison.Tests.csproj" />
     <Project Path="tests/InterCat.Desktop.Tests/InterCat.Desktop.Tests.csproj" />
     <Project Path="tests/InterCat.Property.Tests/InterCat.Property.Tests.csproj" />
+    <Project Path="tests/InterCat.Storage.Tests/InterCat.Storage.Tests.csproj" />
     <Project Path="tests/InterCat.Architecture.Tests/InterCat.Architecture.Tests.csproj" />
   </Folder>
 </Solution>

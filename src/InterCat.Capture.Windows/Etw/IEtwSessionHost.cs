@@ -34,6 +34,15 @@ public interface IAdmittedEventSink
     void OnOmitted(OmissionReason reason);
 
     void OnUndecodable(UndecodableReason reason);
+
+    /// <summary>
+    /// Reports what one completed callback cost and what it copied. The default does nothing, so a sink
+    /// that does not measure overhead is unchanged; a measuring sink gets the cost at the only place it
+    /// can be attributed to the callback rather than to the process (section 12).
+    /// </summary>
+    void OnCallbackCompleted(in CallbackCost cost)
+    {
+    }
 }
 
 /// <summary>

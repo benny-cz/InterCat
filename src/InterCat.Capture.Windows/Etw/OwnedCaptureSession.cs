@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading.Channels;
 using InterCat.Domain;
@@ -34,6 +35,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private readonly IEtwSessionHost host;
     private readonly TimeProvider clock;
     private readonly CaptureHealthLedger ledger = new();
+    private readonly CaptureStageLedger stages = new();
     private readonly Channel<AdmittedEvent> records;
     private readonly EventAdmissionTable admissionTable;
     private readonly List<string> degradations = [];
@@ -48,6 +50,8 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private long lastRecordUtcTicks;
     private DateTimeOffset recordingStartedUtc;
     private DateTimeOffset recordingStoppedUtc;
+    private CaptureClockEvidence? sourceClock;
+    private int sourceClockChecked;
     private bool disposed;
 
     public OwnedCaptureSession(OwnedSessionPlan plan, IEtwSessionHost host, TimeProvider? clock = null)
@@ -107,6 +111,24 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     public ChannelReader<AdmittedEvent> Records => records.Reader;
 
     public EventAdmissionTable AdmissionTable => admissionTable;
+
+    /// <summary>
+    /// The capture's source clock and the evidence for it. Before the first record it is an assumption;
+    /// after the first record it is either confirmed or refused, never silently assumed (I8, section 18.3).
+    /// </summary>
+    public CaptureClockEvidence? SourceClock
+    {
+        get
+        {
+            lock (gate)
+            {
+                return sourceClock;
+            }
+        }
+    }
+
+    /// <summary>Isolated stage overhead for this capture (section 12).</summary>
+    public CaptureStageSnapshot ReadStageMetrics() => stages.Read(plan.QueueCapacityRecords);
 
     public async Task<CaptureStartResult> StartAsync(CancellationToken cancellationToken = default)
     {
@@ -192,6 +214,21 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
 
         recordingStartedUtc = clock.GetUtcNow();
+        lock (gate)
+        {
+            sourceClock = EtwSourceClock.DescribeLocal();
+        }
+
+        if (plan.PreserveExtendedData && !TraceEventRecordAccessor.Shared.IsAvailable)
+        {
+            string reason = TraceEventRecordAccessor.Shared.UnavailableReason
+                ?? "The extended-data accessor is unavailable for an unstated reason.";
+            stages.RecordExtendedDataUnavailable(reason);
+            AddDegradation(
+                "Extended-data items were requested but cannot be read on this adapter build, so every "
+                + $"record reports them as unavailable rather than absent: {reason}");
+        }
+
         pumpTask = Task.Factory.StartNew(
             () => RunPump(created),
             CancellationToken.None,
@@ -315,6 +352,8 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private void RunPump(IOwnedEtwSession owned)
     {
         var sink = new QueueSink(this);
+        long allocatedAtStart = GC.GetAllocatedBytesForCurrentThread();
+        bool cpuReadable = ThreadCpuTime.TryReadCurrentThread(out ThreadCpuReading cpuAtStart);
         try
         {
             owned.Pump(admissionTable, sink, lifetime.Token);
@@ -329,6 +368,15 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
         finally
         {
+            // The pump thread is the callback thread, so its own totals isolate admission from the rest
+            // of the process. An unreadable processor clock is reported as null, never as zero (R21).
+            ThreadCpuReading? consumed = null;
+            if (cpuReadable && ThreadCpuTime.TryReadCurrentThread(out ThreadCpuReading cpuAtEnd))
+            {
+                consumed = cpuAtEnd - cpuAtStart;
+            }
+
+            stages.RecordDeliveryThread(GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart, consumed);
             records.Writer.TryComplete();
         }
     }
@@ -358,6 +406,8 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
 
         ledger.RecordAdmitted();
+        stages.RecordQueueDepth(records.Reader.Count);
+        ConfirmSourceClock(admitted.TimestampQpc);
         long ticks = admitted.TimestampUtcTicks;
         if (Interlocked.CompareExchange(ref firstRecordUtcTicks, ticks, 0) == 0)
         {
@@ -373,6 +423,40 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Checks the capture's assumed clock against the first delivered reading. A refusal becomes a
+    /// degradation rather than a conversion, because a wrong encoding would distort every later time (I8).
+    /// </summary>
+    private void ConfirmSourceClock(long nativeTicks)
+    {
+        // The check happens once per capture, so the callback path reads a flag rather than taking the
+        // lock for every record (R9).
+        if (Interlocked.CompareExchange(ref sourceClockChecked, 1, 0) != 0)
+        {
+            return;
+        }
+
+        string? refusal = null;
+        lock (gate)
+        {
+            if (sourceClock is null || sourceClock.Confidence != SourceClockConfidence.Unconfirmed)
+            {
+                return;
+            }
+
+            sourceClock = EtwSourceClock.Check(sourceClock, nativeTicks);
+            if (sourceClock.Confidence == SourceClockConfidence.Refused)
+            {
+                refusal = sourceClock.RefusalReason;
+            }
+        }
+
+        if (refusal is not null)
+        {
+            AddDegradation(refusal);
+        }
     }
 
     private async Task CleanUpCreatedResourcesAsync()
@@ -460,5 +544,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         public void OnOmitted(OmissionReason reason) => owner.ledger.RecordOmission(reason);
 
         public void OnUndecodable(UndecodableReason reason) => owner.ledger.RecordUndecodable(reason);
+
+        public void OnCallbackCompleted(in CallbackCost cost) => owner.stages.RecordCallback(in cost);
     }
 }

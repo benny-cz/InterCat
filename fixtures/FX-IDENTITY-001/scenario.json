@@ -1,0 +1,21 @@
+{
+  "hostA": "11111111-1111-4111-8111-111111111111",
+  "hostB": "22222222-2222-4222-8222-222222222222",
+  "boot": "33333333-3333-4333-8333-333333333333",
+  "capture": "44444444-4444-4444-8444-444444444444",
+  "clock": "55555555-5555-4555-8555-555555555555",
+  "processId": 4242,
+  "firstSequence": 101,
+  "firstCreateFileTime": 133700000000000001,
+  "secondSequence": 202,
+  "secondCreateFileTime": 133700000000000002,
+  "firstStartNanoseconds": 1000,
+  "firstEndNanoseconds": 2000,
+  "secondStartNanoseconds": 2000,
+  "lateRecordNanoseconds": 2500,
+  "resourceSourceKey": 4096,
+  "qpcFrequency": 10000000,
+  "qpcEpoch": 500000000,
+  "qpcSample": 500012345,
+  "maximumSessionNanoseconds": 10000000000
+}

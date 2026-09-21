@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "probeFormat": "journal-probe-v0",
+  "generatedUtc": "2026-09-21T09:52:00.1138135+00:00",
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "processArchitecture": "X64",
+    "framework": ".NET 10.0.12",
+    "processorCount": 24,
+    "buildConfiguration": "Release"
+  },
+  "recordCount": 10000,
+  "iterations": 7,
+  "baselineKind": "synthetic-original-evidence-copy; not ETL",
+  "decisionReady": false,
+  "metadataJournalBytes": 2135048,
+  "syntheticOriginalEvidenceBytes": 2277548,
+  "metadataToOriginalSizeRatio": 0.937432712724386,
+  "attribution": {
+    "inputRecords": 10000,
+    "envelopeRecords": 10000,
+    "retainedBodies": 2500,
+    "explicitBodyOmissions": 5000,
+    "recordsWithoutBodies": 2500,
+    "omittedExtendedItems": 2500,
+    "isComplete": true
+  },
+  "unexpectedUnapprovedBodiesRetained": 0,
+  "replayIdentityMatched": true,
+  "replayExtendedDataMatched": true,
+  "samples": [
+    {
+      "elapsedMilliseconds": 40.1205,
+      "recordsPerSecond": 249249.1369748632,
+      "encodedBytesPerSecond": 53215887.13999078,
+      "allocatedBytes": 33712864
+    },
+    {
+      "elapsedMilliseconds": 47.9536,
+      "recordsPerSecond": 208534.91708651697,
+      "encodedBytesPerSecond": 44523205.76557339,
+      "allocatedBytes": 33712712
+    },
+    {
+      "elapsedMilliseconds": 46.3564,
+      "recordsPerSecond": 215719.94374023867,
+      "encodedBytesPerSecond": 46057243.44427091,
+      "allocatedBytes": 33704976
+    },
+    {
+      "elapsedMilliseconds": 63.6332,
+      "recordsPerSecond": 157150.6697761546,
+      "encodedBytesPerSecond": 33552422.32042393,
+      "allocatedBytes": 33704840
+    },
+    {
+      "elapsedMilliseconds": 38.0705,
+      "recordsPerSecond": 262670.5717024993,
+      "encodedBytesPerSecond": 56081427.877227776,
+      "allocatedBytes": 33712680
+    },
+    {
+      "elapsedMilliseconds": 48.3367,
+      "recordsPerSecond": 206882.14131291542,
+      "encodedBytesPerSecond": 44170330.204585746,
+      "allocatedBytes": 33704864
+    },
+    {
+      "elapsedMilliseconds": 32.2579,
+      "recordsPerSecond": 310001.58100806316,
+      "encodedBytesPerSecond": 66186825.55281032,
+      "allocatedBytes": 33712848
+    }
+  ],
+  "median": {
+    "elapsedMilliseconds": 46.3564,
+    "recordsPerSecond": 215719.94374023867,
+    "encodedBytesPerSecond": 46057243.44427091,
+    "allocatedBytes": 33704976
+  },
+  "blockingGaps": [
+    "No ETL was produced or read, so this result cannot choose journal versus ETL.",
+    "No elevated ETW acquisition ran, so callback, queue, disk-saturation and provider-loss overhead remain unmeasured.",
+    "The v0 framing is disposable experimental code; contracts/journal-v1.md remains an IC-011 deliverable."
+  ]
+}

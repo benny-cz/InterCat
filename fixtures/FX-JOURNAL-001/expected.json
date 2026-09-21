@@ -1,0 +1,14 @@
+{
+  "inputRecords": 4,
+  "envelopeRecords": 4,
+  "retainedBodies": 1,
+  "explicitBodyOmissions": 2,
+  "recordsWithoutBodies": 1,
+  "omittedExtendedItems": 1,
+  "dispositions": [
+    "Retained",
+    "OmittedUnknownSchema",
+    "OmittedUnapprovedClassification",
+    "NoBody"
+  ]
+}

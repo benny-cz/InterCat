@@ -1,0 +1,13 @@
+{
+  "scenarioId": "FX-TCP-001",
+  "seed": 20260920,
+  "connections": 2,
+  "messagesPerConnection": 8,
+  "minimumMessageBytes": 64,
+  "maximumMessageBytes": 4096,
+  "port": 48286,
+  "serverProcessId": 42252,
+  "clientProcessId": 77632,
+  "serverExitCode": 0,
+  "clientExitCode": 0
+}

@@ -69,7 +69,10 @@ public static class ProcessObservationBuilder
 
         return new()
         {
-            Id = new(new(captureId, streamId, sourceEpoch, (ulong)admitted.RecordOrdinal), 0),
+            Id = ObservationId.Create(
+                new(captureId, streamId, sourceEpoch, (ulong)admitted.RecordOrdinal),
+                NormalizerContractVersion.V1,
+                "process-lifecycle"),
             Kind = plan.Kind,
             TimestampUtcTicks = admitted.TimestampUtcTicks,
             ProcessId = processId.Value,

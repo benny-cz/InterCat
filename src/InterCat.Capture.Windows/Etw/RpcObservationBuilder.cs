@@ -52,7 +52,10 @@ public static class RpcObservationBuilder
 
         return new()
         {
-            Id = new(new(captureId, streamId, sourceEpoch, (ulong)admitted.RecordOrdinal), 0),
+            Id = ObservationId.Create(
+                new(captureId, streamId, sourceEpoch, (ulong)admitted.RecordOrdinal),
+                NormalizerContractVersion.V1,
+                "rpc-call"),
             Kind = plan.Kind,
             Direction = plan.Direction,
             TimestampUtcTicks = admitted.TimestampUtcTicks,

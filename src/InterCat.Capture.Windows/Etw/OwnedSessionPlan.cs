@@ -89,6 +89,13 @@ public sealed record ProviderEnablementRequest
 
     /// <summary>Whether to ask the provider for its state rundown after delivery starts (section 18.5).</summary>
     public bool RequestCaptureState { get; init; }
+
+    /// <summary>
+    /// Whether to ask ETW for call-stack extended data on this provider's events. Extended-data items are
+    /// opt-in per enablement, not a property of the event, so a capture that does not request them observes
+    /// none; the cost per event is materially higher, which is why it is a recorded setting (section 18.2).
+    /// </summary>
+    public bool RequestCallStacks { get; init; }
 }
 
 /// <summary>The outcome of enabling one provider. A refusal is recorded, never retried silently.</summary>
@@ -125,4 +132,11 @@ public sealed record OwnedSessionPlan
 
     /// <summary>Grace period applied after the workload stops, before the session stops (section 18.5).</summary>
     public TimeSpan ReorderGrace { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Whether admission copies a bounded prefix of each record's extended-data items. It is off by
+    /// default because copying costs callback time that a measurement must not pay unasked; the IC-009
+    /// envelope candidate turns it on (section 18.1).
+    /// </summary>
+    public bool PreserveExtendedData { get; init; }
 }

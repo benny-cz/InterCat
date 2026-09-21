@@ -1,0 +1,58 @@
+{
+  "capture": "66666666-6666-4666-8666-666666666666",
+  "clock": "77777777-7777-4777-8777-777777777777",
+  "provider": "88888888-8888-4888-8888-888888888888",
+  "policy": {
+    "id": "metadata-explore-v0",
+    "maximumRetainedBodyBytes": 8,
+    "maximumExtendedItemBytes": 16,
+    "permittedExtendedTypes": [1, 2],
+    "permittedDescriptors": [
+      { "eventId": 10, "version": 1, "schemaFingerprint": "schema-known-metadata" },
+      { "eventId": 11, "version": 1, "schemaFingerprint": "schema-known-content" }
+    ]
+  },
+  "records": [
+    {
+      "eventId": 10,
+      "version": 1,
+      "schemaFingerprint": "schema-known-metadata",
+      "classification": "ApprovedMetadata",
+      "bodyBase64": "AQIDBA==",
+      "scopeMatched": true,
+      "extendedItems": [
+        { "type": 1, "flags": 4, "bytesBase64": "EBESExQ=" },
+        { "type": 99, "flags": 0, "bytesBase64": "3q2+7w==" }
+      ]
+    },
+    {
+      "eventId": 10,
+      "version": 2,
+      "schemaFingerprint": "schema-unknown-v2",
+      "classification": "OpaqueUnknown",
+      "bodyBase64": "VU5BUFBST1ZFRC1TRUNSRVQtMTIz",
+      "scopeMatched": true,
+      "extendedItems": [
+        { "type": 2, "flags": 1, "bytesBase64": "ICEiIyQ=" }
+      ]
+    },
+    {
+      "eventId": 11,
+      "version": 1,
+      "schemaFingerprint": "schema-known-content",
+      "classification": "Content",
+      "bodyBase64": "Q09OVEVOVC1TRUNSRVQtNDU2",
+      "scopeMatched": true,
+      "extendedItems": []
+    },
+    {
+      "eventId": 12,
+      "version": 1,
+      "schemaFingerprint": "schema-header-only",
+      "classification": "None",
+      "bodyBase64": "",
+      "scopeMatched": false,
+      "extendedItems": []
+    }
+  ]
+}
