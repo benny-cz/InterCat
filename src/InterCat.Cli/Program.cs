@@ -66,6 +66,7 @@ static void PrintHelp()
     ConsoleUi.Line("  icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Lists capture intents or previews requested/effective settings and omissions.");
     ConsoleUi.Line("      Reads schemas only; never enables a provider or starts a capture.");
+    ConsoleUi.Line("      Focused TCP: focused-transport --mechanism tcp [--pid <id> ...]");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat measure <tcp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the named fixture under one owned ETW session and computes its tier.");

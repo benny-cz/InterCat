@@ -12,10 +12,124 @@ public sealed class CaptureProfileCompilerTests
         Assert.Equal(5, CaptureProfileCatalog.All.Count);
         Assert.Equal(5, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
+        CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
+        Assert.True(focused.CompilationAvailable);
+        Assert.Equal(AdmissionMode.MetadataOnly, focused.Admission);
+
         CaptureProfileDescriptor content = CaptureProfileCatalog.Find("content")!;
         Assert.Equal(AdmissionMode.ScopedContent, content.Admission);
         Assert.False(content.CompilationAvailable);
         Assert.Contains("scope", content.UnavailableReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: Focused TCP compiles one mechanism and required lifecycle context")]
+    public void FocusedTcpCompilesWithoutProcessRestriction()
+    {
+        EffectiveCapturePlan plan = CompileFocused();
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("focused-transport", plan.EffectiveProfileId);
+        Assert.Equal(Mechanism.Tcp, plan.Scope.RequestedMechanism);
+        Assert.Equal(Mechanism.Tcp, plan.Scope.EffectiveMechanism);
+        Assert.Empty(plan.Scope.RequestedProcessIds);
+        Assert.False(plan.Scope.CapturesOutsideRequestedProcesses);
+        Assert.All(
+            plan.Scope.Sources,
+            source => Assert.Equal(ProviderProcessScope.WholeMachineRequested, source.ProcessScope));
+        Assert.All(plan.Providers, provider => Assert.Empty(provider.ProcessIdsToInclude));
+    }
+
+    [Fact(DisplayName = "IC-012: process focus blocks until unavoidable broader TCP collection is accepted")]
+    public void FocusedProcessNeedsBroaderCaptureConsent()
+    {
+        EffectiveCapturePlan plan = CompileFocused(processIds: [4242]);
+
+        Assert.False(plan.CanStart);
+        Assert.Null(plan.EffectiveProfileId);
+        Assert.True(plan.Scope.CapturesOutsideRequestedProcesses);
+        Assert.True(plan.Scope.BroaderCaptureNeedsConsent);
+        Assert.False(plan.Scope.BroaderCaptureAccepted);
+        Assert.Equal([4242], plan.Scope.InitialViewProcessIds);
+        Assert.Contains("needs consent", plan.Scope.Disclosure, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            plan.Scope.Sources,
+            source => source.SourceId == WindowsSourceCatalog.KernelNetworkSourceId
+                && source.ProcessScope == ProviderProcessScope.WholeMachineFilterUnavailable);
+        Assert.Contains(
+            plan.Scope.Sources,
+            source => source.SourceId == WindowsSourceCatalog.KernelProcessSourceId
+                && source.ProcessScope == ProviderProcessScope.WholeMachineRequiredContext);
+        Assert.All(plan.Providers, provider => Assert.Empty(provider.ProcessIdsToInclude));
+    }
+
+    [Fact(DisplayName = "IC-012: broader Focused TCP collection is effective only after explicit acknowledgement")]
+    public void FocusedProcessCanAcceptBroaderCapture()
+    {
+        EffectiveCapturePlan plan = CompileFocused(processIds: [4242, 84], allowBroaderCapture: true);
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("focused-transport", plan.EffectiveProfileId);
+        Assert.True(plan.Scope.BroaderCaptureAccepted);
+        Assert.Equal([84, 4242], plan.Scope.RequestedProcessIds);
+        Assert.Contains("accepted", plan.Scope.Disclosure, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: Focused transport refuses an unmeasured mechanism without TCP fallback")]
+    public void FocusedTransportDoesNotSubstituteMechanism()
+    {
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.FocusedTransport, FocusedMechanism: Mechanism.Rpc),
+            new SourcePlanCompilation([], []));
+
+        Assert.False(plan.CanStart);
+        Assert.Null(plan.EffectiveProfileId);
+        Assert.Equal(Mechanism.Rpc, plan.Scope.RequestedMechanism);
+        Assert.Null(plan.Scope.EffectiveMechanism);
+        Assert.Contains("TCP", Assert.Single(plan.Diagnostics), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: malformed Focused requests are refused before provider compilation")]
+    public void FocusedTransportValidatesScopeInputs()
+    {
+        EffectiveCapturePlan duplicate = CaptureProfileCompiler.Compile(
+            new(
+                CaptureProfileKind.FocusedTransport,
+                FocusedMechanism: Mechanism.Tcp,
+                FocusedProcessIds: [4242, 4242]),
+            new SourcePlanCompilation([], []));
+        EffectiveCapturePlan meaninglessConsent = CaptureProfileCompiler.Compile(
+            new(
+                CaptureProfileKind.FocusedTransport,
+                FocusedMechanism: Mechanism.Tcp,
+                AllowBroaderCapture: true),
+            new SourcePlanCompilation([], []));
+
+        Assert.False(duplicate.CanStart);
+        Assert.Contains("only once", Assert.Single(duplicate.Diagnostics), StringComparison.OrdinalIgnoreCase);
+        Assert.False(meaninglessConsent.CanStart);
+        Assert.Contains("unnecessary", Assert.Single(meaninglessConsent.Diagnostics), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact(DisplayName = "IC-012: provider PID filters require a source contract that can enforce them")]
+    public void ProviderProcessFilterRequiresCatalogSupport()
+    {
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 0, 5);
+        var rpcFilters = new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
+        {
+            [rpc.SourceId] = [84, 4242],
+        };
+
+        ProviderEnablementRequest request = Assert.Single(
+            ProviderEnablementCompiler.Compile([rpc], processFilters: rpcFilters));
+        Assert.Equal([84, 4242], request.ProcessIdsToInclude);
+
+        SourceAdmissionPlan network = BuildPlan(WindowsSourceCatalog.KernelNetworkSourceId, 0, 10);
+        var networkFilters = new Dictionary<string, IReadOnlyList<int>>(StringComparer.Ordinal)
+        {
+            [network.SourceId] = [4242],
+        };
+        Assert.Throws<InvalidOperationException>(
+            () => ProviderEnablementCompiler.Compile([network], processFilters: networkFilters));
     }
 
     [Fact(DisplayName = "IC-012: Explore records requested and effective sources with measured optional omissions")]
@@ -218,5 +332,20 @@ public sealed class CaptureProfileCompilerTests
             Events = [admitted],
             Diagnostics = [],
         };
+    }
+
+    private static EffectiveCapturePlan CompileFocused(
+        IReadOnlyList<int>? processIds = null,
+        bool allowBroaderCapture = false)
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan network = BuildPlan(WindowsSourceCatalog.KernelNetworkSourceId, 1, 10);
+        return CaptureProfileCompiler.Compile(
+            new(
+                CaptureProfileKind.FocusedTransport,
+                FocusedMechanism: Mechanism.Tcp,
+                FocusedProcessIds: processIds,
+                AllowBroaderCapture: allowBroaderCapture),
+            new SourcePlanCompilation([process, network], []));
     }
 }

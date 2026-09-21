@@ -21,9 +21,44 @@ internal static class ProfilesCommand
 
         string? profileId = command.TakePositional();
         string? outputPath = command.TakeOption("--output");
+        string? mechanismText = command.TakeOption("--mechanism");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool diagnosticEtl = command.TryTakeFlag("--diagnostic-etl");
+        bool allowBroaderCapture = command.TryTakeFlag("--allow-broader-capture");
+        var processIds = new List<int>();
+        string? rawProcessId;
+        while ((rawProcessId = command.TakeOption("--pid")) is not null)
+        {
+            if (!int.TryParse(rawProcessId, NumberStyles.None, CultureInfo.InvariantCulture, out int processId)
+                || processId <= 0)
+            {
+                ConsoleUi.Failure($"Invalid process ID: {rawProcessId}. Use a positive decimal integer.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            if (processIds.Contains(processId))
+            {
+                ConsoleUi.Failure($"Process ID {processId} was supplied more than once.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            processIds.Add(processId);
+        }
+
+        if (processIds.Count > 64)
+        {
+            ConsoleUi.Failure("A focused preview accepts at most 64 --pid values.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        Mechanism? mechanism = ParseMechanism(mechanismText);
+        if (mechanismText is not null && mechanism is null)
+        {
+            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Focused transport currently accepts tcp.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
@@ -40,9 +75,9 @@ internal static class ProfilesCommand
 
         if (profileId is null)
         {
-            if (diagnosticEtl)
+            if (diagnosticEtl || mechanism is not null || processIds.Count > 0 || allowBroaderCapture)
             {
-                ConsoleUi.Failure("--diagnostic-etl applies to one profile preview, for example 'icat profiles explore'.");
+                ConsoleUi.Failure("Profile options require one profile name. List profiles without additional options.");
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -69,6 +104,26 @@ internal static class ProfilesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (selected.Kind != CaptureProfileKind.FocusedTransport
+            && (mechanism is not null || processIds.Count > 0 || allowBroaderCapture))
+        {
+            ConsoleUi.Failure("--mechanism, --pid and --allow-broader-capture apply only to focused-transport.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (selected.Kind == CaptureProfileKind.FocusedTransport && mechanism is null)
+        {
+            ConsoleUi.Failure("focused-transport requires --mechanism tcp.");
+            PrintHelp();
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (allowBroaderCapture && processIds.Count == 0)
+        {
+            ConsoleUi.Failure("--allow-broader-capture is meaningful only with at least one --pid selection.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         ConsoleUi.Progress(
             selected.CompilationAvailable
                 ? $"Compiling the requested {selected.DisplayName} settings from local schemas. No capture is started."
@@ -77,7 +132,7 @@ internal static class ProfilesCommand
         ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
         var inventory = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
         EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
-            new(selected.Kind, diagnosticEtl),
+            new(selected.Kind, diagnosticEtl, mechanism, processIds, allowBroaderCapture),
             inventory,
             environment);
         cancellationToken.ThrowIfCancellationRequested();
@@ -122,6 +177,7 @@ internal static class ProfilesCommand
 
         ConsoleUi.Table(["Profile", "Admission", "State", "Intent or refusal"], rows);
         ConsoleUi.Note("Preview a profile before capture: icat profiles explore");
+        ConsoleUi.Note("Focused TCP preview: icat profiles focused-transport --mechanism tcp [--pid <id>]");
         ConsoleUi.Note("No profile command enables a provider or starts a capture.");
     }
 
@@ -133,6 +189,8 @@ internal static class ProfilesCommand
         ConsoleUi.Field("Requested admission", plan.RequestedAdmission.ToString());
         ConsoleUi.Field("Effective admission", plan.EffectiveAdmission?.ToString() ?? "none");
         ConsoleUi.Field("Can start exactly", plan.CanStart ? "yes" : "no");
+        ConsoleUi.Field("Build", plan.Environment.BuildId);
+        ConsoleUi.Field("Adapter", plan.AdapterVersion);
         ConsoleUi.Field("Call stacks", plan.RequestCallStacks ? "requested" : "not requested");
         ConsoleUi.Field("Extended metadata", plan.PreserveExtendedData ? "bounded approved types" : "not retained");
         ConsoleUi.Line();
@@ -140,6 +198,42 @@ internal static class ProfilesCommand
         if (plan.BodyPolicy is not null)
         {
             ConsoleUi.Note($"Body policy {plan.BodyPolicy.PolicyId}: {plan.BodyPolicy.Summary}");
+        }
+
+        ConsoleUi.Heading("Capture scope");
+        string mechanism = plan.Scope.EffectiveMechanism?.ToString()
+            ?? (plan.Scope.RequestedMechanism is null
+                ? "profile-defined"
+                : $"{plan.Scope.RequestedMechanism} requested — not available");
+        ConsoleUi.Field("Mechanism", mechanism);
+        ConsoleUi.Field(
+            "Process focus",
+            plan.Scope.RequestedProcessIds.Count == 0
+                ? "all processes"
+                : string.Join(", ", plan.Scope.RequestedProcessIds));
+        ConsoleUi.Field("Broader collection", plan.Scope.CapturesOutsideRequestedProcesses ? "yes" : "no");
+        ConsoleUi.Field(
+            "Broader consent",
+            !plan.Scope.BroaderCaptureNeedsConsent
+                ? "not needed"
+                : plan.Scope.BroaderCaptureAccepted ? "accepted" : "required before start");
+        ConsoleUi.Note(plan.Scope.Disclosure);
+        if (plan.Scope.Sources.Count > 0)
+        {
+            var scopeRows = new List<IReadOnlyList<string>>(plan.Scope.Sources.Count);
+            foreach (ProviderScopeDecision source in plan.Scope.Sources)
+            {
+                scopeRows.Add(
+                [
+                    source.SourceId,
+                    source.ProcessScope.ToString(),
+                    source.AppliedProcessIds.Count == 0 ? "none" : string.Join(",", source.AppliedProcessIds),
+                    source.CapturesOutsideRequestedProcesses ? "yes" : "no",
+                    source.Reason,
+                ]);
+            }
+
+            ConsoleUi.Table(["Source", "Capture scope", "Provider PID filter", "Broader", "Reason"], scopeRows);
         }
 
         ConsoleUi.Heading("Source decisions");
@@ -219,6 +313,7 @@ internal static class ProfilesCommand
         CanStart = plan.CanStart,
         CollectionStatement = plan.CollectionStatement,
         BodyPolicy = plan.BodyPolicy,
+        Scope = plan.Scope,
         Sources = plan.SourceDecisions,
         Providers =
         [
@@ -231,6 +326,7 @@ internal static class ProfilesCommand
                 $"0x{provider.MatchAllKeyword:X16}",
                 provider.EventIdsToEnable,
                 provider.EventIdsToDisable,
+                provider.ProcessIdsToInclude,
                 provider.RequestCaptureState,
                 provider.RequestCallStacks)),
         ],
@@ -243,12 +339,32 @@ internal static class ProfilesCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("icat profiles focused-transport --mechanism tcp [--pid <id> ...]");
+        ConsoleUi.Line("              [--allow-broader-capture] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  With no profile, lists every capture intent and whether it is available.");
         ConsoleUi.Line("  With a profile, compiles requested/effective sources, body policy and omissions");
         ConsoleUi.Line("  from local schemas. This is read-only and starts no capture.");
         ConsoleUi.Line("  --diagnostic-etl requests separate original evidence; unsupported requests block");
         ConsoleUi.Line("  instead of silently falling back to a sanitized journal.");
+        ConsoleUi.Line("  --pid requests process focus. If any provider must collect more broadly, the");
+        ConsoleUi.Line("  preview blocks until --allow-broader-capture records explicit acknowledgement.");
+    }
+
+    private static Mechanism? ParseMechanism(string? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "tcp" => Mechanism.Tcp,
+            "udp" => Mechanism.Udp,
+            "rpc" => Mechanism.Rpc,
+            _ => null,
+        };
     }
 
     private sealed record ProviderRequestPreview(
@@ -260,6 +376,7 @@ internal static class ProfilesCommand
         string MatchAllKeyword,
         IReadOnlyList<int> EventIdsToEnable,
         IReadOnlyList<int> EventIdsToDisable,
+        IReadOnlyList<int> ProcessIdsToInclude,
         bool RequestCaptureState,
         bool RequestCallStacks);
 
@@ -276,6 +393,7 @@ internal static class ProfilesCommand
         public required bool CanStart { get; init; }
         public required string CollectionStatement { get; init; }
         public CompiledBodyAdmissionPolicy? BodyPolicy { get; init; }
+        public required CaptureScopeDecision Scope { get; init; }
         public required IReadOnlyList<ProfileSourceDecision> Sources { get; init; }
         public required IReadOnlyList<ProviderRequestPreview> Providers { get; init; }
         public required OriginalEvidenceDecision OriginalEvidence { get; init; }

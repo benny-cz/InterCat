@@ -1,6 +1,6 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-21T22:03:50.7137931+00:00",
+  "probedAtUtc": "2026-09-21T22:29:00.5147468+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
@@ -15,7 +15,7 @@
       "isSupported": true
     }
   },
-  "adapterVersion": "windows-etw-inventory-0.3.0",
+  "adapterVersion": "windows-etw-inventory-0.4.0",
   "probeOnly": true,
   "sources": [
     {

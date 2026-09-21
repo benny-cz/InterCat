@@ -87,6 +87,12 @@ public sealed record ProviderEnablementRequest
     public IReadOnlyList<int> EventIdsToEnable { get; init; } = [];
     public IReadOnlyList<int> EventIdsToDisable { get; init; } = [];
 
+    /// <summary>
+    /// Provider-side process filter, when the source contract explicitly supports one. An empty list
+    /// means whole-machine delivery; it is never populated merely because the initial view is focused.
+    /// </summary>
+    public IReadOnlyList<int> ProcessIdsToInclude { get; init; } = [];
+
     /// <summary>Whether to ask the provider for its state rundown after delivery starts (section 18.5).</summary>
     public bool RequestCaptureState { get; init; }
 

@@ -50,12 +50,25 @@ public static class CaptureProfileCatalog
                 "Collects schema-approved lifecycle, endpoint, direction, byte-count and correlation metadata. "
                 + "It does not retain event payload bytes, request call stacks, or enable payload-producing debug settings.",
         },
-        Unavailable(
-            CaptureProfileKind.FocusedTransport,
-            "focused-transport",
-            "Focused transport",
-            AdmissionMode.MetadataOnly,
-            "Process and mechanism scope guarantees are not compiled yet; a view filter must not be presented as capture-side filtering."),
+        new()
+        {
+            Kind = CaptureProfileKind.FocusedTransport,
+            Id = "focused-transport",
+            DisplayName = "Focused transport",
+            Summary = "One validated transport with optional process focus and explicit wider-capture consent.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Lifecycle context required to identify selected and peer processes."),
+                new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated TCP endpoints, direction and transport-observed byte counts."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects schema-approved metadata for one validated transport and the lifecycle context "
+                + "needed to explain it. It retains no payload bytes and requests no call stacks.",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",
@@ -117,7 +130,10 @@ public static class CaptureProfileCatalog
 
 public sealed record CaptureProfileRequest(
     CaptureProfileKind Profile,
-    bool RequestOriginalDiagnosticEtl = false);
+    bool RequestOriginalDiagnosticEtl = false,
+    Mechanism? FocusedMechanism = null,
+    IReadOnlyList<int>? FocusedProcessIds = null,
+    bool AllowBroaderCapture = false);
 
 public enum ProfileSourceDecisionState
 {
@@ -144,6 +160,38 @@ public sealed record OriginalEvidenceDecision(
     string StorageBoundary,
     string Warning);
 
+public enum ProviderProcessScope
+{
+    WholeMachineRequested = 1,
+    ProcessFiltered = 2,
+    WholeMachineRequiredContext = 3,
+    WholeMachineFilterUnavailable = 4,
+}
+
+public sealed record ProviderScopeDecision(
+    string SourceId,
+    ProviderProcessScope ProcessScope,
+    IReadOnlyList<int> AppliedProcessIds,
+    bool CapturesOutsideRequestedProcesses,
+    string Reason);
+
+/// <summary>
+/// Requested process focus and the scope the providers can really enforce. Initial view focus never
+/// changes retention, so broader collection requires a separate recorded acknowledgement.
+/// </summary>
+public sealed record CaptureScopeDecision
+{
+    public Mechanism? RequestedMechanism { get; init; }
+    public Mechanism? EffectiveMechanism { get; init; }
+    public required IReadOnlyList<int> RequestedProcessIds { get; init; }
+    public required IReadOnlyList<int> InitialViewProcessIds { get; init; }
+    public required bool CapturesOutsideRequestedProcesses { get; init; }
+    public required bool BroaderCaptureNeedsConsent { get; init; }
+    public required bool BroaderCaptureAccepted { get; init; }
+    public required IReadOnlyList<ProviderScopeDecision> Sources { get; init; }
+    public required string Disclosure { get; init; }
+}
+
 /// <summary>The immutable requested/effective profile preview compiled before any session is started.</summary>
 public sealed record EffectiveCapturePlan
 {
@@ -158,6 +206,7 @@ public sealed record EffectiveCapturePlan
     public required IReadOnlyList<SourceAdmissionPlan> Sources { get; init; }
     public required IReadOnlyList<ProviderEnablementRequest> Providers { get; init; }
     public required IReadOnlyList<ProfileSourceDecision> SourceDecisions { get; init; }
+    public required CaptureScopeDecision Scope { get; init; }
     public required OriginalEvidenceDecision OriginalEvidence { get; init; }
     public required bool PreserveExtendedData { get; init; }
     public required bool RequestCallStacks { get; init; }
@@ -205,10 +254,23 @@ public static class CaptureProfileCompiler
     {
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find(request.Profile);
         OriginalEvidenceDecision originalEvidence = OriginalEvidence(request.RequestOriginalDiagnosticEtl);
+        string? requestRefusal = ValidateRequest(request);
+
+        if (requestRefusal is not null)
+        {
+            return Refused(
+                request,
+                profile,
+                originalEvidence,
+                environment,
+                compiledAtUtc,
+                requestRefusal);
+        }
 
         if (!profile.CompilationAvailable)
         {
             return Refused(
+                request,
                 profile,
                 originalEvidence,
                 environment,
@@ -287,8 +349,10 @@ public static class CaptureProfileCompiler
         [.. compilation.Plans.Where(plan => orderedDecisions.Any(decision =>
             decision.State == ProfileSourceDecisionState.Included
             && string.Equals(decision.SourceId, plan.SourceId, StringComparison.Ordinal)))];
+        CaptureScopeDecision scope = CompileScope(request, included);
         bool sourceBlock = orderedDecisions.Any(decision => decision.State == ProfileSourceDecisionState.Blocking);
-        bool canStart = !sourceBlock && !request.RequestOriginalDiagnosticEtl;
+        bool scopeBlock = scope.BroaderCaptureNeedsConsent && !scope.BroaderCaptureAccepted;
+        bool canStart = !sourceBlock && !scopeBlock && !request.RequestOriginalDiagnosticEtl;
         var diagnostics = compilation.Issues
             .Where(issue => issue.Severity == SourcePlanIssueSeverity.Warning)
             .Select(issue => $"{issue.SourceId}: {issue.Reason}")
@@ -297,6 +361,15 @@ public static class CaptureProfileCompiler
         {
             diagnostics.Add(originalEvidence.Warning);
         }
+
+        if (scopeBlock)
+        {
+            diagnostics.Add(scope.Disclosure);
+        }
+
+        Dictionary<string, IReadOnlyList<int>> processFilters = scope.Sources
+            .Where(source => source.ProcessScope == ProviderProcessScope.ProcessFiltered)
+            .ToDictionary(source => source.SourceId, source => source.AppliedProcessIds, StringComparer.Ordinal);
 
         return new()
         {
@@ -309,14 +382,161 @@ public static class CaptureProfileCompiler
             EffectiveAdmission = canStart ? profile.Admission : null,
             BodyPolicy = bodyPolicy,
             Sources = included,
-            Providers = ProviderEnablementCompiler.Compile(included, profile.RequestCallStacks),
+            Providers = ProviderEnablementCompiler.Compile(
+                included,
+                profile.RequestCallStacks,
+                processFilters),
             SourceDecisions = orderedDecisions,
+            Scope = scope,
             OriginalEvidence = originalEvidence,
             PreserveExtendedData = profile.PreserveExtendedData,
             RequestCallStacks = profile.RequestCallStacks,
             CanStart = canStart,
-            CollectionStatement = profile.CollectionStatement,
+            CollectionStatement = $"{profile.CollectionStatement} {scope.Disclosure}",
             Diagnostics = diagnostics,
+        };
+    }
+
+    private static string? ValidateRequest(CaptureProfileRequest request)
+    {
+        IReadOnlyList<int> processIds = request.FocusedProcessIds ?? [];
+        if (processIds.Count > 64)
+        {
+            return "A focused profile accepts at most 64 process IDs per capture request.";
+        }
+
+        if (processIds.Any(processId => processId <= 0))
+        {
+            return "Every focused process ID must be a positive integer.";
+        }
+
+        if (processIds.Distinct().Count() != processIds.Count)
+        {
+            return "A focused process ID may appear only once.";
+        }
+
+        if (request.Profile != CaptureProfileKind.FocusedTransport)
+        {
+            return request.FocusedMechanism is not null || processIds.Count > 0 || request.AllowBroaderCapture
+                ? "Mechanism, process focus and broader-capture consent apply only to Focused transport."
+                : null;
+        }
+
+        if (request.FocusedMechanism is null)
+        {
+            return "Focused transport requires an explicit mechanism. TCP is the only validated option in this build.";
+        }
+
+        if (request.FocusedMechanism != Mechanism.Tcp)
+        {
+            return $"{request.FocusedMechanism} is not available in Focused transport. TCP is the only mechanism with measured source semantics and capture impact.";
+        }
+
+        return request.AllowBroaderCapture && processIds.Count == 0
+            ? "Broader-capture consent is unnecessary without a process selection. Remove the consent flag."
+            : null;
+    }
+
+    private static CaptureScopeDecision CompileScope(
+        CaptureProfileRequest request,
+        IReadOnlyList<SourceAdmissionPlan> included)
+    {
+        int[] requestedProcessIds = [.. (request.FocusedProcessIds ?? []).Order()];
+        if (request.Profile != CaptureProfileKind.FocusedTransport)
+        {
+            return new()
+            {
+                RequestedProcessIds = [],
+                InitialViewProcessIds = [],
+                CapturesOutsideRequestedProcesses = false,
+                BroaderCaptureNeedsConsent = false,
+                BroaderCaptureAccepted = false,
+                Sources =
+                [
+                    .. included.Select(source => new ProviderScopeDecision(
+                        source.SourceId,
+                        ProviderProcessScope.WholeMachineRequested,
+                        [],
+                        false,
+                        "This profile requests whole-machine metadata.")),
+                ],
+                Disclosure = "The profile requests whole-machine metadata; no narrower process scope was requested.",
+            };
+        }
+
+        if (requestedProcessIds.Length == 0)
+        {
+            return new()
+            {
+                RequestedMechanism = request.FocusedMechanism,
+                EffectiveMechanism = request.FocusedMechanism,
+                RequestedProcessIds = [],
+                InitialViewProcessIds = [],
+                CapturesOutsideRequestedProcesses = false,
+                BroaderCaptureNeedsConsent = false,
+                BroaderCaptureAccepted = false,
+                Sources =
+                [
+                    .. included.Select(source => new ProviderScopeDecision(
+                        source.SourceId,
+                        ProviderProcessScope.WholeMachineRequested,
+                        [],
+                        false,
+                        "No process restriction was requested.")),
+                ],
+                Disclosure = $"The capture is focused on {request.FocusedMechanism} but includes all processes.",
+            };
+        }
+
+        var sourceScopes = new List<ProviderScopeDecision>(included.Count);
+        foreach (SourceAdmissionPlan source in included)
+        {
+            WindowsSourceDefinition definition = WindowsSourceCatalog.Find(source.SourceId)
+                ?? throw new InvalidOperationException($"Source '{source.SourceId}' left the catalog during compilation.");
+            if (source.SourceId == WindowsSourceCatalog.KernelProcessSourceId)
+            {
+                sourceScopes.Add(new(
+                    source.SourceId,
+                    ProviderProcessScope.WholeMachineRequiredContext,
+                    [],
+                    true,
+                    "Lifecycle stays whole-machine so selected processes and newly observed peers retain identity context."));
+            }
+            else if (definition.SupportsCaptureSideProcessFilter)
+            {
+                sourceScopes.Add(new(
+                    source.SourceId,
+                    ProviderProcessScope.ProcessFiltered,
+                    requestedProcessIds,
+                    false,
+                    "The provider can enforce the requested process IDs before delivery."));
+            }
+            else
+            {
+                sourceScopes.Add(new(
+                    source.SourceId,
+                    ProviderProcessScope.WholeMachineFilterUnavailable,
+                    [],
+                    true,
+                    "The provider exposes no capture-side process filter; process focus can narrow the initial view only."));
+            }
+        }
+
+        bool broader = sourceScopes.Any(source => source.CapturesOutsideRequestedProcesses);
+        string disclosure = request.AllowBroaderCapture
+            ? $"Broader capture accepted: {request.FocusedMechanism} metadata may be collected outside PID(s) {string.Join(", ", requestedProcessIds)}; the initial view remains focused on those processes."
+            : $"Broader capture needs consent: {request.FocusedMechanism} cannot be retained only for PID(s) {string.Join(", ", requestedProcessIds)} while preserving required context. Review the source decisions, then explicitly allow broader capture if acceptable.";
+        return new()
+        {
+            RequestedMechanism = request.FocusedMechanism,
+            EffectiveMechanism = request.FocusedMechanism,
+            RequestedProcessIds = requestedProcessIds,
+            InitialViewProcessIds = requestedProcessIds,
+            CapturesOutsideRequestedProcesses = broader,
+            BroaderCaptureNeedsConsent = broader,
+            BroaderCaptureAccepted = broader && request.AllowBroaderCapture,
+            Sources = sourceScopes,
+            Disclosure = disclosure,
         };
     }
 
@@ -341,16 +561,17 @@ public static class CaptureProfileCompiler
             : "No original diagnostic ETL requested; this request asks for no original source-byte retention.");
 
     private static EffectiveCapturePlan Refused(
+        CaptureProfileRequest request,
         CaptureProfileDescriptor profile,
         OriginalEvidenceDecision originalEvidence,
         ProbeEnvironment environment,
         DateTimeOffset compiledAtUtc,
         string reason) => new()
-    {
-        CompiledAtUtc = compiledAtUtc,
-        Environment = environment,
-        AdapterVersion = CapabilityInventoryProbe.AdapterVersion,
-        RequestedProfileId = profile.Id,
+        {
+            CompiledAtUtc = compiledAtUtc,
+            Environment = environment,
+            AdapterVersion = CapabilityInventoryProbe.AdapterVersion,
+            RequestedProfileId = profile.Id,
             EffectiveProfileId = null,
             RequestedAdmission = profile.Admission,
             EffectiveAdmission = null,
@@ -358,6 +579,18 @@ public static class CaptureProfileCompiler
             Sources = [],
             Providers = [],
             SourceDecisions = [],
+            Scope = new()
+            {
+                RequestedMechanism = request.FocusedMechanism,
+                EffectiveMechanism = null,
+                RequestedProcessIds = [.. (request.FocusedProcessIds ?? []).Order()],
+                InitialViewProcessIds = [],
+                CapturesOutsideRequestedProcesses = false,
+                BroaderCaptureNeedsConsent = false,
+                BroaderCaptureAccepted = false,
+                Sources = [],
+                Disclosure = reason,
+            },
             OriginalEvidence = originalEvidence,
             PreserveExtendedData = false,
             RequestCallStacks = false,

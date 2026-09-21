@@ -6,13 +6,13 @@ InterCat is a Windows IPC visualizer for exploring which processes communicate, 
 
 - a pinned .NET 10 solution with enforced inward dependency boundaries;
 - a schema-driven capability inventory that keeps registration, enablement, observed health and validated semantics as four separate checks;
-- a read-only capture-profile compiler that shows requested/effective sources, exact provider settings, body policy, overhead evidence and omissions before capture;
+- a read-only capture-profile compiler that shows requested/effective sources, actual provider scope, exact provider settings, body policy, overhead evidence and omissions before capture;
 - an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
 - seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
 - a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
-A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient.
+A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient. Focused transport compiles validated TCP only. A PID selection is an initial-view focus, not a false retention guarantee: because the network provider cannot filter by PID and lifecycle context remains machine-wide, the preview blocks until the operator explicitly accepts broader metadata collection.
 
 ## Build and run
 
@@ -27,6 +27,12 @@ dotnet run --project src/InterCat.Cli -- capabilities
 # Read-only profile discovery and requested/effective preview. Starts no capture.
 dotnet run --project src/InterCat.Cli -- profiles
 dotnet run --project src/InterCat.Cli -- profiles explore
+dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp
+
+# A process focus previews the unavoidable wider provider scope first. Repeat with
+# --allow-broader-capture only after reviewing the per-source disclosure.
+dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242
+dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242 --allow-broader-capture
 
 # Measured vertical paths. Each starts one owned ETW session; needs an elevated shell.
 dotnet run --project src/InterCat.Cli -- measure tcp

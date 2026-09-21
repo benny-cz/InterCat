@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 12, 2026-09-21. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 5 keeps the revision-4 ADR and identity corrections and removes an IC-009/IC-011 dependency cycle: IC-009 explicitly owns a disposable, non-production envelope candidate needed to measure real callback/extended-data fidelity; IC-011 owns the production contract and implementation only after ADR-008 closes.
+**Status:** reviewed product architecture and implementation blueprint, revision 13, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 13 makes wider-capture consent explicit for process-focused requests: a view focus cannot authorize or masquerade as provider-enforced retention scope.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -800,7 +800,7 @@ Overload response: reduce nonessential UI refresh, defer enrichment/layout, use 
 | Profile | Contents and use |
 |---|---|
 | Explore | Lifecycle + validated network/RPC/ALPC metadata; optional validated pipe metadata if overhead permits; no payload-producing debug settings by default |
-| Focused transport | One mechanism or selected processes where source filtering works; preserves required lifecycle/correlation context |
+| Focused transport | One validated mechanism with optional selected-process focus; uses capture-side filtering where enforceable, otherwise requires explicit wider-capture consent; preserves required lifecycle/correlation context |
 | Timing | Explore plus selected thread scheduling/stack evidence after an overhead preview; avoids always-on stack collection |
 | Content | Explicit scope, allowlisted payload-capable sources, byte limits, retention and inspection settings; unsupported mechanisms remain unavailable |
 | Flight recorder | Bounded rolling history with visible oldest retained time; pin/export freezes required evidence before eviction |
@@ -812,7 +812,7 @@ source is omitted with its exact reason. Explore's minimum useful effective prof
 plus validated network metadata. RPC, ALPC and pipe breadth remains requested-but-optional until each source
 has both a bounded adapter and capture-impact evidence. Never substitute a different profile or body mode.
 
-Capture-side filtering and view filtering are different. If a provider cannot filter on PID before emission, disclose that a process-focused view still incurs wider capture cost and may collect broader metadata. Capture enough peer/lifecycle context to explain selected activity, while recording any excluded context.
+Capture-side filtering and view filtering are different. If a provider cannot filter on PID before emission, or required peer/lifecycle context must remain broader, disclose the per-source effective scope and block start until the operator explicitly accepts the wider metadata collection. Consent is attached to the exact compiled request; it is not inferred from choosing a process-focused view. Capture enough peer/lifecycle context to explain selected activity, while recording any excluded context.
 
 ## 10. Storage, snapshots and query implementation
 

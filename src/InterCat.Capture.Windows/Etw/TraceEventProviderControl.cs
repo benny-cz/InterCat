@@ -23,6 +23,11 @@ internal static class TraceEventProviderControl
                 options.EventIDsToDisable = [.. request.EventIdsToDisable];
             }
 
+            if (request.ProcessIdsToInclude.Count > 0)
+            {
+                options.ProcessIDFilter = [.. request.ProcessIdsToInclude];
+            }
+
             session.EnableProvider(
                 request.ProviderGuid,
                 (TraceEventLevel)request.Level,
