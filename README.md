@@ -1,17 +1,18 @@
 # InterCat
 
-InterCat is a Windows IPC visualizer for exploring which processes communicate, through which mechanism, and with what observable evidence. The project is in milestone M0: capability claims are intentionally gated on measured fixtures.
+InterCat is a Windows IPC visualizer for exploring which processes communicate, through which mechanism, and with what observable evidence. The project is in milestone M1: capability claims and capture profiles are intentionally gated on measured fixtures and explicit admission policy.
 
 ## Current vertical slice
 
 - a pinned .NET 10 solution with enforced inward dependency boundaries;
 - a schema-driven capability inventory that keeps registration, enablement, observed health and validated semantics as four separate checks;
+- a read-only capture-profile compiler that shows requested/effective sources, exact provider settings, body policy, overhead evidence and omissions before capture;
 - an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
 - seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
 - a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
-A registered ETW provider is reported separately from a validated capability tier. The first measured TCP run met every §14.2 threshold but was taken on a build outside the supported matrix, so TCP is reported as `ExperimentalEvidence`, not as supported traffic visualization. The named-pipe measurement came back negative with its control intact, so named pipes are reported as `Unsupported` and the scope decision is recorded in ADR-003.
+A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient.
 
 ## Build and run
 
@@ -22,6 +23,10 @@ dotnet test InterCat.slnx --no-build
 
 # Read-only inventory. Starts no capture, needs no elevation.
 dotnet run --project src/InterCat.Cli -- capabilities
+
+# Read-only profile discovery and requested/effective preview. Starts no capture.
+dotnet run --project src/InterCat.Cli -- profiles
+dotnet run --project src/InterCat.Cli -- profiles explore
 
 # Measured vertical paths. Each starts one owned ETW session; needs an elevated shell.
 dotnet run --project src/InterCat.Cli -- measure tcp

@@ -76,6 +76,10 @@ public sealed record SourceCapability
 
     public required SourceContractStatus ContractStatus { get; init; }
     public OverheadClass Overhead { get; init; } = OverheadClass.Unmeasured;
+
+    /// <summary>Repository-relative evidence that supports <see cref="Overhead"/>, or null when unmeasured.</summary>
+    public string? OverheadEvidence { get; init; }
+
     public IReadOnlyList<string> FixtureIds { get; init; } = [];
     public IReadOnlyList<string> Notes { get; init; } = [];
 

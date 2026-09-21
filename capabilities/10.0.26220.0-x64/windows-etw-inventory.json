@@ -1,12 +1,12 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-21T18:20:02.9877994+00:00",
+  "probedAtUtc": "2026-09-21T22:03:50.7137931+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
     "architecture": "X64",
     "isSupportedBuild": true,
-    "isElevated": true,
+    "isElevated": false,
     "machineScope": "local machine",
     "support": {
       "tier": "Primary",
@@ -15,7 +15,7 @@
       "isSupported": true
     }
   },
-  "adapterVersion": "windows-etw-inventory-0.2.0",
+  "adapterVersion": "windows-etw-inventory-0.3.0",
   "probeOnly": true,
   "sources": [
     {
@@ -522,7 +522,8 @@
       ],
       "startupBehaviour": "No rundown of established connections. A flow already open when capture starts is observed only from its next transfer, so its lifetime stays uncertain (section 18.5).",
       "contractStatus": "Documented",
-      "overhead": "Unmeasured",
+      "overhead": "Low",
+      "overheadEvidence": "bench/results/capture-impact-20260921T200502Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
@@ -1282,7 +1283,8 @@
       ],
       "startupBehaviour": "Processes started before the session are delivered only when the capture requests provider capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
       "contractStatus": "Documented",
-      "overhead": "Unmeasured",
+      "overhead": "Low",
+      "overheadEvidence": "bench/results/capture-impact-20260921T200502Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "ProcessSequenceNumber with CreateTime forms the start key that keeps reused PIDs from merging (I12, R22).",
@@ -1456,6 +1458,7 @@
       "startupBehaviour": "No rundown of calls in flight. A call open at capture start is censored, not failed (I20).",
       "contractStatus": "Documented",
       "overhead": "Unmeasured",
+      "overheadEvidence": null,
       "fixtureIds": [],
       "notes": [
         "Start events carry InterfaceUuid, ProcNum and Protocol before variable-length endpoint strings, so those three are admitted and the endpoint strings are not.",
@@ -1527,6 +1530,7 @@
       "startupBehaviour": "Unmeasured.",
       "contractStatus": "Experimental",
       "overhead": "Unmeasured",
+      "overheadEvidence": null,
       "fixtureIds": [],
       "notes": [
         "Inventoried as a second TCP lead so Kernel-Network findings can be cross-checked later (section 13.4)."
@@ -2121,6 +2125,7 @@
       "startupBehaviour": "No rundown. A pipe opened before capture starts has no observed Create, so its name cannot be resolved from this source and its operations stay bound to an unnamed object (section 18.5).",
       "contractStatus": "Experimental",
       "overhead": "Unmeasured",
+      "overheadEvidence": null,
       "fixtureIds": [],
       "notes": [
         "Registration is not evidence of pipe traffic or peers; only a measured fixture assigns a tier (IC-005).",
@@ -2189,6 +2194,7 @@
       "startupBehaviour": "Unmeasured.",
       "contractStatus": "Experimental",
       "overhead": "Unmeasured",
+      "overheadEvidence": null,
       "fixtureIds": [],
       "notes": [
         "Mapping size and committed pages are capacity, not transfer volume (section 5, P3).",
@@ -2246,6 +2252,7 @@
       "startupBehaviour": "Unmeasured.",
       "contractStatus": "Experimental",
       "overhead": "Unmeasured",
+      "overheadEvidence": null,
       "fixtureIds": [],
       "notes": [
         "There is no registered ALPC manifest provider to inventory, so its absence from the registry is expected.",

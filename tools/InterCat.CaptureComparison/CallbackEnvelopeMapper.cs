@@ -15,11 +15,10 @@ namespace InterCat.CaptureComparison;
 /// </summary>
 internal sealed class CallbackEnvelopeMapper
 {
-    internal const string PolicyId = "metadata-only-admitted-projection-v1";
+    internal const string PolicyId = CaptureBodyAdmissionPolicies.MetadataOnlyPolicyId;
     private const uint ProjectionMagic = 0x31504149; // "IAP1" little-endian.
 
     private readonly JournalV1SchemaTable schemas = new();
-    private readonly uint policyReference;
     private readonly ClockId clockId;
 
     public CallbackEnvelopeMapper(IReadOnlyList<SourceAdmissionPlan> sources, ClockId clockId)
@@ -29,15 +28,16 @@ internal sealed class CallbackEnvelopeMapper
         {
             foreach (AdmittedEventPlan plan in source.Events)
             {
+                CaptureBodyAdmissionPolicies.EnsureSupported(plan.BodyPolicy);
                 _ = schemas.Intern(
                     plan.ProviderGuid,
                     checked((ushort)plan.EventId),
                     checked((byte)plan.Version),
-                    Fingerprint(plan));
+                    plan.SchemaFingerprint);
+                _ = schemas.InternPolicy(plan.BodyPolicy.PolicyId);
             }
         }
 
-        policyReference = schemas.InternPolicy(PolicyId);
         this.clockId = clockId;
     }
 
@@ -47,50 +47,86 @@ internal sealed class CallbackEnvelopeMapper
     public RecordEnvelopeV1 ToEnvelope(in AdmittedEvent admitted, AdmittedEventPlan plan, CaptureId captureId)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        CaptureBodyAdmissionPolicies.EnsureSupported(plan.BodyPolicy);
+        if (admitted.SourceIndex != plan.SourceIndex
+            || admitted.EventId != plan.EventId
+            || admitted.Version != plan.Version)
+        {
+            throw new InvalidDataException(
+                "An admitted callback record does not match the descriptor plan selected for persistence.");
+        }
 
         uint schemaReference = schemas.Intern(
             plan.ProviderGuid,
             checked((ushort)plan.EventId),
             checked((byte)plan.Version),
-            Fingerprint(plan));
-        return new()
+            plan.SchemaFingerprint);
+        uint policyReference = schemas.InternPolicy(plan.BodyPolicy.PolicyId);
+        EnvelopeBuffer projection = EncodeProjection(admitted);
+        if (projection.Length > plan.BodyPolicy.MaximumRetainedBodyBytes)
         {
-            CaptureId = captureId,
-            StreamId = checked((uint)admitted.SourceIndex + 1),
-            SourceEpoch = 1,
-            RecordOrdinal = checked((ulong)admitted.RecordOrdinal),
-            Header = new(
-                plan.ProviderGuid,
-                checked((ushort)admitted.EventId),
-                checked((byte)admitted.Version),
-                0,
-                0,
-                checked((byte)admitted.Opcode),
-                0,
-                0,
-                0,
-                0,
-                admitted.HeaderProcessId,
-                admitted.HeaderThreadId,
-                admitted.ActivityId,
-                admitted.RelatedActivityId),
-            BufferContext = new(checked((ushort)admitted.ProcessorNumber), 0),
-            ClockId = clockId,
-            TimestampEncoding = TimestampEncoding.Qpc,
-            NativeTicks = admitted.TimestampQpc,
-            PointerSize = checked((byte)plan.PointerSize),
-            SchemaReference = schemaReference,
-            AdmissionPolicyReference = policyReference,
-            ExtendedItems = ReadExtendedItems(admitted),
-            OmittedExtendedItemCount = admitted.ExtendedItemsOmitted + DeniedItemCount(admitted),
-            Body = new()
+            int actualLength = projection.Length;
+            projection.Dispose();
+            throw new InvalidDataException(
+                $"The approved metadata projection is {actualLength} bytes, beyond policy "
+                + $"'{plan.BodyPolicy.PolicyId}' limit of {plan.BodyPolicy.MaximumRetainedBodyBytes} bytes.");
+        }
+
+        List<ExtendedItemV1>? extendedItems = null;
+        try
+        {
+            extendedItems = ReadExtendedItems(admitted, plan.BodyPolicy);
+            return new()
             {
-                Classification = BodyClassificationV1.ApprovedMetadata,
-                Disposition = BodyDispositionV1.Retained,
-                OriginalLength = 0,
-                Bytes = EncodeProjection(admitted),
-            },
-        };
+                CaptureId = captureId,
+                StreamId = checked((uint)admitted.SourceIndex + 1),
+                SourceEpoch = 1,
+                RecordOrdinal = checked((ulong)admitted.RecordOrdinal),
+                Header = new(
+                    plan.ProviderGuid,
+                    checked((ushort)admitted.EventId),
+                    checked((byte)admitted.Version),
+                    0,
+                    0,
+                    checked((byte)admitted.Opcode),
+                    0,
+                    0,
+                    0,
+                    0,
+                    admitted.HeaderProcessId,
+                    admitted.HeaderThreadId,
+                    admitted.ActivityId,
+                    admitted.RelatedActivityId),
+                BufferContext = new(checked((ushort)admitted.ProcessorNumber), 0),
+                ClockId = clockId,
+                TimestampEncoding = TimestampEncoding.Qpc,
+                NativeTicks = admitted.TimestampQpc,
+                PointerSize = checked((byte)plan.PointerSize),
+                SchemaReference = schemaReference,
+                AdmissionPolicyReference = policyReference,
+                ExtendedItems = extendedItems,
+                OmittedExtendedItemCount = admitted.ExtendedItemsOmitted + DeniedItemCount(admitted, plan.BodyPolicy),
+                Body = new()
+                {
+                    Classification = BodyClassificationV1.ApprovedMetadata,
+                    Disposition = BodyDispositionV1.Retained,
+                    // This is the original length of the transformed projection, not the ETW user-data
+                    // buffer. The policy explicitly forbids retaining or representing those source bytes.
+                    OriginalLength = projection.Length,
+                    Bytes = projection,
+                },
+            };
+        }
+        catch
+        {
+            projection.Dispose();
+            foreach (ExtendedItemV1 item in extendedItems ?? [])
+            {
+                item.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -98,7 +134,9 @@ internal sealed class CallbackEnvelopeMapper
     /// pointer. An item whose type the metadata policy denies loses its bytes here and is counted as an
     /// omission, so replay reproduces the refusal rather than the item (R17, I13).
     /// </summary>
-    private static List<ExtendedItemV1> ReadExtendedItems(in AdmittedEvent admitted)
+    private static List<ExtendedItemV1> ReadExtendedItems(
+        in AdmittedEvent admitted,
+        CompiledBodyAdmissionPolicy policy)
     {
         int count = admitted.ExtendedItemsCopied;
         if (count == 0)
@@ -111,7 +149,7 @@ internal sealed class CallbackEnvelopeMapper
         for (int index = 0; index < count; index++)
         {
             AdmittedExtendedItem item = admitted.GetExtendedItem(index);
-            if (!EtwExtendedDataTypes.PermittedMetadata.Contains(item.Type))
+            if (!policy.PermitsExtendedDataType(item.Type))
             {
                 continue;
             }
@@ -129,12 +167,12 @@ internal sealed class CallbackEnvelopeMapper
         return items;
     }
 
-    private static int DeniedItemCount(in AdmittedEvent admitted)
+    private static int DeniedItemCount(in AdmittedEvent admitted, CompiledBodyAdmissionPolicy policy)
     {
         int denied = 0;
         for (int index = 0; index < admitted.ExtendedItemsCopied; index++)
         {
-            if (!EtwExtendedDataTypes.PermittedMetadata.Contains(admitted.GetExtendedItem(index).Type))
+            if (!policy.PermitsExtendedDataType(admitted.GetExtendedItem(index).Type))
             {
                 denied++;
             }
@@ -151,11 +189,21 @@ internal sealed class CallbackEnvelopeMapper
     {
         ArgumentNullException.ThrowIfNull(envelope);
         ArgumentNullException.ThrowIfNull(plan);
+        CaptureBodyAdmissionPolicies.EnsureSupported(plan.BodyPolicy);
         if (envelope.Body.Disposition != BodyDispositionV1.Retained)
         {
             throw new InvalidDataException(
                 $"The projection body of record {envelope.RecordOrdinal} was not retained: "
                 + $"{envelope.Body.Disposition}.");
+        }
+
+        if (envelope.Body.Classification != BodyClassificationV1.ApprovedMetadata
+            || envelope.Body.OriginalLength != envelope.Body.RetainedLength
+            || envelope.Body.RetainedLength > plan.BodyPolicy.MaximumRetainedBodyBytes)
+        {
+            throw new InvalidDataException(
+                $"Record {envelope.RecordOrdinal} does not satisfy admission policy "
+                + $"'{plan.BodyPolicy.PolicyId}'.");
         }
 
         using var stream = new MemoryStream(envelope.Body.Bytes.ToArray(), writable: false);
@@ -238,7 +286,11 @@ internal sealed class CallbackEnvelopeMapper
             throw new InvalidDataException("A journal-v1 projection has an unexplained trailing tail.");
         }
 
-        return admitted.SourceIndex == plan.SourceIndex && envelope.PointerSize == plan.PointerSize
+        return admitted.SourceIndex == plan.SourceIndex
+            && envelope.Header.ProviderId == plan.ProviderGuid
+            && envelope.Header.EventId == plan.EventId
+            && envelope.Header.Version == plan.Version
+            && envelope.PointerSize == plan.PointerSize
             ? admitted
             : throw new InvalidDataException(
                 "A journal-v1 projection no longer matches its admitted descriptor plan.");
@@ -327,9 +379,6 @@ internal sealed class CallbackEnvelopeMapper
 
         return EnvelopeBuffer.CopyOf(stream.GetBuffer().AsSpan(0, (int)stream.Length));
     }
-
-    private static string Fingerprint(AdmittedEventPlan plan) =>
-        $"{plan.ProviderGuid:N}:{plan.EventId}:{plan.Version}:{plan.PointerSize}:{plan.MinimumBodyLength}";
 
     private static byte[] ReadExactly(BinaryReader reader, int length)
     {

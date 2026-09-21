@@ -57,6 +57,8 @@ public sealed record WindowsSourceDefinition
     public bool SupportsCaptureState { get; init; }
 
     public required SourceContractStatus ContractStatus { get; init; }
+    public OverheadClass Overhead { get; init; } = OverheadClass.Unmeasured;
+    public string? OverheadEvidence { get; init; }
     public IReadOnlyList<int> DeniedEventIds { get; init; } = [];
     public IReadOnlyList<AdmittedEventIntent> AdmittedEvents { get; init; } = [];
     public IReadOnlyList<string> Notes { get; init; } = [];
@@ -198,6 +200,8 @@ public static class WindowsSourceCatalog
                 + "from its next transfer, so its lifetime stays uncertain (section 18.5).",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
             AdmittedEvents =
             [
                 new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
@@ -237,6 +241,8 @@ public static class WindowsSourceCatalog
                 + "capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
             SupportsCaptureState = true,
             ContractStatus = SourceContractStatus.Documented,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
             AdmittedEvents =
             [
                 new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),

@@ -427,38 +427,7 @@ internal static partial class MeasureCommand
     }
 
     private static List<ProviderEnablementRequest> BuildProviderRequests(IReadOnlyList<SourceAdmissionPlan> plans)
-    {
-        var requests = new List<ProviderEnablementRequest>(plans.Count);
-        foreach (SourceAdmissionPlan plan in plans)
-        {
-            WindowsSourceDefinition? definition = WindowsSourceCatalog.Find(plan.SourceId);
-            if (definition is null)
-            {
-                continue;
-            }
-
-            SortedSet<int> eventIds = [];
-            foreach (AdmittedEventPlan admitted in plan.Events)
-            {
-                eventIds.Add(admitted.EventId);
-            }
-
-            requests.Add(new()
-            {
-                SourceId = definition.SourceId,
-                ProviderName = definition.ProviderName,
-                ProviderGuid = plan.ProviderGuid,
-                Level = 4,
-                MatchAnyKeyword = definition.MatchAnyKeyword,
-                MatchAllKeyword = definition.MatchAllKeyword,
-                EventIdsToEnable = [.. eventIds],
-                EventIdsToDisable = definition.DeniedEventIds,
-                RequestCaptureState = definition.SupportsCaptureState,
-            });
-        }
-
-        return requests;
-    }
+        => [.. ProviderEnablementCompiler.Compile(plans)];
 
     private static List<SourceRuntimeEvidence> BuildRuntimeEvidence(
         CaptureStartResult start,

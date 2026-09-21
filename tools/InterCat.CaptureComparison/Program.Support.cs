@@ -63,33 +63,7 @@ internal static partial class Program
     private static List<ProviderEnablementRequest> BuildProviderRequests(
         IReadOnlyList<SourceAdmissionPlan> plans,
         bool requestCallStacks)
-    {
-        var requests = new List<ProviderEnablementRequest>(plans.Count);
-        foreach (SourceAdmissionPlan plan in plans)
-        {
-            WindowsSourceDefinition? definition = WindowsSourceCatalog.Find(plan.SourceId);
-            if (definition is null)
-            {
-                continue;
-            }
-
-            requests.Add(new()
-            {
-                SourceId = definition.SourceId,
-                ProviderName = definition.ProviderName,
-                ProviderGuid = plan.ProviderGuid,
-                Level = 4,
-                MatchAnyKeyword = definition.MatchAnyKeyword,
-                MatchAllKeyword = definition.MatchAllKeyword,
-                EventIdsToEnable = [.. plan.Events.Select(item => item.EventId).Distinct().Order()],
-                EventIdsToDisable = definition.DeniedEventIds,
-                RequestCaptureState = definition.SupportsCaptureState,
-                RequestCallStacks = requestCallStacks,
-            });
-        }
-
-        return requests;
-    }
+        => [.. ProviderEnablementCompiler.Compile(plans, requestCallStacks)];
 
     private static async Task<int> RunWorkloadAsync(
         string workload,

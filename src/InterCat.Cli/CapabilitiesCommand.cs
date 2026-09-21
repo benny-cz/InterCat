@@ -92,18 +92,26 @@ internal static class CapabilitiesCommand
             [
                 source.SourceId,
                 source.State.ToString(),
+                source.Overhead.ToString(),
                 DescribeChecks(source),
                 source.Events.Count.ToString(CultureInfo.CurrentCulture),
             ]);
         }
 
-        ConsoleUi.Table(["Source", "State", "Registration/Enable/Health/Semantics", "Admitted descriptors"], sourceRows);
+        ConsoleUi.Table(
+            ["Source", "State", "Overhead", "Registration/Enable/Health/Semantics", "Admitted descriptors"],
+            sourceRows);
 
         foreach (SourceCapability source in report.Sources)
         {
             if (source.UnavailableReason is not null)
             {
                 ConsoleUi.Note($"{source.SourceId}: {source.UnavailableReason}");
+            }
+
+            if (source.OverheadEvidence is not null)
+            {
+                ConsoleUi.Note($"{source.SourceId}: overhead evidence {source.OverheadEvidence}");
             }
         }
 

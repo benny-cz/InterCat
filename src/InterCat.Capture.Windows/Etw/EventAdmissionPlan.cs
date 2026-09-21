@@ -49,6 +49,15 @@ public sealed record AdmittedEventPlan
     /// </summary>
     public int PointerSize { get; init; } = 8;
 
+    /// <summary>
+    /// SHA-256 identity of the saved provider schema, descriptor layout, admitted slots and body policy.
+    /// A different projection therefore cannot reuse the same journal schema reference accidentally.
+    /// </summary>
+    public required string SchemaFingerprint { get; init; }
+
+    /// <summary>The body policy compiled for this exact descriptor before capture starts.</summary>
+    public required CompiledBodyAdmissionPolicy BodyPolicy { get; init; }
+
     public required IReadOnlyList<AdmittedSlotPlan> Slots { get; init; }
 
     /// <summary>What the capability report states about every intended field of this descriptor.</summary>
@@ -64,6 +73,19 @@ public sealed record SourceAdmissionPlan
     public required IReadOnlyList<AdmittedEventPlan> Events { get; init; }
     public required IReadOnlyList<string> Diagnostics { get; init; }
 }
+
+/// <summary>The pre-read decision for one descriptor; every rejected callback maps to one health ledger.</summary>
+public enum DescriptorAdmissionOutcome
+{
+    Admitted = 1,
+    UnrequestedProvider = 2,
+    DescriptorNotAdmitted = 3,
+    UnknownDescriptorVersion = 4,
+}
+
+public readonly record struct DescriptorAdmissionResolution(
+    DescriptorAdmissionOutcome Outcome,
+    AdmittedEventPlan? Plan);
 
 /// <summary>
 /// The lookup the capture callback uses. Keys are resolved before recording starts, so the callback
@@ -87,7 +109,13 @@ public sealed class EventAdmissionTable
             knownProviders.Add(source.ProviderGuid);
             foreach (AdmittedEventPlan plan in source.Events)
             {
-                plans[new(plan.ProviderGuid, plan.EventId, plan.Version)] = plan;
+                var key = new DescriptorKey(plan.ProviderGuid, plan.EventId, plan.Version);
+                if (!plans.TryAdd(key, plan))
+                {
+                    throw new InvalidOperationException(
+                        $"Descriptor {plan.ProviderGuid:D}/{plan.EventId}/v{plan.Version} is compiled more "
+                        + "than once. A capture cannot choose between ambiguous source plans.");
+                }
             }
         }
 
@@ -102,6 +130,29 @@ public sealed class EventAdmissionTable
 
     public AdmittedEventPlan? Find(Guid providerGuid, int eventId, int version) =>
         plans.TryGetValue(new(providerGuid, eventId, version), out AdmittedEventPlan? plan) ? plan : null;
+
+    /// <summary>
+    /// Classifies a descriptor without touching its body. Unknown versions are decode failures because
+    /// the descriptor was requested but its shape is unknown; entirely unrequested descriptors are
+    /// policy omissions. The distinction feeds separate health counters (I13).
+    /// </summary>
+    public DescriptorAdmissionResolution Resolve(Guid providerGuid, int eventId, int version)
+    {
+        if (!IsKnownProvider(providerGuid))
+        {
+            return new(DescriptorAdmissionOutcome.UnrequestedProvider, null);
+        }
+
+        AdmittedEventPlan? plan = Find(providerGuid, eventId, version);
+        if (plan is not null)
+        {
+            return new(DescriptorAdmissionOutcome.Admitted, plan);
+        }
+
+        return HasDescriptor(providerGuid, eventId)
+            ? new(DescriptorAdmissionOutcome.UnknownDescriptorVersion, null)
+            : new(DescriptorAdmissionOutcome.DescriptorNotAdmitted, null);
+    }
 
     /// <summary>
     /// Resolves the plan an admitted record was produced by. Records carry the source index rather than a

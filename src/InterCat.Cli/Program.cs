@@ -25,6 +25,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
         return args[0].ToLowerInvariant() switch
         {
             "capabilities" => await CapabilitiesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "profiles" => await ProfilesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -57,10 +58,14 @@ static InterCatExitCode UnknownCommand(string name)
 
 static void PrintHelp()
 {
-    ConsoleUi.Line("InterCat command line (M0)");
+    ConsoleUi.Line("InterCat command line (M1)");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat capabilities [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Read-only source inventory. Starts no capture.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Lists capture intents or previews requested/effective settings and omissions.");
+    ConsoleUi.Line("      Reads schemas only; never enables a provider or starts a capture.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat measure <tcp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the named fixture under one owned ETW session and computes its tier.");

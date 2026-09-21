@@ -77,6 +77,17 @@ public enum LaneGrouping
 }
 
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }
+
+/// <summary>Stable names of the capture intents described by section 9.4.</summary>
+public enum CaptureProfileKind
+{
+    Explore = 1,
+    FocusedTransport = 2,
+    Timing = 3,
+    Content = 4,
+    FlightRecorder = 5,
+}
+
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }
 public enum InterCatExitCode { Success = 0, PartialResultSuccess = 1, InvalidInvocation = 2, PermissionOrCapabilityFailure = 3, CorruptedInput = 4, Cancelled = 5 }
 

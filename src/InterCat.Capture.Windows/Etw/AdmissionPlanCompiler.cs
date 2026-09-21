@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using InterCat.Domain;
 
 namespace InterCat.Capture.Windows;
@@ -19,10 +21,14 @@ public static class AdmissionPlanCompiler
         WindowsSourceDefinition definition,
         ProviderSchema schema,
         int sourceIndex,
-        int pointerSize = 8)
+        int pointerSize = 8,
+        CompiledBodyAdmissionPolicy? bodyPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(schema);
+
+        bodyPolicy ??= CaptureBodyAdmissionPolicies.MetadataOnly;
+        CaptureBodyAdmissionPolicies.EnsureSupported(bodyPolicy);
 
         var events = new List<AdmittedEventPlan>();
         var diagnostics = new List<string>();
@@ -50,7 +56,15 @@ public static class AdmissionPlanCompiler
             foreach (ProviderSchemaEvent version in versions)
             {
                 intendedVersionPresent |= version.Version == intent.Version;
-                events.Add(CompileDescriptor(definition, intent, version, schema, sourceIndex, pointerSize, diagnostics));
+                events.Add(CompileDescriptor(
+                    definition,
+                    intent,
+                    version,
+                    schema,
+                    sourceIndex,
+                    pointerSize,
+                    bodyPolicy,
+                    diagnostics));
             }
 
             if (!intendedVersionPresent)
@@ -79,6 +93,7 @@ public static class AdmissionPlanCompiler
         ProviderSchema schema,
         int sourceIndex,
         int pointerSize,
+        CompiledBodyAdmissionPolicy bodyPolicy,
         List<string> diagnostics)
     {
         Dictionary<string, (int Offset, ProviderSchemaField Field)> resolvable = new(StringComparer.OrdinalIgnoreCase);
@@ -238,6 +253,16 @@ public static class AdmissionPlanCompiler
                 $"{definition.SourceId}: event {descriptor.EventId} v{descriptor.Version} admits no field; only its header is available."));
         }
 
+        string fingerprint = ComputeFingerprint(
+            schema.SchemaFingerprint,
+            schema.ProviderGuid,
+            descriptor.EventId,
+            descriptor.Version,
+            pointerSize,
+            minimumLength,
+            slots,
+            bodyPolicy);
+
         return new()
         {
             SourceIndex = sourceIndex,
@@ -250,8 +275,64 @@ public static class AdmissionPlanCompiler
             Direction = intent.Direction,
             MinimumBodyLength = minimumLength,
             PointerSize = pointerSize,
+            SchemaFingerprint = fingerprint,
+            BodyPolicy = bodyPolicy,
             Slots = slots,
             FieldReport = report,
         };
+    }
+
+    /// <summary>
+    /// Computes a stable identity for everything that can affect bounded decoding or persistence. The
+    /// canonical input is explicit so runtime or JSON formatting changes cannot alter the fingerprint.
+    /// </summary>
+    public static string ComputeFingerprint(
+        string providerSchemaFingerprint,
+        Guid providerGuid,
+        int eventId,
+        int version,
+        int pointerSize,
+        int minimumBodyLength,
+        IReadOnlyList<AdmittedSlotPlan> slots,
+        CompiledBodyAdmissionPolicy bodyPolicy)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerSchemaFingerprint);
+        ArgumentNullException.ThrowIfNull(slots);
+        ArgumentNullException.ThrowIfNull(bodyPolicy);
+
+        var canonical = new StringBuilder(512);
+        canonical.Append("intercat-admission-schema-v1\n")
+            .Append(providerSchemaFingerprint).Append('\n')
+            .Append(providerGuid.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
+            .Append(eventId.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(version.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(pointerSize.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(minimumBodyLength.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(bodyPolicy.PolicyId).Append('\n')
+            .Append(((int)bodyPolicy.Mode).ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(((int)bodyPolicy.RetainedBody).ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(bodyPolicy.MaximumRetainedBodyBytes.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(bodyPolicy.RetainsOriginalSourceBytes ? '1' : '0').Append('\n');
+
+        foreach (ushort type in bodyPolicy.PermittedExtendedDataTypes.Order())
+        {
+            canonical.Append("extended:").Append(type.ToString(CultureInfo.InvariantCulture)).Append('\n');
+        }
+
+        foreach (AdmittedSlotPlan slot in slots)
+        {
+            canonical.Append("slot:")
+                .Append(slot.FieldName).Append('|')
+                .Append(((int)slot.Role).ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(slot.Offset.ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(slot.Width.ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(slot.Unit?.ToString() ?? "-").Append('|')
+                .Append(slot.ByteDomain?.ToString() ?? "-").Append('|')
+                .Append(((int)slot.Transform).ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(((int)slot.Kind).ToString(CultureInfo.InvariantCulture)).Append('\n');
+        }
+
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()));
+        return "sha256:" + Convert.ToHexStringLower(digest);
     }
 }

@@ -37,7 +37,12 @@ public sealed class CallbackEnvelopeMapperTests
 
         Assert.Equal(captureId, envelope.CaptureId);
         Assert.Equal(BodyDispositionV1.Retained, envelope.Body.Disposition);
+        Assert.Equal(BodyClassificationV1.ApprovedMetadata, envelope.Body.Classification);
+        Assert.Equal(envelope.Body.RetainedLength, envelope.Body.OriginalLength);
         Assert.Equal(Assert.Single(mapper.Schemas.Schemas).Reference, envelope.SchemaReference);
+        Assert.Equal(
+            CaptureBodyAdmissionPolicies.MetadataOnlyPolicyId,
+            mapper.Schemas.FindPolicy(envelope.AdmissionPolicyReference)!.PolicyId);
         Assert.Equal(admitted.SourceIndex, replayed.SourceIndex);
         Assert.Equal(admitted.EventId, replayed.EventId);
         Assert.Equal(admitted.Version, replayed.Version);
@@ -120,6 +125,24 @@ public sealed class CallbackEnvelopeMapperTests
         Assert.Equal(0, replayed.ExtendedItemsCopied);
     }
 
+    [Fact(DisplayName = "IC-012: an envelope cannot be written or replayed against another descriptor plan")]
+    public void EnvelopeDescriptorPlanMustMatch()
+    {
+        AdmittedEventPlan plan = BuildEventPlan();
+        var mapper = new CallbackEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        AdmittedEvent admitted = BuildAdmitted();
+        AdmittedEventPlan wrong = plan with
+        {
+            EventId = plan.EventId + 1,
+            SchemaFingerprint = "sha256:different-descriptor",
+        };
+
+        Assert.Throws<InvalidDataException>(() => mapper.ToEnvelope(admitted, wrong, CaptureId.New()));
+
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+        Assert.Throws<InvalidDataException>(() => CallbackEnvelopeMapper.FromEnvelope(envelope, wrong));
+    }
+
     [Fact(DisplayName = "R8: ETL replay sink records its own bounded-budget drops")]
     public void ReplaySinkCountsBudgetDrops()
     {
@@ -182,6 +205,8 @@ public sealed class CallbackEnvelopeMapperTests
         Direction = Direction.Outbound,
         MinimumBodyLength = 8,
         PointerSize = 8,
+        SchemaFingerprint = "sha256:fixture-callback-envelope",
+        BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
         Slots = [],
         FieldReport = [],
     };

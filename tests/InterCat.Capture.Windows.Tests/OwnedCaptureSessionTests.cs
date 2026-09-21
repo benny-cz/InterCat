@@ -38,6 +38,8 @@ public sealed class OwnedCaptureSessionTests
                     Kind = ObservationKind.Send,
                     Direction = Direction.Outbound,
                     MinimumBodyLength = 8,
+                    SchemaFingerprint = "sha256:fixture-owned-session",
+                    BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
                     Slots = [],
                     FieldReport = [],
                 },

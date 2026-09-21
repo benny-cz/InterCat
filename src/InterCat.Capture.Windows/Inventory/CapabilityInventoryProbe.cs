@@ -4,6 +4,22 @@ using InterCat.Domain;
 
 namespace InterCat.Capture.Windows;
 
+public enum SourcePlanIssueSeverity
+{
+    Warning = 1,
+    Refusal = 2,
+}
+
+/// <summary>A source-scoped compilation outcome; profile compilers never have to parse diagnostic text.</summary>
+public sealed record SourcePlanIssue(
+    string SourceId,
+    SourcePlanIssueSeverity Severity,
+    string Reason);
+
+public sealed record SourcePlanCompilation(
+    IReadOnlyList<SourceAdmissionPlan> Plans,
+    IReadOnlyList<SourcePlanIssue> Issues);
+
 /// <summary>
 /// Evidence a capture run produced for one source. Without it, observed health and semantic coverage stay
 /// <see cref="CheckOutcome.NotAttempted"/>: a probe alone can never report a source as healthy (section 18.2).
@@ -26,7 +42,7 @@ public sealed record SourceRuntimeEvidence(
 /// </summary>
 public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimeProvider? clock = null)
 {
-    public const string AdapterVersion = "windows-etw-inventory-0.2.0";
+    public const string AdapterVersion = "windows-etw-inventory-0.3.0";
     public const string ReportVersion = "2";
 
     private readonly IEtwMetadataSource metadata =
@@ -111,33 +127,59 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         IReadOnlyList<string> sourceIds,
         out IReadOnlyList<string> refusals)
     {
+        SourcePlanCompilation compilation = CompilePlanSet(sourceIds);
+        refusals = [.. compilation.Issues.Select(issue => $"{issue.SourceId}: {issue.Reason}")];
+        return compilation.Plans;
+    }
+
+    /// <summary>
+    /// Structured form of <see cref="CompilePlans"/>. A missing provider and a degraded descriptor are
+    /// distinct outcomes, and every outcome retains its source identity for effective-profile decisions.
+    /// </summary>
+    public SourcePlanCompilation CompilePlanSet(
+        IReadOnlyList<string> sourceIds,
+        CompiledBodyAdmissionPolicy? bodyPolicy = null)
+    {
         ArgumentNullException.ThrowIfNull(sourceIds);
 
         var plans = new List<SourceAdmissionPlan>(sourceIds.Count);
-        var problems = new List<string>();
+        var issues = new List<SourcePlanIssue>();
         int index = 0;
         foreach (string sourceId in sourceIds)
         {
             WindowsSourceDefinition? definition = WindowsSourceCatalog.Find(sourceId);
             if (definition is null)
             {
-                problems.Add($"{sourceId}: not in the source catalog.");
+                issues.Add(new(sourceId, SourcePlanIssueSeverity.Refusal, "Not in the source catalog."));
                 continue;
             }
 
-            RegisteredProvider? provider = definition.Kind == SourceKind.ManifestProvider
-                ? metadata.TryResolveProvider(definition.ProviderName)
-                : null;
+            if (definition.Kind != SourceKind.ManifestProvider)
+            {
+                issues.Add(new(
+                    sourceId,
+                    SourcePlanIssueSeverity.Refusal,
+                    "The owned manifest-provider session cannot enforce this source kind."));
+                continue;
+            }
+
+            RegisteredProvider? provider = metadata.TryResolveProvider(definition.ProviderName);
             if (provider is null)
             {
-                problems.Add($"{sourceId}: the provider is not registered on this machine.");
+                issues.Add(new(
+                    sourceId,
+                    SourcePlanIssueSeverity.Refusal,
+                    "The provider is not registered on this machine."));
                 continue;
             }
 
             ManifestReadResult manifest = metadata.TryReadManifest(provider.ProviderGuid);
             if (manifest.ManifestXml is null)
             {
-                problems.Add($"{sourceId}: {manifest.FailureReason}");
+                issues.Add(new(
+                    sourceId,
+                    SourcePlanIssueSeverity.Refusal,
+                    manifest.FailureReason ?? "The provider manifest could not be read."));
                 continue;
             }
 
@@ -148,20 +190,26 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             }
             catch (InvalidDataException exception)
             {
-                problems.Add($"{sourceId}: the manifest could not be interpreted: {exception.Message}");
+                issues.Add(new(
+                    sourceId,
+                    SourcePlanIssueSeverity.Refusal,
+                    $"The manifest could not be interpreted: {exception.Message}"));
                 continue;
             }
 
-            SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(definition, schema, index++);
+            SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(
+                definition,
+                schema,
+                index++,
+                bodyPolicy: bodyPolicy);
             plans.Add(plan);
             foreach (string diagnostic in plan.Diagnostics)
             {
-                problems.Add(diagnostic);
+                issues.Add(new(sourceId, SourcePlanIssueSeverity.Warning, diagnostic));
             }
         }
 
-        refusals = problems;
-        return plans;
+        return new(plans, issues);
     }
 
     private SourceCapability ProbeSource(
@@ -335,7 +383,8 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             Checks = checks,
             StartupBehaviour = definition.StartupBehaviour,
             ContractStatus = definition.ContractStatus,
-            Overhead = OverheadClass.Unmeasured,
+            Overhead = definition.Overhead,
+            OverheadEvidence = definition.OverheadEvidence,
             FixtureIds = evidence?.FixtureIds ?? [],
             Notes = definition.Notes,
         };

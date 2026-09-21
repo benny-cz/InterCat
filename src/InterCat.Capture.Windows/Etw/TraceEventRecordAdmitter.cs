@@ -58,13 +58,6 @@ internal sealed class TraceEventRecordAdmitter
         sink.OnObserved();
 
         Guid provider = data.ProviderGuid;
-        if (!table.IsKnownProvider(provider))
-        {
-            sink.OnOmitted(OmissionReason.UnrequestedProvider);
-            ReportRejectedCallback(callbackStarted);
-            return;
-        }
-
         int eventId = (int)data.ID;
         if (denied.Contains(new(provider, eventId)))
         {
@@ -73,21 +66,30 @@ internal sealed class TraceEventRecordAdmitter
             return;
         }
 
-        AdmittedEventPlan? descriptorPlan = table.Find(provider, eventId, data.Version);
-        if (descriptorPlan is null)
+        DescriptorAdmissionResolution resolution = table.Resolve(provider, eventId, data.Version);
+        if (resolution.Outcome != DescriptorAdmissionOutcome.Admitted)
         {
-            if (table.HasDescriptor(provider, eventId))
+            switch (resolution.Outcome)
             {
-                sink.OnUndecodable(UndecodableReason.UnknownDescriptorVersion);
-            }
-            else
-            {
-                sink.OnOmitted(OmissionReason.DescriptorNotAdmitted);
+                case DescriptorAdmissionOutcome.UnrequestedProvider:
+                    sink.OnOmitted(OmissionReason.UnrequestedProvider);
+                    break;
+                case DescriptorAdmissionOutcome.DescriptorNotAdmitted:
+                    sink.OnOmitted(OmissionReason.DescriptorNotAdmitted);
+                    break;
+                case DescriptorAdmissionOutcome.UnknownDescriptorVersion:
+                    sink.OnUndecodable(UndecodableReason.UnknownDescriptorVersion);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unexpected descriptor outcome {resolution.Outcome}.");
             }
 
             ReportRejectedCallback(callbackStarted);
             return;
         }
+
+        AdmittedEventPlan descriptorPlan = resolution.Plan
+            ?? throw new InvalidOperationException("An admitted descriptor resolution has no compiled plan.");
 
         if (data.EventDataLength < descriptorPlan.MinimumBodyLength)
         {

@@ -49,6 +49,14 @@ offset; a field behind a variable-length field is `SchemaUnknown` with the block
 a field the schema does not declare is `NotExposed` (§18.3). Non-admitted descriptors are counted in
 `schema.declaredEventCount` but their fields are not expanded, which keeps the artifact bounded (R8).
 
+## Capture impact
+
+Each source carries `overhead` and optional `overheadEvidence`. `overhead` remains `Unmeasured` until a
+paired no-capture/capture benchmark exists; registration or a successful enablement cannot promote it.
+When measured, `overheadEvidence` names the repository-relative artifact that supports the class. These
+fields are additive in report version 2. The default Explore compiler may omit an optional source whose
+impact is unmeasured, and reports that as an effective-profile decision rather than changing this report.
+
 ## Tiers
 
 `mechanisms[].tier` is computed by `CoverageTierCalculator` from `measurement` counters only. Without

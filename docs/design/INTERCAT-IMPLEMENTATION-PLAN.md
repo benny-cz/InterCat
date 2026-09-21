@@ -805,6 +805,13 @@ Overload response: reduce nonessential UI refresh, defer enrichment/layout, use 
 | Content | Explicit scope, allowlisted payload-capable sources, byte limits, retention and inspection settings; unsupported mechanisms remain unavailable |
 | Flight recorder | Bounded rolling history with visible oldest retained time; pin/export freezes required evidence before eviction |
 
+These rows define requested intent, not permission to enable every named source. Before capture, compile
+an immutable effective profile against the machine's schema, adapter guarantees and measured overhead.
+Store and show both forms. A required source that cannot meet the contract blocks the capture; an optional
+source is omitted with its exact reason. Explore's minimum useful effective profile is process lifecycle
+plus validated network metadata. RPC, ALPC and pipe breadth remains requested-but-optional until each source
+has both a bounded adapter and capture-impact evidence. Never substitute a different profile or body mode.
+
 Capture-side filtering and view filtering are different. If a provider cannot filter on PID before emission, disclose that a process-focused view still incurs wider capture cost and may collect broader metadata. Capture enough peer/lifecycle context to explain selected activity, while recording any excluded context.
 
 ## 10. Storage, snapshots and query implementation
