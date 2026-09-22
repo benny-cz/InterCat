@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare, token/ownership/lease/idempotency and crash-durable recovery core implemented; authenticated transport and live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery and bounded request framing implemented; response dispatcher, authenticated transport and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -157,6 +157,35 @@ deserialization. The local named pipe will use first-instance semantics, an expl
 client rejection. Every connection will be authenticated from its OS token (SID, logon session,
 integrity and elevation); a supplied PID or nonce is diagnostic only.
 
+### 5.1 Implemented frame and request schema
+
+The stream frame is implemented independently of any pipe host. Its fixed 32-byte header contains
+`ICBP`, protocol major/minor, message type, direction/error attributes, unsigned 32-bit payload length
+and an RFC/network-order correlation GUID. Payload length is rejected above 64 KiB before allocation.
+A clean EOF before a frame returns no frame; EOF after any header/payload byte is a truncation error.
+Reads are correct under arbitrary stream fragmentation.
+
+Payloads use bounded TLV fields: unsigned 16-bit field ID, type, required bit, signed 32-bit byte length
+and value. A payload may contain at most 64 fields and each field at most 16 KiB. IDs are nonzero and
+unique; lengths, fixed widths, Booleans, strict UTF-8, list counts and item lengths are validated before
+use. An unknown optional field is skipped and still counts against the field limit; an unknown required
+field is refused. No runtime/domain object graph is deserialized.
+
+Typed request codecs exist for Hello, GetCapabilities, PrepareCapture, StartCapture, GetStatus,
+StopCapture and RenewOwnerLease. Prepare accepts only a canonical profile ID, typed Focused/Content
+settings, stop-at-limit retention, a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and a
+smaller 16-MiB-to-1-TiB free-space reserve. Focused and Content groups are mutually exclusive and
+Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
+dispatch.
+
+Hello uses protocol range plus requested/required feature bits. Unknown optional feature bits are
+ignored; unknown required bits or no common major version are refused. The currently negotiable bits
+are prepared-plan digest, owner leases, separate stop milestones and durable recovery.
+
+Response payload schemas, command dispatch, connection state, authentication and the pipe listener are
+not implemented yet. A decoded request therefore still cannot reach the lifecycle coordinator from an
+external process.
+
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
 idempotent, and ownership will be durable before success is exposed. Owner leases stop orphaned
@@ -175,9 +204,9 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no named pipe, OS-token authentication host, broker-owned directory provisioning,
-ACL integration, log compaction or ETW/journal runtime binding. `InterCat.CaptureBroker` returns a
-failure exit code when launched. Prepared tokens and durable lifecycle/recovery operations exist only
-behind the transport-independent API and fake runtime. Those absences are deliberate: a live UI control
-must not appear until authentication, directory security and real cleanup behavior are implemented and
-tested together.
+The current slice has no response/dispatch loop, named pipe, OS-token authentication host, broker-owned
+directory provisioning, ACL integration, log compaction or ETW/journal runtime binding.
+`InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
+durable lifecycle/recovery operations are connected only by in-process tests and a fake runtime. Those
+absences are deliberate: a live UI control must not appear until authentication, directory security and
+real cleanup behavior are implemented and tested together.
