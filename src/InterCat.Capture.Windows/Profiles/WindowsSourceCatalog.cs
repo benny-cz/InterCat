@@ -211,7 +211,7 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
             Overhead = OverheadClass.Low,
-            OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
+            OverheadEvidence = "bench/results/capture-impact-20260922T234102Z/impact.json",
             AdmittedEvents =
             [
                 new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
@@ -252,7 +252,7 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = true,
             ContractStatus = SourceContractStatus.Documented,
             Overhead = OverheadClass.Low,
-            OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
+            OverheadEvidence = "bench/results/capture-impact-20260922T234102Z/impact.json",
             AdmittedEvents =
             [
                 new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),

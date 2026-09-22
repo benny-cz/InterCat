@@ -1,12 +1,12 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-21T22:58:30.6123251+00:00",
+  "probedAtUtc": "2026-09-22T23:50:32.0279095+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
     "architecture": "X64",
     "isSupportedBuild": true,
-    "isElevated": false,
+    "isElevated": true,
     "machineScope": "local machine",
     "support": {
       "tier": "Primary",
@@ -523,7 +523,7 @@
       "startupBehaviour": "No rundown of established connections. A flow already open when capture starts is observed only from its next transfer, so its lifetime stays uncertain (section 18.5).",
       "contractStatus": "Documented",
       "overhead": "Low",
-      "overheadEvidence": "bench/results/capture-impact-20260921T200502Z/impact.json",
+      "overheadEvidence": "bench/results/capture-impact-20260922T234102Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
@@ -628,6 +628,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID\u0027s own sub-authority count."
             }
           ]
         },
@@ -693,6 +702,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID\u0027s own sub-authority count."
             }
           ]
         },
@@ -758,6 +776,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID\u0027s own sub-authority count."
             }
           ]
         },
@@ -823,6 +850,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Follows the SID \u0027MandatoryLabel\u0027, and is reached through that SID\u0027s own sub-authority count, bounded by the record\u0027s length."
             }
           ]
         },
@@ -888,6 +924,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Follows the SID \u0027MandatoryLabel\u0027, and is reached through that SID\u0027s own sub-authority count, bounded by the record\u0027s length."
             }
           ]
         },
@@ -944,6 +989,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:AnsiString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image file name as an 8-bit string, the last field of the stop descriptor."
             }
           ]
         },
@@ -1000,6 +1054,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:AnsiString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image file name as an 8-bit string, the last field of the stop descriptor."
             }
           ]
         },
@@ -1056,6 +1119,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:AnsiString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image file name as an 8-bit string, the last field of the stop descriptor."
             }
           ]
         },
@@ -1121,6 +1193,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID\u0027s own sub-authority count."
             }
           ]
         },
@@ -1186,6 +1267,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Follows the SID \u0027MandatoryLabel\u0027, and is reached through that SID\u0027s own sub-authority count, bounded by the record\u0027s length."
             }
           ]
         },
@@ -1251,6 +1341,15 @@
               "unit": null,
               "byteDomain": null,
               "notes": null
+            },
+            {
+              "name": "ImageName",
+              "availability": "Present",
+              "role": "ResourceName",
+              "schemaType": "win:UnicodeString",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Follows the SID \u0027MandatoryLabel\u0027, and is reached through that SID\u0027s own sub-authority count, bounded by the record\u0027s length."
             }
           ]
         }
@@ -1284,7 +1383,7 @@
       "startupBehaviour": "Processes started before the session are delivered only when the capture requests provider capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
       "contractStatus": "Documented",
       "overhead": "Low",
-      "overheadEvidence": "bench/results/capture-impact-20260921T200502Z/impact.json",
+      "overheadEvidence": "bench/results/capture-impact-20260922T234102Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "ProcessSequenceNumber with CreateTime forms the start key that keeps reused PIDs from merging (I12, R22).",

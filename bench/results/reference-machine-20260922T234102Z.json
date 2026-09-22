@@ -1,0 +1,254 @@
+{
+  "schema": "intercat.baseline.v1",
+  "producedUtc": "2026-09-22T23:48:30.7826503+00:00",
+  "machine": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "architecture": "X64",
+    "logicalProcessors": 24,
+    "totalPhysicalMemoryBytes": 68659625984,
+    "storage": {
+      "volume": "E:\\",
+      "fileSystem": "NTFS",
+      "totalBytes": 1000186310656,
+      "availableBytes": 86204391424,
+      "probeBytes": 134217728,
+      "sequentialWriteBytesPerSecond": 2038785396.8118947,
+      "sequentialReadBytesPerSecond": 8723253824.856041,
+      "unavailableReason": null,
+      "meetsReferenceDevice": true
+    },
+    "referenceGaps": [],
+    "meetsReferenceMachine": true
+  },
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "buildId": "10.0.26220.0-x64",
+    "architecture": "X64",
+    "isSupportedBuild": true,
+    "isElevated": true,
+    "machineScope": "local machine",
+    "support": {
+      "tier": "Primary",
+      "releaseName": "Windows 11 25H2 x64",
+      "isPrerelease": true,
+      "isSupported": true
+    }
+  },
+  "budgets": [
+    {
+      "budget": {
+        "id": "callback-admission",
+        "stage": "Callback admission and copy, per record",
+        "statistic": "Percentile99",
+        "target": 50000,
+        "unit": "Nanoseconds",
+        "requirement": "p99 under 50 \u00B5s (R9, R11). Stated in nanoseconds so a bucket bound can be compared exactly.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Met",
+      "measured": 2048,
+      "evidence": "Busiest level \u0027disk-bound\u0027. The bucket\u0027s upper bound is compared, so a met budget is met by the whole bucket. Series \u0027capture-comparison-20260922T234102Z-series-stacks\u0027."
+    },
+    {
+      "budget": {
+        "id": "callback-allocation",
+        "stage": "Callback allocation, per record",
+        "statistic": "Maximum",
+        "target": 1,
+        "unit": "Bytes",
+        "requirement": "No unpooled allocation on the callback path (R9, R11). Measured as the slope of admission\u0027s allocation against records admitted, so a fixed setup cost is not read as a per-record one. One byte per record is the resolution at which a slope tells growth from noise; the adapter\u0027s own allocation is a separate quantity and is never added to this one (ADR-009).",
+        "lowerIsBetter": true
+      },
+      "outcome": "Met",
+      "measured": 0.00043923764815691766,
+      "evidence": "Fitted across levels \u0027paced\u0027 and \u0027peak\u0027: 1\u00A0616 bytes over 1\u00A0078 records against 1\u00A0680 bytes over 146\u00A0785. About 1\u00A0616 bytes of that does not grow with the record count. Both runs replay the same evidence through the same adapter, once with the admission table and once with none, so what is left is admission\u0027s own cost. Series \u0027capture-comparison-20260922T234102Z-series-stacks\u0027."
+    },
+    {
+      "budget": {
+        "id": "record-to-committed-batch",
+        "stage": "Admitted record to committed journal batch",
+        "statistic": "Percentile95",
+        "target": 250,
+        "unit": "Milliseconds",
+        "requirement": "p95 under 250 ms.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "batch-to-segment",
+        "stage": "Committed batch to normalized immutable segment",
+        "statistic": "Percentile95",
+        "target": 500,
+        "unit": "Milliseconds",
+        "requirement": "p95 under 500 ms.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "segment-to-snapshot",
+        "stage": "Segment to published snapshot",
+        "statistic": "Percentile95",
+        "target": 250,
+        "unit": "Milliseconds",
+        "requirement": "p95 under 250 ms at a publication cadence of at least 4 Hz.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "snapshot-to-frame",
+        "stage": "Published snapshot to first drawn frame",
+        "statistic": "Percentile95",
+        "target": 100,
+        "unit": "Milliseconds",
+        "requirement": "p95 under 100 ms.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "acquired-to-visible-p95",
+        "stage": "Event acquired to event visible",
+        "statistic": "Percentile95",
+        "target": 1500,
+        "unit": "Milliseconds",
+        "requirement": "p95 under 1.5 s.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "acquired-to-visible-p99",
+        "stage": "Event acquired to event visible",
+        "statistic": "Percentile99",
+        "target": 3000,
+        "unit": "Milliseconds",
+        "requirement": "p99 under 3 s.",
+        "lowerIsBetter": true
+      },
+      "outcome": "Unmeasured",
+      "measured": null,
+      "evidence": "The named series does not measure this budget. The stages after the journal arrive with IC-011 and M2."
+    },
+    {
+      "budget": {
+        "id": "sustained-ingest",
+        "stage": "Sustained normalized ingest",
+        "statistic": "Sustained",
+        "target": 100000,
+        "unit": "CountPerSecond",
+        "requirement": "100,000 normalized metadata observations per second for 10 minutes with no application drops.",
+        "lowerIsBetter": false
+      },
+      "outcome": "Missed",
+      "measured": 10679.887929658615,
+      "evidence": "Busiest level \u0027disk-bound\u0027. This is the fixture\u0027s rate, not the pipeline\u0027s ceiling, and the interval is seconds rather than the ten minutes the budget names. Series \u0027capture-comparison-20260922T234102Z-series-stacks\u0027."
+    },
+    {
+      "budget": {
+        "id": "queue-drop-freedom",
+        "stage": "Application drops at the sustained rate",
+        "statistic": "Total",
+        "target": 0,
+        "unit": "Count",
+        "requirement": "No application drop while inside the declared queue and disk policy (R8).",
+        "lowerIsBetter": true
+      },
+      "outcome": "Met",
+      "measured": 0,
+      "evidence": "Level \u0027peak\u0027, the busiest level that shrank no bound. A level that shrinks a bound is expected to drop and is not evaluated against this budget. Series \u0027capture-comparison-20260922T234102Z-series-stacks\u0027."
+    }
+  ],
+  "buildBacklog": [
+    {
+      "name": "Windows 11 25H2 x64",
+      "buildNumber": 26200,
+      "architecture": "X64",
+      "tier": "Primary",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    },
+    {
+      "name": "Windows 11 25H2 x64",
+      "buildNumber": 26220,
+      "architecture": "X64",
+      "tier": "Primary",
+      "isPrerelease": true,
+      "corpusMeasured": true,
+      "evidence": "FX-TCP-001, FX-PIPE-001, FX-RPC-001 and two five-level IC-009 series were measured on 2026-09-21. Evidence: fixtures/ and bench/results/."
+    },
+    {
+      "name": "Windows 11 24H2 x64",
+      "buildNumber": 26100,
+      "architecture": "X64",
+      "tier": "Primary",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    },
+    {
+      "name": "Windows 11 23H2 x64",
+      "buildNumber": 22631,
+      "architecture": "X64",
+      "tier": "Secondary",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    },
+    {
+      "name": "Windows Server 2025 x64",
+      "buildNumber": 26100,
+      "architecture": "X64",
+      "tier": "Secondary",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    },
+    {
+      "name": "Windows Server 2022 x64",
+      "buildNumber": 20348,
+      "architecture": "X64",
+      "tier": "Candidate",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    },
+    {
+      "name": "Windows 11 24H2 ARM64",
+      "buildNumber": 26100,
+      "architecture": "Arm64",
+      "tier": "Candidate",
+      "isPrerelease": false,
+      "corpusMeasured": false,
+      "evidence": "The fixture corpus of section 13.4 has not been run on this build. Every tier above rests on the builds that were."
+    }
+  ],
+  "notes": [
+    "A budget is a proposed engineering target from section 12, not a measured result.",
+    "A budget nothing measured reports as unmeasured. That is an open item, never a pass.",
+    "The reference device is defined by sustained throughput, so this measures the volume rather than quoting a model name.",
+    "OverheadClass stays Unmeasured until a capture-impact measurement exists; this baseline starts no capture."
+  ],
+  "budgetsMet": 3,
+  "budgetsMissed": 1,
+  "budgetsUnmeasured": 6,
+  "everyBudgetMet": false
+}
