@@ -94,6 +94,13 @@ public sealed class ObservationNormalizerV1Tests
 
         byte[][] observations = [.. original.Segments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
         byte[][] fields = [.. original.FieldSegments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
+        string[] filesBeforeCheck = Directory.GetFiles(session.Path).Order(StringComparer.Ordinal).ToArray();
+        JournalRederivationVerification checkedReplay = JournalRederivation.Verify(session.Store);
+        Assert.Equal((1L, 4L, original.RowCount, original.FieldRowCount),
+            (checkedReplay.SourceGeneration, checkedReplay.ReplayedRecords,
+                checkedReplay.ObservationRows, checkedReplay.SourceFieldRows));
+        Assert.Equal(1, session.Store.Current!.Generation);
+        Assert.Equal(filesBeforeCheck, Directory.GetFiles(session.Path).Order(StringComparer.Ordinal));
         JournalRederivationResult replay = JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow, options);
         JournalRederivationReadiness readiness = JournalRederivation.Assess(session.Store.Current);
         Assert.True(readiness.CanAttempt);
@@ -152,6 +159,64 @@ public sealed class ObservationNormalizerV1Tests
         Assert.False(readiness.CanAttempt);
         Assert.Contains("legacy session", readiness.Explanation, StringComparison.Ordinal);
         Assert.Contains("no retained normalization plan", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1, session.Store.Current!.Generation);
+    }
+
+    [Fact(DisplayName = "R20: an in-place change after store open and a cancelled check never publish")]
+    public void ReplayRechecksTheOpenedEvidenceAndLeavesTheGenerationUntouched()
+    {
+        using var session = new TemporarySession();
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan descriptor = TransferPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(descriptor)], clock.Id);
+        using (DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(session.Store,
+            new SegmentIdentityV1
+            {
+                CaptureId = session.Capture,
+                ClockId = clock.Id,
+                TimestampEncoding = clock.Encoding,
+                Derivation = ObservationNormalizerV1.ContractVersion,
+            }, clock, DateTimeOffset.UtcNow))
+        {
+            JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.FromSources([Source(descriptor)]);
+            builder.StageNormalizerPlan(plan.Encode());
+            builder.Journal.WriteSchemas(mapper.Schemas);
+            AdmittedEvent admitted = Admitted(descriptor);
+            admitted.SetSlot(0, 100);
+            admitted.SetSlot(1, 10);
+            RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, descriptor, session.Capture);
+            builder.AddRow(normalizer.ToRow(envelope, descriptor, 0));
+            builder.Journal.Append(envelope);
+            _ = builder.Complete(DateTimeOffset.UtcNow);
+        }
+
+        SessionManifestV1 current = session.Store.Current!;
+        string planName = current.Dependencies.Single(dependency =>
+            dependency.Kind == StoreDependencyKind.DerivationPlan).Name;
+        string planPath = Path.Combine(session.Path, planName);
+        byte[] planBytes = File.ReadAllBytes(planPath);
+        byte[] changedPlan = (byte[])planBytes.Clone();
+        changedPlan[0] ^= 1;
+        File.WriteAllBytes(planPath, changedPlan);
+        InvalidDataException planRefusal = Assert.Throws<InvalidDataException>(() =>
+            JournalRederivation.Verify(session.Store));
+        Assert.Contains("plan changed", planRefusal.Message, StringComparison.Ordinal);
+        File.WriteAllBytes(planPath, planBytes);
+
+        string journalPath = Path.Combine(session.Path, current.Boundary.JournalName);
+        byte[] journalBytes = File.ReadAllBytes(journalPath);
+        byte[] changedJournal = (byte[])journalBytes.Clone();
+        changedJournal[8] ^= 1;
+        File.WriteAllBytes(journalPath, changedJournal);
+        InvalidDataException journalRefusal = Assert.Throws<InvalidDataException>(() =>
+            JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
+        Assert.Contains("journal changed", journalRefusal.Message, StringComparison.Ordinal);
+        File.WriteAllBytes(journalPath, journalBytes);
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.Throws<OperationCanceledException>(() =>
+            JournalRederivation.Verify(session.Store, cancelled.Token));
         Assert.Equal(1, session.Store.Current!.Generation);
     }
 

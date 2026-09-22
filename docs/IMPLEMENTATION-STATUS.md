@@ -1,16 +1,20 @@
 # InterCat implementation status
 
 Last updated: 2026-09-22
-Plan revision: 33
+Plan revision: 34
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: visible re-derivation readiness
+## Latest slice: read-only full re-derivation check and opened-handle integrity
+
+`icat rederive <directory> --check` now reads the saved plan and every committed journal batch, validates schemas/policies and normalized observation/source-field rows, compares record counts with the boundary, and reports what it checked without staging a file or moving the generation pointer. The publishing command and the check use one replay path. Both re-measure the plan and journal SHA-256 from the opened handles before interpreting their bytes, closing a gap where an in-place change after store opening could retain the same length. The check's output explicitly says it has not tested a future segment write or commit. A focused regression proves a read-only check leaves the file list and generation unchanged, and refuses a changed plan or journal and cancellation without publication. This makes readiness two-stage: `icat session` reports structural eligibility; `icat rederive --check` provides full read/normalization validation.
+
+## Previous slice: visible re-derivation readiness
 
 `icat session` now reports whether its verified manifest has the structural prerequisites for `icat rederive`: one committed journal matching the boundary and one bounded retained descriptor plan. The text view names an actionable refusal for empty, legacy, multi-journal, mismatched-boundary or ambiguous-plan sessions; JSON carries `rederivation.canAttempt`, its explanation and a copyable command only when an attempt is eligible. “Can attempt” is intentionally not “verified”: the saved plan and every journal batch are still validated during replay, before publication. This makes the new R20 path discoverable without misleading users into believing a manifest check proves replayability. Relation inspection found that a reusable, sometimes-zero TCP connection ID cannot prove a peer process or unique transfer lifetime; participant and cross-side owner totals remain unavailable rather than attributing them by guess.
 
-## Previous slice: replaying a published generation from retained evidence
+## Earlier slice: replaying a published generation from retained evidence
 
 `icat rederive <directory>` now streams the selected generation's own committed `journal-v1` batches, validates their source clock, schema/policy table, checksums and record count, and publishes replacement observation/source-field segments and dictionaries as a new generation. Newly imported sessions retain a bounded immutable `normalizer-plan-v1` dependency: the exact compiled descriptor interpretation needed to turn journal envelopes into fields. Re-derivation does not consult the machine's current TDH schema or the original ETL. Generation 2 carries the same journal and plan, while generation 1 stays last-known-good. A missing retained plan, multiple journals, a changed source generation or inconsistent journal is refused rather than guessed or partially published. The focused test replays four records across journal batches and proves byte-identical observation and source-field segments and stable raw identities. `contracts/normalizer-plan-v1.md` freezes the new dependency; `contracts/store-v1.md` describes replacement publication. This is the first measured R20 rebuild path, not a claim that a future normalizer algorithm is already implemented.
 
@@ -193,6 +197,7 @@ dotnet run --project src/InterCat.Cli --no-build -- measure rpc --calls 8
 dotnet run --project src/InterCat.Cli --no-build -- import <source.etl> --into <session directory> --output <summary.json>
 dotnet run --project src/InterCat.Cli --no-build -- session <session directory> --rows 10
 dotnet run --project src/InterCat.Cli --no-build -- rederive <session directory> --json
+dotnet run --project src/InterCat.Cli --no-build -- rederive <session directory> --check --json
 dotnet run --project src/InterCat.Cli --no-build -- retain <session directory> --release-journal-before-record <n>
 dotnet run --project src/InterCat.Cli --no-build -- retain <session directory> --release-journal-before-record <n> --confirm --reason "<why>"
 dotnet run --project src/InterCat.Cli --no-build -- metric --matrix
@@ -215,8 +220,8 @@ dotnet test tests/InterCat.Ui.Tests --no-build   # writes rendered frames beside
 
 Results verified on 2026-09-22 (measured capture artifacts remain dated 2026-09-21):
 
-- build: revision 33 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
-- tests: revision 33 passed 572 in both Debug and Release, 0 failed (157 CaptureBroker, 111 Storage, 77 Property, 57 Capture.Windows, 55 Domain, 55 Analysis, 19 Capture.Journal, 13 CaptureComparison, 11 Ui, 10 Desktop, 5 Architecture, 2 Application); the re-derivation R20 regressions are registered in `fixtures/index.json`, including eligible and legacy-readiness assertions;
+- build: revision 34 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
+- tests: revision 34 passed 573 in both Debug and Release, 0 failed (157 CaptureBroker, 111 Storage, 77 Property, 57 Capture.Windows, 55 Domain, 55 Analysis, 20 Capture.Journal, 13 CaptureComparison, 11 Ui, 10 Desktop, 5 Architecture, 2 Application); the re-derivation R20 regressions are registered in `fixtures/index.json`, including read-only verification and changed-evidence refusal;
 - IC-016/IC-015a re-derivation: a saved descriptor plan round-trips and refuses a schema mismatch; a four-record, multi-batch journal replays into generation 2 with byte-identical observation and source-field segments, stable raw identities, no double-counted older segments and a retained generation 1; legacy no-plan re-derivation refuses without changing the current pointer;
 - IC-015 process instances: 8 derivation tests and 7 grouping tests. A created and exited PID was one instance whose half-open lifetime ended one tick after its exit, both lifecycle records bound `Direct` and a transfer inside it `Correlated`. A PID seen only in three transfers delivered out of order was one provisional instance keyed by the earliest by reading. PID 400 created, exited and reused, with a record in the first lifetime delivered last, gave two instances: the late record bound to the first and the newer instance's total never included it, while the newer instance's own record was an unadmitted candidate by default and 7 B of it with candidates. A second creation with no exit, and a second exit with no creation, each opened an instance flagged with the gap instead of merging. A record with no payload owner was unattributed whatever its header said. Instance identities and every binding were equal whether the evidence was one segment or reversed into segments of two rows, and equal PIDs and readings on two clocks were two instances. Grouped by process, by mechanism and by rate, every row set - groups, remainder and unattributed - added up to the ungrouped total with the same exclusions; ties broke on instance identity; an unknown-only group was unmeasured and sorted after an observed zero;
 - IC-015 process instances, measured: `bench/results/entities-20260922T193935Z/entities-summary.json`, aggregates only. The 555-record session holds 55 instances across 55 PIDs - 34 created in the capture, 7 running before their first record, 14 seen only in their own records - and binds all 555 records; the instances' own transport records sum to exactly the ungrouped 173,258 B sent and 254,470 B received. The 76,092-record `peak` session holds 538 instances, 482 witnessed by the capture-state rundown and 56 created in the capture; the two busiest are the workload's two processes, created and exited with code 0, one sending 34,168,998 B that the other received, and 4 records name a PID after its only instance exited and are reported as such. Each `icat processes` or grouped `icat metric` over it took about 1.3-1.5 s of wall time;

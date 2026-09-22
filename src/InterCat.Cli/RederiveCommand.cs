@@ -23,6 +23,19 @@ internal sealed record RederiveDocument
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
+internal sealed record RederiveCheckDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required long SourceGeneration { get; init; }
+    public required string JournalName { get; init; }
+    public required long ReplayedRecords { get; init; }
+    public required long ObservationRows { get; init; }
+    public required long SourceFieldRows { get; init; }
+    public required string Derivation { get; init; }
+    public required string Assurance { get; init; }
+}
+
 /// <summary>Rebuilds one published generation from its own admitted journal, without rereading an ETL.</summary>
 internal static class RederiveCommand
 {
@@ -39,6 +52,7 @@ internal static class RederiveCommand
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        bool check = command.TryTakeFlag("--check");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
@@ -57,6 +71,12 @@ internal static class RederiveCommand
                 || parsedRows is < 1 or > SegmentFormatV1.MaximumRowsPerSegment))
         {
             ConsoleUi.Failure($"--rows-per-segment must be between 1 and {SegmentFormatV1.MaximumRowsPerSegment:N0}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (check && rowsOption is not null)
+        {
+            ConsoleUi.Failure("--rows-per-segment applies only when publishing; --check reads without staging segments.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -87,6 +107,64 @@ internal static class RederiveCommand
             ConsoleUi.Warn(
                 $"The newest generation did not verify ({inspected.Recovery.RollbackReason}); re-deriving the "
                 + $"retained last-known-good generation {current.Generation}.");
+        }
+
+        if (check)
+        {
+            ConsoleUi.Progress(
+                $"Checking generation {current.Generation}'s retained plan and every committed journal record; "
+                + "no files or generation will be published.");
+            JournalRederivationVerification verified;
+            try
+            {
+                verified = JournalRederivation.Verify(inspected, cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                ConsoleUi.Failure(exception.Message);
+                return InterCatExitCode.PermissionOrCapabilityFailure;
+            }
+
+            var report = new RederiveCheckDocument
+            {
+                Contract = "rederive-check-v1",
+                Path = full,
+                SourceGeneration = verified.SourceGeneration,
+                JournalName = verified.JournalName,
+                ReplayedRecords = verified.ReplayedRecords,
+                ObservationRows = verified.ObservationRows,
+                SourceFieldRows = verified.SourceFieldRows,
+                Derivation = $"observation-v{ObservationNormalizerV1.ContractVersion.Value}",
+                Assurance = "Read-only replay verified the saved plan, journal digest, every frame and derived "
+                    + "row. It did not test a future segment write or commit.",
+            };
+            string checkPayload = JsonSerializer.Serialize(report, JsonContracts.Indented);
+            if (json)
+            {
+                Console.Out.WriteLine(checkPayload);
+            }
+            else
+            {
+                ConsoleUi.Heading("Re-derivation check passed");
+                ConsoleUi.Field("Session", full);
+                ConsoleUi.Field("Generation", ConsoleUi.Count(verified.SourceGeneration));
+                ConsoleUi.Field("Admitted journal", verified.JournalName);
+                ConsoleUi.Field("Replayed records", ConsoleUi.Count(verified.ReplayedRecords));
+                ConsoleUi.Field("Observations", ConsoleUi.Count(verified.ObservationRows));
+                ConsoleUi.Field("Source fields", ConsoleUi.Count(verified.SourceFieldRows));
+                ConsoleUi.Note(report.Assurance);
+            }
+
+            if (output is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+                await File.WriteAllTextAsync(output, checkPayload, cancellationToken).ConfigureAwait(false);
+                ConsoleUi.Success($"Re-derivation check report written to {output}.");
+            }
+
+            return inspected.Recovery.RolledBackToLastKnownGood
+                ? InterCatExitCode.PartialResultSuccess
+                : InterCatExitCode.Success;
         }
 
         var options = new DerivedGenerationOptions
@@ -167,8 +245,9 @@ internal static class RederiveCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat rederive <directory> [--rows-per-segment <n>] [--output <path>] [--overwrite] [--json]");
-        ConsoleUi.Line("      Replays the session's admitted journal and saved normalizer plan into a new generation.");
+        ConsoleUi.Line("  icat rederive <directory> [--check] [--rows-per-segment <n>] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("      Replays the session's admitted journal with its saved normalizer plan.");
+        ConsoleUi.Line("      --check fully replays and validates without staging files or publishing a generation.");
         ConsoleUi.Line("      The old generation stays current until publication and remains last-known-good afterwards.");
         ConsoleUi.Line("      Legacy sessions without a saved plan are refused until a verified plan migration exists.");
     }

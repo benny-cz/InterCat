@@ -99,9 +99,10 @@ static void PrintHelp()
     ConsoleUi.Line("      With --into it publishes a session: the admitted journal-v1 evidence and the");
     ConsoleUi.Line("      observation-v1 segments derived from it, as one committed generation.");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat rederive <directory> [--rows-per-segment <n>] [--output <path>] [--json]");
-    ConsoleUi.Line("      Rebuilds derived segments from the session's retained journal and saved plan,");
-    ConsoleUi.Line("      publishing a replacement generation while keeping the previous one as last-known-good.");
+    ConsoleUi.Line("  icat rederive <directory> [--check] [--rows-per-segment <n>] [--output <path>] [--json]");
+    ConsoleUi.Line("      Without --check, rebuilds from the retained journal and saved plan, publishing");
+    ConsoleUi.Line("      a replacement generation while keeping the previous one as last-known-good.");
+    ConsoleUi.Line("      --check fully replays without changing the session generation.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat session <directory> [--rows <n>] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");

@@ -30,3 +30,10 @@ without one needs a separate migration that proves an exact descriptor match; no
 means one committed journal and one bounded retained plan are named by the verified manifest; it is not a
 promise that replay will succeed. Schema, policy, batch and record-count validation occurs during
 `icat rederive`, before publication. An invalid replay leaves the current generation unchanged.
+
+`icat rederive <directory> --check` is a read-only full replay. It checks the plan and journal SHA-256
+again on the handles it reads, then validates each frame and record against the saved interpretation,
+normalizes each observation and source field, and compares the total with the committed boundary. It
+stages no files and publishes no generation. Passing means this evidence can be read and normalized by
+the current implementation; it does not guarantee a later segment write or commit will succeed. Plain
+`icat rederive` uses the same replay path before publishing a replacement generation.

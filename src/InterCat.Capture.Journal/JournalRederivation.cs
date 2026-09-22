@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -9,6 +10,14 @@ public sealed record JournalRederivationResult(
     long SourceGeneration,
     long ReplayedRecords,
     DerivedGenerationResult Generation);
+
+/// <summary>A complete, nonpublishing replay of the retained journal and descriptor interpretation.</summary>
+public sealed record JournalRederivationVerification(
+    long SourceGeneration,
+    string JournalName,
+    long ReplayedRecords,
+    long ObservationRows,
+    long SourceFieldRows);
 
 /// <summary>
 /// Manifest-level preflight only. An eligible session still needs the full journal and saved-plan replay;
@@ -70,11 +79,31 @@ public static class JournalRederivation
             + "when re-derivation starts.");
     }
 
+    /// <summary>
+    /// Reads and normalizes every committed record without staging a file or publishing a generation.
+    /// This validates the evidence and saved plan, not the success of a future segment write or commit.
+    /// </summary>
+    public static JournalRederivationVerification Verify(
+        SessionStore store,
+        CancellationToken cancellationToken = default) =>
+        Replay(store, committedUtc: null, options: null, cancellationToken).Verification;
+
     public static JournalRederivationResult Rebuild(
         SessionStore store,
         DateTimeOffset committedUtc,
         DerivedGenerationOptions? options = null,
         CancellationToken cancellationToken = default)
+    {
+        (JournalRederivationVerification verification, DerivedGenerationResult? generation) =
+            Replay(store, committedUtc, options, cancellationToken);
+        return new(verification.SourceGeneration, verification.ReplayedRecords, generation!);
+    }
+
+    private static (JournalRederivationVerification Verification, DerivedGenerationResult? Generation) Replay(
+        SessionStore store,
+        DateTimeOffset? committedUtc,
+        DerivedGenerationOptions? options,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         using EvidenceLease lease = store.AcquireLease();
@@ -125,6 +154,13 @@ public static class JournalRederivation
             }
         }
 
+        string measuredPlanDigest = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(planBytes));
+        if (!string.Equals(measuredPlanDigest, planFile.Digest, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The retained normalization plan changed after the generation was opened; replay is refused.");
+        }
+
         JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.Decode(planBytes);
         using FileStream evidence = store.Root.OpenOwnedFile(
             journal.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
@@ -133,9 +169,17 @@ public static class JournalRederivation
             throw new InvalidDataException("The admitted journal changed length after the generation was opened.");
         }
 
+        string measuredJournalDigest = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(evidence));
+        if (!string.Equals(measuredJournalDigest, journal.Digest, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The admitted journal changed after the generation was opened; replay is refused.");
+        }
+
         DerivedGenerationBuilder? builder = null;
         ObservationNormalizerV1? normalizer = null;
         ulong journalIndex = 0;
+        long fieldRows = 0;
         try
         {
             long replayed = JournalV1Reader.ReplayBatches(
@@ -143,23 +187,26 @@ public static class JournalRederivation
                 (capture, clock, schemas, batch) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (builder is null)
+                    if (normalizer is null)
                     {
                         plan.ValidateAgainst(schemas);
-                        builder = DerivedGenerationBuilder.BeginFromJournal(
-                            store,
-                            new SegmentIdentityV1
-                            {
-                                CaptureId = capture,
-                                ClockId = clock.Id,
-                                TimestampEncoding = clock.Encoding,
-                                Derivation = ObservationNormalizerV1.ContractVersion,
-                            },
-                            clock,
-                            manifest.Boundary,
-                            manifest.Generation,
-                            options);
                         normalizer = new ObservationNormalizerV1(clock);
+                        if (committedUtc is not null)
+                        {
+                            builder = DerivedGenerationBuilder.BeginFromJournal(
+                                store,
+                                new SegmentIdentityV1
+                                {
+                                    CaptureId = capture,
+                                    ClockId = clock.Id,
+                                    TimestampEncoding = clock.Encoding,
+                                    Derivation = ObservationNormalizerV1.ContractVersion,
+                                },
+                                clock,
+                                manifest.Boundary,
+                                manifest.Generation,
+                                options);
+                        }
                     }
 
                     foreach (RecordEnvelopeV1 envelope in batch.Records)
@@ -167,10 +214,11 @@ public static class JournalRederivation
                         cancellationToken.ThrowIfCancellationRequested();
                         AdmittedEventPlan descriptor = plan.Resolve(envelope, schemas);
                         ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, journalIndex);
-                        builder.AddRow(row);
+                        builder?.AddRow(row);
                         foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
                         {
-                            builder.AddFieldRow(field);
+                            builder?.AddFieldRow(field);
+                            fieldRows = checked(fieldRows + 1);
                         }
 
                         journalIndex = checked(journalIndex + 1);
@@ -184,13 +232,17 @@ public static class JournalRederivation
                     + $"{manifest.Boundary.CommittedRecords}. A partial or different boundary is refused.");
             }
 
-            if (builder is null)
+            if (normalizer is null)
             {
                 throw new InvalidDataException("The admitted journal has no record batch to re-derive.");
             }
 
-            DerivedGenerationResult published = builder.Complete(committedUtc, cancellationToken);
-            return new(manifest.Generation, replayed, published);
+            var verification = new JournalRederivationVerification(
+                manifest.Generation, journal.Name, replayed, checked((long)journalIndex), fieldRows);
+            DerivedGenerationResult? published = committedUtc is { } when
+                ? builder!.Complete(when, cancellationToken)
+                : null;
+            return (verification, published);
         }
         finally
         {
