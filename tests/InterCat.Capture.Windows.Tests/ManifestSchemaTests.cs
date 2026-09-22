@@ -87,7 +87,7 @@ public sealed class ManifestSchemaTests
         ProviderSchema schema = ManifestParser.Parse(SampleManifest);
         WindowsSourceDefinition definition = BuildDefinition(
         [
-            new(10, 0, "sent", Mechanism.Tcp, ObservationKind.Send, Direction.Outbound,
+            new(10, 0, "sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
             [
                 new("PID", FieldRole.ProcessAttribution),
                 new("size", FieldRole.ByteCount, MeasurementUnit.Bytes, ByteDomain.TransportObserved),
@@ -112,7 +112,7 @@ public sealed class ManifestSchemaTests
         ProviderSchema schema = ManifestParser.Parse(SampleManifest);
         WindowsSourceDefinition definition = BuildDefinition(
         [
-            new(20, 1, "named", Mechanism.ProcessLifecycle, ObservationKind.Create, Direction.DirectionNotApplicable,
+            new(20, 1, "named", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create, Direction.DirectionNotApplicable,
             [
                 new("ProcessID", FieldRole.ProcessAttribution),
                 new("MissingField", FieldRole.Status),
@@ -136,7 +136,7 @@ public sealed class ManifestSchemaTests
         ProviderSchema schema = ManifestParser.Parse(SampleManifest);
         WindowsSourceDefinition definition = BuildDefinition(
         [
-            new(99, 0, "absent", Mechanism.Tcp, ObservationKind.Send, Direction.Outbound, []),
+            new(99, 0, "absent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, []),
         ]);
 
         SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(definition, schema, 0);

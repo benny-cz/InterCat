@@ -1,7 +1,9 @@
 # InterCat session store v1
 
-Status: **the commit protocol, manifests, the current-generation pointer and recovery are implemented
-and tested; segments, dictionaries and retention checkpoints are not**.
+Status: **the commit protocol, manifests, the current-generation pointer, recovery, and the derived segments
+and dictionaries a generation publishes are implemented and tested; retention checkpoints and evidence leases
+are not**. The segment and dictionary formats are frozen separately in `contracts/segment-v1.md`; this
+contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
 what a reader acquires, and what recovery does with a publication that was interrupted. It owns nothing
@@ -95,11 +97,31 @@ removes them when a caller asks for that.
 
 A session is never opened as another session: a manifest naming a different session ID is refused.
 
-## 7. Not yet implemented
+## 7. What a derived generation publishes
 
-- Segments, columns, dictionaries and the raw-record locator. The protocol treats a dependency as an
-  opaque named file with a length and a digest, which is exactly what §20.1 describes, so the file
-  formats can arrive without changing the protocol.
+A generation that derives data from an admitted journal publishes all of it at once, in the order §20.1's
+sequence requires, under names that carry the generation:
+
+| Name | Kind |
+|---|---|
+| `journal-<generation:D10>.icatj` | `Journal` — the admitted evidence, written and flushed first |
+| `dict-<generation:D10>-<dictionaryId:D4>.icatd` | `Dictionary` |
+| `seg-<generation:D10>-<ordinal:D4>.icats` | `Segment` |
+
+A segment references a dictionary by id, and the id is in the dictionary's file name, so a reader resolves a
+segment's dictionaries from the manifest without a side index. A segment that references a dictionary the
+generation does not name is refused rather than read with its codes shown as values.
+
+The journal's pending batch is flushed to the device before any segment derived from it is staged, so a
+generation can never reference evidence that was not durable when it was derived. The committed boundary of
+§4 then names that journal, its durable length and record count, and its digest.
+
+The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
+segment is a named file with a length and a digest, which is what lets a future format arrive without
+changing the commit sequence.
+
+## 8. Not yet implemented
+
 - Evidence leases (I18). A reader acquires a generation by reading the current manifest; nothing yet
   pins it against a concurrent retention or compaction, because neither exists.
 - Retention checkpoints (§20.2) and the journal release ADR-010 describes.

@@ -188,9 +188,53 @@ public sealed class SessionStore
             new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes));
     }
 
+    /// <summary>
+    /// The generation the next commit will publish. A caller needs it before the commit, because a
+    /// generation's files are named after it.
+    /// </summary>
+    public long NextGeneration
+    {
+        get
+        {
+            lock (gate)
+            {
+                return (current?.Generation ?? 0) + 1;
+            }
+        }
+    }
+
+    /// <summary>The validated root this session is held open on, so a reader can open its dependencies.</summary>
+    public IOwnedDirectory Root => directory;
+
+    /// <summary>
+    /// Opens a session for reading without being told which session it is. The identity comes from the
+    /// generation the pointer names, so a viewer can open a directory it was handed. A store opened this way
+    /// publishes nothing: a generation names the session it belongs to, and this one was not told which.
+    /// </summary>
+    public static SessionStore OpenExisting(IOwnedDirectory directory)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory);
+        (IReadOnlyList<string> removed, IReadOnlyList<string> orphans, long orphanBytes) =
+            Sweep(directory, manifest);
+        return new(
+            directory,
+            manifest?.SessionId ?? Guid.Empty,
+            manifest?.SourceIdentity ?? string.Empty,
+            manifest,
+            new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes));
+    }
+
     /// <summary>Opens a file for a generation that has not been published yet.</summary>
     public StoreStagingFile Stage(string publishedName, StoreDependencyKind kind)
     {
+        if (SessionId == Guid.Empty)
+        {
+            throw new InvalidOperationException(
+                "This store was opened for reading without being told which session it is, so it cannot "
+                + "publish a generation. A generation names the session it belongs to.");
+        }
+
         OwnedFileName.Require(publishedName, nameof(publishedName));
         if (!Enum.IsDefined(kind))
         {

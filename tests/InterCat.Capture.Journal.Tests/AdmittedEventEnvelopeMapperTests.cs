@@ -167,6 +167,7 @@ public sealed class AdmittedEventEnvelopeMapperTests
         Version = 2,
         Name = "fixture",
         Mechanism = Mechanism.Tcp,
+        Layer = ObservationLayer.Transport,
         Kind = ObservationKind.Send,
         Direction = Direction.Outbound,
         MinimumBodyLength = 8,

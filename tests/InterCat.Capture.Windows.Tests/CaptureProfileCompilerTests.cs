@@ -387,6 +387,7 @@ public sealed class CaptureProfileCompilerTests
             Version = 0,
             Name = "fixture",
             Mechanism = definition.Mechanisms[0],
+            Layer = ObservationLayer.Transport,
             Kind = ObservationKind.Discovery,
             Direction = Direction.DirectionNotApplicable,
             MinimumBodyLength = 0,

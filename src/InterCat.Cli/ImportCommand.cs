@@ -28,7 +28,31 @@ internal sealed record ImportSummaryDocument
     public required ImportCountsDocument Counts { get; init; }
     public required ImportSpillDocument Spill { get; init; }
     public required bool ProducesSession { get; init; }
+    public required ImportGenerationDocument? Session { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
+}
+
+/// <summary>The generation an import published, when it was given a session to publish into.</summary>
+internal sealed record ImportGenerationDocument
+{
+    public required string Path { get; init; }
+    public required long Generation { get; init; }
+    public required string ManifestDigest { get; init; }
+    public required string JournalName { get; init; }
+    public required long JournalRecords { get; init; }
+    public required long JournalBytes { get; init; }
+    public required long ObservationRows { get; init; }
+    public required IReadOnlyList<ImportSegmentDocument> Segments { get; init; }
+}
+
+internal sealed record ImportSegmentDocument
+{
+    public required string Name { get; init; }
+    public required int RowCount { get; init; }
+    public required long LengthBytes { get; init; }
+    public required long MinNativeTicks { get; init; }
+    public required long MaxNativeTicks { get; init; }
+    public required IReadOnlyList<string> Dictionaries { get; init; }
 }
 
 internal sealed record ImportClockDocument
@@ -75,6 +99,8 @@ internal static class ImportCommand
         }
 
         string? sourcePath = command.TakePositional();
+        string? intoOption = command.TakeOption("--into");
+        string? rowsOption = command.TakeOption("--rows-per-segment");
         string? outputOption = command.TakeOption("--output");
         string? entriesOption = command.TakeOption("--max-entries-in-memory");
         string? spillOption = command.TakeOption("--spill-directory");
@@ -116,6 +142,26 @@ internal static class ImportCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (!TryReadRowsPerSegment(rowsOption, out int rowsPerSegment, out string? rowProblem))
+        {
+            ConsoleUi.Failure(rowProblem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string? sessionPath = intoOption is null ? null : Path.GetFullPath(intoOption);
+        if (sessionPath is not null
+            && Directory.Exists(sessionPath)
+            && Directory.EnumerateFileSystemEntries(sessionPath).Any()
+            && !overwrite)
+        {
+            // Evidence is never published into a directory that already holds something. A session that
+            // gained files from two unrelated imports would name dependencies neither of them produced.
+            ConsoleUi.Failure(
+                $"{sessionPath} is not empty. Pass --overwrite to publish into an existing session directory, "
+                + "or choose a directory of its own.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         string? outputPath = outputOption is null ? null : Path.GetFullPath(outputOption);
         if (outputPath is not null && File.Exists(outputPath) && !overwrite)
         {
@@ -151,18 +197,46 @@ internal static class ImportCommand
         };
 
         ConsoleUi.Progress($"Hashing {full} before reading a record from it.");
-        EtlImportResult result = EtlCanonicalImport.Import(
-            full,
-            sessionPlan,
-            RetainedEvidencePolicy.MetadataOnly,
-            new CanonicalImportOptions
-            {
-                MaximumEntriesInMemory = maximumEntries,
-                SpillDirectory = spillOption is null ? null : Path.GetFullPath(spillOption),
-            },
-            cancellationToken);
+        var bounds = new CanonicalImportOptions
+        {
+            MaximumEntriesInMemory = maximumEntries,
+            SpillDirectory = spillOption is null ? null : Path.GetFullPath(spillOption),
+        };
 
-        ImportSummaryDocument document = Describe(result, environment);
+        EtlImportResult result;
+        DerivedGenerationResult? generation = null;
+        if (sessionPath is null)
+        {
+            result = EtlCanonicalImport.Import(
+                full,
+                sessionPlan,
+                RetainedEvidencePolicy.MetadataOnly,
+                bounds,
+                cancellationToken);
+        }
+        else
+        {
+            Directory.CreateDirectory(sessionPath);
+            ConsoleUi.Progress(
+                $"Publishing into {sessionPath}: the admitted journal first, then the segments derived from it.");
+            SessionStore store = SessionStore.Open(
+                LocalOwnedDirectory.Open(sessionPath),
+                DeriveSessionId(full),
+                $"import-v1:{full}");
+            EtlSessionImportResult published = EtlCanonicalImport.ImportIntoSession(
+                full,
+                sessionPlan,
+                store,
+                DateTimeOffset.UtcNow,
+                RetainedEvidencePolicy.MetadataOnly,
+                bounds,
+                new DerivedGenerationOptions { RowsPerSegment = rowsPerSegment },
+                cancellationToken);
+            result = published.Import;
+            generation = published.Generation;
+        }
+
+        ImportSummaryDocument document = Describe(result, environment, sessionPath, generation);
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
         if (json)
         {
@@ -185,12 +259,31 @@ internal static class ImportCommand
             : InterCatExitCode.Success;
     }
 
-    private static ImportSummaryDocument Describe(EtlImportResult result, ProbeEnvironment environment)
+    /// <summary>
+    /// A session identity derived from the evidence rather than minted, so importing one file into a fresh
+    /// directory twice produces the same session rather than two that disagree about the same records.
+    /// </summary>
+    private static Guid DeriveSessionId(string etlPath)
+    {
+        using FileStream stream = File.OpenRead(etlPath);
+        ImportSourceIdentity source = ImportSourceIdentity.Of(ImportSourceKind.StandaloneEtl, stream);
+        return ImportIdentity.Create(source, RetainedEvidencePolicy.MetadataOnly).CaptureId.Value;
+    }
+
+    private static ImportSummaryDocument Describe(
+        EtlImportResult result,
+        ProbeEnvironment environment,
+        string? sessionPath,
+        DerivedGenerationResult? generation)
     {
         CanonicalImportSummary summary = result.Summary;
         var notes = new List<string>
         {
-            "This is a canonical import index, not a session. No .icat file is written in this milestone.",
+            generation is null
+                ? "This is a canonical import index, not a session. Pass --into <directory> to publish the "
+                    + "admitted journal and its derived segments as a session a viewer can open."
+                : "The admitted records are this session's own journal-v1 evidence, and every published "
+                    + "segment names the durable extent of that journal it derives from (ADR-010).",
             "Records are identified by canonical key and occurrence index, because ETL callback delivery "
             + "order is not reproducible.",
             $"Read on build {environment.BuildId}; the file was recorded elsewhere, so its clock and host "
@@ -244,7 +337,29 @@ internal static class ImportCommand
                 RunsWritten = summary.SpillRunsWritten,
                 BytesSpilled = summary.SpilledBytes,
             },
-            ProducesSession = false,
+            ProducesSession = generation is not null,
+            Session = generation is null || sessionPath is null ? null : new()
+            {
+                Path = sessionPath,
+                Generation = generation.Manifest.Generation,
+                ManifestDigest = generation.Manifest.Digest,
+                JournalName = generation.JournalName,
+                JournalRecords = generation.JournalRecords,
+                JournalBytes = generation.JournalBytes,
+                ObservationRows = generation.RowCount,
+                Segments =
+                [
+                    .. generation.Segments.Select(segment => new ImportSegmentDocument
+                    {
+                        Name = segment.Name,
+                        RowCount = segment.RowCount,
+                        LengthBytes = segment.LengthBytes,
+                        MinNativeTicks = segment.MinNativeTicks,
+                        MaxNativeTicks = segment.MaxNativeTicks,
+                        Dictionaries = segment.DictionaryNames,
+                    }),
+                ],
+            },
             Notes = notes,
         };
     }
@@ -286,6 +401,32 @@ internal static class ImportCommand
                 ? "nothing; the index fitted in memory"
                 : $"{document.Spill.RunsWritten:N0} runs, {document.Spill.BytesSpilled:N0} bytes");
         ConsoleUi.Field("Elapsed", $"{result.ElapsedMilliseconds:N0} ms");
+
+        if (document.Session is { } session)
+        {
+            ConsoleUi.Heading("Published session");
+            ConsoleUi.Field("Path", session.Path);
+            ConsoleUi.Field("Generation", session.Generation.ToString("N0", CultureInfo.CurrentCulture));
+            ConsoleUi.Field(
+                "Journal",
+                $"{session.JournalName}, {session.JournalRecords:N0} records, {session.JournalBytes:N0} B");
+            ConsoleUi.Field("Observations", session.ObservationRows.ToString("N0", CultureInfo.CurrentCulture));
+            ConsoleUi.Table(
+                ["Segment", "Rows", "Bytes", "Native interval"],
+                [
+                    .. session.Segments.Select(segment => new[]
+                    {
+                        segment.Name,
+                        segment.RowCount.ToString("N0", CultureInfo.CurrentCulture),
+                        segment.LengthBytes.ToString("N0", CultureInfo.CurrentCulture),
+                        $"[{segment.MinNativeTicks:N0}, {segment.MaxNativeTicks:N0}]",
+                    }),
+                ]);
+            ConsoleUi.Field("Manifest digest", session.ManifestDigest);
+            ConsoleUi.Line();
+            ConsoleUi.Note($"Open it with: icat session {session.Path}");
+        }
+
         ConsoleUi.Line();
         foreach (string note in document.Notes)
         {
@@ -311,12 +452,33 @@ internal static class ImportCommand
         return true;
     }
 
+    private static bool TryReadRowsPerSegment(string? option, out int value, out string? problem)
+    {
+        value = DerivedGenerationOptions.Default.RowsPerSegment;
+        problem = null;
+        if (option is null)
+        {
+            return true;
+        }
+
+        if (!int.TryParse(option, NumberStyles.None, CultureInfo.InvariantCulture, out value) || value < 1)
+        {
+            problem = $"--rows-per-segment expects a positive whole number; '{option}' is not one.";
+            return false;
+        }
+
+        return true;
+    }
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat import <source.etl> [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
+        ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("             [--max-entries-in-memory <n>] [--spill-directory <dir>]");
         ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");
         ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
-        ConsoleUi.Line("      Needs no elevation. Writes an import summary, not a session.");
+        ConsoleUi.Line("      With --into it also publishes a session: the admitted journal-v1 evidence and");
+        ConsoleUi.Line("      the observation-v1 segments derived from it, as one committed generation.");
+        ConsoleUi.Line("      Needs no elevation.");
     }
 }

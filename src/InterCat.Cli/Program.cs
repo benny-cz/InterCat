@@ -28,6 +28,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "profiles" => await ProfilesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -78,11 +79,18 @@ static void PrintHelp()
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
     ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat import <source.etl> [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
+    ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("             [--max-entries-in-memory <n>] [--spill-directory <dir>]");
     ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");
     ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
-    ConsoleUi.Line("      Needs no elevation. Writes an import summary, not a session.");
+    ConsoleUi.Line("      With --into it publishes a session: the admitted journal-v1 evidence and the");
+    ConsoleUi.Line("      observation-v1 segments derived from it, as one committed generation.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat session <directory> [--rows <n>] [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");
+    ConsoleUi.Line("      names, and reports its evidence boundary, its segments, their column");
+    ConsoleUi.Line("      availability and their byte metrics. Read-only; repairs nothing.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

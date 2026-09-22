@@ -24,11 +24,17 @@ public sealed record AdmittedFieldIntent(
     string? Notes = null);
 
 /// <summary>One event descriptor the adapter intends to admit under a metadata-only policy (§18.2).</summary>
+/// <remarks>
+/// The layer is part of the source contract, not a normalizer guess: whether a descriptor is transport,
+/// application, resource or lifecycle evidence decides which metrics may be summed together (§5.1, I11), so it
+/// is declared here beside the mechanism the descriptor was validated for.
+/// </remarks>
 public sealed record AdmittedEventIntent(
     int EventId,
     int Version,
     string Name,
     Mechanism Mechanism,
+    ObservationLayer Layer,
     ObservationKind Kind,
     Direction Direction,
     IReadOnlyList<AdmittedFieldIntent> Fields);
@@ -205,12 +211,12 @@ public static class WindowsSourceCatalog
             OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
             AdmittedEvents =
             [
-                new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
-                new(11, 0, "TCPv4 data received", Mechanism.Tcp, ObservationKind.Receive, Direction.Inbound, TcpTransferFields),
-                new(12, 0, "TCPv4 connection attempted", Mechanism.Tcp, ObservationKind.Connect, Direction.Outbound, TcpTransferFields),
-                new(13, 0, "TCPv4 disconnect issued", Mechanism.Tcp, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields),
-                new(14, 0, "TCPv4 data retransmitted", Mechanism.Tcp, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
-                new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationKind.Accept, Direction.Inbound, TcpTransferFields),
+                new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
+                new(11, 0, "TCPv4 data received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, TcpTransferFields),
+                new(12, 0, "TCPv4 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpTransferFields),
+                new(13, 0, "TCPv4 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields),
+                new(14, 0, "TCPv4 data retransmitted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
+                new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields),
             ],
             Notes =
             [
@@ -246,9 +252,9 @@ public static class WindowsSourceCatalog
             OverheadEvidence = "bench/results/capture-impact-20260921T200502Z/impact.json",
             AdmittedEvents =
             [
-                new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),
-                new(2, 2, "Process stop", Mechanism.ProcessLifecycle, ObservationKind.Exit, Direction.DirectionNotApplicable, ProcessStopFields),
-                new(15, 2, "Process rundown", Mechanism.ProcessLifecycle, ObservationKind.Inventory, Direction.DirectionNotApplicable, ProcessStartFields),
+                new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),
+                new(2, 2, "Process stop", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Exit, Direction.DirectionNotApplicable, ProcessStopFields),
+                new(15, 2, "Process rundown", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Inventory, Direction.DirectionNotApplicable, ProcessStartFields),
             ],
             Notes =
             [
@@ -278,10 +284,10 @@ public static class WindowsSourceCatalog
             DeniedEventIds = [10, 11],
             AdmittedEvents =
             [
-                new(5, 1, "RPC client call start", Mechanism.Rpc, ObservationKind.RequestStart, Direction.Outbound, RpcCallStartFields),
-                new(6, 1, "RPC server call start", Mechanism.Rpc, ObservationKind.RequestStart, Direction.Inbound, RpcCallStartFields),
-                new(7, 1, "RPC client call stop", Mechanism.Rpc, ObservationKind.RequestEnd, Direction.Outbound, RpcCallStopFields),
-                new(8, 1, "RPC server call stop", Mechanism.Rpc, ObservationKind.RequestEnd, Direction.Inbound, RpcCallStopFields),
+                new(5, 1, "RPC client call start", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, RpcCallStartFields),
+                new(6, 1, "RPC server call start", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, RpcCallStartFields),
+                new(7, 1, "RPC client call stop", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, RpcCallStopFields),
+                new(8, 1, "RPC server call stop", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, RpcCallStopFields),
             ],
             Notes =
             [
@@ -347,12 +353,12 @@ public static class WindowsSourceCatalog
             ContractStatus = SourceContractStatus.Experimental,
             AdmittedEvents =
             [
-                new(10, 0, "File name create", Mechanism.NamedPipe, ObservationKind.Discovery, Direction.DirectionNotApplicable, FileNameFields),
-                new(12, 1, "File create", Mechanism.NamedPipe, ObservationKind.Open, Direction.DirectionNotApplicable, FileCreateFields),
-                new(14, 1, "File close", Mechanism.NamedPipe, ObservationKind.Close, Direction.DirectionNotApplicable, FileLifetimeFields),
-                new(15, 1, "File read", Mechanism.NamedPipe, ObservationKind.Receive, Direction.Inbound, FileTransferFields),
-                new(16, 1, "File write", Mechanism.NamedPipe, ObservationKind.Send, Direction.Outbound, FileTransferFields),
-                new(24, 0, "Operation end", Mechanism.NamedPipe, ObservationKind.RequestEnd, Direction.DirectionNotApplicable, FileOperationEndFields),
+                new(10, 0, "File name create", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.Discovery, Direction.DirectionNotApplicable, FileNameFields),
+                new(12, 1, "File create", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.Open, Direction.DirectionNotApplicable, FileCreateFields),
+                new(14, 1, "File close", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.Close, Direction.DirectionNotApplicable, FileLifetimeFields),
+                new(15, 1, "File read", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.Receive, Direction.Inbound, FileTransferFields),
+                new(16, 1, "File write", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.Send, Direction.Outbound, FileTransferFields),
+                new(24, 0, "Operation end", Mechanism.NamedPipe, ObservationLayer.Resource, ObservationKind.RequestEnd, Direction.DirectionNotApplicable, FileOperationEndFields),
             ],
             Notes =
             [

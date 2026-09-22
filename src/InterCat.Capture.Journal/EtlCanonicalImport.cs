@@ -6,6 +6,9 @@ using Microsoft.Diagnostics.Tracing;
 
 namespace InterCat.Capture.Journal;
 
+/// <summary>An import that produced a session: what it read, and the generation it published.</summary>
+public sealed record EtlSessionImportResult(EtlImportResult Import, DerivedGenerationResult? Generation);
+
 /// <summary>What one ETL import read, admitted, refused and identified.</summary>
 public sealed record EtlImportResult(
     CanonicalImportSummary Summary,
@@ -44,12 +47,55 @@ public static class EtlCanonicalImport
     /// <summary>How far a re-derived reading may sit from the file's own, in milliseconds.</summary>
     private const double RateToleranceMilliseconds = 0.001;
 
+    /// <summary>Keys and counts an ETL without publishing anything. It produces an index, not a session.</summary>
     public static EtlImportResult Import(
         string etlPath,
         OwnedSessionPlan admissionPlan,
         RetainedEvidencePolicy retainedEvidence = RetainedEvidencePolicy.MetadataOnly,
         CanonicalImportOptions? bounds = null,
+        CancellationToken cancellationToken = default) =>
+        Run(etlPath, admissionPlan, retainedEvidence, bounds, null, cancellationToken).Import;
+
+    /// <summary>
+    /// Imports an ETL into a session: the admitted records become the session's own `journal-v1` evidence, the
+    /// normalizer derives an `observation-v1` row from each of them, and the generation is published through
+    /// the §20.1 commit protocol with the committed boundary naming that journal.
+    /// </summary>
+    /// <remarks>
+    /// This is the point at which an import stops being a computation and becomes something a reader can open.
+    /// It needs no elevation: writing a session directory and parsing evidence are both ordinary file work,
+    /// and R16 keeps every parser out of the privileged broker.
+    /// </remarks>
+    public static EtlSessionImportResult ImportIntoSession(
+        string etlPath,
+        OwnedSessionPlan admissionPlan,
+        SessionStore store,
+        DateTimeOffset committedUtc,
+        RetainedEvidencePolicy retainedEvidence = RetainedEvidencePolicy.MetadataOnly,
+        CanonicalImportOptions? bounds = null,
+        DerivedGenerationOptions? generationOptions = null,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        EtlSessionImportResult result = Run(
+            etlPath,
+            admissionPlan,
+            retainedEvidence,
+            bounds,
+            new(store, committedUtc, generationOptions ?? DerivedGenerationOptions.Default),
+            cancellationToken);
+        return result.Generation is null
+            ? throw new InvalidOperationException("A session import did not publish a generation.")
+            : result;
+    }
+
+    private static EtlSessionImportResult Run(
+        string etlPath,
+        OwnedSessionPlan admissionPlan,
+        RetainedEvidencePolicy retainedEvidence,
+        CanonicalImportOptions? bounds,
+        SessionTarget? target,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(etlPath);
         ArgumentNullException.ThrowIfNull(admissionPlan);
@@ -81,24 +127,72 @@ public static class EtlCanonicalImport
             clock,
             mapper.Schemas,
             bounds);
-        var sink = new ImportSink(mapper, plans, builder, cancellationToken);
-        long started = Stopwatch.GetTimestamp();
-        EtlAdmissionReplayResult replay = EtlAdmissionReplay.Replay(path, admissionPlan, sink, cancellationToken);
-        sink.Rethrow();
-        using CanonicalImportIndex index = builder.Complete(cancellationToken);
 
-        return new(
-            index.Summary,
-            path,
-            new FileInfo(path).Length,
-            ticksPerSecond,
-            sink.Observed,
-            sink.Admitted,
-            sink.Omitted,
-            sink.Undecodable,
-            replay.SourceEventsLost,
-            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        // The capture identity is derived from the import, never minted per run: it is inside every raw-record
+        // and observation identity, so a fresh one would make two imports of one file disagree about which
+        // records they hold (§18.4, plan revision 26).
+        CaptureId captureId = builder.Identity.CaptureId;
+        DerivedGenerationBuilder? generation = null;
+        try
+        {
+            if (target is not null)
+            {
+                generation = DerivedGenerationBuilder.Begin(
+                    target.Store,
+                    new()
+                    {
+                        CaptureId = captureId,
+                        ClockId = clock.Id,
+                        TimestampEncoding = clock.Encoding,
+                        Derivation = ObservationNormalizerV1.ContractVersion,
+                    },
+                    clock,
+                    target.CommittedUtc,
+                    target.Options);
+
+                // The schema table precedes the first batch, and the mapper already holds every descriptor
+                // the compiled plan admits, so it is complete before a record is read (§18.3).
+                generation.Journal.WriteSchemas(mapper.Schemas);
+            }
+
+            var sink = new ImportSink(
+                mapper,
+                plans,
+                builder,
+                captureId,
+                generation,
+                new ObservationNormalizerV1(clock),
+                cancellationToken);
+            long started = Stopwatch.GetTimestamp();
+            EtlAdmissionReplayResult replay = EtlAdmissionReplay.Replay(path, admissionPlan, sink, cancellationToken);
+            sink.Rethrow();
+            using CanonicalImportIndex index = builder.Complete(cancellationToken);
+            DerivedGenerationResult? published = generation?.Complete(target!.CommittedUtc, cancellationToken);
+
+            return new(
+                new(
+                    index.Summary,
+                    path,
+                    new FileInfo(path).Length,
+                    ticksPerSecond,
+                    sink.Observed,
+                    sink.Admitted,
+                    sink.Omitted,
+                    sink.Undecodable,
+                    replay.SourceEventsLost,
+                    Stopwatch.GetElapsedTime(started).TotalMilliseconds),
+                published);
+        }
+        finally
+        {
+            generation?.Dispose();
+        }
     }
+
+    private sealed record SessionTarget(
+        SessionStore Store,
+        DateTimeOffset CommittedUtc,
+        DerivedGenerationOptions Options);
 
     /// <summary>
     /// Derives the file's own tick rate and its first reading, and checks the rate against the file
@@ -211,9 +305,13 @@ public static class EtlCanonicalImport
         AdmittedEventEnvelopeMapper mapper,
         AdmittedEventPlanIndex plans,
         CanonicalImportBuilder builder,
+        CaptureId captureId,
+        DerivedGenerationBuilder? generation,
+        ObservationNormalizerV1 normalizer,
         CancellationToken cancellationToken) : IAdmittedEventSink
     {
         private Exception? failure;
+        private ulong journalIndex;
 
         public long Observed { get; private set; }
 
@@ -235,8 +333,24 @@ public static class EtlCanonicalImport
             try
             {
                 AdmittedEventPlan plan = plans.Resolve(in admitted);
-                using RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, plan, CaptureId.New());
+                RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, plan, captureId);
+                if (generation is null)
+                {
+                    using (envelope)
+                    {
+                        builder.Add(envelope, cancellationToken);
+                    }
+
+                    Admitted++;
+                    return true;
+                }
+
+                // The index entry and the derived row are taken first; the journal takes ownership of the
+                // envelope last, because appending it transfers the buffers it holds (§18.1).
                 builder.Add(envelope, cancellationToken);
+                generation.AddRow(normalizer.ToRow(envelope, plan, journalIndex));
+                generation.Journal.Append(envelope);
+                journalIndex++;
                 Admitted++;
                 return true;
             }

@@ -35,6 +35,7 @@ public sealed class OwnedCaptureSessionTests
                     Version = 0,
                     Name = "sent",
                     Mechanism = Mechanism.Tcp,
+                    Layer = ObservationLayer.Transport,
                     Kind = ObservationKind.Send,
                     Direction = Direction.Outbound,
                     MinimumBodyLength = 8,

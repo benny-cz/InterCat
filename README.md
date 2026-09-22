@@ -10,6 +10,8 @@ InterCat is a Windows IPC visualizer for exploring which processes communicate, 
 - an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
 - seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
 - a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
+- a durable session store: a commit protocol that publishes an immutable generation and rolls a torn publication back, `journal-v1` admitted evidence, and frozen `observation-v1` columnar segments with null bitmaps, availability counters, sorted dictionaries, a raw-record locator and time-block metadata;
+- an unelevated import that turns a standalone ETL into a session a reader can open, and a read-only `session` command that re-verifies every dependency and reports each byte domain and side separately;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
 A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient. Focused transport compiles validated TCP only. A PID selection is an initial-view focus, not a false retention guarantee: because the network provider cannot filter by PID and lifecycle context remains machine-wide, the preview blocks until the operator explicitly accepts broader metadata collection. Content can compile a complete request-only preview with exact scope, budgets, truncation, retention and separate inspection consent, but it remains blocked: no payload source has an approved body contract and payload-specific impact measurement.
@@ -44,6 +46,10 @@ dotnet run --project src/InterCat.Cli -- measure tcp
 dotnet run --project src/InterCat.Cli -- measure pipe
 dotnet run --project src/InterCat.Cli -- measure rpc
 
+# Import a standalone ETL into a session, then open it. Both need no elevation.
+dotnet run --project src/InterCat.Cli -- import <source.etl> --into <session directory>
+dotnet run --project src/InterCat.Cli -- session <session directory> --rows 10
+
 # Offline re-evaluation into shareable, fixture-scoped evidence.
 dotnet run --project src/InterCat.Cli -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence
 
@@ -55,7 +61,8 @@ dotnet run --project src/InterCat.Desktop
 | Path | Contents |
 |---|---|
 | `capabilities/<build>/` | Machine-readable capability reports, per build and adapter |
-| `contracts/` | Frozen artifact contracts, starting with the capability report |
+| `contracts/` | Frozen artifact contracts: the capability report, `journal-v1`, `import-v1`, `store-v1` and `segment-v1` |
+| `bench/results/` | Reproducible measurement runs; their counters are committed, their records are not |
 | `fixtures/index.json` | Fixture traceability matrix and the contract-coverage ledger |
 | `fixtures/FX-TCP-001/evidence/` | Curated truth log, scoped observations and verification result |
 | `fixtures/FX-PIPE-001/evidence/` | Curated truth logs and the measured named-pipe result |

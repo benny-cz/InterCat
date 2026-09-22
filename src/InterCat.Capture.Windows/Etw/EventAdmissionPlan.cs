@@ -37,6 +37,14 @@ public sealed record AdmittedEventPlan
     public required int Version { get; init; }
     public required string Name { get; init; }
     public required Mechanism Mechanism { get; init; }
+
+    /// <summary>
+    /// Which layer this descriptor's evidence belongs to, as its source contract declares it (§5.1, I11).
+    /// It is not derived from the mechanism here, because one mechanism can carry evidence at more than one
+    /// layer and guessing would let a transport metric absorb an application annotation.
+    /// </summary>
+    public required ObservationLayer Layer { get; init; }
+
     public required ObservationKind Kind { get; init; }
     public required Direction Direction { get; init; }
 

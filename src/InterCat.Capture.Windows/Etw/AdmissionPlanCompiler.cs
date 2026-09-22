@@ -271,6 +271,7 @@ public static class AdmissionPlanCompiler
             Version = descriptor.Version,
             Name = intent.Name,
             Mechanism = intent.Mechanism,
+            Layer = intent.Layer,
             Kind = intent.Kind,
             Direction = intent.Direction,
             MinimumBodyLength = minimumLength,

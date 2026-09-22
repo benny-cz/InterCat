@@ -1,0 +1,471 @@
+{
+  "contract": "store-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "isEmpty": false,
+  "generation": {
+    "generation": 1,
+    "previousGeneration": null,
+    "sessionId": "7ef21c02bfff88998e26d7b66400516e",
+    "committedUtc": "2026-09-22T14:26:42.7528364+00:00",
+    "sourceIdentity": "import-v1:E:\\InterCat\\fixtures\\FX-IMPORT-001\\runs\\import-probe.etl",
+    "digest": "sha256:798478f4a6e5455ad31f01ac4b7e2ee13e3e3ce3925e3b77ba5d9a8a26576f79",
+    "boundary": {
+      "journalName": "journal-0000000001.icatj",
+      "committedBytes": 130214,
+      "committedRecords": 555,
+      "digest": "sha256:e24291353e50881063a01029423eca40612faa5af2477944283c286f41ec4110"
+    },
+    "dependencies": [
+      {
+        "name": "journal-0000000001.icatj",
+        "kind": "Journal",
+        "lengthBytes": 130214,
+        "digest": "sha256:e24291353e50881063a01029423eca40612faa5af2477944283c286f41ec4110"
+      },
+      {
+        "name": "dict-0000000001-0001.icatd",
+        "kind": "Dictionary",
+        "lengthBytes": 800,
+        "digest": "sha256:9a36c8588f46b5e4243d5f6d2d7b017493ad5f14c3ea8ef7cd35ccce9ad637de"
+      },
+      {
+        "name": "seg-0000000001-0000.icats",
+        "kind": "Segment",
+        "lengthBytes": 100528,
+        "digest": "sha256:d68798dccd11acd19f8410a04074efbb8d3b328622698a62a06003f908100532"
+      }
+    ]
+  },
+  "recovery": {
+    "rolledBackToLastKnownGood": false,
+    "rollbackReason": null,
+    "removedStagingFiles": [],
+    "orphanFiles": [],
+    "orphanBytes": 0
+  },
+  "segments": [
+    {
+      "name": "seg-0000000001-0000.icats",
+      "segmentId": "21c74294357b8b708ba6899f4b9d4eb8",
+      "captureId": "7ef21c02bfff88998e26d7b66400516e",
+      "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+      "timestampEncoding": "Qpc",
+      "derivation": 1,
+      "rowCount": 555,
+      "minNativeTicks": 18683281839181,
+      "maxNativeTicks": 18683454506122,
+      "timeBlocks": 1,
+      "columns": [
+        {
+          "column": "RawStreamId",
+          "type": "Unsigned32",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "RawSourceEpoch",
+          "type": "Unsigned32",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "RawRecordOrdinal",
+          "type": "Unsigned64",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "JournalRecordIndex",
+          "type": "Unsigned64",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "FactKeyHigh",
+          "type": "Unsigned64",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "FactKeyLow",
+          "type": "Unsigned64",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "SchemaCode",
+          "type": "Unsigned32",
+          "encoding": "Dictionary",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "Opcode",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "NativeTicks",
+          "type": "Signed64",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "SessionRelativeTicks",
+          "type": "Signed64",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 4440
+        },
+        {
+          "column": "HeaderProcessId",
+          "type": "Signed32",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "HeaderThreadId",
+          "type": "Signed32",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "ProcessorNumber",
+          "type": "Unsigned16",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 1110
+        },
+        {
+          "column": "ActivityId",
+          "type": "Guid16",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 0,
+          "unknown": 555,
+          "valueBytes": 8880
+        },
+        {
+          "column": "RelatedActivityId",
+          "type": "Guid16",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 0,
+          "unknown": 555,
+          "valueBytes": 8880
+        },
+        {
+          "column": "Mechanism",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "Layer",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "ObservationKind",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "Direction",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "OwnerProcessId",
+          "type": "Signed32",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 2220
+        },
+        {
+          "column": "ResourceName",
+          "type": "Text",
+          "encoding": "VariableReference",
+          "nullable": true,
+          "known": 0,
+          "unknown": 555,
+          "valueBytes": 4440
+        },
+        {
+          "column": "SourceIdentifier",
+          "type": "Guid16",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 0,
+          "unknown": 555,
+          "valueBytes": 8880
+        },
+        {
+          "column": "EndpointAddressFamily",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 555
+        },
+        {
+          "column": "SourceEndpointAddress",
+          "type": "Unsigned32",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 2220
+        },
+        {
+          "column": "SourceEndpointPort",
+          "type": "Unsigned16",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 1110
+        },
+        {
+          "column": "DestinationEndpointAddress",
+          "type": "Unsigned32",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 2220
+        },
+        {
+          "column": "DestinationEndpointPort",
+          "type": "Unsigned16",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 1110
+        },
+        {
+          "column": "ByteValue",
+          "type": "Signed64",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 4440
+        },
+        {
+          "column": "ByteDomain",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 555
+        },
+        {
+          "column": "AccountingSide",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 555
+        },
+        {
+          "column": "MeasurementUnit",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 485,
+          "unknown": 70,
+          "valueBytes": 555
+        },
+        {
+          "column": "ByteAvailability",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "StatusCode",
+          "type": "Signed64",
+          "encoding": "Plain",
+          "nullable": true,
+          "known": 36,
+          "unknown": 519,
+          "valueBytes": 4440
+        },
+        {
+          "column": "StatusAvailability",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "AttributionQuality",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "CorrelationQuality",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "MeasurementQuality",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "TimingQuality",
+          "type": "Unsigned8",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 555
+        },
+        {
+          "column": "Markers",
+          "type": "Unsigned16",
+          "encoding": "Plain",
+          "nullable": false,
+          "known": 555,
+          "unknown": 0,
+          "valueBytes": 1110
+        }
+      ],
+      "measurements": [
+        {
+          "byteDomain": "TransportObserved",
+          "accountingSide": "SendSide",
+          "unit": "Bytes",
+          "totalBytes": 173258,
+          "knownContributions": 163,
+          "unknownContributions": 0,
+          "measurementAvailability": 1,
+          "excludedOtherDomain": 0,
+          "excludedOtherSide": 322,
+          "excludedNoDeclaredSlot": 70,
+          "unknownReasons": {}
+        },
+        {
+          "byteDomain": "TransportObserved",
+          "accountingSide": "ReceiveSide",
+          "unit": "Bytes",
+          "totalBytes": 254470,
+          "knownContributions": 253,
+          "unknownContributions": 0,
+          "measurementAvailability": 1,
+          "excludedOtherDomain": 0,
+          "excludedOtherSide": 232,
+          "excludedNoDeclaredSlot": 70,
+          "unknownReasons": {}
+        },
+        {
+          "byteDomain": "TransportObserved",
+          "accountingSide": "EndpointActivity",
+          "unit": "Bytes",
+          "totalBytes": 0,
+          "knownContributions": 69,
+          "unknownContributions": 0,
+          "measurementAvailability": 1,
+          "excludedOtherDomain": 0,
+          "excludedOtherSide": 416,
+          "excludedNoDeclaredSlot": 70,
+          "unknownReasons": {}
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "segmentCount": 1,
+    "rowCount": 555,
+    "minNativeTicks": 18683281839181,
+    "maxNativeTicks": 18683454506122,
+    "mechanisms": [
+      "ProcessLifecycle",
+      "Tcp"
+    ],
+    "layers": [
+      "Lifecycle",
+      "Transport"
+    ]
+  },
+  "notes": [
+    "The interval above is in the source clock\u0027s own native ticks. It is not a wall-clock range, and it is never converted into one here (I8)."
+  ]
+}

@@ -92,6 +92,7 @@ internal static class BrokerPlanFixture
                     Version = 0,
                     Name = $"fixture-{eventId}",
                     Mechanism = definition.Mechanisms[0],
+                    Layer = ObservationLayer.Transport,
                     Kind = ObservationKind.Discovery,
                     Direction = Direction.DirectionNotApplicable,
                     MinimumBodyLength = 0,

@@ -378,12 +378,17 @@
         "I1: a journal-v1 file has exactly the bytes its golden corpus records",
         "I1: replaying a journal preserves every field of every record"
       ],
+      "I11": [
+        "I11: an application-layer generation changes no transport-layer metric"
+      ],
       "I12": [
         "I12: PID and resource reuse produce distinct lifecycle epochs",
         "I12: a late record with an old start key resolves to the earlier epoch",
+        "I12: an absent activity id stays absent rather than becoming an empty identifier",
         "I12: equal process keys on different hosts never collide"
       ],
       "I13": [
+        "I13: a row records what the capture did with the record's extended data",
         "I13: every declared extended item is copied or counted as an omission",
         "I13: every journal probe record has retained evidence or an explicit omission"
       ],
@@ -398,30 +403,42 @@
         "I14: one admitted record cannot satisfy two truth operations"
       ],
       "I15": [
+        "I15: a column whose checksum does not match its bytes is refused when it is read",
         "I15: a committed boundary states which admitted evidence a generation derives from",
         "I15: a crash before the manifest leaves the previous generation and an orphan file",
         "I15: a crash before the pointer leaves the previous generation and an orphan manifest",
+        "I15: a damaged or dishonest segment is refused, never read at a guess",
         "I15: a dependency that changed under a generation fails it rather than being read",
+        "I15: a dictionary is sorted and unique, and a column resolves through it",
+        "I15: a generation over its row bound publishes several segments, each complete",
+        "I15: a generation publishes its journal, its dictionaries and its segments together",
         "I15: a later generation carries its predecessor's dependencies forward",
         "I15: a manifest naming a dependency outside its root is refused",
         "I15: a manifest this reader cannot read exactly is refused, never read at a guess",
         "I15: a manifest whose contents no longer match its digest is refused",
+        "I15: a null bitmap and its availability counters describe the same rows",
         "I15: a published generation names every dependency with its length and digest",
         "I15: a published name is immutable, so republishing it is refused",
         "I15: a reopened session acquires the generation its pointer names",
+        "I15: a segment referencing a dictionary the generation does not name is refused",
+        "I15: a segment round-trips every column, including its nulls and its names",
+        "I15: a segment whose trailing digest does not cover its bytes is refused",
+        "I15: a segment's bytes are a function of its rows, not of their arrival order",
         "I15: a session is never opened as another session",
+        "I15: a text column past the dictionary budget falls back to the variable chunk",
         "I15: a torn pointer rolls back to the retained last-known-good",
+        "I15: an abandoned generation publishes nothing and leaves only staging files",
+        "I15: an empty segment is never published, because absence is not data",
         "I15: an empty session is empty, not a refusal",
         "I15: an incomplete staged file is never published",
         "I15: an interrupted staging file is removed on the next open",
-        "I15: an orphan is reported on open and removed only when that is asked for"
+        "I15: an orphan is reported on open and removed only when that is asked for",
+        "I15: every derived row is writable into a segment as it stands",
+        "I15: time blocks cover every row and state the interval their rows actually hold"
       ],
       "I19": [
         "I19: clearing view selection does not mutate source data",
         "I19: navigation math depends only on its inputs, never on workspace state"
-      ],
-      "I21": [
-        "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
       "I2": [
         "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",
@@ -429,7 +446,12 @@
         "I2: an import refuses a bound outside its declared range before reading a record",
         "I2: an import requires both a path and a compiled admission plan",
         "I2: records keyed against a derived clock keep one identity across imports",
-        "I2: the same bytes under a different retained-evidence policy are a different import"
+        "I2: the same bytes under a different retained-evidence policy are a different import",
+        "I2: the same record and derivation yield the same identity every time",
+        "I2: two rows with one observation identity are refused rather than counted twice"
+      ],
+      "I21": [
+        "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
       "I3": [
         "I3: bucket boundaries are half-open and contiguous",
@@ -443,6 +465,9 @@
       "I5": [
         "I5: cell counts match the records those cells resolve to"
       ],
+      "I6": [
+        "I6: a byte sum covers one domain and one side, and counts everything it left out"
+      ],
       "I7": [
         "I7: a reference the source's tables do not describe is refused",
         "I7: a schema table digest changes with the descriptors, not with their order",
@@ -455,9 +480,11 @@
         "I8: a clock with no source or no rate is refused rather than defaulted",
         "I8: a corrupted source clock frame is refused, never read as a partial clock",
         "I8: a different rate or a different file is a different clock",
+        "I8: a generation whose rows name another clock than its journal is refused",
         "I8: a reading from this process's own clock confirms the capture's encoding",
         "I8: a reading on another clock refuses the assumed encoding instead of converting it",
         "I8: a record naming a clock the source does not describe is refused, not converted",
+        "I8: a record naming another clock is refused rather than converted",
         "I8: a record whose encoding differs from the source clock's is refused",
         "I8: a second clock frame is refused rather than silently replacing the first",
         "I8: an imported clock identity comes from the evidence, so two imports agree",
@@ -472,6 +499,9 @@
       ],
       "P10": [
         "P10: applying alignment creates a projection and leaves source time unchanged"
+      ],
+      "P11": [
+        "P11: quality stays four separate dimensions in the stored row"
       ],
       "P14": [
         "P14: a capture never adopts or stops a session it did not create",
@@ -516,6 +546,10 @@
       "P8": [
         "P8: a completion is paired by I/O request identity, not by time proximity",
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown"
+      ],
+      "R1": [
+        "R1: a published segment carries source facts only, never a resolved identity",
+        "R1: a published segment is immutable, and a later generation reads the same bytes"
       ],
       "R10": [
         "R10: inverse zoom restores the viewport within rounding tolerance",
@@ -604,6 +638,10 @@
         "R19: portable core source has no Windows or UI imports",
         "R19: project references follow the inward dependency map"
       ],
+      "R2": [
+        "R2: a derived row carries the source's own attribution, measurement and labels",
+        "R2: a measurement carries its value or null, its unit, its domain and its side"
+      ],
       "R20": [
         "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
         "R20: colour measurements match published reference values",
@@ -636,23 +674,26 @@
       "R3": [
         "R3: CRC-32C matches its published vectors",
         "R3: a budget is met or missed against its own direction, not against a bare number",
+        "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
-        "R3: a reset or impossible total-machine clock is unmeasured",
+        "R3: a descriptor with no byte field reports it inapplicable, not zero",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
-        "R3: impact summaries use the median without hiding signed observations",
-        "R3: paired impact preserves observed noise but never classifies a negative cost",
-        "R3: paired throughput regression refuses no baseline and clamps only improvement",
+        "R3: a null measurement always states why, and a present one cannot be null",
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
+        "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a single sample answers every quantile from the bucket it fell in",
-        "R3: the impact workload is paced and long enough to measure separately",
-        "R3: total-machine CPU subtracts idle from kernel time exactly once",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an empty latency histogram reports no quantile rather than zero",
         "R3: an operation without a paired completion keeps completed bytes unknown",
         "R3: an unreadable loss counter leaves loss unknown rather than zero",
+        "R3: impact summaries use the median without hiding signed observations",
+        "R3: paired impact preserves observed noise but never classifies a negative cost",
+        "R3: paired throughput regression refuses no baseline and clamps only improvement",
+        "R3: the impact workload is paced and long enough to measure separately",
+        "R3: total-machine CPU subtracts idle from kernel time exactly once",
         "R3: unknown and observed zero remain distinct"
       ],
       "R5": [
@@ -693,10 +734,6 @@
         "reason": "Cross-host alignment invariance belongs to M4.",
         "plannedBy": "M4"
       },
-      "I11": {
-        "reason": "Layer accounting needs application and transport projections from IC-015.",
-        "plannedBy": "IC-015"
-      },
       "I16": {
         "reason": "Result identity needs the query identity contract of IC-018.",
         "plannedBy": "IC-018"
@@ -716,14 +753,6 @@
       "I22": {
         "reason": "Redacted export belongs to M5.",
         "plannedBy": "M5"
-      },
-      "I6": {
-        "reason": "Byte-domain conservation needs the metric contributions of IC-015.",
-        "plannedBy": "IC-015"
-      },
-      "P11": {
-        "reason": "Quality dimensions stay separate once IC-015 publishes them.",
-        "plannedBy": "IC-015"
       },
       "P12": {
         "reason": "Callback-path prohibitions are asserted against the journal of IC-011.",
@@ -789,10 +818,6 @@
         "reason": "Cross-host ordering claims belong to M4.",
         "plannedBy": "M4"
       },
-      "R1": {
-        "reason": "Immutable source facts need the journal envelope and derived tables that IC-011 introduces.",
-        "plannedBy": "IC-011"
-      },
       "R11": {
         "reason": "Paint and aggregate loops do not exist before IC-017.",
         "plannedBy": "IC-017"
@@ -804,10 +829,6 @@
       "R18": {
         "reason": "UI and CLI answer one specification only after IC-018.",
         "plannedBy": "IC-018"
-      },
-      "R2": {
-        "reason": "Typed measurement contributions arrive with the metric contract of IC-015.",
-        "plannedBy": "IC-015"
       },
       "R4": {
         "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",

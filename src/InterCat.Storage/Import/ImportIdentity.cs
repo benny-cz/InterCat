@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using InterCat.Domain;
 
 namespace InterCat.Storage;
 
@@ -111,6 +112,8 @@ public readonly record struct ImportSourceIdentity
 /// </summary>
 public sealed record ImportIdentity
 {
+    private const string CaptureDomain = CanonicalImportContract.CaptureDomain;
+
     private ImportIdentity(
         ImportSourceIdentity source,
         RetainedEvidencePolicy retainedEvidence,
@@ -176,12 +179,37 @@ public sealed record ImportIdentity
             CanonicalImportContract.Render(hash.GetHashAndReset()));
     }
 
+    /// <summary>
+    /// The capture identity an import's records belong to, derived from the import rather than minted. It has
+    /// to be derived: the capture id is inside every raw-record and observation identity, so minting one per
+    /// run would make two imports of the same bytes disagree about their records' identities - the same reason
+    /// §18.4 derives an import's clock and host from its content (plan revision 24).
+    /// </summary>
+    public CaptureId CaptureId => new(StableImportIdentityHash.Derive($"{CaptureDomain}|{Digest}"));
+
     public override string ToString() => Digest;
 
     private static void Append(IncrementalHash hash, Span<byte> scratch, uint value)
     {
         BinaryPrimitives.WriteUInt32BigEndian(scratch, value);
         hash.AppendData(scratch);
+    }
+}
+
+/// <summary>
+/// The same UUIDv8 derivation §7.2 uses for identities that must be a function of evidence rather than of the
+/// run that read it.
+/// </summary>
+internal static class StableImportIdentityHash
+{
+    public static Guid Derive(string canonicalForm)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonicalForm));
+        Span<byte> uuid = stackalloc byte[16];
+        hash.AsSpan(0, uuid.Length).CopyTo(uuid);
+        uuid[6] = (byte)((uuid[6] & 0x0f) | 0x80);
+        uuid[8] = (byte)((uuid[8] & 0x3f) | 0x80);
+        return new Guid(uuid, bigEndian: true);
     }
 }
 
@@ -193,6 +221,8 @@ public static class CanonicalImportContract
     public const string IdentityDomain = "InterCat.Import.Identity.v1";
 
     public const string RecordKeyDomain = "InterCat.Import.CanonicalRecordKey.v1";
+
+    public const string CaptureDomain = "InterCat.Import.DerivedCapture.v1";
 
     internal static string Render(ReadOnlySpan<byte> digest) =>
         string.Concat("sha256:", Convert.ToHexStringLower(digest));

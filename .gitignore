@@ -67,6 +67,13 @@ bench/results/**/*.etl
 bench/results/**/*.icatj
 bench/results/**/*.ijp0
 
+# A published session's segments and dictionaries are derived from whole-machine capture, so they carry
+# resource names, endpoints and process ids belonging to unrelated processes. A run's session report carries
+# every counter; the store's own files stay local and are reproducible from the same evidence (P16).
+bench/results/**/store/
+bench/results/**/*.icats
+bench/results/**/*.icatd
+
 # A load series writes one truth log per level, and the high levels reach tens of megabytes. The
 # series result carries every counter; the per-level oracles stay local and are reproducible.
 bench/results/**/levels/**/truth-*.jsonl
