@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare handoff implemented; transport, authentication, leases and live capture commands not yet enabled**.
+Status: **prepare handoff plus transport-independent token/ownership/lease/idempotency core implemented; durable storage, authenticated transport and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -85,7 +85,36 @@ Duplicate provider/event/process/extended-data IDs are rejected or normalized on
 the locally compiled plan. Reordering a semantically unordered input list produces the same digest;
 changing selected PIDs or any capture-affecting value produces a different digest.
 
-## 4. Planned wire and ownership contract
+## 4. Implemented ownership and lifecycle core
+
+`PreparedPlanRegistry` issues a 256-bit cryptographically random, base64url token for a deep-frozen
+prepared plan. Only a SHA-256 token fingerprint is retained. The grant expires after 30 seconds by
+default (configurable only within 5 seconds to 5 minutes), binds to the authenticated user SID and
+logon-session ID, and is single-use. Unknown, expired and wrong-owner grants return the same refusal so
+the registry is not an identity oracle. Restart invalidates every grant by design.
+
+`BrokerLifecycleCoordinator` provides the transport-independent command semantics:
+
+- start and stop require non-empty request IDs scoped to the authenticated owner;
+- the store commits a start/stop intent before the capture runtime is called;
+- the store commits the result before success is returned;
+- an exact duplicate request returns the stored result and never calls the runtime twice;
+- reusing a request ID for another command or target returns a conflict;
+- a prepared token cannot start a second capture, even under another request ID;
+- status, stop and renewal are owner-only; another owner receives no status record;
+- interactive leases default to 30 seconds and are constrained to 10 seconds through 10 minutes;
+- renewal before expiry writes a new deadline, but an expired lease cannot be revived;
+- the expiry sweep requests stop for orphaned captures; and
+- stop reports `requested`, `providersStopped`, `callbacksDrained`, `journalFinalized` and
+  `analysisFinalized` independently. Replaying one partial request returns the same partial result; a new
+  request may retry incomplete finalization.
+
+The runtime is still an interface and tests use a fake. The included in-memory store preserves the
+atomic API boundaries but is explicitly not crash-durable. A completion-write failure never exposes
+start success and triggers best-effort compensating stop; the stored intent remains for recovery. A
+production durable store plus restart recovery are required before this coordinator may drive ETW.
+
+## 5. Planned wire and authenticated host
 
 The remaining v1 commands are:
 
@@ -110,7 +139,7 @@ idempotent, and ownership will be durable before success is exposed. Owner lease
 interactive captures by default; bounded headless captures use an explicit owner and duration/retention
 policy. Disconnect alone is neither successful stop nor authorization to take ownership.
 
-## 5. Threat model and current non-capabilities
+## 6. Threat model and current non-capabilities
 
 Assets are the elevated provider/session controls, admitted event data, broker-owned output directory,
 capture ownership and the requesting user's consent. Relevant attackers are another local user, a
@@ -122,7 +151,9 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no named pipe, prepared token, start/stop operation, lease, broker-owned directory
-or durable ownership record. `InterCat.CaptureBroker` returns a failure exit code when launched. Those
-absences are deliberate: a live UI control must not appear until authentication, ownership,
-idempotency, expiry and cleanup behavior are implemented and tested together.
+The current slice has no named pipe, OS-token authentication host, broker-owned directory, crash-durable
+ownership store, restart recovery or ETW/journal runtime binding. `InterCat.CaptureBroker` returns a
+failure exit code when launched. Prepared tokens and lifecycle operations exist only behind the
+transport-independent API and fake runtime. Those absences are deliberate: a live UI control must not
+appear until authentication, durable ownership/recovery and cleanup behavior are implemented and tested
+together.
