@@ -30,6 +30,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -109,6 +110,10 @@ static void PrintHelp()
     ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");
     ConsoleUi.Line("      names, and reports its evidence boundary, its segments, their column");
     ConsoleUi.Line("      availability and their byte metrics. Read-only; repairs nothing.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
+    ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");
+    ConsoleUi.Line("      Only digest-bound --confirm re-points current; it preserves damaged bytes and orphans.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
     ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");

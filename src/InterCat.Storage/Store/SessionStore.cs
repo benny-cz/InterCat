@@ -23,6 +23,13 @@ public sealed record StoreCommitResult(
     IReadOnlyList<string> PublishedFiles,
     long PreviousGeneration);
 
+/// <summary>What an explicit pointer repair changed, and the preserved damaged pointer if one existed.</summary>
+public sealed record PointerRepairOutcome(
+    bool Repaired,
+    long VerifiedGeneration,
+    string? RollbackReason,
+    string? DamagedPointerBackup);
+
 /// <summary>
 /// One file staged for a generation. It is written under a unique staging name, flushed to the device
 /// and measured; publication renames it. Until then it is not part of any generation, and a crash
@@ -206,7 +213,7 @@ public sealed class SessionStore
         {
             lock (gate)
             {
-                return (current?.Generation ?? 0) + 1;
+                return NextAvailableGeneration();
             }
         }
     }
@@ -288,8 +295,10 @@ public sealed class SessionStore
         IReadOnlyList<StoreStagingFile> staged,
         CommittedBoundary boundary,
         DateTimeOffset committedUtc,
+        long? expectedGeneration = null,
         CancellationToken cancellationToken = default) =>
-        CommitCore(staged, boundary, committedUtc, replaceDerived: false, cancellationToken);
+        CommitCore(staged, boundary, committedUtc, replaceDerived: false, cancellationToken,
+            expectedGeneration: expectedGeneration);
 
     /// <summary>
     /// Publishes a new derivation of the current admitted journal. It retains the exact journal and its
@@ -301,8 +310,10 @@ public sealed class SessionStore
         long sourceGeneration,
         CommittedBoundary boundary,
         DateTimeOffset committedUtc,
+        long? expectedGeneration = null,
         CancellationToken cancellationToken = default) =>
-        CommitCore(staged, boundary, committedUtc, replaceDerived: true, cancellationToken, sourceGeneration);
+        CommitCore(staged, boundary, committedUtc, replaceDerived: true, cancellationToken, sourceGeneration,
+            expectedGeneration);
 
     private StoreCommitResult CommitCore(
         IReadOnlyList<StoreStagingFile> staged,
@@ -310,7 +321,8 @@ public sealed class SessionStore
         DateTimeOffset committedUtc,
         bool replaceDerived,
         CancellationToken cancellationToken,
-        long? sourceGeneration = null)
+        long? sourceGeneration = null,
+        long? expectedGeneration = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
         ArgumentNullException.ThrowIfNull(boundary);
@@ -338,6 +350,14 @@ public sealed class SessionStore
             }
 
             long previousGeneration = current?.Generation ?? 0;
+            long nextGeneration = NextAvailableGeneration();
+            if (expectedGeneration is { } expected && expected != nextGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {expected} was staged, but generation {nextGeneration} is now the next "
+                    + "unoccupied number. Reopen and stage again; a generation's file names must agree "
+                    + "with its manifest.");
+            }
             List<StoreDependency> carried;
             if (replaceDerived)
             {
@@ -393,7 +413,7 @@ public sealed class SessionStore
                 if (!names.Add(dependency.Name))
                 {
                     throw new InvalidOperationException(
-                        $"Generation {previousGeneration + 1} would republish '{dependency.Name}', which "
+                        $"Generation {nextGeneration} would republish '{dependency.Name}', which "
                         + "an earlier generation already published. A published file is immutable.");
                 }
 
@@ -408,7 +428,7 @@ public sealed class SessionStore
             }
 
             SessionManifestV1 manifest = SessionManifestV1.Create(
-                previousGeneration + 1,
+                nextGeneration,
                 SessionId,
                 committedUtc,
                 SourceIdentity,
@@ -642,8 +662,17 @@ public sealed class SessionStore
                     "The retained journal was not completed, so its contents are not durable and it cannot "
                     + "be published.");
 
+            long nextGeneration = NextAvailableGeneration();
+            if (!retainedJournal.PublishedName.Equals(
+                SegmentFormatV1.JournalFileName(nextGeneration), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The retained journal was staged for a generation that is no longer available. "
+                    + "Retry retention against a newly staged generation.");
+            }
+
             RequireUnpublishedTarget(retainedJournal.PublishedName);
-            RequireUnpublishedTarget(SessionManifestV1.FileNameFor(manifest.Generation + 1));
+            RequireUnpublishedTarget(SessionManifestV1.FileNameFor(nextGeneration));
             directory.ReplaceOwnedFile(retainedJournal.StagingName, retainedJournal.PublishedName);
             return Publish(
                 manifest,
@@ -652,7 +681,8 @@ public sealed class SessionStore
                 record,
                 committedUtc,
                 [previous],
-                now);
+                now,
+                nextGeneration);
         }
     }
 
@@ -697,6 +727,73 @@ public sealed class SessionStore
     }
 
     /// <summary>
+    /// Explicitly re-points a damaged current pointer to the fully verified last-known-good generation.
+    /// The original pointer bytes are preserved first. This is never part of ordinary open or query.
+    /// </summary>
+    public PointerRepairOutcome RepairCurrentPointer(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory);
+            if (manifest is null || manifest.SessionId != SessionId)
+            {
+                throw new InvalidDataException("Pointer repair needs a verified generation of this session.");
+            }
+
+            if (manifest.Generation != publicationBaseline?.Generation
+                || !string.Equals(manifest.Digest, publicationBaseline.Digest, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The verified recovery generation changed after this store was opened. Reopen and review "
+                    + "the current recovery state before confirming repair.");
+            }
+
+            if (!rolledBack)
+            {
+                return new(false, manifest.Generation, null, null);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            string? backupName = null;
+            if (Exists(directory, SessionPointerV1.FileName))
+            {
+                backupName = $"recovery-pointer-{Guid.NewGuid():N}.json";
+                using FileStream source = directory.OpenOwnedFile(
+                    SessionPointerV1.FileName, FileMode.Open, FileAccess.Read,
+                    FileShare.Read, FileOptions.SequentialScan);
+                if (source.Length > 1024 * 1024)
+                {
+                    throw new InvalidDataException(
+                        "The damaged current pointer exceeds 1 MiB. Preserve it manually before repair; "
+                        + "this command will not copy an unbounded file or replace it.");
+                }
+
+                using FileStream backup = directory.OpenOwnedFile(
+                    backupName, FileMode.CreateNew, FileAccess.Write,
+                    FileShare.None, FileOptions.WriteThrough);
+                source.CopyTo(backup);
+                backup.Flush(flushToDisk: true);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+            string? verificationProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? repaired);
+            if (verificationProblem is not null || repaired?.Digest != manifest.Digest)
+            {
+                throw new IOException(
+                    $"Pointer repair was written but did not verify ({verificationProblem ?? "generation mismatch"}). "
+                    + "Do not publish until the session is inspected again.");
+            }
+
+            current = manifest;
+            publicationBaseline = manifest;
+            return new(true, manifest.Generation, reason, backupName);
+        }
+    }
+
+    /// <summary>
     /// Publishes a generation whose dependency list is given rather than added to, which is what a retention
     /// generation is. Every retained dependency is still re-measured before it is named, so a retention
     /// cannot publish a generation over a dependency that changed.
@@ -708,11 +805,13 @@ public sealed class SessionStore
         RetentionRecord record,
         DateTimeOffset committedUtc,
         List<StoreDependency> released,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        long? reservedGeneration = null)
     {
-        RequireUnpublishedTarget(SessionManifestV1.FileNameFor(previousManifest.Generation + 1));
+        long nextGeneration = reservedGeneration ?? NextAvailableGeneration();
+        RequireUnpublishedTarget(SessionManifestV1.FileNameFor(nextGeneration));
         SessionManifestV1 manifest = SessionManifestV1.Create(
-            previousManifest.Generation + 1,
+            nextGeneration,
             SessionId,
             committedUtc,
             SourceIdentity,
@@ -769,6 +868,21 @@ public sealed class SessionStore
 
     private bool IsLeased(string name, DateTimeOffset now) =>
         leases.Values.Any(lease => lease.Holds(name, now));
+
+    private long NextAvailableGeneration()
+    {
+        IReadOnlyList<string> files = List(directory);
+        for (long candidate = (current?.Generation ?? 0) + 1; candidate <= 9_999_999_999; candidate++)
+        {
+            string token = string.Create(CultureInfo.InvariantCulture, $"-{candidate:D10}");
+            if (!files.Any(name => !IsStaging(name) && name.Contains(token, StringComparison.OrdinalIgnoreCase)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("The session has exhausted its generation-number space.");
+    }
 
     /// <summary>Forgets released and expired leases. An expired lease is not revivable.</summary>
     private void Sweep(DateTimeOffset now)

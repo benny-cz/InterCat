@@ -20,8 +20,9 @@ internal static class ConsoleUi
 
     public static void Line(string text = "") => Console.Out.WriteLine(text);
 
+    // A label as long as the column still keeps two spaces before its value, rather than running into it.
     public static void Field(string label, string value, int width = 22) =>
-        Console.Out.WriteLine($"  {label.PadRight(width)}{value}");
+        Console.Out.WriteLine($"  {label.PadRight(Math.Max(width, label.Length + 2))}{value}");
 
     public static void Bullet(string text) => Console.Out.WriteLine($"  - {text}");
 

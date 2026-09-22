@@ -397,7 +397,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         {
             boundary = retained;
             commit = store.CommitReplacingDerived(staged, sourceGeneration!.Value, boundary, committedUtc,
-                cancellationToken);
+                expectedGeneration: generation, cancellationToken: cancellationToken);
         }
         else
         {
@@ -410,7 +410,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
             // The journal is published first, so the rename order matches the commit sequence.
             List<StoreStagingFile> all = [journalFile, .. staged];
-            commit = store.Commit(all, boundary, committedUtc, cancellationToken);
+            commit = store.Commit(all, boundary, committedUtc,
+                expectedGeneration: generation, cancellationToken: cancellationToken);
         }
 
         completed = true;
@@ -434,7 +435,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         segment.LengthBytes,
         segment.DictionaryNames);
 
-    /// <summary>Abandoning an unpublished generation leaves only staging files, which the next open removes.</summary>
+    /// <summary>Abandoning an unpublished generation leaves staging files for coordinated review.</summary>
     public void Dispose()
     {
         if (disposed)

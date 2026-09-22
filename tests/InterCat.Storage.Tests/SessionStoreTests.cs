@@ -159,10 +159,28 @@ public sealed class SessionStoreTests
         session.WriteRaw(manifestName, "orphan manifest");
         using StoreStagingFile another = Stage(session.Store, "segment-0002.icats", "new");
         _ = another.Complete();
-        InvalidOperationException manifestRefusal = Assert.Throws<InvalidOperationException>(() =>
-            session.Store.Commit([another], CommittedBoundary.None, Committed));
-        Assert.Contains(manifestName, manifestRefusal.Message, StringComparison.Ordinal);
+        StoreCommitResult recovered = session.Store.Commit([another], CommittedBoundary.None, Committed);
+        Assert.Equal(2, recovered.Manifest.Generation);
         Assert.Equal("orphan manifest", File.ReadAllText(Path.Combine(session.Path, manifestName)));
+    }
+
+    [Fact(DisplayName = "I15: a staged generation is refused if its number becomes occupied before commit")]
+    public void StagedGenerationCannotSilentlyChangeNumber()
+    {
+        using var session = new TemporarySession();
+        long planned = session.Store.NextGeneration;
+        using StoreStagingFile staged = Stage(session.Store, "seg-0000000001-0000.icats", "first");
+        _ = staged.Complete();
+        session.WriteRaw(SessionManifestV1.FileNameFor(planned), "interrupted writer");
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            session.Store.Commit([staged], CommittedBoundary.None, Committed,
+                expectedGeneration: planned));
+
+        Assert.Contains("staged, but generation 2", refusal.Message, StringComparison.Ordinal);
+        Assert.Null(session.Store.Current);
+        Assert.Equal(2, session.Store.NextGeneration);
+        Assert.False(File.Exists(Path.Combine(session.Path, staged.PublishedName)));
     }
 
     [Fact(DisplayName = "I15: an incomplete staged file is never published")]
@@ -251,6 +269,101 @@ public sealed class SessionStoreTests
         Assert.Equal(1, reopened.Current!.Generation);
         Assert.True(reopened.Recovery.RolledBackToLastKnownGood);
         Assert.Contains("unreadable", reopened.Recovery.RollbackReason!, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: confirmed pointer repair preserves the damaged bytes and skips an orphan generation")]
+    public void ConfirmedPointerRepairPreservesEvidenceAndCanPublishAgain()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        const string damaged = "{ \"formatVersion\": 1, \"generation\":";
+        session.WriteRaw(SessionPointerV1.FileName, damaged);
+        SessionStore recovered = session.Reopen();
+        Assert.True(recovered.Recovery.RolledBackToLastKnownGood);
+
+        PointerRepairOutcome outcome = recovered.RepairCurrentPointer();
+
+        Assert.True(outcome.Repaired);
+        Assert.Equal(1, outcome.VerifiedGeneration);
+        Assert.NotNull(outcome.RollbackReason);
+        Assert.Equal(damaged, File.ReadAllText(Path.Combine(session.Path, outcome.DamagedPointerBackup!)));
+        SessionStore healthy = session.Reopen();
+        Assert.False(healthy.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(1, healthy.Current!.Generation);
+        Assert.Equal(3, healthy.NextGeneration);
+        StoreCommitResult next = Publish(healthy, ("segment-0003.icats", "third"));
+        Assert.Equal(3, next.Manifest.Generation);
+        Assert.Equal(1, next.Manifest.PreviousGeneration);
+        Assert.True(File.Exists(Path.Combine(session.Path, SessionManifestV1.FileNameFor(2))));
+        Assert.Equal(3, session.Reopen().Current!.Generation);
+    }
+
+    [Fact(DisplayName = "I15: pointer repair is a no-op when the current generation verifies")]
+    public void PointerRepairDoesNotRewriteAHealthySession()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        string pointer = File.ReadAllText(Path.Combine(session.Path, SessionPointerV1.FileName));
+
+        PointerRepairOutcome outcome = session.Store.RepairCurrentPointer();
+
+        Assert.False(outcome.Repaired);
+        Assert.Null(outcome.DamagedPointerBackup);
+        Assert.Equal(pointer, File.ReadAllText(Path.Combine(session.Path, SessionPointerV1.FileName)));
+    }
+
+    [Fact(DisplayName = "I15: pointer repair refuses an unbounded damaged pointer without replacing it")]
+    public void PointerRepairRefusesOversizedDamagedPointer()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        string path = Path.Combine(session.Path, SessionPointerV1.FileName);
+        File.WriteAllBytes(path, new byte[1024 * 1024 + 1]);
+        SessionStore recovered = session.Reopen();
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() =>
+            recovered.RepairCurrentPointer());
+
+        Assert.Contains("exceeds 1 MiB", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1024 * 1024 + 1, new FileInfo(path).Length);
+        Assert.True(session.Reopen().Recovery.RolledBackToLastKnownGood);
+    }
+
+    [Fact(DisplayName = "I15: a missing current pointer is repaired without inventing damaged bytes")]
+    public void MissingCurrentPointerCanBeRepaired()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        File.Delete(Path.Combine(session.Path, SessionPointerV1.FileName));
+        SessionStore recovered = session.Reopen();
+
+        PointerRepairOutcome outcome = recovered.RepairCurrentPointer();
+
+        Assert.True(outcome.Repaired);
+        Assert.Null(outcome.DamagedPointerBackup);
+        Assert.Equal(1, outcome.VerifiedGeneration);
+        Assert.False(session.Reopen().Recovery.RolledBackToLastKnownGood);
+    }
+
+    [Fact(DisplayName = "I15: a stale recovery preview cannot repoint a newly published generation")]
+    public void StaleRecoveryPreviewCannotRepair()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        session.WriteRaw(SessionPointerV1.FileName, "broken");
+        SessionStore stale = session.Reopen();
+        SessionStore repaired = session.Reopen();
+        _ = repaired.RepairCurrentPointer();
+        _ = Publish(repaired, ("segment-0003.icats", "third"));
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            stale.RepairCurrentPointer());
+        Assert.Contains("changed after this store was opened", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(3, session.Reopen().Current!.Generation);
     }
 
     [Fact(DisplayName = "I15: a dependency that changed under a generation fails it rather than being read")]

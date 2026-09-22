@@ -24,8 +24,11 @@ Names are ASCII letters, digits, `.`, `-` and `_`, at most 64 characters, no lea
 | Name | What it is |
 |---|---|
 | `manifest-<generation:D10>.json` | One immutable generation. Fixed width, so the names sort as the numbers do. |
-| `current-generation.json` | The pointer a reader acquires. The one mutable file in a session. |
+| `current-generation.json` | The mutable pointer a reader acquires. |
 | `previous-generation.json` | The retained last-known-good pointer. |
+| `session-publication.lock` | Persistent root-wide writer serialization guard. |
+| `session-evidence-lease.lock` | Persistent shared-reader/exclusive-deletion guard. |
+| `recovery-pointer-<32 hex>.json` | Preserved bytes of a damaged current pointer after confirmed repair. |
 | `stg-<32 hex>.tmp` | A file being staged. Unreferenced by construction. |
 | anything else | A published dependency, named by the generation that published it. |
 
@@ -111,6 +114,24 @@ publication lock and after a fresh-pointer check. Staging cleanup requires expli
 establishes no writer still owns those files; no automatic staging cleanup is implemented.
 
 A session is never opened as another session: a manifest naming a different session ID is refused.
+
+`icat recover <directory>` previews a rollback without writing: the verified manifest digest, the files no
+verified generation names, and a copyable confirmation command (`confirmCommand` in `--json`). Only
+`--confirm --expect-manifest <digest>` repairs a damaged or missing current pointer, under the exclusive
+publication lock, after re-verifying that last-known-good still names the generation the user reviewed. A
+confirmation whose digest no longer names that generation changes nothing and exits 2. If the damaged pointer exists, at most 1 MiB of its exact
+bytes is copied and flushed to a unique `recovery-pointer-` file before current is replaced. A larger
+pointer is refused until preserved manually; no source bytes are overwritten in that case. The repaired
+pointer is re-read and its complete generation verified before success is reported. No manifest, dependency
+or staging file is removed. A healthy current pointer makes repair a no-op.
+
+An interrupted publication may already have used the next generation's immutable names. After rollback,
+the next writer skips every generation number already present in a non-staging owned file name, rather than
+overwriting an orphan or getting permanently stuck on that number. The new manifest names the actual
+earlier verified generation as its predecessor; a gap is allowed. The abandoned generation remains
+inspectable as an orphan until a separate explicit cleanup. If a file appears with the chosen generation
+number after staging began, publication refuses the stale staged generation rather than silently giving
+its already-named files a different manifest number.
 
 ## 7. What a derived generation publishes
 
