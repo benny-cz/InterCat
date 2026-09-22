@@ -41,9 +41,42 @@ public sealed record MetricRequest
     /// <summary>`EN-TimeScope`: an interval scopes the request to it; no interval is the retained capture.</summary>
     public TimeScope TimeScope => Interval is null ? TimeScope.RetainedCapture : TimeScope.AnalysisInterval;
 
+    /// <summary>`EN-Grouping`: how the total is broken down. Null answers one total.</summary>
+    public LaneGrouping? Grouping { get; init; }
+
+    /// <summary>
+    /// `EN-EvidencePolicy`: which binding strengths a grouped total admits. The default admits direct and correlated
+    /// bindings, so a record of a reused PID is not attributed to one of its instances unless candidates are asked for.
+    /// </summary>
+    public EvidencePolicy EvidencePolicy { get; init; } = EvidencePolicy.IncludeCorrelated;
+
+    /// <summary>`requestedRows`: how many ranked groups to return. The rest are one exact remainder (§5.2).</summary>
+    public int? RequestedRows { get; init; }
+
     /// <summary>The reason this request means nothing, or null when it means something.</summary>
-    public MetricRejection? Check() =>
-        MetricCompatibility.Check(Basis, Metric, ByteDomain, AccountingSide, Layer, RateNumerator);
+    public MetricRejection? Check()
+    {
+        if (Grouping is { } grouping && !Enum.IsDefined(grouping))
+        {
+            return new("A request names a grouping §23 defines.", []);
+        }
+
+        if (!Enum.IsDefined(EvidencePolicy))
+        {
+            return new("A request names an evidence policy §23 defines.", []);
+        }
+
+        if (RequestedRows is { } rows && (rows < 1 || Grouping is null))
+        {
+            return new(
+                Grouping is null
+                    ? "Requested rows limit a grouped result; an ungrouped result is one row."
+                    : "A grouped result returns at least one ranked row.",
+                []);
+        }
+
+        return MetricCompatibility.Check(Basis, Metric, ByteDomain, AccountingSide, Layer, RateNumerator);
+    }
 
     /// <summary>
     /// This request with every default it leaves implicit written out, so two spellings of one request become
@@ -101,6 +134,70 @@ public enum MetricUnavailableReason
     /// byte sum of nothing is not an observed zero (R3, R21, P1).
     /// </summary>
     NothingMeasured = 8,
+
+    /// <summary>The grouping asked for needs a derivation this session does not have, such as image names.</summary>
+    GroupingNotDerived = 9,
+}
+
+/// <summary>What one group of a grouped result is a group of.</summary>
+public enum MetricGroupKind
+{
+    /// <summary>One process instance.</summary>
+    ProcessInstance = 1,
+
+    /// <summary>One mechanism.</summary>
+    Mechanism = 2,
+
+    /// <summary>Contributions that could not be attributed to a group, for one stated reason. Never a peer (§5.2).</summary>
+    Unattributed = 3,
+
+    /// <summary>Every ranked group past the requested rows, summed exactly. A grouping, not a peer (§5.2).</summary>
+    Remainder = 4,
+}
+
+/// <summary>
+/// One group of a grouped result. A group's value is computed exactly as the ungrouped total is, over the records
+/// that belong to it, so the groups of a result partition its total.
+/// </summary>
+public sealed record MetricGroup
+{
+    public required MetricGroupKind Kind { get; init; }
+
+    /// <summary>The instance, for a process group.</summary>
+    public ProcessInstance? Process { get; init; }
+
+    /// <summary>The mechanism, for a mechanism group.</summary>
+    public Mechanism? Mechanism { get; init; }
+
+    /// <summary>Why the group's contributions are unattributed, for an unattributed group.</summary>
+    public ProcessBindingReason? Reason { get; init; }
+
+    /// <summary>The group's rank among ranked groups, from 1, or null for an unmeasured, unattributed or remainder group.</summary>
+    public int? Rank { get; init; }
+
+    /// <summary>A count, or a byte sum; null when nothing the group holds was measured.</summary>
+    public long? Value { get; init; }
+
+    public long KnownContributions { get; init; }
+
+    public long UnknownContributions { get; init; }
+
+    /// <summary>The group's contributions by the row side each was measured at, taken or not.</summary>
+    public IReadOnlyList<SideMeasurement> Sides { get; init; } = [];
+
+    /// <summary>The group's counted records by how strongly each is bound to it, for a process group.</summary>
+    public IReadOnlyDictionary<RelationStrength, long> Bindings { get; init; } = new Dictionary<RelationStrength, long>();
+
+    /// <summary>A rate's per-group value, when the request is a rate.</summary>
+    public MetricRate? Rate { get; init; }
+
+    /// <summary>How many groups a remainder holds.</summary>
+    public int GroupsMerged { get; init; }
+
+    public double? MeasurementAvailability =>
+        KnownContributions + UnknownContributions == 0
+            ? null
+            : (double)KnownContributions / (KnownContributions + UnknownContributions);
 }
 
 /// <summary>
@@ -235,6 +332,25 @@ public sealed record MetricResult
     /// <summary>The first records the answer counted, when evidence was asked for.</summary>
     public IReadOnlyList<MetricEvidence> Evidence { get; init; } = [];
 
+    /// <summary>The ranked groups of a grouped result, then the unmeasured ones; empty when ungrouped.</summary>
+    public IReadOnlyList<MetricGroup> Groups { get; init; } = [];
+
+    /// <summary>Every ranked group past the requested rows, summed exactly, or null when none was cut.</summary>
+    public MetricGroup? Remainder { get; init; }
+
+    /// <summary>Contributions no group could take, one group per reason.</summary>
+    public IReadOnlyList<MetricGroup> Unattributed { get; init; } = [];
+
+    /// <summary>
+    /// Whether the groups, the remainder and the unattributed groups together hold every contribution the ungrouped
+    /// total holds, each exactly once. When they do, their values add up to <see cref="Value"/>; when they do not, a
+    /// sum of groups is not a total and is never shown as one (§3.2, §5.1).
+    /// </summary>
+    public bool GroupsPartitionTotal { get; init; }
+
+    /// <summary>The binding rule a process grouping was derived under, so a result names its entity revision (I16).</summary>
+    public string? BindingRule { get; init; }
+
     /// <summary>Notes a caller must show beside the number. They are part of the answer, not decoration.</summary>
     public IReadOnlyList<string> Caveats { get; init; } = [];
 
@@ -271,7 +387,7 @@ public sealed record MetricResult
 /// can change what it is reading mid-answer (I16, I18). Scheduling, supersession, cancellation and caching are
 /// IC-017's; this fixes what the numbers mean.
 /// </remarks>
-public static class SessionMetrics
+public static partial class SessionMetrics
 {
     /// <summary>
     /// Answers a request against the store's current generation, holding it under a lease for the duration.
@@ -337,6 +453,20 @@ public static class SessionMetrics
 
         SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
+        if (materialized.Grouping is { } grouping)
+        {
+            if (bounds.EvidenceLimit > 0)
+            {
+                throw new ArgumentException(
+                    "Evidence lists the records of one total. Ask for it without a grouping, projected onto the group "
+                    + "whose records you want to see.",
+                    nameof(options));
+            }
+
+            return WhatGroupingNeeds(materialized, manifest.Generation, clock)
+                ?? Grouped(context, grouping, cancellationToken);
+        }
+
         return materialized.Metric switch
         {
             Metric.Observations => Count(context, materialized, cancellationToken),

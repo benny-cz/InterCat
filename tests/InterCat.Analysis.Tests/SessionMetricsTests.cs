@@ -1,6 +1,7 @@
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Analysis.Tests;
 
@@ -12,12 +13,6 @@ namespace InterCat.Analysis.Tests;
 /// </summary>
 public sealed class SessionMetricsTests
 {
-    private static readonly Guid Session = Guid.Parse("d6e7f8a9-b0c1-4d2e-8f3a-4b5c6d7e8f90");
-    private static readonly CaptureId Capture = new(Guid.Parse("e7f8a9b0-c1d2-4e3f-8a4b-5c6d7e8f9a0b"));
-    private static readonly ClockId Clock = new(Guid.Parse("33334444-5555-4666-8777-888899990000"));
-    private static readonly Guid Provider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
-    private static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
-
     [Fact(DisplayName = "R2: a metric outside its basis is rejected with the compatible alternatives named")]
     public void AMetricOutsideItsBasisIsRejected()
     {
@@ -618,144 +613,4 @@ public sealed class SessionMetricsTests
                 Layer = layer,
                 Mechanism = mechanism,
             });
-
-    private static ObservationRowV1 Transfer(
-        long ticks,
-        ObservationKind kind,
-        AccountingSide side,
-        long? bytes,
-        int owner,
-        ulong? ordinal = null) => new()
-    {
-        RawStreamId = 1,
-        RawSourceEpoch = 1,
-        RawRecordOrdinal = ordinal ?? (ulong)ticks,
-        FactKey = FactKey.Create("network-transfer"),
-        ProviderId = Provider,
-        EventId = 10,
-        DescriptorVersion = 0,
-        SchemaFingerprint = "sha256:" + new string('a', 64),
-        Opcode = 10,
-        NativeTicks = ticks,
-        HeaderProcessId = owner,
-        HeaderThreadId = owner + 1,
-        ProcessorNumber = 0,
-        Mechanism = Mechanism.Tcp,
-        Layer = ObservationLayer.Transport,
-        Kind = kind,
-        Direction = kind == ObservationKind.Receive ? Direction.Inbound : Direction.Outbound,
-        OwnerProcessId = owner,
-        ByteValue = bytes,
-        ByteDomain = ByteDomain.TransportObserved,
-        AccountingSide = side,
-        MeasurementUnit = MeasurementUnit.Bytes,
-        ByteAvailability = bytes is null ? FieldAvailability.NotExposed : FieldAvailability.Present,
-        StatusAvailability = FieldAvailability.NotApplicable,
-        AttributionQuality = QualityLevel.Proven,
-        CorrelationQuality = QualityLevel.UnknownQuality,
-        MeasurementQuality = bytes is null ? QualityLevel.UnknownQuality : QualityLevel.Proven,
-        TimingQuality = QualityLevel.Proven,
-    };
-
-    private static SourceClockDescriptor TestClock { get; } = new(
-        Clock,
-        HostId.Derive("session-metrics-tests"),
-        SourceClockKind.Monotonic,
-        TimestampEncoding.Qpc,
-        10_000_000,
-        0,
-        TimestampRounding.NearestEven,
-        SourceClockMath.SessionTicksPerSecond * 60);
-
-    private static void Publish(
-        SessionStore store,
-        IReadOnlyList<ObservationRowV1> rows,
-        int rowsPerSegment = 250_000,
-        NormalizerContractVersion? derivation = null)
-    {
-        using DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(
-            store,
-            new SegmentIdentityV1
-            {
-                CaptureId = Capture,
-                ClockId = Clock,
-                TimestampEncoding = TimestampEncoding.Qpc,
-                Derivation = derivation ?? NormalizerContractVersion.V1,
-            },
-            TestClock,
-            Committed,
-            new() { RowsPerSegment = rowsPerSegment });
-        var schemas = new JournalV1SchemaTable();
-        uint schema = schemas.Intern(Provider, 10, 0, "sha256:" + new string('a', 64));
-        uint policy = schemas.InternPolicy("metadata-only-admitted-projection-v1");
-        builder.Journal.WriteSchemas(schemas);
-        foreach (ObservationRowV1 row in rows)
-        {
-            builder.AddRow(row);
-            builder.Journal.Append(Envelope(row, schema, policy));
-        }
-
-        _ = builder.Complete(Committed);
-    }
-
-    private static RecordEnvelopeV1 Envelope(ObservationRowV1 row, uint schema, uint policy) => new()
-    {
-        CaptureId = Capture,
-        StreamId = row.RawStreamId,
-        SourceEpoch = row.RawSourceEpoch,
-        RecordOrdinal = row.RawRecordOrdinal,
-        Header = new(
-            row.ProviderId,
-            row.EventId,
-            row.DescriptorVersion,
-            0,
-            0,
-            row.Opcode,
-            0,
-            0,
-            0,
-            0,
-            row.HeaderProcessId,
-            row.HeaderThreadId,
-            Guid.Empty,
-            Guid.Empty),
-        BufferContext = new(row.ProcessorNumber, 0),
-        ClockId = Clock,
-        TimestampEncoding = TimestampEncoding.Qpc,
-        NativeTicks = row.NativeTicks,
-        PointerSize = 8,
-        SchemaReference = schema,
-        AdmissionPolicyReference = policy,
-        ExtendedItems = [],
-        OmittedExtendedItemCount = 0,
-        Body = BodyV1.None,
-    };
-
-    private sealed class TemporarySession : IDisposable
-    {
-        public TemporarySession()
-        {
-            Path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(),
-                "InterCat.Analysis.Tests.Metrics",
-                Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(Path);
-            Store = SessionStore.Open(LocalOwnedDirectory.Open(Path), Session, "metric-tests");
-        }
-
-        public string Path { get; }
-
-        public SessionStore Store { get; }
-
-        public void Dispose()
-        {
-            try
-            {
-                Directory.Delete(Path, recursive: true);
-            }
-            catch (IOException)
-            {
-            }
-        }
-    }
 }

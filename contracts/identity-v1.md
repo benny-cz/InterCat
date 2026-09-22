@@ -53,9 +53,13 @@ derived from SHA-256 of the versioned canonical key. Equal PID/start values on a
 equal PIDs in another lifecycle epoch, therefore remain distinct.
 
 Resolution prefers an exact provider start key even when the record was delivered after a newer epoch
-started. Without such evidence, a PID with multiple known epochs stays unresolved; time proximity does
-not choose an epoch. A single witnessed lifecycle may resolve a record whose time is inside its
-half-open interval.
+started. Without such evidence, time proximity does not choose an epoch. A single witnessed lifecycle may
+resolve a record whose time is inside its half-open interval, and so may the **earliest** of a PID's
+several lifecycles: no witnessed epoch precedes it, so a record inside it carries exactly the risk a
+record of a PID with one lifecycle carries. A record inside a **later** lifecycle of a reused PID stays
+unresolved, because it may be a late record of an earlier epoch and PID and time cannot rule that out
+(ADR-013; `EarliestLifecycle` in `ProcessEpochResolver`). `contracts/entities-v1.md` exposes such a
+record as a candidate binding that an evidence policy may admit, labelled, and that the default does not.
 
 When stronger evidence reconciles a provisional identity, append a `ProcessAliasRevision` containing
 the old ID, canonical ID, non-zero revision, reason and evidence observation. Do not mutate observations,

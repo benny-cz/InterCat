@@ -24,8 +24,78 @@ internal sealed record MetricDocument
     public required MetricExclusionsDocument Excluded { get; init; }
     public required MetricReadDocument Read { get; init; }
     public required MetricClockDocument? Clock { get; init; }
+    public required MetricGroupingDocument? Grouping { get; init; }
     public required IReadOnlyList<MetricEvidenceDocument> Evidence { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+/// <summary>A grouped answer: the groups, the exact remainder and what could not be attributed, which together partition the total.</summary>
+internal sealed record MetricGroupingDocument
+{
+    public required string Grouping { get; init; }
+    public required string EvidencePolicy { get; init; }
+    public required int? RequestedRows { get; init; }
+    public required string? BindingRule { get; init; }
+    public required bool PartitionsTotal { get; init; }
+    public required IReadOnlyList<MetricGroupDocument> Groups { get; init; }
+    public required MetricGroupDocument? Remainder { get; init; }
+    public required IReadOnlyList<MetricGroupDocument> Unattributed { get; init; }
+}
+
+internal sealed record MetricGroupDocument
+{
+    public required string Kind { get; init; }
+    public required int? Rank { get; init; }
+    public required string Label { get; init; }
+    public required long? Value { get; init; }
+    public required long Known { get; init; }
+    public required long Unknown { get; init; }
+    public required double? MeasurementAvailability { get; init; }
+    public required string? PerSecond { get; init; }
+    public required ProcessInstanceDocument? Process { get; init; }
+    public required string? Mechanism { get; init; }
+    public required string? Reason { get; init; }
+    public required int? GroupsMerged { get; init; }
+    public required IReadOnlyDictionary<string, long> Bindings { get; init; }
+}
+
+/// <summary>One process instance, with the evidence its identity and its lifetime rest on.</summary>
+internal sealed record ProcessInstanceDocument
+{
+    public required string InstanceId { get; init; }
+    public required int ProcessId { get; init; }
+    public required uint LifecycleEpoch { get; init; }
+    public required string Witness { get; init; }
+    public required string IdentityEvidence { get; init; }
+    public required IReadOnlyList<string> Gaps { get; init; }
+    public required long? CreatedNativeTicks { get; init; }
+    public required string? CreatedSeconds { get; init; }
+    public required long? ExitedNativeTicks { get; init; }
+    public required string? ExitedSeconds { get; init; }
+    public required long? ExitCode { get; init; }
+    public required long? LifetimeStartNativeTicks { get; init; }
+    public required long? LifetimeEndNativeTicks { get; init; }
+    public required ObservationId WitnessRecord { get; init; }
+
+    public static ProcessInstanceDocument From(ProcessInstance instance, SourceClockDescriptor? clock) => new()
+    {
+        InstanceId = instance.Id.ToString(),
+        ProcessId = instance.ProcessId,
+        LifecycleEpoch = instance.LifecycleEpoch,
+        Witness = instance.Witness.ToString(),
+        IdentityEvidence = instance.Key.EvidenceKind.ToString(),
+        Gaps = [.. Enum.GetValues<ProcessEvidenceGaps>()
+            .Where(gap => gap != ProcessEvidenceGaps.None && instance.Gaps.HasFlag(gap))
+            .Select(gap => gap.ToString())],
+        CreatedNativeTicks = instance.CreatedNativeTicks,
+        CreatedSeconds = instance.CreatedNativeTicks is { } created ? SessionText.Seconds(clock, created) : null,
+        ExitedNativeTicks = instance.ExitedNativeTicks,
+        ExitedSeconds = instance.ExitedNativeTicks is { } exited ? SessionText.Seconds(clock, exited) : null,
+        ExitCode = instance.ExitCode,
+        LifetimeStartNativeTicks = instance.LifetimeStartNativeTicks,
+        LifetimeEndNativeTicks = instance.LifetimeEndNativeTicks,
+        WitnessRecord = instance.WitnessRecord,
+    };
 }
 
 /// <summary>The request as answered, with every default written out, in §23's specification member order.</summary>
@@ -177,6 +247,9 @@ internal static class MetricCommand
         string? mechanismOption = command.TakeOption("--mechanism");
         string? intervalOption = command.TakeOption("--interval");
         string? evidenceOption = command.TakeOption("--evidence");
+        string? groupOption = command.TakeOption("--group-by");
+        string? topOption = command.TakeOption("--top");
+        string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
@@ -209,7 +282,10 @@ internal static class MetricCommand
             || !TryParseOptional(numeratorOption, "--rate-numerator", out Metric? numerator, out problem)
             || !TryParseOptional(layerOption, "--layer", out ObservationLayer? layer, out problem)
             || !TryParseOptional(mechanismOption, "--mechanism", out Mechanism? mechanism, out problem)
-            || !TryParseEvidence(evidenceOption, out int evidence, out problem))
+            || !TryParseEvidence(evidenceOption, out int evidence, out problem)
+            || !TryParseGrouping(groupOption, out LaneGrouping? grouping, out problem)
+            || !TryParse(policyOption, EvidencePolicy.IncludeCorrelated, "--evidence-policy", out EvidencePolicy policy, out problem)
+            || !TryParseTop(topOption, out int? top, out problem))
         {
             ConsoleUi.Failure(problem!);
             return InterCatExitCode.InvalidInvocation;
@@ -231,6 +307,9 @@ internal static class MetricCommand
             RateNumerator = numerator,
             Layer = layer,
             Mechanism = mechanism,
+            Grouping = grouping,
+            EvidencePolicy = policy,
+            RequestedRows = top,
         };
 
         // §19.1 resolves the request against §5.3's matrix before planning, and a rejected metric names the
@@ -418,6 +497,19 @@ internal static class MetricCommand
                     CaptureEpochNativeTicks = described.CaptureEpochNativeTicks,
                 }
                 : null,
+            Grouping = request.Grouping is { } grouping
+                ? new()
+                {
+                    Grouping = grouping.ToString(),
+                    EvidencePolicy = request.EvidencePolicy.ToString(),
+                    RequestedRows = request.RequestedRows,
+                    BindingRule = result.BindingRule,
+                    PartitionsTotal = result.GroupsPartitionTotal,
+                    Groups = [.. result.Groups.Select(group => DescribeGroup(group, result))],
+                    Remainder = result.Remainder is { } remainder ? DescribeGroup(remainder, result) : null,
+                    Unattributed = [.. result.Unattributed.Select(group => DescribeGroup(group, result))],
+                }
+                : null,
             Evidence =
             [
                 .. result.Evidence.Select(item => new MetricEvidenceDocument
@@ -441,11 +533,139 @@ internal static class MetricCommand
         };
     }
 
+    private static MetricGroupDocument DescribeGroup(MetricGroup group, MetricResult result) => new()
+    {
+        Kind = group.Kind.ToString(),
+        Rank = group.Rank,
+        Label = GroupLabel(group, result),
+        Value = group.Value,
+        Known = group.KnownContributions,
+        Unknown = group.UnknownContributions,
+        MeasurementAvailability = group.MeasurementAvailability,
+        PerSecond = group.Rate?.PerSecond?.ToString("0.000", CultureInfo.InvariantCulture),
+        Process = group.Process is { } process ? ProcessInstanceDocument.From(process, result.Clock) : null,
+        Mechanism = group.Mechanism?.ToString(),
+        Reason = group.Reason?.ToString(),
+        GroupsMerged = group.Kind == MetricGroupKind.Remainder ? group.GroupsMerged : null,
+        Bindings = group.Bindings.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+    };
+
+    private static string GroupLabel(MetricGroup group, MetricResult result) => group.Kind switch
+    {
+        MetricGroupKind.ProcessInstance => SessionText.Process(
+            group.Process!,
+            result.Clock,
+            pidReused: group.Process!.LifecycleEpoch > 1
+                || result.Groups.Any(other => other.Process is { } peer && peer.ProcessId == group.Process.ProcessId && peer.Id != group.Process.Id)),
+        MetricGroupKind.Mechanism => group.Mechanism!.Value.ToString(),
+        MetricGroupKind.Unattributed => SessionText.Reason(group.Reason!.Value),
+        MetricGroupKind.Remainder => string.Create(
+            CultureInfo.CurrentCulture,
+            $"{group.GroupsMerged:N0} more {(result.Request.Grouping == LaneGrouping.Mechanism ? "mechanisms" : "instances")}"),
+        _ => group.Kind.ToString(),
+    };
+
+    private static void RenderGroups(MetricDocument document, MetricResult result)
+    {
+        if (document.Grouping is not { } grouping)
+        {
+            return;
+        }
+
+        bool byProcess = result.Request.Grouping == LaneGrouping.InstanceOnly;
+        ConsoleUi.Line();
+        ConsoleUi.Line(byProcess
+            ? $"  By process instance ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
+            : "  By mechanism:");
+        var rows = new List<string[]>();
+        foreach (MetricGroupDocument group in grouping.Groups)
+        {
+            rows.Add(GroupRow(group, result, byProcess));
+        }
+
+        if (grouping.Remainder is { } remainder)
+        {
+            rows.Add(GroupRow(remainder, result, byProcess));
+        }
+
+        // Measurement availability is a property of byte slots; a count has none, so the column is left out rather
+        // than shown as a meaningless 100%.
+        bool measures = result.TakenSides.Count > 0;
+        IReadOnlyList<string> headers = (byProcess, measures) switch
+        {
+            (true, true) => ["Rank", "Process instance", "Value", "Measured on", "Bound as"],
+            (true, false) => ["Rank", "Process instance", "Value", "Bound as"],
+            (false, true) => ["Rank", "Mechanism", "Value", "Measured on"],
+            (false, false) => ["Rank", "Mechanism", "Value"],
+        };
+        ConsoleUi.Table(headers, rows);
+        if (grouping.Unattributed.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Line("  Not attributed to an instance, by reason (never a peer, never ranked):");
+            ConsoleUi.Table(
+                ["Reason", "Value", "Contributions"],
+                [
+                    .. grouping.Unattributed.Select(group => new[]
+                    {
+                        group.Label,
+                        GroupValue(group, result),
+                        ConsoleUi.Count(group.Known + group.Unknown),
+                    }),
+                ]);
+        }
+
+        if (grouping.PartitionsTotal)
+        {
+            ConsoleUi.Note(
+                "Every contribution above belongs to exactly one row, so the rows add up to the total and a row is "
+                + "never counted twice.");
+        }
+    }
+
+    private static string[] GroupRow(MetricGroupDocument group, MetricResult result, bool byProcess)
+    {
+        string rank = group.Rank?.ToString(CultureInfo.CurrentCulture) ?? (group.Kind == nameof(MetricGroupKind.Remainder) ? "..." : "-");
+        string measured = group.MeasurementAvailability is { } availability
+            ? availability.ToString("P1", CultureInfo.CurrentCulture)
+            : "nothing measured";
+        string value = GroupValue(group, result);
+        string bound = SessionText.Bindings(group.Bindings.ToDictionary(entry => Enum.Parse<RelationStrength>(entry.Key), entry => entry.Value));
+        bool measures = result.TakenSides.Count > 0;
+        return (byProcess, measures) switch
+        {
+            (true, true) => [rank, group.Label, value, measured, bound],
+            (true, false) => [rank, group.Label, value, bound],
+            (false, true) => [rank, group.Label, value, measured],
+            (false, false) => [rank, group.Label, value],
+        };
+    }
+
+    private static string GroupValue(MetricGroupDocument group, MetricResult result)
+    {
+        if (group.PerSecond is { } perSecond)
+        {
+            string unit = result.Rate?.NumeratorUnit == MeasurementUnit.Bytes ? "B" : "records";
+            return $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {unit}/s";
+        }
+
+        return group.Value is not { } value
+            ? "unmeasured"
+            : result.TakenSides.Count == 0 ? ConsoleUi.Count(value) : ConsoleUi.Bytes(value);
+    }
+
     private static void Render(MetricDocument document, MetricResult result)
     {
         MetricRequest request = result.Request;
         ConsoleUi.Heading(Name(request.Metric)
-            + (request.RateNumerator is { } inner ? $" of {Name(inner).ToLowerInvariant()}" : string.Empty));
+            + (request.RateNumerator is { } inner ? $" of {Name(inner).ToLowerInvariant()}" : string.Empty)
+            + request.Grouping switch
+            {
+                LaneGrouping.InstanceOnly => " by process instance",
+                LaneGrouping.Mechanism => " by mechanism",
+                null => string.Empty,
+                { } other => $" by {Words(other.ToString()).ToLowerInvariant()}",
+            });
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field(
             "Generation",
@@ -513,6 +733,7 @@ internal static class MetricCommand
                 CultureInfo.CurrentCulture,
                 $"{document.Read.Rows:N0} observations in {document.Read.Segments:N0} segment{(document.Read.Segments == 1 ? string.Empty : "s")}"));
 
+        RenderGroups(document, result);
         RenderSides(document, result);
         RenderExclusions(document, result);
         RenderEvidence(document, result);
@@ -636,17 +857,53 @@ internal static class MetricCommand
             : "the whole retained capture";
     }
 
-    /// <summary>A native reading as seconds after the capture epoch, or null when the clock is not described.</summary>
-    private static string? Seconds(SourceClockDescriptor? clock, long nativeTicks)
+    private static string? Seconds(SourceClockDescriptor? clock, long nativeTicks) => SessionText.Seconds(clock, nativeTicks);
+
+    private static bool TryParseGrouping(string? value, out LaneGrouping? grouping, out string? problem)
     {
-        if (clock is not { } described)
+        grouping = null;
+        problem = null;
+        if (value is null)
         {
-            return null;
+            return true;
         }
 
-        Int128 nanoseconds = SourceClockMath.SessionNanoseconds(described, nativeTicks);
-        decimal seconds = (decimal)nanoseconds / SourceClockMath.SessionTicksPerSecond;
-        return seconds.ToString("0.000000", CultureInfo.InvariantCulture);
+        // "process" is what a person means by a process instance; §23 calls the grouping InstanceOnly.
+        string compact = value.Replace("-", string.Empty, StringComparison.Ordinal);
+        if (compact.Equals("process", StringComparison.OrdinalIgnoreCase)
+            || compact.Equals("instance", StringComparison.OrdinalIgnoreCase))
+        {
+            grouping = LaneGrouping.InstanceOnly;
+            return true;
+        }
+
+        if (!TryParse(value, LaneGrouping.InstanceOnly, "--group-by", out LaneGrouping parsed, out problem))
+        {
+            problem = $"--group-by expects process or mechanism, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
+            return false;
+        }
+
+        grouping = parsed;
+        return true;
+    }
+
+    private static bool TryParseTop(string? value, out int? top, out string? problem)
+    {
+        top = null;
+        problem = null;
+        if (value is null)
+        {
+            return true;
+        }
+
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int rows) || rows is < 1 or > 100_000)
+        {
+            problem = $"--top expects a number of ranked rows from 1 to 100,000; '{value}' is not one.";
+            return false;
+        }
+
+        top = rows;
+        return true;
     }
 
     private static void RenderMatrix(bool json)
@@ -901,6 +1158,7 @@ internal static class MetricCommand
         ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
         ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
         ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
+        ConsoleUi.Line("             [--group-by process|mechanism] [--top <n>] [--evidence-policy <name>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");
@@ -909,6 +1167,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      is reported as unavailable with what it needs. --matrix prints the matrix.");
         ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s.");
         ConsoleUi.Line("      --evidence lists the first records the answer counted.");
+        ConsoleUi.Line("      --group-by ranks the total by process instance or mechanism, with an exact");
+        ConsoleUi.Line("      remainder past --top; --evidence-policy include-candidates also attributes the");
+        ConsoleUi.Line("      records of reused PIDs, labelled as candidates.");
         ConsoleUi.Line("      Exit codes: 0 answered, 1 answered from the last-known-good generation,");
         ConsoleUi.Line("      2 invalid request, 3 the session cannot supply it, 4 corrupted session.");
     }

@@ -74,6 +74,12 @@ public enum CapabilityTier { TrafficVisualization = 1, TopologyOnly = 2, Experim
 public enum RelationStrength { Direct = 1, Correlated = 2, Candidate = 3, Unresolved = 4, Conflicting = 5 }
 
 /// <summary>
+/// <c>EN-EvidencePolicy</c> (section 23): which relation strengths a result admits. The default admits direct and
+/// correlated relations; a candidate is shown only when asked for, and definitive causal views admit 1 and 2 only.
+/// </summary>
+public enum EvidencePolicy { DirectOnly = 1, IncludeCorrelated = 2, IncludeCandidates = 3, AllIncludingConflicting = 4 }
+
+/// <summary>
 /// <c>EN-OperationState</c> (section 23). A heuristic timeout yields the last known state, never a
 /// Windows timeout error (section 18.5).
 /// </summary>

@@ -1,0 +1,86 @@
+{
+  "contract": "entities-v1",
+  "note": "Aggregates only. Per-instance process ids and lifetimes of unrelated whole-machine processes stay local with the store (P16).",
+  "sessions": [
+    {
+      "session": "session-20260922T142600Z",
+      "source": "fixtures/FX-IMPORT-001 import-probe.etl, 555 admitted records",
+      "generation": 1,
+      "bindingRule": "process-binding-v1",
+      "evidencePolicy": "IncludeCorrelated",
+      "summary": {
+        "instances": 55,
+        "processIds": 55,
+        "reusedProcessIds": 0,
+        "byWitness": {
+          "ActivityOnly": 14,
+          "Created": 34,
+          "ExitOnly": 7
+        },
+        "recordsAttributed": 555,
+        "recordsUnattributed": 0
+      },
+      "transportBytesSentAcrossInstances": 173258,
+      "transportBytesReceivedAcrossInstances": 254470,
+      "unattributed": [],
+      "busiestTwoInstances": [
+        {
+          "witness": "ActivityOnly",
+          "records": 243,
+          "transportBytesSent": 22083,
+          "transportBytesReceived": 111819,
+          "exitCode": null
+        },
+        {
+          "witness": "ActivityOnly",
+          "records": 128,
+          "transportBytesSent": 43994,
+          "transportBytesReceived": 84698,
+          "exitCode": null
+        }
+      ]
+    },
+    {
+      "session": "capture-comparison-20260921b-series/levels/peak",
+      "source": "IC-009 peak level diagnostic ETL, 76,092 admitted records",
+      "generation": 1,
+      "bindingRule": "process-binding-v1",
+      "evidencePolicy": "IncludeCorrelated",
+      "summary": {
+        "instances": 538,
+        "processIds": 538,
+        "reusedProcessIds": 0,
+        "byWitness": {
+          "Created": 56,
+          "Rundown": 482
+        },
+        "recordsAttributed": 76088,
+        "recordsUnattributed": 4
+      },
+      "transportBytesSentAcrossInstances": 34321039,
+      "transportBytesReceivedAcrossInstances": 34340905,
+      "unattributed": [
+        {
+          "reason": "AfterExit",
+          "records": 4
+        }
+      ],
+      "busiestTwoInstances": [
+        {
+          "witness": "Created",
+          "records": 42511,
+          "transportBytesSent": 131072,
+          "transportBytesReceived": 34168998,
+          "exitCode": 0
+        },
+        {
+          "witness": "Created",
+          "records": 32878,
+          "transportBytesSent": 34168998,
+          "transportBytesReceived": 131072,
+          "exitCode": 0
+        }
+      ]
+    }
+  ]
+}

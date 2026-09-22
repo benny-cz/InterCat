@@ -51,6 +51,34 @@ public sealed class IdentityContractTests
         Assert.Equal(ProcessEpochResolutionKind.AmbiguousReuse, resolution.Kind);
     }
 
+    [Fact(DisplayName = "I12: without a start key, only a record in a reused PID's earliest lifetime resolves")]
+    public void OnlyTheEarliestLifetimeResolvesWithoutAStartKey()
+    {
+        IdentityScenario scenario = LoadScenario();
+        (ProcessInstanceEpoch first, ProcessInstanceEpoch second) = BuildProcessEpochs(scenario);
+
+        // Inside the first lifetime, no witnessed epoch precedes the record, so it can only be the first epoch's.
+        ProcessEpochResolution early = ProcessEpochResolver.Resolve(
+            [first, second],
+            scenario.HostA,
+            scenario.Boot,
+            scenario.ProcessId,
+            scenario.FirstStartNanoseconds + 1,
+            providerStartKey: null);
+        Assert.Equal((ProcessEpochResolutionKind.EarliestLifecycle, first.Id), (early.Kind, early.ProcessInstanceId!.Value));
+
+        // Inside the second it may be a late record of the first, which is exactly the fixture's late record.
+        ProcessEpochResolution late = ProcessEpochResolver.Resolve(
+            [first, second],
+            scenario.HostA,
+            scenario.Boot,
+            scenario.ProcessId,
+            scenario.LateRecordNanoseconds,
+            providerStartKey: null);
+        Assert.Equal(ProcessEpochResolutionKind.AmbiguousReuse, late.Kind);
+        Assert.False(late.IsResolved);
+    }
+
     [Fact(DisplayName = "I12: a late record with an old start key resolves to the earlier epoch")]
     public void LateRecordResolvesThroughStartKey()
     {

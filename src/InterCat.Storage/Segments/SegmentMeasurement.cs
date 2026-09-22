@@ -454,6 +454,203 @@ public static class SegmentMeasurement
         return new(count, (end - first) - count, segment.RowCount - (end - first), evidence);
     }
 
+    /// <summary>
+    /// Measures one byte domain over a segment in one pass, keeping every group and every accounting side apart. The
+    /// caller says which group each row belongs to — a process instance, a mechanism, a reason it is unattributed —
+    /// and this fixes nothing about what a group means; it only guarantees that every row in scope lands in exactly
+    /// the group it was given, so the groups partition what an ungrouped measurement would count.
+    /// </summary>
+    public static GroupedDomainMeasurement MeasureDomainByGroup(
+        SegmentReaderV1 segment,
+        DomainMeasurementSpec spec,
+        ReadOnlySpan<int> groupOfRow,
+        int groupCount)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentNullException.ThrowIfNull(spec);
+        string? problem = spec.Validate();
+        if (problem is not null)
+        {
+            throw new ArgumentException(problem, nameof(spec));
+        }
+
+        if (groupOfRow.Length != segment.RowCount)
+        {
+            throw new ArgumentException(
+                $"A grouping names one group per row: this segment has {segment.RowCount} rows and the grouping "
+                + $"{groupOfRow.Length}.",
+                nameof(groupOfRow));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(groupCount);
+        (int first, int end) = spec.Interval is { } interval ? segment.RowsWithin(interval) : (0, segment.RowCount);
+
+        const int Slots = (int)AccountingSide.CanonicalOwner + 1;
+        var totals = new long[groupCount * Slots];
+        var known = new long[groupCount * Slots];
+        var unknown = new long[groupCount * Slots];
+        Dictionary<int, Dictionary<FieldAvailability, long>>? reasons = null;
+        long otherDomain = 0;
+        long noSlot = 0;
+        long outsideProjection = 0;
+        MeasurementUnit? unit = null;
+
+        SegmentColumnSlice layer = segment.Slice(SegmentColumnId.Layer);
+        SegmentColumnSlice mechanism = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice domains = segment.Slice(SegmentColumnId.ByteDomain);
+        SegmentColumnSlice sides = segment.Slice(SegmentColumnId.AccountingSide);
+        SegmentColumnSlice units = segment.Slice(SegmentColumnId.MeasurementUnit);
+        SegmentColumnSlice values = segment.Slice(SegmentColumnId.ByteValue);
+        SegmentColumnSlice availability = segment.Slice(SegmentColumnId.ByteAvailability);
+
+        for (int row = first; row < end; row++)
+        {
+            if ((spec.Layer is { } onlyLayer && (ObservationLayer)layer.UnsignedAt(row)!.Value != onlyLayer)
+                || (spec.Mechanism is { } onlyMechanism
+                    && (Mechanism)mechanism.UnsignedAt(row)!.Value != onlyMechanism))
+            {
+                outsideProjection++;
+                continue;
+            }
+
+            if (domains.UnsignedAt(row) is not { } domainCode)
+            {
+                noSlot++;
+                continue;
+            }
+
+            if ((ByteDomain)domainCode != spec.Domain)
+            {
+                otherDomain++;
+                continue;
+            }
+
+            int group = groupOfRow[row];
+            if ((uint)group >= (uint)groupCount)
+            {
+                throw new ArgumentException(
+                    $"Row {row} is given group {group}, outside the {groupCount} groups declared.",
+                    nameof(groupOfRow));
+            }
+
+            ulong sideCode = sides.UnsignedAt(row)
+                ?? throw new InvalidDataException(
+                    $"Row {row} declares a byte domain and no accounting side, so nothing says which side of "
+                    + "the exchange its measurement belongs to (§5.3).");
+            if (sideCode is 0 or >= Slots)
+            {
+                throw new InvalidDataException(
+                    $"Row {row} labels its measurement with accounting side {sideCode}, which §23 does not "
+                    + "define. An unknown side is refused rather than summed under a guessed one.");
+            }
+
+            var rowUnit = (MeasurementUnit)(units.UnsignedAt(row)
+                ?? throw new InvalidDataException($"Row {row} declares a byte slot with no unit (R2)."));
+            if (unit is { } established && established != rowUnit)
+            {
+                throw new InvalidDataException(
+                    $"Row {row} measures in {rowUnit} where earlier rows measure in {established}. Two units "
+                    + "are not summed and are not converted into one another here.");
+            }
+
+            unit = rowUnit;
+            int slot = (group * Slots) + (int)sideCode;
+            if (values.SignedAt(row) is { } value)
+            {
+                totals[slot] = checked(totals[slot] + value);
+                known[slot]++;
+            }
+            else
+            {
+                unknown[slot]++;
+                var reason = (FieldAvailability)availability.UnsignedAt(row)!.Value;
+                reasons ??= [];
+                if (!reasons.TryGetValue(slot, out Dictionary<FieldAvailability, long>? counted))
+                {
+                    counted = [];
+                    reasons[slot] = counted;
+                }
+
+                counted[reason] = counted.TryGetValue(reason, out long count) ? count + 1 : 1;
+            }
+        }
+
+        var groups = new IReadOnlyList<SideMeasurement>[groupCount];
+        for (int group = 0; group < groupCount; group++)
+        {
+            List<SideMeasurement>? measured = null;
+            for (int side = 1; side < Slots; side++)
+            {
+                int slot = (group * Slots) + side;
+                if (known[slot] + unknown[slot] == 0)
+                {
+                    continue;
+                }
+
+                (measured ??= []).Add(new()
+                {
+                    Side = (AccountingSide)side,
+                    TotalBytes = totals[slot],
+                    KnownContributions = known[slot],
+                    UnknownContributions = unknown[slot],
+                    UnknownReasons = reasons is not null && reasons.TryGetValue(slot, out Dictionary<FieldAvailability, long>? why)
+                        ? why
+                        : new Dictionary<FieldAvailability, long>(),
+                });
+            }
+
+            groups[group] = (IReadOnlyList<SideMeasurement>?)measured ?? [];
+        }
+
+        return new(spec.Domain, unit, groups, otherDomain, noSlot, outsideProjection, segment.RowCount - (end - first));
+    }
+
+    /// <summary>
+    /// Counts observations per group over a projection and an interval. Every counted row lands in the group it was
+    /// given, so the groups' counts add up to the ungrouped count.
+    /// </summary>
+    public static long[] CountObservationsByGroup(
+        SegmentReaderV1 segment,
+        ObservationLayer? layer,
+        Mechanism? mechanism,
+        TimeRange? interval,
+        ReadOnlySpan<int> groupOfRow,
+        int groupCount)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        if (groupOfRow.Length != segment.RowCount)
+        {
+            throw new ArgumentException(
+                $"A grouping names one group per row: this segment has {segment.RowCount} rows and the grouping "
+                + $"{groupOfRow.Length}.",
+                nameof(groupOfRow));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(groupCount);
+        (int first, int end) = interval is { } scoped ? segment.RowsWithin(scoped) : (0, segment.RowCount);
+        SegmentColumnSlice layers = segment.Slice(SegmentColumnId.Layer);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        var counts = new long[groupCount];
+        for (int row = first; row < end; row++)
+        {
+            if ((layer is null || (ObservationLayer)layers.UnsignedAt(row)!.Value == layer)
+                && (mechanism is null || (Mechanism)mechanisms.UnsignedAt(row)!.Value == mechanism))
+            {
+                int group = groupOfRow[row];
+                if ((uint)group >= (uint)groupCount)
+                {
+                    throw new ArgumentException(
+                        $"Row {row} is given group {group}, outside the {groupCount} groups declared.",
+                        nameof(groupOfRow));
+                }
+
+                counts[group]++;
+            }
+        }
+
+        return counts;
+    }
+
     private static bool Takes(IReadOnlyList<AccountingSide> sides, AccountingSide side)
     {
         for (int index = 0; index < sides.Count; index++)
@@ -467,6 +664,19 @@ public static class SegmentMeasurement
         return false;
     }
 }
+
+/// <summary>
+/// One byte domain over one segment, broken down by group and then by accounting side. The exclusions are the same
+/// as an ungrouped measurement's, because grouping never changes which rows are in scope.
+/// </summary>
+public sealed record GroupedDomainMeasurement(
+    ByteDomain Domain,
+    MeasurementUnit? Unit,
+    IReadOnlyList<IReadOnlyList<SideMeasurement>> Groups,
+    long ExcludedOtherDomain,
+    long ExcludedNoDeclaredSlot,
+    long ExcludedByProjection,
+    long ExcludedOutsideInterval);
 
 /// <summary>An observation count over one segment, with the rows it did not count on each ground.</summary>
 public sealed record ObservationCount(

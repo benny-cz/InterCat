@@ -1,15 +1,17 @@
 # InterCat metrics v1
 
-Status: **frozen for the source-observations basis and implemented**. The logical-operations and
-resource-topology bases, entity grouping and canonical-owner accounting are defined here as contract and
-reported as unavailable by every session until the derivations they need exist (§10).
+Status: **frozen for the source-observations basis, with grouping by process instance and by mechanism, and
+implemented**. The logical-operations and resource-topology bases, grouping by any other entity and canonical-owner
+accounting are defined here as contract and reported as unavailable by every session until the derivations they need
+exist (§12).
 
 This contract is §21.2's `metrics-v1`: contribution keys, byte domains, accounting sides, cohorts, unknown
 values and the exact scenarios of §21.1. It owns what a metric **means** — which records a total takes, which
 it leaves out and how it says so. It owns nothing about segment bytes, which `contracts/segment-v1.md`
-freezes, nothing about how a generation is published or held, which `contracts/store-v1.md` freezes, and
-nothing about the canonical form and hash of a whole analysis specification, which
-`contracts/query-identity-v1.md` will freeze (IC-018). ADR-012 records the decisions below.
+freezes, nothing about how a generation is published or held, which `contracts/store-v1.md` freezes, nothing about
+how a process instance is derived, which `contracts/entities-v1.md` freezes, and nothing about the canonical form and
+hash of a whole analysis specification, which `contracts/query-identity-v1.md` will freeze (IC-018). ADR-012 and
+ADR-013 record the decisions below.
 
 ## 1. A request
 
@@ -22,10 +24,13 @@ A metric request names:
 | `byteDomain` | `EN-ByteDomain` | the metric's fixed domain, when it has one |
 | `accountingSide` | `EN-AccountingSide` | the metric's fixed side, when it has one |
 | `rateNumerator` | `EN-Metric`, a rate only | none |
+| `evidencePolicy` | `EN-EvidencePolicy` | `IncludeCorrelated` |
 | `timeScope` | `EN-TimeScope` | `AnalysisInterval` when an interval is named, otherwise `RetainedCapture` |
+| `grouping` | `EN-Grouping` | none: one total |
 | `interval` | half-open `[start, end)` in the native ticks of the session's clock | none |
 | `layer` | `EN-Layer` projection | the metric's implied layer, when it has one |
 | `mechanism` | `EN-Mechanism` projection | none |
+| `requestedRows` | how many ranked groups to return, a grouped request only | every group |
 
 A request is resolved against §5.3's matrix (§2) **before** it is planned, and a request the matrix accepts is
 **materialized**: every default above is written out, so "unset" and "set to the value the metric fixes" become
@@ -63,6 +68,7 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - A layer projection other than the one a metric implies.
 - A rate with no numerator, a rate as its own numerator, and a numerator that is not additive over time —
   `Duration`, `ActiveChannels`, `ActivePeers` and `MappingCapacity`. A numerator on anything but a rate.
+- Requested rows on a request that is not grouped, or fewer than one.
 
 ## 3. A contribution
 
@@ -112,7 +118,7 @@ out of it, `BytesReceived` flow into it. Over a whole session, with no grouping,
 further — `BytesSent` under `SendSide` and `BytesReceived` under `SendSide` take the same records — and the
 accounting alone decides which end measured each transfer. A *cross-side* total, such as `BytesSent` under
 `ReceiveSide`, is well defined for a whole session and needs a proven transfer association as soon as it is
-attributed to one entity.
+attributed to one entity (§6).
 
 `EndpointActivityBytes` is endpoint activity as §5.1 defines it: a process's sent-plus-received total, which
 summed across processes counts both endpoints. It is a separate metric and is labelled as one; it is never
@@ -129,7 +135,38 @@ conversion that produced every stored session instant, so that the native interv
 readings whose session instant lies inside the requested one. An interval in native ticks names one clock: a
 generation whose segments are on more than one clock refuses an interval-scoped request.
 
-## 6. Rates
+## 6. Grouping
+
+A grouped request breaks its total down. Each group's value is the total's own computation — the same scope, domain
+and accounting — over the records that belong to the group, and **every record in scope belongs to exactly one group
+or to one stated reason it could not be attributed**. The groups, the remainder and the unattributed groups therefore
+partition the total: their values add up to it, and a result says so.
+
+| Grouping | A record belongs to | Available |
+|---|---|---|
+| `InstanceOnly` | the process instance its binding names, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
+| `Mechanism` | its mechanism, a fact about the record | yes |
+| `Executable`, `ServiceContainer`, `UserSession`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
+
+Under `InstanceOnly`, a record belongs to the process that **made** it: a send record to its sender, a receive
+record to its receiver, a record of any other kind to its owner. So a sent total under sender accounting and a
+received total under receiver accounting group directly, and so does endpoint activity. A cross-side total —
+`BytesSent` under `ReceiveSide` or `BytesReceived` under `SendSide` — is `NoTransferAssociations`: the receive record
+names its receiver, and attributing it to the sender needs a proven association.
+
+A record whose binding the evidence policy does not admit, or that binds to no instance, is **unattributed** with its
+reason (`entities-v1` §4, §5). An unattributed group is never a peer and is never ranked.
+
+Groups with a measured value are **ranked** by it, descending, and a tie breaks on the group's stable identity — an
+instance's identity, a mechanism's code — so a refresh never reorders equal rows. A group whose contributions the
+accounting takes are all unknown is **unmeasured**: it has no value and sorts after the ranked groups, never below a
+measured zero. A group with nothing the accounting takes is absent: a process that only received has no row in a
+sent-bytes ranking rather than a row of 0 B (R21). Past `requestedRows`, every remaining group is one **remainder**
+whose value is their exact sum; it is a grouping, not a peer (§5.2).
+
+A grouped rate divides every group by the same whole interval.
+
+## 7. Rates
 
 A rate is its numerator's count or byte sum **over the interval**, divided by **the whole interval** (§19.2):
 never by the span between the first and last observation, and never by a shorter apparently healthy part of
@@ -141,7 +178,7 @@ A rate with no interval is unavailable, not defaulted. A rate whose clock the se
 stated per native tick. Until a session publishes a coverage ledger, every rate is an *observed* rate and says
 so; no corrected rate exists (§21.1).
 
-## 7. Unavailable is not rejected
+## 8. Unavailable is not rejected
 
 A request the matrix refuses **means nothing** and is refused before any session is read. A request the matrix
 accepts that a session cannot derive **means something this session cannot answer**, and the result says which,
@@ -152,11 +189,12 @@ with no value:
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations basis, before any correlator derives operations |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
-| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound |
+| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound; process grouping on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
-| `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association |
+| `NoTransferAssociations` | `CanonicalOwner`, and a cross-side total grouped by process, before a correlator proves an association |
 | `NoInterval` | a rate with no interval |
 | `NothingMeasured` | a byte total that takes no known contribution |
+| `GroupingNotDerived` | a grouping whose derivation this session does not have |
 
 `NothingMeasured` is the rule R21 and P1 require of a byte total. A sum of nothing is not an observed zero:
 when no contribution in scope is known — there is no declared slot the accounting takes, or every one is
@@ -166,22 +204,24 @@ An observed zero is a known contribution, and a total of known zeros is zero.
 An observation count of zero is a count of records, not a finding that nothing happened: coverage is stated
 separately from data (R21), and the result says so.
 
-## 8. Evidence
+## 9. Evidence
 
-A result may carry the first records it counted, in segment order, bounded by the request. Each carries its
-segment and row — an address inside this generation only — and its observation identity, which survives every
-re-read, replay and re-derivation (I1, I2). The bound limits the listing, never the total.
+An ungrouped result may carry the first records it counted, in segment order, bounded by the request. Each carries
+its segment and row — an address inside this generation only — and its observation identity, which survives every
+re-read, replay and re-derivation (I1, I2). The bound limits the listing, never the total. A grouped request refuses
+evidence: the records of one group are the records of an ungrouped request projected onto it.
 
-## 9. Reading a generation
+## 10. Reading a generation
 
-A result answers exactly one generation and names it (I16). It is computed under an evidence lease and from
-the manifest that lease holds, so neither a retention nor a later commit changes what it reads (I18).
+A result answers exactly one generation and names it, together with the normalizer derivations it read and, when
+grouped by process, the binding rule (I16). It is computed under an evidence lease and from the manifest that lease
+holds, so neither a retention nor a later commit changes what it reads (I18).
 
 A generation whose segments hold two derivations of one capture is refused: they describe the same evidence
 twice, and a total over both would count it twice (I2, R20). Segments whose clock differs from the clock the
 generation's journal describes are refused rather than interpreted (I8).
 
-## 10. Scenarios
+## 11. Scenarios
 
 These are §21.1's scenarios as this contract answers them. The ones marked *owed* need a derivation that does
 not exist yet and are answered as unavailable today.
@@ -192,16 +232,17 @@ not exist yet and are answered as unavailable today.
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
 | Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
-| PID 400 exits, is reused, and a late event belongs to the earlier start key | Owed: per-process totals need entity bindings (R22). |
+| PID 400 exits, is reused, and a late event belongs to the earlier instance | Grouped by process, the late event binds to the earlier instance by its reading, and the newer instance's total never includes it: by default the newer instance's own records are unadmitted candidates, and with candidates it holds exactly them. Binding the late event by its start key is owed with the source-field carriage of `entities-v1` §8. |
 
-## 11. Not defined at this version
+## 12. Not defined at this version
 
-- Grouping by entity. `BytesSent` and `BytesReceived` separate from each other only when a total is grouped by
-  a process, peer or channel instance, and those are the entity bindings the next revision of this contract
-  adds.
+- Grouping by executable, service, session, host, endpoint or package, and grouping by channel or peer, each of
+  which needs an entity derivation this version does not have.
+- The process filters of §19.1 — `owner(P)`, `participant(P)`, `sender(P)`, `receiver(P)`, `between(A,B)`,
+  `peer(P,Q)` — which select by instance rather than break a total down by it.
 - The canonical-owner choice itself (§5.3 rules 1–3), which needs proven transfer associations and the
   correlation-quality ADR.
 - Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution
   describes is part of the request when they exist.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.
-- Aggregate cells over a boundary set (§10.3). A result here is one total over one scope.
+- Aggregate cells over a boundary set (§10.3). A result here is one total, or one total per group, over one scope.

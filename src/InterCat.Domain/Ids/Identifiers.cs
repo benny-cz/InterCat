@@ -46,6 +46,18 @@ public readonly record struct HostId(Guid Value)
 public readonly record struct BootId(Guid Value)
 {
     public static BootId New() => new(Guid.NewGuid());
+
+    /// <summary>
+    /// A boot identity derived from evidence rather than minted. A monotonic source clock does not survive a
+    /// restart, so a capture's clock scopes exactly one boot of its host: deriving the boot from the clock gives
+    /// every process key of one capture the same boot, and two captures on different clocks different ones, without
+    /// claiming anything the evidence does not say about which boot of the machine it was.
+    /// </summary>
+    public static BootId DeriveFromClock(ClockId clock) =>
+        new(StableIdentityHash.CreateUuidV8(string.Create(
+            CultureInfo.InvariantCulture,
+            $"intercat.boot.v1|clock|{clock}")));
+
     public override string ToString() => Value.ToString("N");
 }
 

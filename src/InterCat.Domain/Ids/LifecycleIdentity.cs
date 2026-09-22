@@ -188,6 +188,12 @@ public enum ProcessEpochResolutionKind
     ProviderStartKey = 1,
     UniqueLifecycle = 2,
     AmbiguousReuse = 3,
+
+    /// <summary>
+    /// The PID has several epochs and the record lies in the earliest one's lifetime. Only that epoch, or a holder
+    /// the capture never witnessed, can have made it - the same risk a PID with one epoch carries - so it resolves.
+    /// </summary>
+    EarliestLifecycle = 4,
 }
 
 public sealed record ProcessEpochResolution(
@@ -273,11 +279,24 @@ public static class ProcessEpochResolver
                 "A single witnessed lifecycle contains the record time.");
         }
 
+        // With several epochs, only a record in the earliest lifetime is as safe as a record of a PID with one: a
+        // record in a later lifetime may be a late record of an earlier epoch, which PID and time cannot rule out.
+        if (active.Length == 1
+            && scoped.All(epoch => epoch.WitnessedLifetime.StartInclusive >= active[0].WitnessedLifetime.StartInclusive))
+        {
+            return new(
+                ProcessEpochResolutionKind.EarliestLifecycle,
+                active[0].Id,
+                "The earliest of the PID's witnessed lifecycles contains the record time, and no witnessed epoch "
+                + "precedes it.");
+        }
+
         return new(
             scoped.Length > 1 ? ProcessEpochResolutionKind.AmbiguousReuse : ProcessEpochResolutionKind.Unresolved,
             null,
             scoped.Length > 1
-                ? "The PID has multiple epochs; PID and time alone are not identity evidence."
+                ? "The PID has multiple epochs and the record lies after the first; PID and time alone cannot tell a "
+                    + "late record of an earlier epoch from a record of a later one."
                 : "No witnessed lifecycle contains the record time.");
     }
 }

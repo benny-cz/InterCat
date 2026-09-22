@@ -381,13 +381,20 @@
       "I11": [
         "I11: a metric answers over every segment of the generation, and projects by layer",
         "I11: an application payload metric projects onto its layer, and refuses any other",
-        "I11: an application-layer generation changes no transport-layer metric"
+        "I11: an application-layer generation changes no transport-layer metric",
+        "I11: grouped by mechanism, each mechanism's count is its own records"
       ],
       "I12": [
+        "I12: 21.1 scenario 5 - a reused PID is two instances, and a late record never moves the newer one's totals",
         "I12: PID and resource reuse produce distinct lifecycle epochs",
+        "I12: a created and exited process is one instance whose lifetime holds both records",
+        "I12: a creation with no exit before it ends the earlier instance, and says the exit was not seen",
         "I12: a late record with an old start key resolves to the earlier epoch",
+        "I12: a rundown and an exit are one instance that was running before the capture",
         "I12: an absent activity id stays absent rather than becoming an empty identifier",
-        "I12: equal process keys on different hosts never collide"
+        "I12: equal process keys on different hosts never collide",
+        "I12: the same PID and creation on another capture's clock is another instance",
+        "I12: without a start key, only a record in a reused PID's earliest lifetime resolves"
       ],
       "I13": [
         "I13: a row records what the capture did with the record's extended data",
@@ -402,6 +409,7 @@
         "I14: an import that spills to disk produces exactly the index it would in memory",
         "I14: equal-time byte-identical records keep their multiplicity and gain no order",
         "I14: equal-time records from different processors are two records, not one seen twice",
+        "I14: instance identities do not depend on how the evidence was split into segments",
         "I14: one admitted record cannot satisfy two truth operations"
       ],
       "I15": [
@@ -490,7 +498,8 @@
       ],
       "I5": [
         "I5: a total resolves to exactly the records it counted, with identities that survive a re-read",
-        "I5: cell counts match the records those cells resolve to"
+        "I5: cell counts match the records those cells resolve to",
+        "I5: grouped rows, the remainder and the unattributed rows partition the total exactly"
       ],
       "I6": [
         "I6: 21.1 scenario 1 - one transfer seen from both ends, accounted once per side",
@@ -571,6 +580,7 @@
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
       "P6": [
+        "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: reusable values never resolve an instance without lifecycle evidence"
       ],
       "P7": [
@@ -675,6 +685,8 @@
       "R2": [
         "R2: a byte metric names its accounting, and a canonical owner is a request rather than a guess",
         "R2: a derived row carries the source's own attribution, measurement and labels",
+        "R2: a grouped total is ranked by value, ties break on a stable identity, and the rest is one exact remainder",
+        "R2: a grouping this session cannot derive is unavailable with what it needs, and rows need a grouping",
         "R2: a measurement carries its value or null, its unit, its domain and its side",
         "R2: a metric outside its basis is rejected with the compatible alternatives named",
         "R2: a rate names an additive numerator, and nothing else carries one",
@@ -708,6 +720,8 @@
       "R22": [
         "R22: a call to another interface is scope, not a match",
         "R22: a peer or channel count is unavailable rather than counted from reusable values",
+        "R22: a record whose payload names no owner binds to no instance, whatever its header says",
+        "R22: a sent total measured at the receiving end is not attributed to a sender without an association",
         "R22: an operation on an unobserved create is left unresolved, not matched by name"
       ],
       "R3": [
@@ -717,6 +731,8 @@
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a descriptor with no byte field reports it inapplicable, not zero",
+        "R3: a group with only unknown contributions is unmeasured, never ranked below a measured zero",
+        "R3: a grouped rate divides every group by the same whole interval",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a null measurement always states why, and a present one cannot be null",

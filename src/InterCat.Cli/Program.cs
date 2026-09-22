@@ -31,6 +31,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -115,6 +116,11 @@ static void PrintHelp()
     ConsoleUi.Line("      Answers one metric over a published session against section 5.3's matrix. A");
     ConsoleUi.Line("      metric outside its basis is rejected with the compatible ones named; one this");
     ConsoleUi.Line("      session cannot derive is reported as unavailable, with what it needs.");
+    ConsoleUi.Line("      --group-by process|mechanism ranks it, with an exact remainder past --top.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--json]");
+    ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
+    ConsoleUi.Line("      lifetime, records and transport bytes. A reused PID is two instances.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");
