@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery, bounded dispatch and the OS-authenticated pipe boundary implemented; broker-root provisioning and live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery, bounded dispatch, the OS-authenticated pipe boundary and the broker-owned filesystem root implemented; ownership-log compaction and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -229,13 +229,54 @@ The authenticated connection processor reads only the bounded v1 frame codec, wr
 response at a time and closes a connection after at most 4,096 commands. Windows fixtures exercise the
 real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
 refusal and a complete Hello exchange. The broker executable remains fail-closed: it does not start this
-listener until the broker-owned filesystem root and real runtime cleanup boundary are also composed.
+listener until bounded ownership-log compaction and the real runtime cleanup boundary are also composed.
 
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
 idempotent, and ownership will be durable before success is exposed. Owner leases stop orphaned
 interactive captures by default; bounded headless captures use an explicit owner and duration/retention
 policy. Disconnect alone is neither successful stop nor authorization to take ownership.
+
+### 5.4 Implemented broker-owned filesystem root
+
+The broker writes only beneath one validated root. `WindowsBrokerRoot.Provision` creates it with
+`CreateDirectoryW` and a security descriptor supplied at creation, so no permissive directory exists at
+any instant. The production descriptor is
+`D:P(A;OICI;0x1f01ff;;;S-1-5-18)(A;OICI;0x1f01ff;;;S-1-5-32-544)(A;OICI;0x1200a9;;;<capturing user>)S:(ML;OICI;0x1;;;S-1-16-12288)`:
+full control for Local System and Administrators, `FILE_GENERIC_READ | FILE_TRAVERSE` for the capturing
+user, and a high-integrity `no-write-up` mandatory label. A capturing user who is already a broker
+principal keeps that single full-control entry; the label, not a second weaker ACE, is what refuses
+their ordinary-integrity writes.
+
+The root is validated from the open handle rather than from the path that was requested:
+
+- the parent must exist, must not be a reparse point, must resolve to the configured path in its long
+  form, and in production must be owned by Local System or Administrators;
+- the root's final component must not be a reparse point, its volume must be the parent's, and
+  `GetFinalPathNameByHandleW` must return the configured path, which also catches an ancestor junction;
+- the security read back through `GetSecurityInfo` must be exactly the declared descriptor, compared as
+  parsed facts rather than as text, because Windows may reorder inheritance flags and render a
+  well-known SID as an alias without changing what is granted. An access abbreviation the parser does
+  not resolve is unknown, never none.
+
+The handle is then held for the broker's lifetime with `FILE_SHARE_READ | FILE_SHARE_WRITE` and no
+`FILE_SHARE_DELETE`, so the validated directory cannot be renamed or deleted under later writes. A root
+that already exists is adopted only when a trusted principal owns it; drifted security is re-applied
+from the same declared descriptor and validated again, and an untrusted owner is refused with the owner
+named rather than repaired. A broker below the requested label refuses to provision instead of labelling
+lower, and production provisioning refuses an unelevated broker.
+
+Every broker file is opened through the root by a single validated name: ASCII letters, digits, `.`,
+`-` and `_` only, at most 64 characters, no leading `.` or `-`, no `..`, and never a reserved device
+stem. Each open uses `FILE_FLAG_OPEN_REPARSE_POINT` and then refuses a reparse point, a directory, a
+foreign volume or a final path other than the expected one. Append mode is refused because it hides
+where a broker write landed. `FileBrokerLifecycleStore` now takes the validated root instead of a path,
+so the ownership log cannot be pointed at a directory whose security was never checked.
+
+Windows fixtures measure this against real objects: a real junction substituted for the root and for the
+parent, a rename attempt against the held handle, a pre-existing directory with inherited security being
+repaired and revalidated, and a token duplicated and lowered to prove that an ordinary-integrity caller
+still reads the evidence and is refused every write.
 
 ## 6. Threat model and current non-capabilities
 
@@ -249,8 +290,7 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no broker-owned directory provisioning, filesystem ACL/final-handle integration,
-log compaction or ETW/journal runtime binding.
+The current slice has no bounded ownership-log compaction and no ETW/journal runtime binding.
 `InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
 durable lifecycle/recovery operations are connected through real authenticated pipe fixtures but still
 use a fake capture runtime. Those

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "description": "Traceability matrix of section 13.5: fixtures to contracts to tests to milestones. Two checks in InterCat.Architecture.Tests keep it honest.",
-  "updatedUtc": "2026-09-21",
+  "updatedUtc": "2026-09-22",
   "fixtures": [
     {
       "id": "FX-TCP-001",
@@ -507,7 +507,32 @@
         "R15: the window renders every rung of the ladder down to evidence"
       ],
       "R16": [
+        "R16: Windows may rename a trustee or reorder inheritance flags without changing the grant",
+        "R16: a broker below the requested label refuses to provision instead of labelling lower",
         "R16: a capture attempt without elevation creates nothing and says why",
+        "R16: a descriptor the broker cannot resolve exactly is unreadable, never assumed empty",
+        "R16: a descriptor with no DACL grants everyone and is refused",
+        "R16: a destination that is not a single ordinary name never reaches the filesystem",
+        "R16: a junction standing in for the parent is refused rather than followed",
+        "R16: a junction standing in for the root is refused rather than followed",
+        "R16: a missing parent is a named refusal, not a directory the broker creates",
+        "R16: a policy that names a trustee by alias is refused before a root is created",
+        "R16: a policy with an unknown mandatory level is refused",
+        "R16: a pre-existing directory with default inherited security is repaired and revalidated",
+        "R16: a provisioned root carries a protected DACL and a no-write-up label",
+        "R16: a root owned by an untrusted principal is refused, never adopted or repaired",
+        "R16: a root whose security drifted is refused with the difference named",
+        "R16: a viewer who is already a broker principal keeps one entry, not a weaker second",
+        "R16: an ordinary-integrity caller keeps read access and is refused every write",
+        "R16: an owned file is written and read back beneath the validated root",
+        "R16: an owned name longer than its bound is refused",
+        "R16: append mode is refused because it hides where a broker write landed",
+        "R16: only a single ordinary component is accepted as an owned name",
+        "R16: production provisioning requires an elevated broker",
+        "R16: reopening an already provisioned root adopts it without re-applying security",
+        "R16: the held root handle refuses a rename that would move the validated directory",
+        "R16: the production label is high integrity with no write-up",
+        "R16: the production root grants only SYSTEM, Administrators and a read-only viewer",
         "R16: unelevated ETL capture creates no session and explains the refusal"
       ],
       "R17": [

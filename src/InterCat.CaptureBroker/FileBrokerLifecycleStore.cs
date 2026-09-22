@@ -14,7 +14,9 @@ public sealed record BrokerStoreRecoveryReport(
 /// <summary>
 /// Append-only, checksummed lifecycle store. Every frame is a complete ownership/request snapshot and
 /// is flushed before the in-memory state changes. Recovery keeps the last complete valid frame and
-/// truncates only the untrusted tail, so it never depends on directory-rename atomicity.
+/// truncates only the untrusted tail, so it never depends on directory-rename atomicity. The log is
+/// opened through the broker-owned root rather than from a path, so the store cannot be pointed at a
+/// directory whose security was never validated.
 /// </summary>
 public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposable
 {
@@ -44,34 +46,15 @@ public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposabl
     private long sequence;
     private bool disposed;
 
-    public FileBrokerLifecycleStore(string brokerOwnedDirectory)
+    public FileBrokerLifecycleStore(IBrokerOwnedDirectory brokerOwnedDirectory)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(brokerOwnedDirectory);
-        string root = Path.GetFullPath(brokerOwnedDirectory);
-        if (!Directory.Exists(root))
-        {
-            throw new DirectoryNotFoundException(
-                $"Broker ownership directory '{root}' must already exist with its final ACL.");
-        }
-
-        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new IOException("The broker ownership directory cannot be a reparse point.");
-        }
-
-        FilePath = Path.Combine(root, FileName);
-        if (File.Exists(FilePath)
-            && (File.GetAttributes(FilePath) & FileAttributes.ReparsePoint) != 0)
-        {
-            throw new IOException("The broker ownership file cannot be a reparse point.");
-        }
-
-        stream = new(
-            FilePath,
+        ArgumentNullException.ThrowIfNull(brokerOwnedDirectory);
+        FilePath = Path.Combine(brokerOwnedDirectory.Path, FileName);
+        stream = brokerOwnedDirectory.OpenOwnedFile(
+            FileName,
             FileMode.OpenOrCreate,
             FileAccess.ReadWrite,
             FileShare.Read,
-            4096,
             FileOptions.WriteThrough);
         try
         {
