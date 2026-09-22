@@ -1,3 +1,4 @@
+using InterCat.Storage;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -60,7 +61,7 @@ public static class BrokerRootLocation
 /// passed validation is the same directory every later write lands in.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposable
+public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
 {
     private const uint Delete = 0x0001_0000;
     private const uint ReadControl = 0x0002_0000;
@@ -138,7 +139,7 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
             throw new ArgumentException(policyProblem, nameof(request));
         }
 
-        BrokerOwnedFileName.Require(request.RootDirectoryName, nameof(request));
+        OwnedFileName.Require(request.RootDirectoryName, nameof(request));
         string userSid = WindowsBrokerTokenIdentity.CanonicalizeSid(request.CapturingUserSid);
         RequireBrokerTokenCanLabel(policy);
 
@@ -201,7 +202,7 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
         FileOptions options)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        BrokerOwnedFileName.Require(name, nameof(name));
+        OwnedFileName.Require(name, nameof(name));
         if (mode == FileMode.Append)
         {
             throw new ArgumentException(
@@ -257,8 +258,8 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
     public void ReplaceOwnedFile(string sourceName, string destinationName)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        BrokerOwnedFileName.Require(sourceName, nameof(sourceName));
-        BrokerOwnedFileName.Require(destinationName, nameof(destinationName));
+        OwnedFileName.Require(sourceName, nameof(sourceName));
+        OwnedFileName.Require(destinationName, nameof(destinationName));
         if (sourceName.Equals(destinationName, StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
@@ -279,7 +280,7 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
     public bool RemoveOwnedFile(string name)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        BrokerOwnedFileName.Require(name, nameof(name));
+        OwnedFileName.Require(name, nameof(name));
         string path = System.IO.Path.Combine(Path, name);
         // Backup semantics so a directory opens and can be named in the refusal, rather than failing
         // as an access denial that says nothing about what is actually there.

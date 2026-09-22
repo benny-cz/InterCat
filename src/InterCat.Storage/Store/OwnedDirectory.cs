@@ -1,17 +1,16 @@
-namespace InterCat.CaptureBroker;
+namespace InterCat.Storage;
 
 /// <summary>
-/// A directory whose security boundary the broker validated and still holds open. Privileged broker
-/// files are opened through this interface rather than from a composed path string, so a destination
-/// can never leave the validated root and a validated root can never be renamed out from under it.
+/// A directory whose boundary was validated and is still held. Files are opened through this interface
+/// rather than from a composed path string, so a destination can never leave the validated root and a
+/// validated root can never be renamed out from under it. The privileged broker root and an ordinary
+/// unprivileged session directory are both this, which is why the store's commit protocol does not need
+/// to know which one it is writing into.
 /// </summary>
-public interface IBrokerOwnedDirectory
+public interface IOwnedDirectory
 {
     /// <summary>The validated final path of the root, as Windows resolved it from the open handle.</summary>
     string Path { get; }
-
-    /// <summary>The volume the validated root lives on. Every owned file must report the same volume.</summary>
-    uint VolumeSerialNumber { get; }
 
     /// <summary>
     /// Opens one file directly beneath the validated root. The name must be a single ordinary
@@ -39,11 +38,11 @@ public interface IBrokerOwnedDirectory
 }
 
 /// <summary>
-/// The only names the broker will open beneath its root. The rule is an allow list of ordinary
-/// characters rather than a search for traversal sequences, because a deny list has to anticipate
-/// every encoding of a separator and an allow list does not.
+/// The only names that are opened beneath an owned root. The rule is an allow list of ordinary
+/// characters rather than a search for traversal sequences, because a deny list has to anticipate every
+/// encoding of a separator and an allow list does not.
 /// </summary>
-public static class BrokerOwnedFileName
+public static class OwnedFileName
 {
     public const int MaximumLength = 64;
 
@@ -88,7 +87,7 @@ public static class BrokerOwnedFileName
         int stemLength = name.IndexOf('.');
         string stem = stemLength < 0 ? name : name[..stemLength];
         return ReservedDeviceStems.Contains(stem, StringComparer.OrdinalIgnoreCase)
-            ? $"'{stem}' is a reserved Windows device name and is never opened as a broker file."
+            ? $"'{stem}' is a reserved Windows device name and is never opened as an owned file."
             : null;
     }
 

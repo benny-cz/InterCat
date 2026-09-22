@@ -397,6 +397,25 @@
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: one admitted record cannot satisfy two truth operations"
       ],
+      "I15": [
+        "I15: a committed boundary states which admitted evidence a generation derives from",
+        "I15: a crash before the manifest leaves the previous generation and an orphan file",
+        "I15: a crash before the pointer leaves the previous generation and an orphan manifest",
+        "I15: a dependency that changed under a generation fails it rather than being read",
+        "I15: a later generation carries its predecessor's dependencies forward",
+        "I15: a manifest naming a dependency outside its root is refused",
+        "I15: a manifest this reader cannot read exactly is refused, never read at a guess",
+        "I15: a manifest whose contents no longer match its digest is refused",
+        "I15: a published generation names every dependency with its length and digest",
+        "I15: a published name is immutable, so republishing it is refused",
+        "I15: a reopened session acquires the generation its pointer names",
+        "I15: a session is never opened as another session",
+        "I15: a torn pointer rolls back to the retained last-known-good",
+        "I15: an empty session is empty, not a refusal",
+        "I15: an incomplete staged file is never published",
+        "I15: an interrupted staging file is removed on the next open",
+        "I15: an orphan is reported on open and removed only when that is asked for"
+      ],
       "I19": [
         "I19: clearing view selection does not mutate source data",
         "I19: navigation math depends only on its inputs, never on workspace state"
@@ -677,10 +696,6 @@
       "I11": {
         "reason": "Layer accounting needs application and transport projections from IC-015.",
         "plannedBy": "IC-015"
-      },
-      "I15": {
-        "reason": "Atomic snapshot publication needs the storage commit protocol of IC-016.",
-        "plannedBy": "IC-016"
       },
       "I16": {
         "reason": "Result identity needs the query identity contract of IC-018.",

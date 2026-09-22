@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 24, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 20 implemented the Windows pipe-authentication boundary with first-instance/native-DACL creation, remote-client rejection, impersonated-token SID/logon/integrity/elevation derivation, owner matching and a bounded authenticated dispatch loop; PID remains diagnostic only. Revision 21 adds the broker-owned filesystem root: created with a protected DACL and a high-integrity no-write-up label in one call, validated from the open handle by reparse state, final path, volume and an ACE-for-ACE security read-back, held open without shared delete, and opened only by single validated names beneath it. §9.2 now states why the mandatory label rather than the DACL is what refuses an ordinary-integrity write, and §20.5 states why installation should pre-create the root. Revision 22 adds bounded ownership-log compaction with the generation and refusal rules §20.3 now states. Revision 23 freezes the canonical import contract of §18.4 in `contracts/import-v1.md`: source and import identity, the canonical record key and what it excludes, the ordering an import may claim, equal-time multiplicity, and the bounded spill and cancellation path. It also records that the buffer context is keyed content rather than consumer state, and that the tie-breaks which make a sort total are not an ordering claim. Revision 24 connects a real ETL to that contract through a new `InterCat.Capture.Journal` module and the `icat import` command, and records what reading one measured: evidence recorded outside InterCat carries no clock identity of ours, so both the clock and the host are derived from the file's own content - minting either per run would make two imports of one file disagree about their records' identities - and the recorded tick rate, which the adapter library does not expose, is derived from the file's own readings and then checked against every sampled one rather than assumed. The executable stays fail-closed until the live capture runtime and its cleanup boundary are composed.
+**Status:** reviewed product architecture and implementation blueprint, revision 25, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 20 implemented the Windows pipe-authentication boundary with first-instance/native-DACL creation, remote-client rejection, impersonated-token SID/logon/integrity/elevation derivation, owner matching and a bounded authenticated dispatch loop; PID remains diagnostic only. Revision 21 adds the broker-owned filesystem root: created with a protected DACL and a high-integrity no-write-up label in one call, validated from the open handle by reparse state, final path, volume and an ACE-for-ACE security read-back, held open without shared delete, and opened only by single validated names beneath it. §9.2 now states why the mandatory label rather than the DACL is what refuses an ordinary-integrity write, and §20.5 states why installation should pre-create the root. Revision 22 adds bounded ownership-log compaction with the generation and refusal rules §20.3 now states. Revision 23 freezes the canonical import contract of §18.4 in `contracts/import-v1.md`: source and import identity, the canonical record key and what it excludes, the ordering an import may claim, equal-time multiplicity, and the bounded spill and cancellation path. It also records that the buffer context is keyed content rather than consumer state, and that the tie-breaks which make a sort total are not an ordering claim. Revision 24 connects a real ETL to that contract through a new `InterCat.Capture.Journal` module and the `icat import` command, and records what reading one measured: evidence recorded outside InterCat carries no clock identity of ours, so both the clock and the host are derived from the file's own content - minting either per run would make two imports of one file disagree about their records' identities - and the recorded tick rate, which the adapter library does not expose, is derived from the file's own readings and then checked against every sampled one rather than assumed. Revision 25 implements the §20.1 commit protocol in `contracts/store-v1.md` - staged and completed files, immutable published names, a manifest that re-measures every dependency before naming it, a replacing pointer with a retained last-known-good, and a recovery that rolls a torn publication back rather than reading it - and ADR-010 settles the journal-lifetime decision §20.1 owed. The executable stays fail-closed until the live capture runtime and its cleanup boundary are composed.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -671,7 +671,7 @@ Source-derived facts remain immutable; subsequently resolved identities live in 
 
 ### 7.4 Correlation contracts
 
-Every correlator states its join keys, lifecycle scope, timeout, cardinality, ambiguity policy and evidence requirements. The concrete keys per mechanism cannot be settled from documentation alone: they are an M0 measurement, recorded in that adapter's capability descriptor (§4.3) and fixed in ADR-010 before the correlator is implemented. The contracts below constrain what any such rule may conclude. Produce `Direct`, `Correlated`, `Candidate`, `Unresolved` or `Conflicting` relationships with explanations.
+Every correlator states its join keys, lifecycle scope, timeout, cardinality, ambiguity policy and evidence requirements. The concrete keys per mechanism cannot be settled from documentation alone: they are an M0 measurement, recorded in that adapter's capability descriptor (§4.3) and fixed in the correlation-quality ADR before the correlator is implemented. The contracts below constrain what any such rule may conclude. Produce `Direct`, `Correlated`, `Candidate`, `Unresolved` or `Conflicting` relationships with explanations.
 
 * **Network:** join compatible tuples within host/compartment and connection lifetimes, using provider connection identifiers where validated. Account for reconnect and port reuse. Local loopback endpoints can identify both local owners when corresponding evidence exists. UDP association is scoped by observations, not fabricated connection state.
 * **Pipes:** use object/lifetime evidence to identify instances. Name alone creates an endpoint grouping. Keep multiple same-name instances distinct; never pair each client with every server.
@@ -1377,9 +1377,9 @@ Success is deeper trustworthy exploration: each added source should make an actu
 | Palette and encoding collisions | Four meanings competing for the same channels become unreadable, especially under color-vision differences | §6.6 channel allocation with redundant encodings and measured contrast enforced by tests (R14) |
 | Oversized first release | Delay before useful tool | Deliver M2 preview while keeping M3/M4 requirements visible for full v1 |
 
-Required ADRs, each recorded before the corresponding implementation and each stating evidence, alternatives and reversal cost:
+Required ADRs, each recorded before the corresponding implementation and each stating evidence, alternatives and reversal cost. A number is assigned when an ADR is written, in the order they are written, so this list is what must be decided rather than what each decision will be called. Two entries below were not foreseen here and were written because implementation forced the decision; that is the intended behaviour, not a deviation.
 
-| ID | Decision |
+| ADR | Decision |
 |---|---|
 | ADR-001 | Stack, toolchain pins and UI framework (§1.3) |
 | ADR-002 | Owned ETW session lifecycle and safety strategy (§9.2, §18.2) |
@@ -1389,15 +1389,17 @@ Required ADRs, each recorded before the corresponding implementation and each st
 | ADR-006 | Native clocks, local conversion and timestamp quarantine (§8, §18.3) |
 | ADR-007 | Supported build policy and compatibility matrix (§1.3) |
 | ADR-008 | Raw-evidence strategy: authoritative journal versus ETL (§9.3) |
-| ADR-009 | Byte accounting: domains, sides and canonical ownership (§5.3) |
-| ADR-010 | Correlation quality model (§7.4) |
-| ADR-011 | Broker trust boundary and client authentication (§20.3) |
-| ADR-012 | Content policy and privacy (§11) |
-| ADR-013 | Indices, tiles and cache budgets (§10.2) |
-| ADR-014 | Snapshot publication and query scheduling (§19.3) |
-| ADR-015 | Retention, pinning and export (§20.2) |
-| ADR-016 | Graph projection, layout algorithm and determinism (§19.4) |
-| ADR-017 | Query identity and canonical specification form (§10.5) |
+| ADR-009 | How the callback allocation budget is measured, and what it measured (§12, §18.3) |
+| ADR-010 | Journal retention and the committed boundary a generation carries (§20.1) |
+| not written | Byte accounting: domains, sides and canonical ownership (§5.3) |
+| not written | Correlation quality model (§7.4) |
+| not written | Broker trust boundary and client authentication (§20.3) |
+| not written | Content policy and privacy (§11) |
+| not written | Indices, tiles and cache budgets (§10.2) |
+| not written | Snapshot publication and query scheduling (§19.3) |
+| not written | Retention, pinning and export (§20.2) |
+| not written | Graph projection, layout algorithm and determinism (§19.4) |
+| not written | Query identity and canonical specification form (§10.5) |
 | ADR-018 | Visual encoding, palette and accessibility targets (§6.6) |
 | ADR-019 | Fixture naming and traceability scheme (§13.5) |
 
@@ -1597,7 +1599,7 @@ A segment header records magic, format major/minor, feature flags, segment ID, d
 
 Journal batches use length-delimited framing, record count, first/last source IDs and checksums. Partial trailing batches are not committed. Blob references include file/chunk identity, offset and length and are verified against the same open file handle used to read them. Source locators survive sorted-segment compaction. `contracts/journal-v1.md` is the frozen framing; this section owns what is built on top of it and owns nothing inside it.
 
-**A journal's lifetime is a decision this section owes, and IC-016 makes it.** The journal is append-only and undictionaried by design, so it costs about 231 measured bytes per record where a normalized observation costs about 128 (§12). Keeping every batch for the life of a session nearly triples the session's storage; discarding a batch once its segment is durably published loses the ability to rebuild a segment from admitted evidence after a normalizer revision. IC-016 states which, publishes the retention boundary it implies, and records the choice in an ADR. Neither behaviour may be arrived at by default.
+**A journal's lifetime is a decision this section owed, and ADR-010 makes it.** The journal is append-only and undictionaried by design, so it costs about 231 measured bytes per record where a normalized observation costs about 128 (§12). Keeping every batch for the life of a session nearly triples the session's storage; discarding a batch once its segment is durably published loses the ability to rebuild a segment from admitted evidence after a normalizer revision. ADR-010 retains the journal by default and makes releasing any part of it an explicit retention checkpoint that publishes the extent it released, because the default that loses information should be the one a user chooses rather than the one they get: the cost of keeping is a visible storage multiple, and the cost of discarding is an unbounded loss of the ability to answer a later question from evidence. Every published generation therefore carries the committed boundary it derives from - which journal, how many bytes and records of it were durable, and that prefix's digest - so a generation names its evidence instead of implying the whole file.
 
 Commit sequence:
 
@@ -1732,12 +1734,13 @@ IC-009 therefore owns the minimum disposable version-0 capture envelope required
 3. `contracts/identity-v1.md`: live/import/subrecord IDs, process/resource epochs, alias revisions and canonical ETL tie handling.
 4. `contracts/metrics-v1.md`: contribution keys, domains, accounting sides, cohorts, unknown values and the scenarios above.
 5. `contracts/broker-v1.md`: message framing, the authentication mechanism of §20.3 and its assumptions, ownership, idempotency, states, timeout behavior, and a threat model naming the assets, the boundary, the assumed attacker positions and the abuse cases each command rejects.
-6. `contracts/import-v1.md`: source and import identity, the canonical record key and its exclusions, the ordering an import may claim, equal-time multiplicity, the bounded spill and cancellation path, and the refusals.
-7. `fixtures/`: truth logs, admitted journals/ETLs where shareable, expected query bundles and exact tool/build provenance.
-8. `bench/results/`: journal-vs-ETL fidelity/overhead, queue/disk saturation, mixed IPC query timings, the end-to-end latency budget of §12 measured stage by stage, and the chosen values for every `TUNABLE:` setting exercised.
-9. `contracts/query-identity-v1.md`: the canonical specification form, hash construction and the golden corpus mapping specifications to canonical bytes and hashes (§10.5).
-10. `theme/`: the theme definitions of §6.6 with recorded contrast ratios, perceptual separations and color-vision verification output, plus the tests that fail when one regresses.
-11. `fixtures/index.json`: the traceability matrix of §13.5 and the two CI checks that keep it honest.
+6. `contracts/store-v1.md`: the session root, manifest and pointer formats, the commit sequence, what a reader acquires, what recovery rolls back, and what staging cleanup may remove.
+7. `contracts/import-v1.md`: source and import identity, the canonical record key and its exclusions, the ordering an import may claim, equal-time multiplicity, the bounded spill and cancellation path, and the refusals.
+8. `fixtures/`: truth logs, admitted journals/ETLs where shareable, expected query bundles and exact tool/build provenance.
+9. `bench/results/`: journal-vs-ETL fidelity/overhead, queue/disk saturation, mixed IPC query timings, the end-to-end latency budget of §12 measured stage by stage, and the chosen values for every `TUNABLE:` setting exercised.
+10. `contracts/query-identity-v1.md`: the canonical specification form, hash construction and the golden corpus mapping specifications to canonical bytes and hashes (§10.5).
+11. `theme/`: the theme definitions of §6.6 with recorded contrast ratios, perceptual separations and color-vision verification output, plus the tests that fail when one regresses.
+12. `fixtures/index.json`: the traceability matrix of §13.5 and the two CI checks that keep it honest.
 
 These paths are deliverables in the new InterCat repository, not files created by this planning task. IC-011–IC-018 cover them: complete foundation portions in M1 and their live/presentation integration in M2. M1's exit requires the corresponding contracts and foundation fixtures. Avoid implementing all future adapters before the first durable vertical slice.
 

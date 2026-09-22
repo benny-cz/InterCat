@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.CaptureBroker;
 
@@ -64,7 +65,7 @@ public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposabl
 
     private readonly Dictionary<CaptureId, BrokerCaptureOwnership> captures = [];
     private readonly Dictionary<RequestKey, BrokerStoredRequest> requests = [];
-    private readonly IBrokerOwnedDirectory directory;
+    private readonly IOwnedDirectory directory;
     private readonly long maximumFileBytes;
     private readonly Lock gate = new();
     private FileStream stream;
@@ -73,7 +74,7 @@ public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposabl
     private bool disposed;
 
     public FileBrokerLifecycleStore(
-        IBrokerOwnedDirectory brokerOwnedDirectory,
+        IOwnedDirectory brokerOwnedDirectory,
         long maximumFileBytes = MaximumFileBytes)
     {
         ArgumentNullException.ThrowIfNull(brokerOwnedDirectory);

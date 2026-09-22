@@ -1,3 +1,4 @@
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.CaptureBroker.Tests;
@@ -170,7 +171,7 @@ public sealed class BrokerRootSecurityTests
     [InlineData("double..dot.log", false)]
     public void OwnedNamesAreAllowListed(string name, bool accepted)
     {
-        string? problem = BrokerOwnedFileName.Validate(name);
+        string? problem = OwnedFileName.Validate(name);
 
         Assert.Equal(accepted, problem is null);
     }
@@ -178,9 +179,9 @@ public sealed class BrokerRootSecurityTests
     [Fact(DisplayName = "R16: an owned name longer than its bound is refused")]
     public void OverlongOwnedNameIsRefused()
     {
-        string name = new('a', BrokerOwnedFileName.MaximumLength + 1);
+        string name = new('a', OwnedFileName.MaximumLength + 1);
 
-        Assert.Contains("at most", BrokerOwnedFileName.Validate(name), StringComparison.OrdinalIgnoreCase);
-        Assert.Null(BrokerOwnedFileName.Validate(new string('a', BrokerOwnedFileName.MaximumLength)));
+        Assert.Contains("at most", OwnedFileName.Validate(name), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(OwnedFileName.Validate(new string('a', OwnedFileName.MaximumLength)));
     }
 }

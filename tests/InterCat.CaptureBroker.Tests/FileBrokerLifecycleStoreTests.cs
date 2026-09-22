@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using System.Text;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 using static InterCat.CaptureBroker.Tests.BrokerPlanFixture;
 
@@ -231,7 +232,7 @@ public sealed class FileBrokerLifecycleStoreTests
         Assert.Equal(1, recoveryRuntime.StopCount);
     }
 
-    private static async Task<BrokerStartOutcome> WriteStartedCapture(IBrokerOwnedDirectory directory)
+    private static async Task<BrokerStartOutcome> WriteStartedCapture(IOwnedDirectory directory)
     {
         var clock = new ManualTimeProvider(StartTime);
         var registry = new PreparedPlanRegistry(clock);
