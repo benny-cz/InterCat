@@ -1,3 +1,3 @@
 Console.Error.WriteLine(
-    "InterCat broker protocol v1 has bounded request/response dispatch plus durable ownership/recovery, but the OS-authenticated service and live capture runtime are not enabled.");
+    "InterCat broker protocol v1 has an OS-authenticated pipe boundary, bounded dispatch and durable ownership/recovery, but broker-root provisioning and the live capture runtime are not enabled.");
 return 3;

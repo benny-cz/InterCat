@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery and bounded request/response dispatch implemented; authenticated transport and live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery, bounded dispatch and the OS-authenticated pipe boundary implemented; broker-root provisioning and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -154,9 +154,9 @@ RenewOwnerLease(capture ID)
 ```
 
 They use a bounded length-prefixed binary schema, not .NET object or unrestricted JSON deserialization.
-The remaining local named-pipe host will use first-instance semantics, an explicit DACL and remote
-client rejection. Every connection will be authenticated from its OS token (SID, logon session,
-integrity and elevation); a supplied PID or nonce is diagnostic only.
+The local named-pipe boundary uses first-instance semantics, an explicit protected DACL and remote
+client rejection. Every connection is authenticated from its OS token (SID, logon session, integrity
+and elevation); a supplied PID is diagnostic only.
 
 ### 5.1 Implemented frame and request schema
 
@@ -207,8 +207,29 @@ preparation coordinator serializes metadata access, probes capabilities, compile
 inside the broker, revalidates/freezes it, and only then issues the owner-bound prepared secret.
 
 The dispatcher is transport-independent and currently exercised only in process with a fake
-OS-authenticated connection and fake capture runtime. No external process can reach it yet because the
-named-pipe authentication/listener layer is intentionally absent.
+OS-authenticated connection and fake capture runtime.
+
+### 5.3 Implemented Windows pipe authentication
+
+The broker creates one byte-mode pipe named from a broker-generated instance GUID through
+`CreateNamedPipeW`. Creation combines `FILE_FLAG_FIRST_PIPE_INSTANCE`, overlapped I/O and
+`PIPE_REJECT_REMOTE_CLIENTS`; any pre-existing instance makes creation fail instead of attaching to an
+attacker-controlled endpoint. Its protected DACL grants generic read/write only to Local System and the
+configured capturing-user SID. The security descriptor is applied during native object creation, not
+after a permissive pipe exists.
+
+After connection, the broker calls `ImpersonateNamedPipeClient`, opens the thread token and derives the
+canonical user SID, authentication LUID/logon-session ID, mandatory integrity level and elevation bit.
+The SID and logon session must both match the configured owner. Anonymous impersonation is refused.
+`RevertToSelf` is mandatory on every path; inability to revert after an authentication failure terminates
+the process rather than continuing under the client token. `GetNamedPipeClientProcessId` is recorded only
+as diagnostic data and never participates in authorization.
+
+The authenticated connection processor reads only the bounded v1 frame codec, writes one correlated
+response at a time and closes a connection after at most 4,096 commands. Windows fixtures exercise the
+real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
+refusal and a complete Hello exchange. The broker executable remains fail-closed: it does not start this
+listener until the broker-owned filesystem root and real runtime cleanup boundary are also composed.
 
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
@@ -228,10 +249,10 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no named pipe, OS-token authentication host, broker-owned directory provisioning,
-ACL integration, log compaction or ETW/journal runtime binding.
+The current slice has no broker-owned directory provisioning, filesystem ACL/final-handle integration,
+log compaction or ETW/journal runtime binding.
 `InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
-durable lifecycle/recovery operations are connected only by the in-process dispatcher tests and a fake
-authenticated connection/runtime. Those
+durable lifecycle/recovery operations are connected through real authenticated pipe fixtures but still
+use a fake capture runtime. Those
 absences are deliberate: a live UI control must not appear until authentication, directory security and
 real cleanup behavior are implemented and tested together.
