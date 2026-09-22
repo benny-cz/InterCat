@@ -377,6 +377,36 @@ public static class SessionSegments
         return SegmentReaderV1.Open(bytes, dictionaries);
     }
 
+    /// <summary>
+    /// The source clock a generation's native readings are on, read from the journal its committed boundary
+    /// names, or null when the generation names no journal. A reader needs it to turn native ticks into seconds,
+    /// and it is read from the evidence rather than assumed: every segment carries only the clock's identity,
+    /// and the journal is where that identity is described (I8, ADR-010).
+    /// </summary>
+    public static SourceClockDescriptor? SourceClock(IOwnedDirectory directory, SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (!manifest.Boundary.IsDeclared)
+        {
+            return null;
+        }
+
+        StoreDependency journal = manifest.Dependencies.FirstOrDefault(dependency =>
+            dependency.Name.Equals(manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)
+            && dependency.Kind == StoreDependencyKind.Journal)
+            ?? throw new InvalidDataException(
+                $"Generation {manifest.Generation} derives from journal '{manifest.Boundary.JournalName}' and "
+                + "does not name it as a dependency.");
+        using FileStream stream = directory.OpenOwnedFile(
+            journal.Name,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            FileOptions.SequentialScan);
+        return JournalV1Reader.ReadSourceClock(stream).Clock;
+    }
+
     /// <summary>The generation a published segment name belongs to.</summary>
     private static long GenerationOf(string segmentName)
     {

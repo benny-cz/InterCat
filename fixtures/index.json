@@ -379,6 +379,8 @@
         "I1: replaying a journal preserves every field of every record"
       ],
       "I11": [
+        "I11: a metric answers over every segment of the generation, and projects by layer",
+        "I11: an application payload metric projects onto its layer, and refuses any other",
         "I11: an application-layer generation changes no transport-layer metric"
       ],
       "I12": [
@@ -444,8 +446,12 @@
         "I15: retention refuses a file the current generation does not hold",
         "I15: time blocks cover every row and state the interval their rows actually hold"
       ],
+      "I16": [
+        "I16: a result names the materialized request it answers, so two spellings are one request"
+      ],
       "I18": [
         "I18: a lease acquires the generation and every dependency it names as one thing",
+        "I18: a lease holds the manifest it acquired, and a later commit does not move it",
         "I18: a lease on a session with no generation is refused rather than empty",
         "I18: a pin that reserves less than it holds is refused, not silently promised",
         "I18: an expired lease holds nothing, and is not revivable",
@@ -457,6 +463,7 @@
         "I19: navigation math depends only on its inputs, never on workspace state"
       ],
       "I2": [
+        "I2: a generation naming two derivations of one capture is refused rather than counted twice",
         "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",
         "I2: an import names the evidence it cannot find instead of importing nothing",
         "I2: an import refuses a bound outside its declared range before reading a record",
@@ -470,8 +477,11 @@
         "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
       "I3": [
+        "I3: a session-time interval maps to exactly the native readings inside it",
+        "I3: an interval scopes every metric half-open, and a rate divides by the whole of it",
         "I3: bucket boundaries are half-open and contiguous",
         "I3: histogram buckets are half-open, contiguous and contain their samples",
+        "I3: the rows inside an interval are found by search, and both ends are half-open",
         "I3: time ranges are half-open"
       ],
       "I4": [
@@ -479,10 +489,14 @@
         "I4: the covered extent contains the requested one, including the final observation"
       ],
       "I5": [
+        "I5: a total resolves to exactly the records it counted, with identities that survive a re-read",
         "I5: cell counts match the records those cells resolve to"
       ],
       "I6": [
-        "I6: a byte sum covers one domain and one side, and counts everything it left out"
+        "I6: 21.1 scenario 1 - one transfer seen from both ends, accounted once per side",
+        "I6: a byte sum covers one domain and one side, and counts everything it left out",
+        "I6: a domain measurement keeps every side apart and counts what it left out, by reason",
+        "I6: endpoint activity is a metric of its own, and a one-direction metric cannot be accounted as it"
       ],
       "I7": [
         "I7: a reference the source's tables do not describe is refused",
@@ -497,6 +511,7 @@
         "I8: a corrupted source clock frame is refused, never read as a partial clock",
         "I8: a different rate or a different file is a different clock",
         "I8: a generation whose rows name another clock than its journal is refused",
+        "I8: a journal's clock is read without decoding a batch, and a torn one is refused",
         "I8: a reading from this process's own clock confirms the capture's encoding",
         "I8: a reading on another clock refuses the assumed encoding instead of converting it",
         "I8: a record naming a clock the source does not describe is refused, not converted",
@@ -511,6 +526,7 @@
         "I9: alignment revisions never rewrite source time"
       ],
       "P1": [
+        "P1: a byte sum with nothing measured in scope is unavailable, never an observed zero",
         "P1: rows that overlap report no total instead of a sum that counts twice"
       ],
       "P10": [
@@ -550,6 +566,8 @@
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
       ],
       "P3": [
+        "P3: 21.1 scenario 2 - requested and completed bytes stay different quantities",
+        "P3: a byte metric names one traffic domain, and another metric's domain is never relabelled",
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
       "P6": [
@@ -655,8 +673,12 @@
         "R19: project references follow the inward dependency map"
       ],
       "R2": [
+        "R2: a byte metric names its accounting, and a canonical owner is a request rather than a guess",
         "R2: a derived row carries the source's own attribution, measurement and labels",
-        "R2: a measurement carries its value or null, its unit, its domain and its side"
+        "R2: a measurement carries its value or null, its unit, its domain and its side",
+        "R2: a metric outside its basis is rejected with the compatible alternatives named",
+        "R2: a rate names an additive numerator, and nothing else carries one",
+        "R2: an invalid request is refused before it is planned, not answered"
       ],
       "R20": [
         "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
@@ -685,9 +707,11 @@
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
+        "R22: a peer or channel count is unavailable rather than counted from reusable values",
         "R22: an operation on an unobserved create is left unresolved, not matched by name"
       ],
       "R3": [
+        "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
         "R3: CRC-32C matches its published vectors",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
@@ -697,6 +721,7 @@
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a null measurement always states why, and a present one cannot be null",
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
+        "R3: a rate with no interval is unavailable rather than divided by the observed span",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
         "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a single sample answers every quantile from the bucket it fell in",
@@ -704,6 +729,7 @@
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an empty latency histogram reports no quantile rather than zero",
         "R3: an operation without a paired completion keeps completed bytes unknown",
+        "R3: an unknown measurement is counted as unknown, never as a zero contribution",
         "R3: an unreadable loss counter leaves loss unknown rather than zero",
         "R3: impact summaries use the median without hiding signed observations",
         "R3: paired impact preserves observed noise but never classifies a negative cost",
@@ -749,10 +775,6 @@
       "I10": {
         "reason": "Cross-host alignment invariance belongs to M4.",
         "plannedBy": "M4"
-      },
-      "I16": {
-        "reason": "Result identity needs the query identity contract of IC-018.",
-        "plannedBy": "IC-018"
       },
       "I17": {
         "reason": "Late-evidence revisions need the storage generations of IC-016.",

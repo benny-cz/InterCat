@@ -1,0 +1,99 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "Rate",
+    "byteDomain": "TransportObserved",
+    "accountingSide": "ReceiveSide",
+    "rateNumerator": "BytesReceived",
+    "timeScope": "AnalysisInterval",
+    "layer": null,
+    "mechanism": null,
+    "interval": {
+      "startNativeTicks": 18683361748319,
+      "endNativeTicks": 18683381748319,
+      "startSeconds": "8.000000",
+      "endSeconds": "10.000000"
+    }
+  },
+  "available": true,
+  "unavailable": null,
+  "value": null,
+  "unit": "BytesPerSecond",
+  "rate": {
+    "numerator": 90999,
+    "numeratorUnit": "Bytes",
+    "intervalTicks": 20000000,
+    "ticksPerSecond": 10000000,
+    "perSecond": "45499.500",
+    "unit": "BytesPerSecond"
+  },
+  "accounting": {
+    "side": "ReceiveSide",
+    "meaning": "receiver-accounted: each transfer is measured at its receiving end",
+    "takenSides": [
+      "ReceiveSide"
+    ]
+  },
+  "contributions": {
+    "known": 66,
+    "unknown": 0,
+    "measurementAvailability": 1,
+    "unknownReasons": {},
+    "bySide": [
+      {
+        "side": "SendSide",
+        "taken": false,
+        "known": 29,
+        "unknown": 0,
+        "totalBytes": 17898
+      },
+      {
+        "side": "ReceiveSide",
+        "taken": true,
+        "known": 66,
+        "unknown": 0,
+        "totalBytes": 90999
+      },
+      {
+        "side": "EndpointActivity",
+        "taken": false,
+        "known": 11,
+        "unknown": 0,
+        "totalBytes": 0
+      }
+    ],
+    "otherDomains": {}
+  },
+  "excluded": {
+    "otherSide": 40,
+    "otherDomain": 0,
+    "noDeclaredSlot": 22,
+    "byProjection": 0,
+    "outsideInterval": 427
+  },
+  "read": {
+    "segments": 1,
+    "rows": 555,
+    "derivations": [
+      1
+    ],
+    "firstNativeTicks": 18683281839181,
+    "lastNativeTicks": 18683454506122
+  },
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "captureEpochNativeTicks": 18683281748319
+  },
+  "evidence": [],
+  "caveats": [
+    "This total spans every process in scope. Per-process totals need process instances, which this session does not derive yet (R22).",
+    "The denominator is the whole selected interval. A rate is never divided by a shorter healthy-looking part of it (\u00A719.2).",
+    "Coverage defects over this interval are not known here: nothing in this session publishes a coverage ledger yet, so this is an observed rate and not a corrected one."
+  ]
+}

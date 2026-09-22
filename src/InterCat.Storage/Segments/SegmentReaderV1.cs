@@ -619,6 +619,44 @@ public sealed class SegmentReaderV1
     /// <summary>The observation identity of a row, from the capture and derivation the segment names.</summary>
     public ObservationId ObservationIdOf(int row) => Row(row).ObservationIdIn(CaptureId, Derivation);
 
+    /// <summary>
+    /// The rows whose native reading falls inside a half-open interval on this segment's clock, as the row range
+    /// <c>[First, End)</c>. Rows are sorted by native reading and the reader has already verified that order, so
+    /// the range is contiguous and is found by search rather than by a scan (I3, §10.2). An interval that misses
+    /// the segment is the empty range, never an error.
+    /// </summary>
+    public (int First, int End) RowsWithin(TimeRange interval)
+    {
+        if (interval.EndTicks <= MinNativeTicks || interval.StartTicks > MaxNativeTicks)
+        {
+            return (0, 0);
+        }
+
+        SegmentColumnSlice ticks = Slice(SegmentColumnId.NativeTicks);
+        return (FirstAtOrAfter(ticks, interval.StartTicks), FirstAtOrAfter(ticks, interval.EndTicks));
+    }
+
+    /// <summary>The first row whose native reading is at or after a reading, or the row count when none is.</summary>
+    private int FirstAtOrAfter(SegmentColumnSlice ticks, long reading)
+    {
+        int low = 0;
+        int high = RowCount;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if (ticks.SignedAt(middle)!.Value < reading)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
     private static SegmentColumnDescriptor ReadColumnEntry(
         ReadOnlySpan<byte> entry,
         int rowCount,

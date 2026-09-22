@@ -1,0 +1,57 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "Observations",
+    "byteDomain": null,
+    "accountingSide": null,
+    "rateNumerator": null,
+    "timeScope": "RetainedCapture",
+    "layer": null,
+    "mechanism": null,
+    "interval": null
+  },
+  "available": true,
+  "unavailable": null,
+  "value": 555,
+  "unit": "Count",
+  "rate": null,
+  "accounting": null,
+  "contributions": {
+    "known": 555,
+    "unknown": 0,
+    "measurementAvailability": 1,
+    "unknownReasons": {},
+    "bySide": [],
+    "otherDomains": {}
+  },
+  "excluded": {
+    "otherSide": 0,
+    "otherDomain": 0,
+    "noDeclaredSlot": 0,
+    "byProjection": 0,
+    "outsideInterval": 0
+  },
+  "read": {
+    "segments": 1,
+    "rows": 555,
+    "derivations": [
+      1
+    ],
+    "firstNativeTicks": 18683281839181,
+    "lastNativeTicks": 18683454506122
+  },
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "captureEpochNativeTicks": 18683281748319
+  },
+  "evidence": [],
+  "caveats": [
+    "An observation count is sensitive to instrumentation density and says nothing about volume (\u00A75). It is not an operation count."
+  ]
+}

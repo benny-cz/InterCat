@@ -30,6 +30,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -47,6 +48,14 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
     }
     catch (IOException exception)
     {
+        ConsoleUi.Failure(exception.Message);
+        return InterCatExitCode.CorruptedInput;
+    }
+    catch (InvalidDataException exception)
+    {
+        // Every format reader refuses what it cannot read with this exception and a reason. It is not an
+        // IOException, so without this a damaged session would end the process with a stack trace instead of
+        // the documented exit code and the reader's own explanation (§20.4, §20.6 Storage).
         ConsoleUi.Failure(exception.Message);
         return InterCatExitCode.CorruptedInput;
     }
@@ -97,6 +106,15 @@ static void PrintHelp()
     ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal would give up, and");
     ConsoleUi.Line("      performs it only with --confirm and a stated reason (ADR-010).");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
+    ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
+    ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
+    ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("  icat metric --matrix [--json]");
+    ConsoleUi.Line("      Answers one metric over a published session against section 5.3's matrix. A");
+    ConsoleUi.Line("      metric outside its basis is rejected with the compatible ones named; one this");
+    ConsoleUi.Line("      session cannot derive is reported as unavailable, with what it needs.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

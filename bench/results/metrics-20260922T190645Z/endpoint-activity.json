@@ -1,0 +1,88 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "EndpointActivityBytes",
+    "byteDomain": "TransportObserved",
+    "accountingSide": "EndpointActivity",
+    "rateNumerator": null,
+    "timeScope": "RetainedCapture",
+    "layer": null,
+    "mechanism": null,
+    "interval": null
+  },
+  "available": true,
+  "unavailable": null,
+  "value": 427728,
+  "unit": "Bytes",
+  "rate": null,
+  "accounting": {
+    "side": "EndpointActivity",
+    "meaning": "endpoint activity: every measurement at the endpoint that recorded it, so a local transfer counts at both ends",
+    "takenSides": [
+      "SendSide",
+      "ReceiveSide",
+      "EndpointActivity"
+    ]
+  },
+  "contributions": {
+    "known": 485,
+    "unknown": 0,
+    "measurementAvailability": 1,
+    "unknownReasons": {},
+    "bySide": [
+      {
+        "side": "SendSide",
+        "taken": true,
+        "known": 163,
+        "unknown": 0,
+        "totalBytes": 173258
+      },
+      {
+        "side": "ReceiveSide",
+        "taken": true,
+        "known": 253,
+        "unknown": 0,
+        "totalBytes": 254470
+      },
+      {
+        "side": "EndpointActivity",
+        "taken": true,
+        "known": 69,
+        "unknown": 0,
+        "totalBytes": 0
+      }
+    ],
+    "otherDomains": {}
+  },
+  "excluded": {
+    "otherSide": 0,
+    "otherDomain": 0,
+    "noDeclaredSlot": 70,
+    "byProjection": 0,
+    "outsideInterval": 0
+  },
+  "read": {
+    "segments": 1,
+    "rows": 555,
+    "derivations": [
+      1
+    ],
+    "firstNativeTicks": 18683281839181,
+    "lastNativeTicks": 18683454506122
+  },
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "captureEpochNativeTicks": 18683281748319
+  },
+  "evidence": [],
+  "caveats": [
+    "Endpoint activity counts a local transfer at both of its ends by design, so it is not a transfer total and is never compared with one (\u00A75.1).",
+    "Some contributions come from descriptors that name no direction, such as a connect or a disconnect. They count toward endpoint activity only, and what their size field measures is not established by a truth workload (ADR-011)."
+  ]
+}

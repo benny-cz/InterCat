@@ -37,9 +37,34 @@ public enum ObservationKind
 
 public enum Direction { UnknownDirection = 0, Outbound = 1, Inbound = 2, Bidirectional = 3, DirectionNotApplicable = 4 }
 public enum AnalysisBasis { SourceObservations = 1, LogicalOperations = 2, ResourceTopology = 3 }
-public enum Metric { Observations = 1, OperationsStarted = 2, OperationsCompleted = 3, BytesSent = 4, BytesReceived = 5, RequestedIoBytes = 6, ApplicationPayloadBytes = 7, CapturedContentBytes = 8, Rate = 9, Duration = 10, ActiveChannels = 11, ActivePeers = 12, MappingCapacity = 13, Errors = 14 }
+/// <summary>
+/// <c>EN-Metric</c> (section 23). <see cref="EndpointActivityBytes"/> was added by plan revision 28 and ADR-012:
+/// endpoint activity counts both directions at every endpoint, so it is a metric of its own rather than an
+/// accounting side of a metric whose name states one direction.
+/// </summary>
+public enum Metric
+{
+    Observations = 1,
+    OperationsStarted = 2,
+    OperationsCompleted = 3,
+    BytesSent = 4,
+    BytesReceived = 5,
+    RequestedIoBytes = 6,
+    ApplicationPayloadBytes = 7,
+    CapturedContentBytes = 8,
+    Rate = 9,
+    Duration = 10,
+    ActiveChannels = 11,
+    ActivePeers = 12,
+    MappingCapacity = 13,
+    Errors = 14,
+    EndpointActivityBytes = 15,
+}
 public enum ByteDomain { TransportObserved = 1, RequestedIo = 2, CompletedIo = 3, ApplicationPayload = 4, CapturedContent = 5, Capacity = 6 }
 public enum AccountingSide { SendSide = 1, ReceiveSide = 2, EndpointActivity = 3, CanonicalOwner = 4 }
+/// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>
+public enum TimeScope { AnalysisInterval = 1, RetainedCapture = 2, VisibleViewport = 3 }
+
 public enum QualityDimension { Attribution = 1, Correlation = 2, Measurement = 3, Timing = 4 }
 public enum QualityLevel { Proven = 1, Qualified = 2, Weak = 3, UnknownQuality = 4 }
 public enum CoverageState { Covered = 1, ReducedFidelity = 2, PartialGap = 3, NotCollected = 4, UnknownCoverage = 5 }

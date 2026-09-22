@@ -1,0 +1,66 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "RequestedIoBytes",
+    "byteDomain": "RequestedIo",
+    "accountingSide": "SendSide",
+    "rateNumerator": null,
+    "timeScope": "RetainedCapture",
+    "layer": null,
+    "mechanism": null,
+    "interval": null
+  },
+  "available": false,
+  "unavailable": {
+    "reason": "NothingMeasured",
+    "explanation": "Nothing in scope measured RequestedIo bytes under this accounting: no record the total would take declares that slot. A sum of nothing is not an observed zero (R21, P1). Records in scope do measure TransportObserved (485), which are other quantities and are never relabelled as this one (P3)."
+  },
+  "value": null,
+  "unit": null,
+  "rate": null,
+  "accounting": {
+    "side": "SendSide",
+    "meaning": "sender-accounted: each transfer is measured at its sending end",
+    "takenSides": [
+      "SendSide"
+    ]
+  },
+  "contributions": {
+    "known": 0,
+    "unknown": 0,
+    "measurementAvailability": null,
+    "unknownReasons": {},
+    "bySide": [],
+    "otherDomains": {
+      "TransportObserved": 485
+    }
+  },
+  "excluded": {
+    "otherSide": 0,
+    "otherDomain": 485,
+    "noDeclaredSlot": 70,
+    "byProjection": 0,
+    "outsideInterval": 0
+  },
+  "read": {
+    "segments": 1,
+    "rows": 555,
+    "derivations": [
+      1
+    ],
+    "firstNativeTicks": 18683281839181,
+    "lastNativeTicks": 18683454506122
+  },
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "captureEpochNativeTicks": 18683281748319
+  },
+  "evidence": [],
+  "caveats": []
+}

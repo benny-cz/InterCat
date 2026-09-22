@@ -340,4 +340,96 @@ public static class JournalV1Reader
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         return Read(File.ReadAllBytes(Path.GetFullPath(path)));
     }
+
+    /// <summary>
+    /// Reads only the journal's identity and the source clock it declares, without decoding a batch. The
+    /// contract puts the clock frame before any batch, so the read stops there: a caller that needs to interpret
+    /// native readings - a rate per second, an interval in seconds - does not pay for every record to learn what
+    /// clock produced them (I8). The frame's own checksum is verified; the file's other frames are not read.
+    /// </summary>
+    public static (CaptureId CaptureId, SourceClockDescriptor Clock) ReadSourceClock(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        Span<byte> header = stackalloc byte[JournalV1Codec.HeaderLength];
+        ReadExactly(stream, header, "its header");
+        (CaptureId captureId, _) = JournalV1Codec.DecodeHeader(header);
+
+        // At most a schema table can precede the clock frame, so the scan is bounded by the frame kinds the
+        // contract allows before a batch rather than by the file's length.
+        Span<byte> frameHeader = stackalloc byte[8];
+        Span<byte> checksum = stackalloc byte[32];
+        Span<byte> expected = stackalloc byte[32];
+        for (int frame = 0; frame < 2; frame++)
+        {
+            ReadExactly(stream, frameHeader, "a frame header");
+            var kind = (JournalFrameKind)BinaryPrimitives.ReadUInt32LittleEndian(frameHeader);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(frameHeader[4..]);
+            if (length < 0 || length > JournalV1Codec.MaximumFrameBytes)
+            {
+                throw new InvalidDataException("A journal-v1 frame length is outside its bound.");
+            }
+
+            switch (kind)
+            {
+                case JournalFrameKind.SourceClock:
+                    byte[] payload = new byte[length];
+                    ReadExactly(stream, payload, "its source clock frame");
+                    ReadExactly(stream, checksum, "its source clock frame");
+                    System.Security.Cryptography.SHA256.HashData(payload, expected);
+                    return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expected, checksum)
+                        ? (captureId, JournalV1Codec.DecodeClock(payload))
+                        : throw new InvalidDataException("A journal-v1 SourceClock frame fails its checksum.");
+                case JournalFrameKind.SchemaTable:
+                    Skip(stream, (long)length + checksum.Length);
+                    break;
+                default:
+                    throw new InvalidDataException(
+                        $"This journal reaches a {kind} frame before it declares a source clock. Records whose "
+                        + "clock the file does not describe are incomplete evidence, not records with a default "
+                        + "clock.");
+            }
+        }
+
+        throw new InvalidDataException(
+            "This journal declares no source clock before its records, so its native readings belong to a clock "
+            + "the file does not name.");
+    }
+
+    private static void ReadExactly(Stream stream, Span<byte> buffer, string what)
+    {
+        try
+        {
+            stream.ReadExactly(buffer);
+        }
+        catch (EndOfStreamException)
+        {
+            throw new InvalidDataException($"A journal-v1 file ends inside {what}.");
+        }
+    }
+
+    private static void Skip(Stream stream, long count)
+    {
+        if (stream.CanSeek)
+        {
+            if (stream.Position + count > stream.Length)
+            {
+                throw new InvalidDataException("A journal-v1 file ends inside a frame.");
+            }
+
+            stream.Seek(count, SeekOrigin.Current);
+            return;
+        }
+
+        byte[] discard = new byte[Math.Min(count, 81_920)];
+        while (count > 0)
+        {
+            int read = stream.Read(discard, 0, (int)Math.Min(count, discard.Length));
+            if (read == 0)
+            {
+                throw new InvalidDataException("A journal-v1 file ends inside a frame.");
+            }
+
+            count -= read;
+        }
+    }
 }

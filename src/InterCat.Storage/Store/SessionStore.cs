@@ -378,7 +378,7 @@ public sealed class SessionStore
             var lease = new EvidenceLease(
                 Guid.NewGuid(),
                 bounds.Kind,
-                manifest.Generation,
+                manifest,
                 [.. manifest.Dependencies.Select(dependency => dependency.Name)],
                 SessionManifestV1.FileNameFor(manifest.Generation),
                 bounds.ReservedBytes,

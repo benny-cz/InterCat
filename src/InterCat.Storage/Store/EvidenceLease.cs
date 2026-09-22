@@ -37,7 +37,7 @@ public sealed class EvidenceLease : IDisposable
     internal EvidenceLease(
         Guid id,
         EvidenceLeaseKind kind,
-        long generation,
+        SessionManifestV1 manifest,
         IReadOnlyList<string> dependencies,
         string manifestName,
         long reservedBytes,
@@ -47,7 +47,8 @@ public sealed class EvidenceLease : IDisposable
     {
         Id = id;
         Kind = kind;
-        Generation = generation;
+        Manifest = manifest;
+        Generation = manifest.Generation;
         Dependencies = dependencies;
         ManifestName = manifestName;
         ReservedBytes = reservedBytes;
@@ -59,6 +60,13 @@ public sealed class EvidenceLease : IDisposable
     public Guid Id { get; }
 
     public EvidenceLeaseKind Kind { get; }
+
+    /// <summary>
+    /// The generation this lease holds, as it was when the lease was taken. A reader reads this manifest rather
+    /// than the store's current one: a commit landing between acquiring a lease and reading the store would
+    /// otherwise hand the reader a newer generation than the one its lease protects (I16, I18).
+    /// </summary>
+    public SessionManifestV1 Manifest { get; }
 
     /// <summary>The generation this lease holds. It never moves to a later one.</summary>
     public long Generation { get; }

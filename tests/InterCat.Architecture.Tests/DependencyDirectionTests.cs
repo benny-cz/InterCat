@@ -17,7 +17,7 @@ public sealed class DependencyDirectionTests
             ["InterCat.Capture.Journal"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Capture.Windows"],
             ["InterCat.CaptureBroker"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Capture.Windows"],
             ["InterCat.Desktop"] = ["InterCat.Domain", "InterCat.Application"],
-            ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal"],
+            ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal"],
             ["InterCat.TestWorkloads"] = ["InterCat.Domain"],
         };
 

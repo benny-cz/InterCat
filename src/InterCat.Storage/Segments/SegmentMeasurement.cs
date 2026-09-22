@@ -18,6 +18,12 @@ public sealed record ByteSumSpec
     /// <summary>Restricts the sum to one mechanism. Null means every mechanism the segment carries.</summary>
     public Mechanism? Mechanism { get; init; }
 
+    /// <summary>
+    /// Restricts the sum to rows whose native reading is inside this half-open interval on the segment's own
+    /// clock (I3). Null means every row the segment holds.
+    /// </summary>
+    public TimeRange? Interval { get; init; }
+
     public string? Validate() =>
         !Enum.IsDefined(Domain)
             ? "A byte sum names a byte domain §23 defines."
@@ -67,6 +73,9 @@ public sealed record ByteSumResult
     /// <summary>Rows outside the layer or mechanism this sum projects onto.</summary>
     public required long ExcludedByProjection { get; init; }
 
+    /// <summary>Rows whose native reading is outside the interval this sum is scoped to.</summary>
+    public long ExcludedOutsideInterval { get; init; }
+
     /// <summary>Why each unknown contribution is unknown, counted per reason (§7.3).</summary>
     public required IReadOnlyDictionary<FieldAvailability, long> UnknownReasons { get; init; }
 
@@ -85,12 +94,103 @@ public sealed record ByteSumResult
 }
 
 /// <summary>
+/// Which rows one byte domain is measured over, and which of them to return as evidence. The accounting sides a
+/// metric takes are the metric layer's decision (§5.3); this only says which row labels to hand back as the
+/// records behind the number.
+/// </summary>
+public sealed record DomainMeasurementSpec
+{
+    public required ByteDomain Domain { get; init; }
+
+    public ObservationLayer? Layer { get; init; }
+
+    public Mechanism? Mechanism { get; init; }
+
+    /// <summary>Half-open, on the segment's own clock. Null means every row the segment holds.</summary>
+    public TimeRange? Interval { get; init; }
+
+    /// <summary>The row sides whose contributions are returned as evidence rows. Empty returns none.</summary>
+    public IReadOnlyList<AccountingSide> EvidenceSides { get; init; } = [];
+
+    /// <summary>How many evidence rows to return at most, in segment order. Zero returns none.</summary>
+    public int EvidenceLimit { get; init; }
+
+    public string? Validate() =>
+        !Enum.IsDefined(Domain)
+            ? "A measurement names a byte domain §23 defines."
+            : Layer is { } layer && !Enum.IsDefined(layer)
+                ? "A layer projection names a layer §23 defines."
+                : Mechanism is { } mechanism && !Enum.IsDefined(mechanism)
+                    ? "A mechanism projection names a mechanism §23 defines."
+                    : EvidenceSides.Any(side => !Enum.IsDefined(side))
+                        ? "Evidence sides are §23 accounting-side codes."
+                        : EvidenceLimit is < 0 or > SegmentMeasurement.MaximumEvidenceRows
+                            ? $"An evidence listing returns between 0 and {SegmentMeasurement.MaximumEvidenceRows} rows."
+                            : null;
+}
+
+/// <summary>What one row label contributed inside one byte domain: its known sum, and its unknowns with their reasons.</summary>
+public sealed record SideMeasurement
+{
+    public required AccountingSide Side { get; init; }
+
+    public required long TotalBytes { get; init; }
+
+    public required long KnownContributions { get; init; }
+
+    public required long UnknownContributions { get; init; }
+
+    public required IReadOnlyDictionary<FieldAvailability, long> UnknownReasons { get; init; }
+
+    public long DeclaredContributions => KnownContributions + UnknownContributions;
+}
+
+/// <summary>
+/// One byte domain over one segment, broken down by the accounting side each row's measurement is labelled with.
+/// Nothing is combined here: which sides a total takes is a metric's accounting rule, and the sides it does not
+/// take stay in the breakdown so a caller can say what it left out (I6, §5.3, §19.2).
+/// </summary>
+public sealed record DomainMeasurement
+{
+    public required ByteDomain Domain { get; init; }
+
+    /// <summary>The unit every contribution in this domain carried, or null when there were none.</summary>
+    public required MeasurementUnit? Unit { get; init; }
+
+    /// <summary>One entry per row side that carried a declared slot in this domain, in §23 code order.</summary>
+    public required IReadOnlyList<SideMeasurement> Sides { get; init; }
+
+    public required long ExcludedOtherDomain { get; init; }
+
+    /// <summary>
+    /// The rows counted in <see cref="ExcludedOtherDomain"/>, by the domain their slot is in. A caller that finds
+    /// nothing measured in the requested domain can say which quantities the records in scope do measure.
+    /// </summary>
+    public required IReadOnlyDictionary<ByteDomain, long> OtherDomains { get; init; }
+
+    public required long ExcludedNoDeclaredSlot { get; init; }
+
+    public required long ExcludedByProjection { get; init; }
+
+    public required long ExcludedOutsideInterval { get; init; }
+
+    /// <summary>The rows behind the number, in segment order, bounded by the request's evidence limit.</summary>
+    public required IReadOnlyList<int> EvidenceRows { get; init; }
+
+    public SideMeasurement? Side(AccountingSide side) =>
+        Sides.FirstOrDefault(measurement => measurement.Side == side);
+}
+
+/// <summary>
 /// The metric contributions a published segment can answer directly. This is the accounting layer, not the
 /// query engine: it fixes what a byte sum and an observation count mean over one segment, so the scheduler
 /// and caches of IC-017 compose something already correct rather than defining the semantics themselves.
 /// </summary>
 public static class SegmentMeasurement
 {
+    /// <summary>The most evidence rows one measurement returns. A listing is an inspection path, not an export.</summary>
+    public const int MaximumEvidenceRows = 10_000;
+
     /// <summary>
     /// Sums one byte domain and one accounting side over a segment. Every row is accounted for — summed,
     /// counted as an unknown with its reason, or excluded with the reason it was excluded — so a total can
@@ -106,15 +206,68 @@ public static class SegmentMeasurement
             throw new ArgumentException(problem, nameof(spec));
         }
 
-        long total = 0;
-        long known = 0;
-        long unknown = 0;
+        DomainMeasurement measured = MeasureDomain(
+            segment,
+            new()
+            {
+                Domain = spec.Domain,
+                Layer = spec.Layer,
+                Mechanism = spec.Mechanism,
+                Interval = spec.Interval,
+            });
+        SideMeasurement? taken = measured.Side(spec.Side);
+        long otherSide = measured.Sides
+            .Where(side => side.Side != spec.Side)
+            .Sum(side => side.DeclaredContributions);
+        return new()
+        {
+            Domain = spec.Domain,
+            Side = spec.Side,
+            Unit = taken is null ? null : measured.Unit,
+            TotalBytes = taken?.TotalBytes ?? 0,
+            KnownContributions = taken?.KnownContributions ?? 0,
+            UnknownContributions = taken?.UnknownContributions ?? 0,
+            ExcludedOtherDomain = measured.ExcludedOtherDomain,
+            ExcludedOtherSide = otherSide,
+            ExcludedNoDeclaredSlot = measured.ExcludedNoDeclaredSlot,
+            ExcludedByProjection = measured.ExcludedByProjection,
+            ExcludedOutsideInterval = measured.ExcludedOutsideInterval,
+            UnknownReasons = taken?.UnknownReasons ?? new Dictionary<FieldAvailability, long>(),
+        };
+    }
+
+    /// <summary>
+    /// Measures one byte domain over a segment in one pass, keeping each accounting side's contributions apart.
+    /// Every row is accounted for: in the interval or not, in the projection or not, with a declared slot in this
+    /// domain, in another, or in none. Accumulation is checked, so a long capture reports an overflow rather than
+    /// wrapping into a smaller total that looks plausible (§10.2).
+    /// </summary>
+    public static DomainMeasurement MeasureDomain(SegmentReaderV1 segment, DomainMeasurementSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentNullException.ThrowIfNull(spec);
+        string? problem = spec.Validate();
+        if (problem is not null)
+        {
+            throw new ArgumentException(problem, nameof(spec));
+        }
+
+        (int first, int end) = spec.Interval is { } interval ? segment.RowsWithin(interval) : (0, segment.RowCount);
+
+        // Indexed by §23 accounting-side code. A code past the table is refused by the row's own validation
+        // before it can be written, so the bound is the enumeration, not a guess.
+        const int Slots = (int)AccountingSide.CanonicalOwner + 1;
+        var totals = new long[Slots];
+        var known = new long[Slots];
+        var unknown = new long[Slots];
+        var reasons = new Dictionary<FieldAvailability, long>?[Slots];
+        var otherDomains = new long[(int)ByteDomain.Capacity + 1];
         long otherDomain = 0;
-        long otherSide = 0;
         long noSlot = 0;
         long outsideProjection = 0;
         MeasurementUnit? unit = null;
-        var reasons = new Dictionary<FieldAvailability, long>();
+        var evidence = new List<int>(Math.Min(spec.EvidenceLimit, 64));
+        bool wantsEvidence = spec.EvidenceLimit > 0 && spec.EvidenceSides.Count > 0;
 
         // The columns are resolved and checksummed once, and the loop reads them as spans. This is the
         // accounting layer the query scheduler composes, so it walks bytes rather than re-resolving a column
@@ -127,7 +280,7 @@ public static class SegmentMeasurement
         SegmentColumnSlice values = segment.Slice(SegmentColumnId.ByteValue);
         SegmentColumnSlice availability = segment.Slice(SegmentColumnId.ByteAvailability);
 
-        for (int row = 0; row < segment.RowCount; row++)
+        for (int row = first; row < end; row++)
         {
             if ((spec.Layer is { } onlyLayer && (ObservationLayer)layer.UnsignedAt(row)!.Value != onlyLayer)
                 || (spec.Mechanism is { } onlyMechanism
@@ -146,6 +299,11 @@ public static class SegmentMeasurement
             if ((ByteDomain)domainCode != spec.Domain)
             {
                 otherDomain++;
+                if (domainCode < (ulong)otherDomains.Length)
+                {
+                    otherDomains[domainCode]++;
+                }
+
                 continue;
             }
 
@@ -153,10 +311,11 @@ public static class SegmentMeasurement
                 ?? throw new InvalidDataException(
                     $"Row {row} declares a byte domain and no accounting side, so nothing says which side of "
                     + "the exchange its measurement belongs to (§5.3).");
-            if ((AccountingSide)sideCode != spec.Side)
+            if (sideCode is 0 or >= Slots)
             {
-                otherSide++;
-                continue;
+                throw new InvalidDataException(
+                    $"Row {row} labels its measurement with accounting side {sideCode}, which §23 does not "
+                    + "define. An unknown side is refused rather than summed under a guessed one.");
             }
 
             var rowUnit = (MeasurementUnit)(units.UnsignedAt(row)
@@ -169,33 +328,65 @@ public static class SegmentMeasurement
             }
 
             unit = rowUnit;
+            int slot = (int)sideCode;
             if (values.SignedAt(row) is { } value)
             {
-                // Checked, so a long high-volume capture reports an overflow rather than wrapping into a
-                // smaller total that looks plausible (§10.2).
-                total = checked(total + value);
-                known++;
+                totals[slot] = checked(totals[slot] + value);
+                known[slot]++;
+            }
+            else
+            {
+                unknown[slot]++;
+                var reason = (FieldAvailability)availability.UnsignedAt(row)!.Value;
+                Dictionary<FieldAvailability, long> counted = reasons[slot] ??= [];
+                counted[reason] = counted.TryGetValue(reason, out long count) ? count + 1 : 1;
+            }
+
+            if (wantsEvidence && evidence.Count < spec.EvidenceLimit && Takes(spec.EvidenceSides, (AccountingSide)slot))
+            {
+                evidence.Add(row);
+            }
+        }
+
+        var measuredSides = new List<SideMeasurement>();
+        for (int slot = 1; slot < Slots; slot++)
+        {
+            if (known[slot] + unknown[slot] == 0)
+            {
                 continue;
             }
 
-            unknown++;
-            var reason = (FieldAvailability)availability.UnsignedAt(row)!.Value;
-            reasons[reason] = reasons.TryGetValue(reason, out long count) ? count + 1 : 1;
+            measuredSides.Add(new()
+            {
+                Side = (AccountingSide)slot,
+                TotalBytes = totals[slot],
+                KnownContributions = known[slot],
+                UnknownContributions = unknown[slot],
+                UnknownReasons = (IReadOnlyDictionary<FieldAvailability, long>?)reasons[slot]
+                    ?? new Dictionary<FieldAvailability, long>(),
+            });
+        }
+
+        var byDomain = new Dictionary<ByteDomain, long>();
+        for (int code = 1; code < otherDomains.Length; code++)
+        {
+            if (otherDomains[code] > 0)
+            {
+                byDomain[(ByteDomain)code] = otherDomains[code];
+            }
         }
 
         return new()
         {
             Domain = spec.Domain,
-            Side = spec.Side,
             Unit = unit,
-            TotalBytes = total,
-            KnownContributions = known,
-            UnknownContributions = unknown,
+            Sides = measuredSides,
             ExcludedOtherDomain = otherDomain,
-            ExcludedOtherSide = otherSide,
+            OtherDomains = byDomain,
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
-            UnknownReasons = reasons,
+            ExcludedOutsideInterval = segment.RowCount - (end - first),
+            EvidenceRows = evidence,
         };
     }
 
@@ -206,7 +397,19 @@ public static class SegmentMeasurement
     public static long CountObservations(
         SegmentReaderV1 segment,
         ObservationLayer? layer = null,
-        Mechanism? mechanism = null)
+        Mechanism? mechanism = null) =>
+        CountObservations(segment, layer, mechanism, interval: null).Counted;
+
+    /// <summary>
+    /// Counts observations over a projection and a half-open native-time interval, and returns the rows it did
+    /// not count on each ground, so a count can be read against what it left out.
+    /// </summary>
+    public static ObservationCount CountObservations(
+        SegmentReaderV1 segment,
+        ObservationLayer? layer,
+        Mechanism? mechanism,
+        TimeRange? interval,
+        int evidenceLimit = 0)
     {
         ArgumentNullException.ThrowIfNull(segment);
         if (layer is { } declaredLayer && !Enum.IsDefined(declaredLayer))
@@ -222,18 +425,52 @@ public static class SegmentMeasurement
                 "A mechanism projection names a §23 code.");
         }
 
+        if (evidenceLimit is < 0 or > MaximumEvidenceRows)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(evidenceLimit),
+                evidenceLimit,
+                $"An evidence listing returns between 0 and {MaximumEvidenceRows} rows.");
+        }
+
+        (int first, int end) = interval is { } scoped ? segment.RowsWithin(scoped) : (0, segment.RowCount);
         SegmentColumnSlice layers = segment.Slice(SegmentColumnId.Layer);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        var evidence = new List<int>(Math.Min(evidenceLimit, 64));
         long count = 0;
-        for (int row = 0; row < segment.RowCount; row++)
+        for (int row = first; row < end; row++)
         {
             if ((layer is null || (ObservationLayer)layers.UnsignedAt(row)!.Value == layer)
                 && (mechanism is null || (Mechanism)mechanisms.UnsignedAt(row)!.Value == mechanism))
             {
                 count++;
+                if (evidence.Count < evidenceLimit)
+                {
+                    evidence.Add(row);
+                }
             }
         }
 
-        return count;
+        return new(count, (end - first) - count, segment.RowCount - (end - first), evidence);
+    }
+
+    private static bool Takes(IReadOnlyList<AccountingSide> sides, AccountingSide side)
+    {
+        for (int index = 0; index < sides.Count; index++)
+        {
+            if (sides[index] == side)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
+
+/// <summary>An observation count over one segment, with the rows it did not count on each ground.</summary>
+public sealed record ObservationCount(
+    long Counted,
+    long ExcludedByProjection,
+    long ExcludedOutsideInterval,
+    IReadOnlyList<int> EvidenceRows);

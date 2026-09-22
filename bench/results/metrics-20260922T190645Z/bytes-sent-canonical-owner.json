@@ -1,0 +1,51 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "BytesSent",
+    "byteDomain": "TransportObserved",
+    "accountingSide": "CanonicalOwner",
+    "rateNumerator": null,
+    "timeScope": "RetainedCapture",
+    "layer": null,
+    "mechanism": null,
+    "interval": null
+  },
+  "available": false,
+  "unavailable": {
+    "reason": "NoTransferAssociations",
+    "explanation": "A canonical-owner total counts each proven transfer association once, by its owning contribution (\u00A75.3). No correlator has proven an association in this session, so there is nothing to choose an owner for. Sender- or receiver-accounted totals answer from the records themselves and need no association."
+  },
+  "value": null,
+  "unit": null,
+  "rate": null,
+  "accounting": null,
+  "contributions": {
+    "known": 0,
+    "unknown": 0,
+    "measurementAvailability": null,
+    "unknownReasons": {},
+    "bySide": [],
+    "otherDomains": {}
+  },
+  "excluded": {
+    "otherSide": 0,
+    "otherDomain": 0,
+    "noDeclaredSlot": 0,
+    "byProjection": 0,
+    "outsideInterval": 0
+  },
+  "read": {
+    "segments": 0,
+    "rows": 0,
+    "derivations": [],
+    "firstNativeTicks": null,
+    "lastNativeTicks": null
+  },
+  "clock": null,
+  "evidence": [],
+  "caveats": []
+}

@@ -136,6 +136,12 @@ nothing and is not revivable — a hold that can come back from expiry is not a 
 A lease on a session with no published generation is refused. An empty session is not a generation with no
 data.
 
+A lease carries the **manifest** of the generation it holds, and a reader reads that manifest rather than the
+store's current one. A commit that lands between acquiring a lease and asking the store for its current
+generation would otherwise hand the reader a newer generation than the one its lease protects — a reader
+holding generation 1 and reading generation 2's dependency list reads files its lease does not hold (I16,
+I18). A lease never moves to a later generation, and neither does what it names.
+
 ### Retention
 
 Retention publishes a new generation that no longer names what it released, together with a **retention

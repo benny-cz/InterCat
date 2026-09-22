@@ -540,6 +540,122 @@ public sealed class SegmentV1Tests
         Assert.Contains("name one clock", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I3: the rows inside an interval are found by search, and both ends are half-open")]
+    public void RowsWithinAnIntervalAreHalfOpen()
+    {
+        SegmentReaderV1 segment = Build(
+            [.. new long[] { 100, 200, 200, 300, 400 }.Select((ticks, index) => Row(ticks, bytes: 1, ordinal: (ulong)index + 1))]);
+
+        // [200, 400) holds both readings at 200 and the one at 300, and not the one at its exclusive end.
+        Assert.Equal((1, 4), segment.RowsWithin(new TimeRange(200, 400)));
+        Assert.Equal((0, 1), segment.RowsWithin(new TimeRange(0, 101)));
+        Assert.Equal((4, 5), segment.RowsWithin(new TimeRange(400, 401)));
+
+        // An interval that misses the segment is the empty range, before, after or between two readings.
+        Assert.Equal((0, 0), segment.RowsWithin(new TimeRange(0, 100)));
+        Assert.Equal((0, 0), segment.RowsWithin(new TimeRange(401, 1_000)));
+        (int first, int end) = segment.RowsWithin(new TimeRange(201, 300));
+        Assert.Equal(first, end);
+    }
+
+    [Fact(DisplayName = "I6: a domain measurement keeps every side apart and counts what it left out, by reason")]
+    public void ADomainMeasurementKeepsSidesApart()
+    {
+        SegmentReaderV1 segment = Build(
+            [
+                Row(100, bytes: 100, side: AccountingSide.SendSide),
+                Row(200, bytes: 60, side: AccountingSide.ReceiveSide),
+                Row(300, bytes: 0, side: AccountingSide.EndpointActivity),
+                Row(400, bytes: null, availability: FieldAvailability.EventLost, side: AccountingSide.ReceiveSide),
+                Row(500, bytes: 4_096, domain: ByteDomain.RequestedIo),
+                Row(600, bytes: 1_024, domain: ByteDomain.CompletedIo),
+                Row(700, bytes: null, availability: FieldAvailability.NotApplicable, declareSlot: false),
+                Row(800, bytes: 7, layer: ObservationLayer.Application, mechanism: Mechanism.Rpc),
+                Row(900, bytes: 9, side: AccountingSide.SendSide),
+            ]);
+
+        DomainMeasurement measured = SegmentMeasurement.MeasureDomain(
+            segment,
+            new()
+            {
+                Domain = ByteDomain.TransportObserved,
+                Layer = ObservationLayer.Transport,
+                Interval = new TimeRange(100, 900),
+                EvidenceSides = [AccountingSide.ReceiveSide],
+                EvidenceLimit = 5,
+            });
+
+        Assert.Equal(
+            [AccountingSide.SendSide, AccountingSide.ReceiveSide, AccountingSide.EndpointActivity],
+            measured.Sides.Select(side => side.Side));
+        Assert.Equal(100, measured.Side(AccountingSide.SendSide)!.TotalBytes);
+        SideMeasurement received = measured.Side(AccountingSide.ReceiveSide)!;
+        Assert.Equal((60, 1, 1), (received.TotalBytes, received.KnownContributions, received.UnknownContributions));
+        Assert.Equal(1, received.UnknownReasons[FieldAvailability.EventLost]);
+
+        // An observed zero is a known contribution, not an absence.
+        Assert.Equal((0, 1), (measured.Side(AccountingSide.EndpointActivity)!.TotalBytes, measured.Side(AccountingSide.EndpointActivity)!.KnownContributions));
+
+        // What was left out is counted on its own ground, and the other domains are named rather than summed.
+        Assert.Equal(2, measured.ExcludedOtherDomain);
+        Assert.Equal(1, measured.OtherDomains[ByteDomain.RequestedIo]);
+        Assert.Equal(1, measured.OtherDomains[ByteDomain.CompletedIo]);
+        Assert.Equal(1, measured.ExcludedNoDeclaredSlot);
+        Assert.Equal(1, measured.ExcludedByProjection);
+        Assert.Equal(1, measured.ExcludedOutsideInterval);
+
+        // Evidence is the rows of the side asked for, in segment order.
+        Assert.Equal([200L, 400L], measured.EvidenceRows.Select(row => segment.Row(row).NativeTicks));
+
+        // The one-side sum is the same measurement with one side taken and the rest counted as another side.
+        ByteSumResult sent = SegmentMeasurement.SumBytes(
+            segment,
+            new()
+            {
+                Domain = ByteDomain.TransportObserved,
+                Side = AccountingSide.SendSide,
+                Layer = ObservationLayer.Transport,
+                Interval = new TimeRange(100, 900),
+            });
+        Assert.Equal((100, 1, 3), (sent.TotalBytes, sent.KnownContributions, sent.ExcludedOtherSide));
+        Assert.Equal(1, sent.ExcludedOutsideInterval);
+    }
+
+    [Fact(DisplayName = "I8: a journal's clock is read without decoding a batch, and a torn one is refused")]
+    public void AJournalClockIsReadWithoutItsBatches()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1), Row(200, bytes: 2)]);
+
+        SourceClockDescriptor? clock = SessionSegments.SourceClock(session.Store.Root, result.Manifest);
+        Assert.Equal(TestClock, clock);
+
+        byte[] journal = File.ReadAllBytes(Path.Combine(session.Path, result.JournalName));
+        using (var whole = new MemoryStream(journal))
+        {
+            Assert.Equal(Capture, JournalV1Reader.ReadSourceClock(whole).CaptureId);
+        }
+
+        using var torn = new MemoryStream(journal, 0, JournalV1Codec.HeaderLength + 12);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalV1Reader.ReadSourceClock(torn));
+        Assert.Contains("ends inside", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I18: a lease holds the manifest it acquired, and a later commit does not move it")]
+    public void ALeaseHoldsTheManifestItAcquired()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, [Row(100, bytes: 1)]);
+        using EvidenceLease lease = session.Store.AcquireLease();
+
+        DerivedGenerationResult second = Publish(session.Store, [Row(300, bytes: 3)]);
+
+        Assert.Equal(2, session.Store.Current!.Generation);
+        Assert.Same(first.Manifest, lease.Manifest);
+        Assert.Equal(1, lease.Generation);
+        Assert.DoesNotContain(second.Segments[0].Name, SessionSegments.Names(lease.Manifest));
+    }
+
     private static readonly DateTimeOffset Committed = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
     private static SegmentIdentityV1 Identity { get; } = new()

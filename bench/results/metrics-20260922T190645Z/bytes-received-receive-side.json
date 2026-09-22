@@ -1,0 +1,85 @@
+{
+  "contract": "metrics-v1",
+  "path": "E:\\InterCat\\bench\\results\\session-20260922T142600Z\\store",
+  "generation": 1,
+  "fromLastKnownGood": false,
+  "specification": {
+    "basis": "SourceObservations",
+    "metric": "BytesReceived",
+    "byteDomain": "TransportObserved",
+    "accountingSide": "ReceiveSide",
+    "rateNumerator": null,
+    "timeScope": "RetainedCapture",
+    "layer": null,
+    "mechanism": null,
+    "interval": null
+  },
+  "available": true,
+  "unavailable": null,
+  "value": 254470,
+  "unit": "Bytes",
+  "rate": null,
+  "accounting": {
+    "side": "ReceiveSide",
+    "meaning": "receiver-accounted: each transfer is measured at its receiving end",
+    "takenSides": [
+      "ReceiveSide"
+    ]
+  },
+  "contributions": {
+    "known": 253,
+    "unknown": 0,
+    "measurementAvailability": 1,
+    "unknownReasons": {},
+    "bySide": [
+      {
+        "side": "SendSide",
+        "taken": false,
+        "known": 163,
+        "unknown": 0,
+        "totalBytes": 173258
+      },
+      {
+        "side": "ReceiveSide",
+        "taken": true,
+        "known": 253,
+        "unknown": 0,
+        "totalBytes": 254470
+      },
+      {
+        "side": "EndpointActivity",
+        "taken": false,
+        "known": 69,
+        "unknown": 0,
+        "totalBytes": 0
+      }
+    ],
+    "otherDomains": {}
+  },
+  "excluded": {
+    "otherSide": 232,
+    "otherDomain": 0,
+    "noDeclaredSlot": 70,
+    "byProjection": 0,
+    "outsideInterval": 0
+  },
+  "read": {
+    "segments": 1,
+    "rows": 555,
+    "derivations": [
+      1
+    ],
+    "firstNativeTicks": 18683281839181,
+    "lastNativeTicks": 18683454506122
+  },
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "captureEpochNativeTicks": 18683281748319
+  },
+  "evidence": [],
+  "caveats": [
+    "This total spans every process in scope. Per-process totals need process instances, which this session does not derive yet (R22)."
+  ]
+}

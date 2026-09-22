@@ -189,6 +189,43 @@ public static class SourceClockMath
             : throw new OverflowException("The workspace-aligned timestamp is outside Int64 range.");
     }
 
+    /// <summary>
+    /// The first native reading whose session-relative instant is at or after <paramref name="sessionTime"/>, under
+    /// exactly the conversion <see cref="ConvertToSession"/> applies. It turns a half-open session-time interval
+    /// into the half-open native interval holding the same readings: the readings <c>n</c> with
+    /// <c>a &lt;= session(n) &lt; b</c> are exactly <c>[FirstNativeAtOrAfter(a), FirstNativeAtOrAfter(b))</c>,
+    /// because the conversion never decreases (I3, I8). Nothing is rounded twice and nothing is clamped.
+    /// </summary>
+    public static long FirstNativeAtOrAfter(SourceClockDescriptor clock, SessionTimestamp sessionTime)
+    {
+        // An estimate from the inverse scale, then the exact boundary found by applying the forward conversion:
+        // the forward conversion is what every stored session instant was produced by, so it is the one that
+        // decides which readings a boundary admits.
+        Int128 estimate = (Int128)clock.CaptureEpochNativeTicks
+            + Scale(sessionTime.Nanoseconds, clock.TicksPerSecond, SessionTicksPerSecond, TimestampRounding.TowardZero);
+        if (estimate > long.MaxValue || estimate < long.MinValue)
+        {
+            throw new OverflowException("The session instant is outside the native reading range of this clock.");
+        }
+
+        long candidate = (long)estimate;
+        while (SessionNanoseconds(clock, candidate) < sessionTime.Nanoseconds)
+        {
+            candidate = checked(candidate + 1);
+        }
+
+        while (SessionNanoseconds(clock, checked(candidate - 1)) >= sessionTime.Nanoseconds)
+        {
+            candidate--;
+        }
+
+        return candidate;
+    }
+
+    /// <summary>A native reading's session-relative instant, unbounded by the plausibility window.</summary>
+    public static Int128 SessionNanoseconds(SourceClockDescriptor clock, long nativeTicks) =>
+        Scale((Int128)nativeTicks - clock.CaptureEpochNativeTicks, SessionTicksPerSecond, clock.TicksPerSecond, clock.Rounding);
+
     private static Int128 Scale(Int128 value, long numerator, long denominator, TimestampRounding rounding)
     {
         Int128 product = checked(value * numerator);

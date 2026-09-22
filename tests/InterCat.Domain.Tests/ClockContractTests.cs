@@ -110,6 +110,54 @@ public sealed class ClockContractTests
         Assert.Equal(expectedNanoseconds, result.SessionTime!.Value.Nanoseconds);
     }
 
+    [Theory(DisplayName = "I3: a session-time interval maps to exactly the native readings inside it")]
+    [InlineData(10_000_000L, 18_683_281_748_319L, TimestampRounding.NearestEven)]
+    [InlineData(3L, 1_000L, TimestampRounding.NearestEven)]
+    [InlineData(2_000_000_000L, -40L, TimestampRounding.NearestEven)]
+    [InlineData(7L, 0L, TimestampRounding.TowardZero)]
+    public void ASessionIntervalMapsToTheReadingsInsideIt(long ticksPerSecond, long epoch, TimestampRounding rounding)
+    {
+        var clock = new SourceClockDescriptor(
+            new ClockId(Guid.Parse("66666666-6666-4666-8666-666666666666")),
+            new HostId(Guid.Parse("11111111-1111-4111-8111-111111111111")),
+            SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc,
+            ticksPerSecond,
+            epoch,
+            rounding,
+            maximumAbsoluteSessionNanoseconds: SourceClockMath.SessionTicksPerSecond * 3_600);
+        var random = new Random(20260922);
+
+        // For any half-open session interval [a, b), a reading n satisfies a <= session(n) < b exactly when it lies
+        // in [first(a), first(b)). Checked against every reading near both bounds, so an off-by-one in either
+        // direction - admitting a reading just before a or refusing one just before b - fails the case.
+        for (int trial = 0; trial < 200; trial++)
+        {
+            long a = random.NextInt64(-5_000_000_000, 5_000_000_000);
+            long b = a + random.NextInt64(1, 3_000_000_000);
+            long first = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(a));
+            long end = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(b));
+            foreach (long boundary in new[] { first, end })
+            {
+                for (long reading = boundary - 3; reading <= boundary + 3; reading++)
+                {
+                    Int128 session = SourceClockMath.SessionNanoseconds(clock, reading);
+                    bool inside = session >= a && session < b;
+                    Assert.True(
+                        inside == (reading >= first && reading < end),
+                        $"reading {reading} at {session} ns against [{a}, {b}) mapped to [{first}, {end})");
+                }
+            }
+        }
+
+        // Session time zero starts at the capture epoch, give or take the one reading that rounds onto zero when a
+        // tick is finer than a nanosecond: the boundary is where the conversion says it is, not where it looks.
+        long zero = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(0));
+        Assert.True(SourceClockMath.SessionNanoseconds(clock, zero) >= 0);
+        Assert.True(SourceClockMath.SessionNanoseconds(clock, zero - 1) < 0);
+        Assert.InRange(zero, epoch - 1, epoch);
+    }
+
     private static SourceClockDescriptor CreateClock(IdentityScenario scenario) =>
         new(
             scenario.Clock,
