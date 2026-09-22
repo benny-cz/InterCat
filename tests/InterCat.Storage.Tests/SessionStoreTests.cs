@@ -61,6 +61,91 @@ public sealed class SessionStoreTests
         Assert.Equal(1, session.Store.Current!.Generation);
     }
 
+    [Fact(DisplayName = "I15: a stale store instance cannot overwrite a generation another writer published")]
+    public void AStaleWriterMustReopenBeforePublishing()
+    {
+        using var session = new TemporarySession();
+        SessionStore first = session.Store;
+        SessionStore stale = session.Reopen();
+        StoreCommitResult published = Publish(first, ("segment-0001.icats", "first"));
+
+        using StoreStagingFile staged = Stage(stale, "segment-0001.icats", "second");
+        _ = staged.Complete();
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            stale.Commit([staged], CommittedBoundary.None, Committed));
+
+        Assert.Contains("changed after this store instance opened", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal("first", File.ReadAllText(Path.Combine(session.Path, "segment-0001.icats")));
+        Assert.Equal(published.Manifest.Digest, session.Reopen().Current!.Digest);
+    }
+
+    [Fact(DisplayName = "I18: stale retention cannot release files from a newer generation")]
+    public void AStaleRetentionMustReopenBeforePublishing()
+    {
+        using var session = new TemporarySession();
+        SessionStore first = session.Store;
+        _ = Publish(first, ("segment-0001.icats", "first"));
+        SessionStore stale = session.Reopen();
+        _ = Publish(first, ("segment-0002.icats", "second"));
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            stale.ReleaseDependencies(["segment-0001.icats"], "stale cleanup", Committed));
+
+        Assert.Contains("changed after this store instance opened", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(2, session.Reopen().Current!.Generation);
+        Assert.True(File.Exists(Path.Combine(session.Path, "segment-0001.icats")));
+        Assert.True(File.Exists(Path.Combine(session.Path, "segment-0002.icats")));
+    }
+
+    [Fact(DisplayName = "I15: an exclusive publication lock prevents a second writer from committing")]
+    public void PublicationLockIsExclusive()
+    {
+        using var session = new TemporarySession();
+        using StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "first");
+        _ = staged.Complete();
+        using (FileStream held = LocalOwnedDirectory.Open(session.Path).OpenOwnedFile(
+            SessionStore.PublicationLockFileName,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None,
+            FileOptions.None))
+        {
+            IOException refusal = Assert.Throws<IOException>(() =>
+                session.Store.Commit([staged], CommittedBoundary.None, Committed));
+            Assert.Contains("exclusive publication lock", refusal.Message, StringComparison.Ordinal);
+            Assert.Null(session.Store.Current);
+        }
+
+        Assert.Equal(1, session.Store.Commit([staged], CommittedBoundary.None, Committed).Manifest.Generation);
+        Assert.Empty(session.Reopen().Recovery.OrphanFiles);
+    }
+
+    [Fact(DisplayName = "I15: an orphan with a generation's final name is never overwritten")]
+    public void AnOrphanPublishedNameIsImmutableToo()
+    {
+        using var session = new TemporarySession();
+        session.WriteRaw("segment-0001.icats", "orphan");
+        using StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "new");
+        _ = staged.Complete();
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            session.Store.Commit([staged], CommittedBoundary.None, Committed));
+        Assert.Contains("already exists", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal("orphan", File.ReadAllText(Path.Combine(session.Path, "segment-0001.icats")));
+        Assert.Null(session.Store.Current);
+        Assert.Throws<ArgumentException>(() =>
+            session.Store.Stage(SessionPointerV1.FileName, StoreDependencyKind.Index));
+
+        string manifestName = SessionManifestV1.FileNameFor(1);
+        session.WriteRaw(manifestName, "orphan manifest");
+        using StoreStagingFile another = Stage(session.Store, "segment-0002.icats", "new");
+        _ = another.Complete();
+        InvalidOperationException manifestRefusal = Assert.Throws<InvalidOperationException>(() =>
+            session.Store.Commit([another], CommittedBoundary.None, Committed));
+        Assert.Contains(manifestName, manifestRefusal.Message, StringComparison.Ordinal);
+        Assert.Equal("orphan manifest", File.ReadAllText(Path.Combine(session.Path, manifestName)));
+    }
+
     [Fact(DisplayName = "I15: an incomplete staged file is never published")]
     public void AnIncompleteStagedFileIsNeverPublished()
     {
@@ -184,8 +269,8 @@ public sealed class SessionStoreTests
         Assert.Contains("no complete generation", refusal.Message, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "I15: an interrupted staging file is removed on the next open")]
-    public void AnInterruptedStagingFileIsRemovedOnOpen()
+    [Fact(DisplayName = "I15: opening reports a staging file without deleting another writer's work")]
+    public void AnInterruptedStagingFileIsPreservedOnOpen()
     {
         using var session = new TemporarySession();
         _ = Publish(session.Store, ("segment-0001.icats", "first"));
@@ -194,8 +279,10 @@ public sealed class SessionStoreTests
 
         SessionStore reopened = session.Reopen();
 
-        Assert.Equal([staging], reopened.Recovery.RemovedStagingFiles);
-        Assert.False(File.Exists(Path.Combine(session.Path, staging)));
+        Assert.Empty(reopened.Recovery.RemovedStagingFiles);
+        Assert.Contains(staging, reopened.Recovery.OrphanFiles);
+        Assert.True(File.Exists(Path.Combine(session.Path, staging)));
+        Assert.DoesNotContain(staging, reopened.RemoveOrphans());
         Assert.Equal(1, reopened.Current!.Generation);
     }
 

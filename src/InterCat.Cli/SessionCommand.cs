@@ -309,6 +309,14 @@ internal static class SessionCommand
             notes.Add(
                 "Unreferenced files are reported and kept: one may belong to a generation whose publication was "
                 + "interrupted, and deleting it would turn a recoverable interruption into lost evidence.");
+            if (store.Recovery.OrphanFiles.Any(name =>
+                name.StartsWith(SessionStore.StagingPrefix, StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(SessionStore.StagingSuffix, StringComparison.OrdinalIgnoreCase)))
+            {
+                notes.Add(
+                    "Staging files are also kept: another process may have completed them and not yet committed. "
+                    + "Do not delete them until every writer of this session has stopped.");
+            }
         }
 
         JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
@@ -629,7 +637,11 @@ internal static class SessionCommand
             ConsoleUi.Field("Rollback reason", reason);
         }
 
-        ConsoleUi.Field("Staging files removed", ConsoleUi.Count(document.Recovery.RemovedStagingFiles.Count));
+        ConsoleUi.Field(
+            "Staging files kept",
+            ConsoleUi.Count(document.Recovery.OrphanFiles.Count(name =>
+                name.StartsWith(SessionStore.StagingPrefix, StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(SessionStore.StagingSuffix, StringComparison.OrdinalIgnoreCase))));
         ConsoleUi.Field(
             "Unreferenced files",
             document.Recovery.OrphanFiles.Count == 0

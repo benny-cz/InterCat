@@ -434,6 +434,9 @@
         "I15: a null bitmap and its availability counters describe the same rows",
         "I15: a published generation names every dependency with its length and digest",
         "I15: a published name is immutable, so republishing it is refused",
+        "I15: a stale store instance cannot overwrite a generation another writer published",
+        "I15: an exclusive publication lock prevents a second writer from committing",
+        "I15: an orphan with a generation's final name is never overwritten",
         "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",
         "I15: a retention generation publishes what it released and why",
@@ -450,7 +453,7 @@
         "I15: an empty segment is never published, because absence is not data",
         "I15: an empty session is empty, not a refusal",
         "I15: an incomplete staged file is never published",
-        "I15: an interrupted staging file is removed on the next open",
+        "I15: opening reports a staging file without deleting another writer's work",
         "I15: an orphan is reported on open and removed only when that is asked for",
         "I15: every derived row is writable into a segment as it stands",
         "I15: releasing a journal prefix publishes a shorter journal and names the extent",
@@ -467,7 +470,8 @@
         "I18: a pin that reserves less than it holds is refused, not silently promised",
         "I18: an expired lease holds nothing, and is not revivable",
         "I18: released evidence goes once the last lease on it is released",
-        "I18: retention cannot remove evidence a live lease holds"
+        "I18: retention cannot remove evidence a live lease holds",
+        "I18: stale retention cannot release files from a newer generation"
       ],
       "I19": [
         "I19: clearing view selection does not mutate source data",

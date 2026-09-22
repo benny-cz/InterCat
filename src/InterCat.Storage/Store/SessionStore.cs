@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace InterCat.Storage;
 
-/// <summary>What opening a session found, and what it had to do about it.</summary>
+/// <summary>What opening a session found. The legacy removed-staging field stays empty: open is read-only.</summary>
 public sealed record StoreRecoveryReport(
     long Generation,
     bool RolledBackToLastKnownGood,
@@ -26,7 +26,8 @@ public sealed record StoreCommitResult(
 /// <summary>
 /// One file staged for a generation. It is written under a unique staging name, flushed to the device
 /// and measured; publication renames it. Until then it is not part of any generation, and a crash
-/// leaves it as an unreferenced staging file that the next open removes.
+/// leaves it as an unreferenced staging file. Opening reports it, but does not delete it: a second
+/// process may have completed staging and not yet committed.
 /// </summary>
 public sealed class StoreStagingFile : IDisposable
 {
@@ -115,6 +116,8 @@ public sealed class StoreStagingFile : IDisposable
 /// </summary>
 public sealed class SessionStore
 {
+    public const string PublicationLockFileName = "session-publication.lock";
+
     public const string StagingPrefix = "stg-";
 
     public const string StagingSuffix = ".tmp";
@@ -250,6 +253,16 @@ public sealed class SessionStore
                 nameof(publishedName));
         }
 
+        if (publishedName.Equals(SessionPointerV1.FileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.Equals(SessionPointerV1.PreviousFileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.Equals(PublicationLockFileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.StartsWith("manifest-", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "A dependency cannot use the session's pointer, manifest or publication-lock namespace.",
+                nameof(publishedName));
+        }
+
         string stagingName = string.Create(
             CultureInfo.InvariantCulture,
             $"{StagingPrefix}{Guid.NewGuid():N}{StagingSuffix}");
@@ -306,6 +319,8 @@ public sealed class SessionStore
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
             long previousGeneration = current?.Generation ?? 0;
             List<StoreDependency> carried;
             if (replaceDerived)
@@ -354,6 +369,7 @@ public sealed class SessionStore
             var published = new List<StoreDependency>(staged.Count);
             foreach (StoreStagingFile file in staged)
             {
+                RequireUnpublishedTarget(file.PublishedName);
                 StoreDependency dependency = file.Dependency
                     ?? throw new InvalidOperationException(
                         $"Staged file '{file.PublishedName}' was not completed, so its contents are not "
@@ -383,6 +399,7 @@ public sealed class SessionStore
                 previousGeneration == 0 ? null : previousGeneration,
                 boundary,
                 [.. carried, .. published]);
+            RequireUnpublishedTarget(SessionManifestV1.FileNameFor(manifest.Generation));
 
             // The manifest may reference only durable dependencies, so every one of them is read back
             // and measured before it is named. A rename is not a power-failure guarantee (§20.1).
@@ -486,6 +503,8 @@ public sealed class SessionStore
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         lock (gate)
         {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
             var released = new List<StoreDependency>();
@@ -564,6 +583,8 @@ public sealed class SessionStore
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         lock (gate)
         {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
             StoreDependency previous = manifest.Dependencies.FirstOrDefault(dependency =>
@@ -577,6 +598,8 @@ public sealed class SessionStore
                     "The retained journal was not completed, so its contents are not durable and it cannot "
                     + "be published.");
 
+            RequireUnpublishedTarget(retainedJournal.PublishedName);
+            RequireUnpublishedTarget(SessionManifestV1.FileNameFor(manifest.Generation + 1));
             directory.ReplaceOwnedFile(retainedJournal.StagingName, retainedJournal.PublishedName);
             return Publish(
                 manifest,
@@ -593,13 +616,15 @@ public sealed class SessionStore
     /// Removes files no generation references and no live lease holds. It is separate from opening on
     /// purpose: a file that is unreferenced now may be a dependency of a generation whose publication was
     /// interrupted, and deleting it would turn a recoverable interruption into lost evidence. Staging files
-    /// are the one exception, and opening removes those by itself.
+    /// are reported but skipped even by this explicit sweep: another process may not have committed them yet.
     /// </summary>
     public IReadOnlyList<string> RemoveOrphans(DateTimeOffset? nowUtc = null)
     {
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         lock (gate)
         {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
             Sweep(now);
             var removed = new List<string>();
             foreach (string name in Orphans(directory, current))
@@ -633,6 +658,7 @@ public sealed class SessionStore
         List<StoreDependency> released,
         DateTimeOffset now)
     {
+        RequireUnpublishedTarget(SessionManifestV1.FileNameFor(previousManifest.Generation + 1));
         SessionManifestV1 manifest = SessionManifestV1.Create(
             previousManifest.Generation + 1,
             SessionId,
@@ -830,16 +856,6 @@ public sealed class SessionStore
         HashSet<string> referenced = Referenced(directory, manifest);
         foreach (string name in List(directory))
         {
-            if (IsStaging(name))
-            {
-                if (directory.RemoveOwnedFile(name))
-                {
-                    removed.Add(name);
-                }
-
-                continue;
-            }
-
             if (referenced.Contains(name))
             {
                 continue;
@@ -880,6 +896,7 @@ public sealed class SessionStore
         {
             SessionPointerV1.FileName,
             SessionPointerV1.PreviousFileName,
+            PublicationLockFileName,
         };
         Add(referenced, manifest);
         if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
@@ -924,6 +941,54 @@ public sealed class SessionStore
 
     private static bool Exists(IOwnedDirectory directory, string name) =>
         File.Exists(Path.Combine(directory.Path, name));
+
+    private FileStream AcquirePublicationLock()
+    {
+        try
+        {
+            return directory.OpenOwnedFile(
+                PublicationLockFileName,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                FileOptions.WriteThrough);
+        }
+        catch (IOException exception)
+        {
+            throw new IOException(
+                "Could not acquire the session's exclusive publication lock. Another process may be "
+                + "committing or retaining this session; retry after it finishes.", exception);
+        }
+    }
+
+    private void RequireFreshCurrent()
+    {
+        (SessionManifestV1? disk, bool rolledBack, _) = Acquire(directory);
+        if (rolledBack)
+        {
+            throw new InvalidOperationException(
+                "The current pointer failed verification and opening selected last-known-good. Publication "
+                + "is refused until recovery resolves that pointer; it cannot be treated as a fresh branch.");
+        }
+
+        if (disk?.Generation != current?.Generation
+            || !string.Equals(disk?.Digest, current?.Digest, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The session's published generation changed after this store instance opened. Reopen the "
+                + "session before committing or retaining; an old writer cannot overwrite a newer one.");
+        }
+    }
+
+    private void RequireUnpublishedTarget(string name)
+    {
+        if (Exists(directory, name))
+        {
+            throw new InvalidOperationException(
+                $"'{name}' already exists in the session root. A published or interrupted generation's "
+                + "immutable file is never overwritten; inspect the orphan before retrying.");
+        }
+    }
 
     private static void RetainPreviousPointer(IOwnedDirectory directory)
     {

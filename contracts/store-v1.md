@@ -74,6 +74,13 @@ declares no boundary is distinct from one that declares zero.
 5. The manifest is written through a staging name and a replacing rename. The existing pointer is copied
    to `previous-generation.json`, and the new pointer is written the same way.
 
+Publication and retention take an exclusive root-owned `session-publication.lock` file handle. Under that
+lock, a writer re-reads and verifies the on-disk current pointer and manifest against the generation it
+opened; a stale writer, a pointer that needs last-known-good rollback, an existing dependency target or
+an existing target manifest is refused before any immutable name is replaced. The lock is a persistent
+control file, not evidence or an orphan. It serializes independently opened writer processes as well as
+threads within one store instance. A reader does not need that lock.
+
 A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
 exception: it carries exactly the current journal and retained descriptor plan, stages a replacement set
 of segments and dictionaries, and publishes it as the next generation. Carrying the earlier segments
@@ -96,11 +103,12 @@ present with the recorded length and digest.
   nothing usable is not silently reset.
 - Neither pointer exists → the session is empty, which is not a failure.
 
-Opening also removes every `stg-` file, because a staging file is unreferenced by construction, and
-**reports** every other unreferenced file as an orphan with its size. Orphans are not removed
-automatically: a file that is unreferenced now may be a dependency of a generation whose publication was
-interrupted, and deleting it would turn a recoverable interruption into lost evidence. `RemoveOrphans`
-removes them when a caller asks for that.
+Opening **reports and keeps** every unreferenced file, including `stg-` files. A second process may have
+completed a staged file and not yet committed it, so opening cannot infer that a staging name was
+abandoned. Ordinary orphans are not removed automatically either: one may belong to a generation whose
+publication was interrupted. `RemoveOrphans` removes non-staging orphans only when asked, under the
+publication lock and after a fresh-pointer check. Staging cleanup requires explicit coordination that
+establishes no writer still owns those files; no automatic staging cleanup is implemented.
 
 A session is never opened as another session: a manifest naming a different session ID is refused.
 

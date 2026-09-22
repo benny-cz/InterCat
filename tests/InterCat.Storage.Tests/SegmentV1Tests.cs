@@ -517,8 +517,10 @@ public sealed class SegmentV1Tests
 
         SessionStore reopened = session.Reopen();
         Assert.Null(reopened.Current);
-        Assert.NotEmpty(reopened.Recovery.RemovedStagingFiles);
-        Assert.Empty(reopened.Recovery.OrphanFiles);
+        Assert.Empty(reopened.Recovery.RemovedStagingFiles);
+        Assert.NotEmpty(reopened.Recovery.OrphanFiles);
+        Assert.All(reopened.Recovery.OrphanFiles, name =>
+            Assert.StartsWith(SessionStore.StagingPrefix, name, StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "I15: a segment referencing a dictionary the generation does not name is refused")]
