@@ -12,6 +12,143 @@ namespace InterCat.Capture.Journal.Tests;
 /// </summary>
 public sealed class ObservationNormalizerV1Tests
 {
+    [Fact(DisplayName = "R20: the retained descriptor plan round-trips and refuses a different journal schema")]
+    public void RetainedPlanIsExactAndBoundToTheJournal()
+    {
+        AdmittedEventPlan transfer = TransferPlan();
+        AdmittedEventPlan lifecycle = LifecyclePlan();
+        (ObservationNormalizerV1 _, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer), Source(lifecycle)], clock.Id);
+        JournalNormalizationPlanV1 saved = JournalNormalizationPlanV1.FromSources([Source(transfer), Source(lifecycle)]);
+        JournalNormalizationPlanV1 loaded = JournalNormalizationPlanV1.Decode(saved.Encode());
+        loaded.ValidateAgainst(mapper.Schemas);
+
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(Admitted(transfer), transfer, CaptureId.New());
+        AdmittedEventPlan resolved = loaded.Resolve(envelope, mapper.Schemas);
+        Assert.Equal(transfer.SchemaFingerprint, resolved.SchemaFingerprint);
+        Assert.Equal(transfer.BodyPolicy.PolicyId, resolved.BodyPolicy.PolicyId);
+        Assert.Equal(transfer.Slots, resolved.Slots);
+        Assert.Equal(transfer.FieldReport, resolved.FieldReport);
+
+        JournalNormalizationPlanV1 wrong = JournalNormalizationPlanV1.FromSources(
+            [Source(transfer with { SchemaFingerprint = "sha256:changed" }), Source(lifecycle)]);
+        Assert.Throws<InvalidDataException>(() => wrong.ValidateAgainst(mapper.Schemas));
+    }
+
+    [Fact(DisplayName = "R20: a published journal re-derives byte-identical segments in a replacement generation")]
+    public void JournalRebuildReproducesDerivedBytes()
+    {
+        using var session = new TemporarySession();
+        AdmittedEventPlan transfer = TransferPlan();
+        AdmittedEventPlan lifecycle = LifecyclePlan() with
+        {
+            MinimumBodyLength = 12,
+            Slots =
+            [
+                .. LifecyclePlan().Slots,
+                new AdmittedSlotPlan("StartKey", FieldRole.CorrelationKey, 4, 8, null, null, SlotTransform.None)
+                {
+                    SourceField = SourceField.ProcessStartSequence,
+                },
+            ],
+        };
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer), Source(lifecycle)], clock.Id);
+        var identity = new SegmentIdentityV1
+        {
+            CaptureId = session.Capture,
+            ClockId = clock.Id,
+            TimestampEncoding = clock.Encoding,
+            Derivation = ObservationNormalizerV1.ContractVersion,
+        };
+        var options = new DerivedGenerationOptions { RowsPerSegment = 2, JournalBatchRecords = 2 };
+        DerivedGenerationResult original;
+        using (DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(
+            session.Store, identity, clock, DateTimeOffset.UtcNow, options))
+        {
+            JournalNormalizationPlanV1 saved = JournalNormalizationPlanV1.FromSources([Source(transfer), Source(lifecycle)]);
+            saved.ValidateAgainst(mapper.Schemas);
+            builder.StageNormalizerPlan(saved.Encode());
+            builder.Journal.WriteSchemas(mapper.Schemas);
+            for (int index = 0; index < 4; index++)
+            {
+                AdmittedEventPlan descriptor = index % 2 == 0 ? lifecycle : transfer;
+                AdmittedEvent admitted = Admitted(descriptor);
+                admitted.RecordOrdinal = index + 1;
+                admitted.TimestampQpc = 1_000 + index;
+                admitted.SetSlot(0, 100);
+                admitted.SetSlot(1, descriptor == transfer ? 10 * (index + 1) : 700 + index);
+                RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, descriptor, session.Capture);
+                ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, (ulong)index);
+                builder.AddRow(row);
+                foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+                {
+                    builder.AddFieldRow(field);
+                }
+
+                builder.Journal.Append(envelope);
+            }
+
+            original = builder.Complete(DateTimeOffset.UtcNow);
+        }
+
+        byte[][] observations = [.. original.Segments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
+        byte[][] fields = [.. original.FieldSegments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
+        JournalRederivationResult replay = JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow, options);
+        Assert.Equal((1L, 2L, 4L),
+            (replay.SourceGeneration, replay.Generation.Manifest.Generation, replay.ReplayedRecords));
+        Assert.Equal(original.JournalName, replay.Generation.JournalName);
+        Assert.Equal(original.RowCount, replay.Generation.RowCount);
+        Assert.Equal(original.FieldRowCount, replay.Generation.FieldRowCount);
+        Assert.Equal(observations, replay.Generation.Segments.Select(segment =>
+            File.ReadAllBytes(Path.Combine(session.Path, segment.Name))));
+        Assert.Equal(fields, replay.Generation.FieldSegments.Select(segment =>
+            File.ReadAllBytes(Path.Combine(session.Path, segment.Name))));
+        Assert.DoesNotContain(replay.Generation.Manifest.Dependencies, dependency =>
+            original.Segments.Any(segment => segment.Name == dependency.Name));
+        Assert.Single(replay.Generation.Manifest.Dependencies, dependency =>
+            dependency.Kind == StoreDependencyKind.DerivationPlan);
+        string planName = replay.Generation.Manifest.Dependencies.Single(dependency =>
+            dependency.Kind == StoreDependencyKind.DerivationPlan).Name;
+        Assert.Throws<ArgumentException>(() => session.Store.ReleaseDependencies(
+            [planName], "drop derived file", DateTimeOffset.UtcNow));
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(2, reopened.Current!.Generation);
+        Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
+    }
+
+    [Fact(DisplayName = "R20: a legacy journal without its descriptor plan is refused without changing the generation")]
+    public void AJournalWithoutAPlanIsNotReinterpreted()
+    {
+        using var session = new TemporarySession();
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan descriptor = TransferPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(descriptor)], clock.Id);
+        using (DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(session.Store,
+            new SegmentIdentityV1
+            {
+                CaptureId = session.Capture,
+                ClockId = clock.Id,
+                TimestampEncoding = clock.Encoding,
+                Derivation = ObservationNormalizerV1.ContractVersion,
+            }, clock, DateTimeOffset.UtcNow))
+        {
+            builder.Journal.WriteSchemas(mapper.Schemas);
+            AdmittedEvent admitted = Admitted(descriptor);
+            admitted.SetSlot(0, 100);
+            admitted.SetSlot(1, 10);
+            RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, descriptor, session.Capture);
+            builder.AddRow(normalizer.ToRow(envelope, descriptor, 0));
+            builder.Journal.Append(envelope);
+            _ = builder.Complete(DateTimeOffset.UtcNow);
+        }
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
+        Assert.Contains("no retained normalization plan", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1, session.Store.Current!.Generation);
+    }
+
     private static readonly Guid Provider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
 
     [Fact(DisplayName = "R2: a derived row carries the source's own attribution, measurement and labels")]
@@ -346,4 +483,23 @@ public sealed class ObservationNormalizerV1Tests
         Events = [plan],
         Diagnostics = [],
     };
+
+    private sealed class TemporarySession : IDisposable
+    {
+        public TemporarySession()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "intercat-rederive-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path);
+            Capture = CaptureId.New();
+            Store = SessionStore.Open(LocalOwnedDirectory.Open(Path), Capture.Value, "rederive-tests");
+        }
+
+        public string Path { get; }
+
+        public CaptureId Capture { get; }
+
+        public SessionStore Store { get; }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
+    }
 }

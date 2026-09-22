@@ -20,6 +20,9 @@ public enum StoreDependencyKind
 
     /// <summary>An index over published segments.</summary>
     Index = 4,
+
+    /// <summary>The compiled descriptor interpretation retained with admitted evidence for re-derivation.</summary>
+    DerivationPlan = 5,
 }
 
 /// <summary>

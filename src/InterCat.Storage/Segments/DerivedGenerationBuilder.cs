@@ -82,8 +82,10 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private readonly SegmentIdentityV1 identity;
     private readonly DerivedGenerationOptions options;
     private readonly long generation;
-    private readonly StoreStagingFile journalFile;
-    private readonly JournalV1Writer journal;
+    private readonly long? sourceGeneration;
+    private readonly StoreStagingFile? journalFile;
+    private readonly JournalV1Writer? journal;
+    private readonly CommittedBoundary? retainedBoundary;
     private readonly List<StoreStagingFile> staged = [];
     private readonly List<PendingSegment> segments = [];
     private readonly List<PendingSegment> fieldSegments = [];
@@ -91,6 +93,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private SourceFieldWriterV1 openFields;
     private ushort nextDictionaryId = 1;
     private bool completed;
+    private bool planStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -98,8 +101,10 @@ public sealed class DerivedGenerationBuilder : IDisposable
         SegmentIdentityV1 identity,
         DerivedGenerationOptions options,
         long generation,
-        StoreStagingFile journalFile,
-        JournalV1Writer journal)
+        StoreStagingFile? journalFile,
+        JournalV1Writer? journal,
+        CommittedBoundary? retainedBoundary = null,
+        long? sourceGeneration = null)
     {
         this.store = store;
         this.identity = identity;
@@ -107,17 +112,41 @@ public sealed class DerivedGenerationBuilder : IDisposable
         this.generation = generation;
         this.journalFile = journalFile;
         this.journal = journal;
+        this.retainedBoundary = retainedBoundary;
+        this.sourceGeneration = sourceGeneration;
         open = new(identity, 0);
         openFields = new(identity, 0);
     }
 
     /// <summary>The journal this generation derives from. A caller appends the admitted envelopes it keyed.</summary>
-    public JournalV1Writer Journal => journal;
+    public JournalV1Writer Journal => journal
+        ?? throw new InvalidOperationException("A re-derivation reads the retained journal; it does not write a new one.");
 
     /// <summary>How many rows have been derived so far, across every segment of this generation.</summary>
     public long RowCount { get; private set; }
 
     public int SegmentCount => segments.Count + (open.RowCount > 0 ? 1 : 0);
+
+    /// <summary>
+    /// Retains the exact compiled descriptor interpretation that reads this journal's metadata projections.
+    /// It is an evidence companion, not a derived index: without it a later machine cannot safely re-derive.
+    /// </summary>
+    public void StageNormalizerPlan(ReadOnlySpan<byte> bytes)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || planStaged)
+        {
+            throw new InvalidOperationException("A generation stages its normalizer plan once, before publication.");
+        }
+
+        if (bytes.Length is < 1 or > 1_048_576)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bytes), "A retained normalizer plan is between 1 B and 1 MiB.");
+        }
+
+        Stage($"normalizer-plan-{generation:D10}.json", StoreDependencyKind.DerivationPlan, bytes.ToArray());
+        planStaged = true;
+    }
 
     /// <summary>
     /// Begins a generation. The journal is staged immediately, because §20.1's first step is making the
@@ -166,6 +195,46 @@ public sealed class DerivedGenerationBuilder : IDisposable
             journalFile.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Begins a replacement derivation over an already-published, verified journal. The caller holds an
+    /// evidence lease and replays its records; no new journal is staged or copied. Publication keeps that
+    /// exact boundary and replaces only derived files in the next generation.
+    /// </summary>
+    public static DerivedGenerationBuilder BeginFromJournal(
+        SessionStore store,
+        SegmentIdentityV1 identity,
+        SourceClockDescriptor sourceClock,
+        CommittedBoundary boundary,
+        long sourceGeneration,
+        DerivedGenerationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(boundary);
+        DerivedGenerationOptions bounds = options ?? DerivedGenerationOptions.Default;
+        if (bounds.Validate() is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(options));
+        }
+
+        if (store.Current is not { } current
+            || current.Generation != sourceGeneration
+            || current.Boundary != boundary
+            || !boundary.IsDeclared)
+        {
+            throw new InvalidOperationException(
+                "A replacement derivation needs the current generation's exact committed journal boundary.");
+        }
+
+        if (identity.ClockId != sourceClock.Id)
+        {
+            throw new ArgumentException("The retained journal and the new segments must name one source clock.", nameof(identity));
+        }
+
+        return new(store, identity, bounds, store.NextGeneration, journalFile: null, journal: null, boundary,
+            sourceGeneration);
     }
 
     /// <summary>Adds one derived row. A full segment is flushed before the row that would pass its bound.</summary>
@@ -241,7 +310,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
                 + "refuses rather than publishing past it.");
         }
 
-        journal.FlushBatch();
+        journal?.FlushBatch();
         FlushJournalToDevice();
 
         SegmentBuildResult built = open.Build(nextDictionaryId);
@@ -282,7 +351,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
                 + "refuses rather than publishing past it.");
         }
 
-        journal.FlushBatch();
+        journal?.FlushBatch();
         FlushJournalToDevice();
         SegmentBuildResult built = openFields.Build(nextDictionaryId);
         var dictionaryNames = new List<string>(built.Dictionaries.Count);
@@ -320,25 +389,36 @@ public sealed class DerivedGenerationBuilder : IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        journal.Complete();
+        journal?.Complete();
         FlushSegment();
-        StoreDependency journalDependency = journalFile.Complete();
-        var boundary = new CommittedBoundary(
-            journalDependency.Name,
-            journalDependency.LengthBytes,
-            journal.RecordsWritten,
-            journalDependency.Digest);
+        CommittedBoundary boundary;
+        StoreCommitResult commit;
+        if (retainedBoundary is { } retained)
+        {
+            boundary = retained;
+            commit = store.CommitReplacingDerived(staged, sourceGeneration!.Value, boundary, committedUtc,
+                cancellationToken);
+        }
+        else
+        {
+            StoreDependency journalDependency = journalFile!.Complete();
+            boundary = new(
+                journalDependency.Name,
+                journalDependency.LengthBytes,
+                journal!.RecordsWritten,
+                journalDependency.Digest);
 
-        // The journal is published first, so the rename order matches the order the sequence requires even
-        // if a crash lands between two of them.
-        List<StoreStagingFile> all = [journalFile, .. staged];
-        StoreCommitResult commit = store.Commit(all, boundary, committedUtc, cancellationToken);
+            // The journal is published first, so the rename order matches the commit sequence.
+            List<StoreStagingFile> all = [journalFile, .. staged];
+            commit = store.Commit(all, boundary, committedUtc, cancellationToken);
+        }
+
         completed = true;
         return new(
             commit.Manifest,
-            journalDependency.Name,
-            journal.RecordsWritten,
-            journalDependency.LengthBytes,
+            boundary.JournalName,
+            boundary.CommittedRecords,
+            boundary.CommittedBytes,
             [.. segments.Select(Summarize)])
         {
             FieldSegments = [.. fieldSegments.Select(Summarize)],
@@ -363,8 +443,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
         }
 
         disposed = true;
-        journal.Dispose();
-        journalFile.Dispose();
+        journal?.Dispose();
+        journalFile?.Dispose();
         foreach (StoreStagingFile file in staged)
         {
             file.Dispose();
@@ -377,6 +457,11 @@ public sealed class DerivedGenerationBuilder : IDisposable
     /// </summary>
     private void FlushJournalToDevice()
     {
+        if (journalFile is null)
+        {
+            return;
+        }
+
         if (journalFile.Content is FileStream file)
         {
             file.Flush(flushToDisk: true);

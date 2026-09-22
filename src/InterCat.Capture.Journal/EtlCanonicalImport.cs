@@ -152,6 +152,9 @@ public static class EtlCanonicalImport
 
                 // The schema table precedes the first batch, and the mapper already holds every descriptor
                 // the compiled plan admits, so it is complete before a record is read (§18.3).
+                JournalNormalizationPlanV1 normalizerPlan = JournalNormalizationPlanV1.FromSources(admissionPlan.Sources);
+                normalizerPlan.ValidateAgainst(mapper.Schemas);
+                generation.StageNormalizerPlan(normalizerPlan.Encode());
                 generation.Journal.WriteSchemas(mapper.Schemas);
             }
 

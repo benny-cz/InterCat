@@ -2,7 +2,7 @@
 
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
 dictionaries a generation publishes, evidence leases and the retention of a dependency or a journal prefix
-are implemented and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats
+and journal re-derivation are implemented and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats
 are frozen separately in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
@@ -47,7 +47,8 @@ length and digest of every file it depends on. That is what makes it possible to
 survived a power failure from a name that was renamed into place and lost its contents: on Windows there
 is no directory flush, so a rename proves nothing about the bytes behind the name.
 
-A dependency kind is `Journal`, `Segment`, `Dictionary` or `Index`. An unknown kind, an unreadable
+A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` or `DerivationPlan` (code 5,
+`contracts/normalizer-plan-v1.md`). An unknown kind, an unreadable
 format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
 duplicate dependency, or a dependency name that is not an owned file name are each refused — the
 manifest is not read at a guessed layout.
@@ -73,7 +74,13 @@ declares no boundary is distinct from one that declares zero.
 5. The manifest is written through a staging name and a replacing rename. The existing pointer is copied
    to `previous-generation.json`, and the new pointer is written the same way.
 
-A generation's dependencies include its predecessor's. Retiring one is retention (§8).
+A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
+exception: it carries exactly the current journal and retained descriptor plan, stages a replacement set
+of segments and dictionaries, and publishes it as the next generation. Carrying the earlier segments
+would count the same capture twice. The earlier manifest and dependencies remain last-known-good;
+publication still follows the same staged-file and pointer sequence. The replacement is refused if the
+source generation changed during replay or if more than one journal is present, because dropping another
+capture's derived rows would be silent data loss. Retiring a dependency otherwise is retention (§8).
 
 ## 6. Acquiring and recovering
 
@@ -105,6 +112,7 @@ sequence requires, under names that carry the generation:
 | Name | Kind |
 |---|---|
 | `journal-<generation:D10>.icatj` | `Journal` — the admitted evidence, written and flushed first |
+| `normalizer-plan-<generation:D10>.json` | `DerivationPlan` — the retained compiled interpretation of admitted descriptors |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | `Dictionary` |
 | `seg-<generation:D10>-<ordinal:D4>.icats` | `Segment` |
 
@@ -115,6 +123,12 @@ generation does not name is refused rather than read with its codes shown as val
 The journal's pending batch is flushed to the device before any segment derived from it is staged, so a
 generation can never reference evidence that was not durable when it was derived. The committed boundary of
 §4 then names that journal, its durable length and record count, and its digest.
+
+`icat rederive <directory>` replays the single published journal from that boundary with its retained
+`normalizer-plan-v1` dependency and replaces the derived segments and dictionaries in a new generation.
+The replay validates the source clock, schema/policy table, every record and terminal frame, and checks
+the replayed record count against the boundary. A legacy session without a saved plan, or a session with
+multiple journals, is refused rather than guessed from current schemas or incompletely rebuilt.
 
 The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
 segment is a named file with a length and a digest, which is what lets a future format arrive without

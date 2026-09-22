@@ -270,7 +270,29 @@ public sealed class SessionStore
         IReadOnlyList<StoreStagingFile> staged,
         CommittedBoundary boundary,
         DateTimeOffset committedUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        CommitCore(staged, boundary, committedUtc, replaceDerived: false, cancellationToken);
+
+    /// <summary>
+    /// Publishes a new derivation of the current admitted journal. It retains the exact journal and its
+    /// interpretation plan but replaces every previous segment, dictionary and derived index. Carrying the
+    /// earlier segments would count the same capture twice; the previous manifest remains last-known-good.
+    /// </summary>
+    public StoreCommitResult CommitReplacingDerived(
+        IReadOnlyList<StoreStagingFile> staged,
+        long sourceGeneration,
+        CommittedBoundary boundary,
+        DateTimeOffset committedUtc,
+        CancellationToken cancellationToken = default) =>
+        CommitCore(staged, boundary, committedUtc, replaceDerived: true, cancellationToken, sourceGeneration);
+
+    private StoreCommitResult CommitCore(
+        IReadOnlyList<StoreStagingFile> staged,
+        CommittedBoundary boundary,
+        DateTimeOffset committedUtc,
+        bool replaceDerived,
+        CancellationToken cancellationToken,
+        long? sourceGeneration = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
         ArgumentNullException.ThrowIfNull(boundary);
@@ -285,7 +307,47 @@ public sealed class SessionStore
         lock (gate)
         {
             long previousGeneration = current?.Generation ?? 0;
-            List<StoreDependency> carried = [.. current?.Dependencies ?? []];
+            List<StoreDependency> carried;
+            if (replaceDerived)
+            {
+                SessionManifestV1 previous = current
+                    ?? throw new InvalidOperationException("No published generation exists to re-derive.");
+                if (previous.Generation != sourceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        $"Generation {sourceGeneration} changed while its journal was being re-derived. "
+                        + "Reopen the current generation and replay its evidence again.");
+                }
+
+                if (previous.Boundary != boundary)
+                {
+                    throw new InvalidOperationException(
+                        "A replacement derivation must name the current generation's exact committed journal "
+                        + "boundary; it cannot silently switch evidence while replacing derived files.");
+                }
+
+                carried =
+                [
+                    .. previous.Dependencies.Where(dependency =>
+                        dependency.Kind == StoreDependencyKind.DerivationPlan
+                        || (dependency.Kind == StoreDependencyKind.Journal
+                            && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))),
+                ];
+                if (previous.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) != 1
+                    || carried.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) != 1
+                    || carried.Count(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan) != 1)
+                {
+                    throw new InvalidOperationException(
+                        "A replacement derivation currently needs exactly one journal and one retained "
+                        + "normalization plan. A multi-capture session must not lose another capture when its "
+                        + "derived files are replaced; a legacy session needs a verified plan migration.");
+                }
+            }
+            else
+            {
+                carried = [.. current?.Dependencies ?? []];
+            }
+
             var names = new HashSet<string>(
                 carried.Select(dependency => dependency.Name),
                 StringComparer.OrdinalIgnoreCase);
@@ -448,6 +510,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "An admitted journal is not released by dropping its name. ADR-010 makes a journal "
                         + "release an extent with its own record; use the journal retention path.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.DerivationPlan)
+                {
+                    throw new ArgumentException(
+                        "A derivation plan interprets the retained journal and is not a disposable derived index. "
+                        + "It remains with the admitted evidence so the journal can be re-derived later.",
                         nameof(names));
                 }
 

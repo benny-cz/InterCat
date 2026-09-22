@@ -223,6 +223,112 @@ public sealed class JournalV1Writer : IDisposable
 /// <summary>Reads a complete journal-v1 file, refusing anything it cannot read rather than guessing.</summary>
 public static class JournalV1Reader
 {
+    /// <summary>
+    /// Replays one verified journal batch at a time. Each batch's pooled envelopes are released before the
+    /// next is read, so re-derivation does not load a long capture into memory. A malformed or missing
+    /// terminal refuses the replay; the caller must abandon any staged derivation on that exception.
+    /// </summary>
+    public static long ReplayBatches(
+        Stream stream,
+        Action<CaptureId, SourceClockDescriptor, JournalV1SchemaTable, JournalBatchV1> onBatch,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(onBatch);
+        if (!stream.CanRead || !stream.CanSeek)
+        {
+            throw new ArgumentException("Journal replay needs a readable, seekable owned file.", nameof(stream));
+        }
+
+        stream.Position = 0;
+        byte[] header = new byte[JournalV1Codec.HeaderLength];
+        ReadFramePart(stream, header);
+        (CaptureId capture, _) = JournalV1Codec.DecodeHeader(header);
+        SourceClockDescriptor? clock = null;
+        JournalV1SchemaTable? schemas = null;
+        bool sawBatch = false;
+        bool terminal = false;
+        long records = 0;
+        byte[] frameHeader = new byte[8];
+        byte[] digest = new byte[32];
+        Span<byte> measured = stackalloc byte[32];
+        while (stream.Position < stream.Length)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadFramePart(stream, frameHeader);
+            JournalFrameKind kind = (JournalFrameKind)BinaryPrimitives.ReadUInt32LittleEndian(frameHeader);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(frameHeader.AsSpan(4));
+            if (length < 0 || length > JournalV1Codec.MaximumFrameBytes)
+            {
+                throw new InvalidDataException("A journal-v1 replay frame length is outside its bound.");
+            }
+
+            byte[] payload = new byte[length];
+            ReadFramePart(stream, payload);
+            ReadFramePart(stream, digest);
+            System.Security.Cryptography.SHA256.HashData(payload, measured);
+            if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(measured, digest))
+            {
+                throw new InvalidDataException($"A journal-v1 replay {kind} frame fails its checksum.");
+            }
+
+            switch (kind)
+            {
+                case JournalFrameKind.SourceClock when clock is null && !sawBatch:
+                    clock = JournalV1Codec.DecodeClock(payload);
+                    break;
+                case JournalFrameKind.SchemaTable when schemas is null && !sawBatch:
+                    schemas = JournalV1Codec.DecodeSchemaTable(payload);
+                    break;
+                case JournalFrameKind.RecordBatch when clock is not null && schemas is not null:
+                    sawBatch = true;
+                    using (JournalBatchV1 batch = JournalV1Codec.DecodeBatch(payload, capture))
+                    {
+                        onBatch(capture, clock.Value, schemas, batch);
+                        records = checked(records + batch.Records.Count);
+                    }
+
+                    break;
+                case JournalFrameKind.Terminal:
+                    if (stream.Position != stream.Length)
+                    {
+                        throw new InvalidDataException("A journal-v1 replay has bytes after its terminal frame.");
+                    }
+
+                    terminal = true;
+                    break;
+                default:
+                    throw new InvalidDataException(
+                        $"A journal-v1 replay has an unknown, repeated or out-of-order {kind} frame.");
+            }
+
+            if (terminal)
+            {
+                break;
+            }
+        }
+
+        if (!terminal || clock is null || schemas is null)
+        {
+            throw new InvalidDataException(
+                "A journal-v1 replay needs one source clock, one schema table and a complete terminal frame.");
+        }
+
+        return records;
+    }
+
+    private static void ReadFramePart(Stream stream, byte[] buffer)
+    {
+        try
+        {
+            stream.ReadExactly(buffer);
+        }
+        catch (EndOfStreamException exception)
+        {
+            throw new InvalidDataException("A journal-v1 replay ends inside a frame.", exception);
+        }
+    }
+
     public static JournalV1Contents Read(ReadOnlySpan<byte> file)
     {
         (CaptureId captureId, DateTimeOffset createdUtc) = JournalV1Codec.DecodeHeader(file);
