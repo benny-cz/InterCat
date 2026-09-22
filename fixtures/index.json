@@ -434,6 +434,7 @@
         "I15: a null bitmap and its availability counters describe the same rows",
         "I15: a published generation names every dependency with its length and digest",
         "I15: a published name is immutable, so republishing it is refused",
+        "I15: taking a fresh reader lease does not authorize a stale writer",
         "I15: a stale store instance cannot overwrite a generation another writer published",
         "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an orphan with a generation's final name is never overwritten",
@@ -471,6 +472,10 @@
         "I18: an expired lease holds nothing, and is not revivable",
         "I18: released evidence goes once the last lease on it is released",
         "I18: retention cannot remove evidence a live lease holds",
+        "I18: retention in a second store cannot remove another process's leased evidence",
+        "I18: a stale reader acquires the freshly published generation",
+        "I18: a viewer leases a published generation using read-only root access",
+        "I18: expiry releases the cross-process hold without another reader call",
         "I18: stale retention cannot release files from a newer generation"
       ],
       "I19": [

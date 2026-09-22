@@ -155,6 +155,20 @@ declares the disk allowance it reserves, because §10.1 forbids promising an ind
 quota without one; a pin that reserves less than the evidence it would pin is refused. An expired lease holds
 nothing and is not revivable — a hold that can come back from expiry is not a bound on anything.
 
+Cross-process readers hold a shared read handle on the root-owned `session-evidence-lease.lock` before
+verifying the pointer and its dependencies. The session writer creates this guard before publishing a new
+generation. A reader needs only read access to it; a legacy session without the guard can be upgraded by a
+writable reader, but a read-only viewer must refuse that legacy session until its owner has established the
+guard. A reader refreshes a stale store's snapshot from the verified pointer, but that refresh never makes a
+stale *writer* eligible to publish: publication keeps its own baseline until that store is reopened.
+
+Retention and explicit orphan removal take the exclusive guard under the publication lock before deleting
+anything. If any reader in any process holds the shared guard, physical removal is deferred and the released
+files remain as reported orphans. This is intentionally conservative: one reader may defer deletion of an
+unrelated file, but no reader loses a dependency. Disposal, expiry, or process exit releases the OS handle;
+expiry has a timer so an idle client does not hold cleanup indefinitely. A lease is not a durable promise
+across process restart, and the guard is not a cross-process quota reservation for pins.
+
 A lease on a session with no published generation is refused. An empty session is not a generation with no
 data.
 
@@ -212,7 +226,7 @@ its manifest is reported as an orphan and kept, like any other unreferenced file
 
 ## 9. What the sweep treats as referenced
 
-Opening a session reports every file no generation needs. Both pointers count, and so does the manifest and
+Opening a session reports every file no generation needs. Both lock guards and both pointers count, and so does the manifest and
 dependency list of **each** generation a pointer names — including the retained last-known-good. A sweep that
 treated the last-known-good as unreferenced would let `RemoveOrphans` delete the one thing a rollback needs,
 and the next torn pointer would turn a recoverable interruption into a refused session.

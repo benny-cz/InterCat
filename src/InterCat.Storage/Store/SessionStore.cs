@@ -118,6 +118,8 @@ public sealed class SessionStore
 {
     public const string PublicationLockFileName = "session-publication.lock";
 
+    public const string EvidenceLeaseLockFileName = "session-evidence-lease.lock";
+
     public const string StagingPrefix = "stg-";
 
     public const string StagingSuffix = ".tmp";
@@ -129,6 +131,7 @@ public sealed class SessionStore
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, EvidenceLease> leases = [];
     private SessionManifestV1? current;
+    private SessionManifestV1? publicationBaseline;
 
     private SessionStore(
         IOwnedDirectory directory,
@@ -141,6 +144,7 @@ public sealed class SessionStore
         SessionId = sessionId;
         SourceIdentity = sourceIdentity;
         this.current = current;
+        publicationBaseline = current;
         Recovery = recovery;
     }
 
@@ -256,6 +260,7 @@ public sealed class SessionStore
         if (publishedName.Equals(SessionPointerV1.FileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.Equals(SessionPointerV1.PreviousFileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.Equals(PublicationLockFileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.Equals(EvidenceLeaseLockFileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.StartsWith("manifest-", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
@@ -321,6 +326,17 @@ public sealed class SessionStore
         {
             using FileStream publicationLock = AcquirePublicationLock();
             RequireFreshCurrent();
+            // A read-only viewer must be able to open a shared guard after this generation
+            // appears. The writer creates it before the pointer can name the generation.
+            using (directory.OpenOwnedFile(
+                EvidenceLeaseLockFileName,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite,
+                FileOptions.None))
+            {
+            }
+
             long previousGeneration = current?.Generation ?? 0;
             List<StoreDependency> carried;
             if (replaceDerived)
@@ -414,6 +430,7 @@ public sealed class SessionStore
             RetainPreviousPointer(directory);
             Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
             current = manifest;
+            publicationBaseline = manifest;
             return new(manifest, [.. published.Select(dependency => dependency.Name)], previousGeneration);
         }
     }
@@ -437,35 +454,62 @@ public sealed class SessionStore
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         lock (gate)
         {
-            SessionManifestV1 manifest = current
-                ?? throw new InvalidOperationException(
-                    "This session has published no generation, so there is nothing to acquire. An empty "
-                    + "session is not a generation with no data.");
-
-            // A pinned lease reserves space, so it is refused when the evidence it would pin is already
-            // larger than the allowance. §10.1 forbids promising a pin the quota cannot honour.
-            long held = manifest.Dependencies.Sum(dependency => dependency.LengthBytes);
-            if (bounds.Kind == EvidenceLeaseKind.Pinned && bounds.ReservedBytes < held)
+            // Hold the shared marker before reading the pointer. Retention may publish concurrently,
+            // but it cannot remove any old dependency while this handle is open. Readers need only
+            // read access to the broker-owned root; they never take the writer's publication lock.
+            FileStream hold = AcquireEvidenceReadHold();
+            try
             {
-                throw new InvalidOperationException(
-                    $"Generation {manifest.Generation} holds {held} bytes of evidence and this pin reserves "
-                    + $"{bounds.ReservedBytes}. A pin that reserves less than it pins is refused rather than "
-                    + "promising space it does not have.");
-            }
+                (SessionManifestV1? disk, _, _) = Acquire(directory);
+                SessionManifestV1 manifest = disk
+                    ?? throw new InvalidOperationException(
+                        "This session has published no generation, so there is nothing to acquire. An empty "
+                        + "session is not a generation with no data.");
+                if (manifest.SessionId != SessionId)
+                {
+                    throw new InvalidDataException("The session identity changed after this store was opened.");
+                }
 
-            Sweep(now);
-            var lease = new EvidenceLease(
-                Guid.NewGuid(),
-                bounds.Kind,
-                manifest,
-                [.. manifest.Dependencies.Select(dependency => dependency.Name)],
-                SessionManifestV1.FileNameFor(manifest.Generation),
-                bounds.ReservedBytes,
-                now,
-                now + bounds.Duration,
-                Release);
-            leases.Add(lease.Id, lease);
-            return lease;
+                if (current?.Generation == manifest.Generation
+                    && string.Equals(current.Digest, manifest.Digest, StringComparison.Ordinal))
+                {
+                    // Keep the object identity of a still-verified generation for existing readers.
+                    manifest = current;
+                }
+
+                current = manifest;
+
+                // A pin cannot promise less disk allowance than the evidence it already holds.
+                long held = manifest.Dependencies.Sum(dependency => dependency.LengthBytes);
+                if (bounds.Kind == EvidenceLeaseKind.Pinned && bounds.ReservedBytes < held)
+                {
+                    throw new InvalidOperationException(
+                        $"Generation {manifest.Generation} holds {held} bytes of evidence and this pin reserves "
+                        + $"{bounds.ReservedBytes}. A pin that reserves less than it pins is refused rather "
+                        + "than promising space it does not have.");
+                }
+
+                Sweep(now);
+                var lease = new EvidenceLease(
+                    Guid.NewGuid(),
+                    bounds.Kind,
+                    manifest,
+                    [.. manifest.Dependencies.Select(dependency => dependency.Name)],
+                    SessionManifestV1.FileNameFor(manifest.Generation),
+                    bounds.ReservedBytes,
+                    now,
+                    now + bounds.Duration,
+                    hold,
+                    Release);
+                leases.Add(lease.Id, lease);
+                lease.StartExpiryTimer(bounds.Duration);
+                return lease;
+            }
+            catch
+            {
+                hold.Dispose();
+                throw;
+            }
         }
     }
 
@@ -626,6 +670,14 @@ public sealed class SessionStore
             using FileStream publicationLock = AcquirePublicationLock();
             RequireFreshCurrent();
             Sweep(now);
+            // A reader in another process may hold an older generation. Without its shared marker
+            // an orphan sweep could erase a dependency that its in-memory lease still names.
+            using FileStream? removalLock = TryAcquireRemovalLock();
+            if (removalLock is null)
+            {
+                return [];
+            }
+
             var removed = new List<string>();
             foreach (string name in Orphans(directory, current))
             {
@@ -678,16 +730,18 @@ public sealed class SessionStore
         RetainPreviousPointer(directory);
         Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
         current = manifest;
+        publicationBaseline = manifest;
 
         // The generation has stopped naming the released files. Whether their bytes go now depends on
         // whether a reader is still holding them, and a reader that is wins (I18).
         Sweep(now);
+        using FileStream? removalLock = TryAcquireRemovalLock();
         var removed = new List<string>();
         var heldByLease = new List<string>();
         long reclaimed = 0;
         foreach (StoreDependency dependency in released)
         {
-            if (IsLeased(dependency.Name, now))
+            if (removalLock is null || IsLeased(dependency.Name, now))
             {
                 heldByLease.Add(dependency.Name);
                 continue;
@@ -724,7 +778,9 @@ public sealed class SessionStore
             .Select(entry => entry.Key)
             .ToList())
         {
+            EvidenceLease lease = leases[id];
             _ = leases.Remove(id);
+            lease.Dispose();
         }
     }
 
@@ -897,6 +953,7 @@ public sealed class SessionStore
             SessionPointerV1.FileName,
             SessionPointerV1.PreviousFileName,
             PublicationLockFileName,
+            EvidenceLeaseLockFileName,
         };
         Add(referenced, manifest);
         if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
@@ -961,6 +1018,66 @@ public sealed class SessionStore
         }
     }
 
+    private FileStream? TryAcquireRemovalLock()
+    {
+        try
+        {
+            return directory.OpenOwnedFile(
+                EvidenceLeaseLockFileName,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                FileOptions.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Any shared reader, including one in another process, wins. An unrelated I/O refusal
+            // also fails closed: physical cleanup is optional, preserving evidence is not.
+            return null;
+        }
+    }
+
+    private FileStream AcquireEvidenceReadHold()
+    {
+        try
+        {
+            return directory.OpenOwnedFile(
+                EvidenceLeaseLockFileName,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite,
+                FileOptions.None);
+        }
+        catch (FileNotFoundException)
+        {
+            // Older sessions predate the guard. A writable local reader can establish it;
+            // a read-only viewer must ask the owner to upgrade the session first.
+            try
+            {
+                return directory.OpenOwnedFile(
+                    EvidenceLeaseLockFileName,
+                    FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite,
+                    FileShare.ReadWrite,
+                    FileOptions.None);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    "This older session has no evidence lease guard and the reader could not create one. "
+                    + "Have the session owner establish the guard with write access before viewing "
+                    + "concurrently with retention.",
+                    exception);
+            }
+        }
+        catch (IOException exception)
+        {
+            throw new IOException(
+                "Could not acquire the session's shared evidence lease guard. Retention may be removing "
+                + "released files; retry once it finishes.", exception);
+        }
+    }
+
     private void RequireFreshCurrent()
     {
         (SessionManifestV1? disk, bool rolledBack, _) = Acquire(directory);
@@ -971,8 +1088,8 @@ public sealed class SessionStore
                 + "is refused until recovery resolves that pointer; it cannot be treated as a fresh branch.");
         }
 
-        if (disk?.Generation != current?.Generation
-            || !string.Equals(disk?.Digest, current?.Digest, StringComparison.Ordinal))
+        if (disk?.Generation != publicationBaseline?.Generation
+            || !string.Equals(disk?.Digest, publicationBaseline?.Digest, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 "The session's published generation changed after this store instance opened. Reopen the "

@@ -79,6 +79,25 @@ public sealed class SessionStoreTests
         Assert.Equal(published.Manifest.Digest, session.Reopen().Current!.Digest);
     }
 
+    [Fact(DisplayName = "I15: taking a fresh reader lease does not authorize a stale writer")]
+    public void ReaderRefreshDoesNotAuthorizeStaleWriter()
+    {
+        using var session = new TemporarySession();
+        SessionStore writer = session.Store;
+        SessionStore stale = session.Reopen();
+        _ = Publish(writer, ("segment-0001.icats", "first"));
+
+        using EvidenceLease lease = stale.AcquireLease();
+        Assert.Equal(1, lease.Generation);
+        using StoreStagingFile staged = Stage(stale, "segment-0002.icats", "second");
+        _ = staged.Complete();
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            stale.Commit([staged], CommittedBoundary.None, Committed));
+        Assert.Contains("changed after this store instance opened", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1, session.Reopen().Current!.Generation);
+    }
+
     [Fact(DisplayName = "I18: stale retention cannot release files from a newer generation")]
     public void AStaleRetentionMustReopenBeforePublishing()
     {

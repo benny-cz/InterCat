@@ -225,7 +225,7 @@ public sealed class ObservationNormalizerV1Tests
         File.WriteAllBytes(planPath, changedPlan);
         InvalidDataException planRefusal = Assert.Throws<InvalidDataException>(() =>
             JournalRederivation.Verify(session.Store));
-        Assert.Contains("plan changed", planRefusal.Message, StringComparison.Ordinal);
+        Assert.Contains(planName, planRefusal.Message, StringComparison.Ordinal);
         File.WriteAllBytes(planPath, planBytes);
 
         string journalPath = Path.Combine(session.Path, current.Boundary.JournalName);
@@ -235,7 +235,7 @@ public sealed class ObservationNormalizerV1Tests
         File.WriteAllBytes(journalPath, changedJournal);
         InvalidDataException journalRefusal = Assert.Throws<InvalidDataException>(() =>
             JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
-        Assert.Contains("journal changed", journalRefusal.Message, StringComparison.Ordinal);
+        Assert.Contains(current.Boundary.JournalName, journalRefusal.Message, StringComparison.Ordinal);
         File.WriteAllBytes(journalPath, journalBytes);
 
         using var cancelled = new CancellationTokenSource();

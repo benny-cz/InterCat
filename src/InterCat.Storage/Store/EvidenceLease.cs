@@ -32,6 +32,8 @@ public enum EvidenceLeaseKind
 public sealed class EvidenceLease : IDisposable
 {
     private readonly Action<EvidenceLease> release;
+    private readonly FileStream crossProcessHold;
+    private Timer? expiryTimer;
     private int released;
 
     internal EvidenceLease(
@@ -43,6 +45,7 @@ public sealed class EvidenceLease : IDisposable
         long reservedBytes,
         DateTimeOffset acquiredUtc,
         DateTimeOffset expiresUtc,
+        FileStream crossProcessHold,
         Action<EvidenceLease> release)
     {
         Id = id;
@@ -54,7 +57,18 @@ public sealed class EvidenceLease : IDisposable
         ReservedBytes = reservedBytes;
         AcquiredUtc = acquiredUtc;
         ExpiresUtc = expiresUtc;
+        this.crossProcessHold = crossProcessHold;
         this.release = release;
+    }
+
+    internal void StartExpiryTimer(TimeSpan duration)
+    {
+        // Install the timer before arming it. A one-tick lease may fire immediately, and its
+        // callback must still be able to dispose the timer as well as the OS hold.
+        var timer = new Timer(static state => ((EvidenceLease)state!).Dispose(), this,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        expiryTimer = timer;
+        _ = timer.Change(duration, Timeout.InfiniteTimeSpan);
     }
 
     public Guid Id { get; }
@@ -98,6 +112,8 @@ public sealed class EvidenceLease : IDisposable
     {
         if (Interlocked.Exchange(ref released, 1) == 0)
         {
+            expiryTimer?.Dispose();
+            crossProcessHold.Dispose();
             release(this);
         }
     }

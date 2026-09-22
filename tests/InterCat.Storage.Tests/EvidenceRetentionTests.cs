@@ -69,6 +69,78 @@ public sealed class EvidenceRetentionTests
         Assert.Equal(4, SessionSegments.Open(session.Store.Root, first.Manifest, segment).RowCount);
     }
 
+    [Fact(DisplayName = "I18: retention in a second store cannot remove another process's leased evidence")]
+    public void IndependentStoreRetentionHonorsSharedLease()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4);
+        string segment = first.Segments[0].Name;
+        SessionStore writer = session.Reopen();
+        SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+
+        using EvidenceLease lease = reader.AcquireLease(nowUtc: Committed);
+        RetentionOutcome outcome = writer.ReleaseDependencies([segment], "superseded", Committed, Committed);
+
+        Assert.Equal([segment], outcome.HeldByLease);
+        Assert.Empty(outcome.RemovedFiles);
+        Assert.True(File.Exists(Path.Combine(session.Path, segment)));
+        Assert.Empty(writer.RemoveOrphans(Committed));
+        Assert.Equal(4, SessionSegments.Open(reader.Root, lease.Manifest, segment).RowCount);
+
+        lease.Dispose();
+        Assert.Contains(segment, writer.RemoveOrphans(Committed));
+        Assert.False(File.Exists(Path.Combine(session.Path, segment)));
+    }
+
+    [Fact(DisplayName = "I18: a stale reader acquires the freshly published generation")]
+    public void StaleReaderAcquiresCurrentGeneration()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4);
+        SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        _ = session.Store.ReleaseDependencies(
+            [first.Segments[0].Name], "superseded", Committed, Committed);
+
+        using EvidenceLease lease = reader.AcquireLease(nowUtc: Committed);
+
+        Assert.Equal(2, lease.Generation);
+        Assert.Equal(2, reader.Current!.Generation);
+        Assert.DoesNotContain(first.Segments[0].Name, lease.Dependencies);
+    }
+
+    [Fact(DisplayName = "I18: a viewer leases a published generation using read-only root access")]
+    public void ViewerNeedsOnlyReadAccess()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, 4);
+        var root = new ReadOnlyOwnedDirectory(LocalOwnedDirectory.Open(session.Path));
+        SessionStore viewer = SessionStore.OpenExisting(root);
+
+        using EvidenceLease lease = viewer.AcquireLease();
+
+        Assert.Equal(published.Manifest.Generation, lease.Generation);
+        Assert.Contains(published.Segments[0].Name, lease.Dependencies);
+    }
+
+    [Fact(DisplayName = "I18: expiry releases the cross-process hold without another reader call")]
+    public void ExpiryReleasesCrossProcessHold()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4);
+        string segment = first.Segments[0].Name;
+        SessionStore writer = session.Reopen();
+        SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        using EvidenceLease lease = reader.AcquireLease(new() { Duration = TimeSpan.FromMilliseconds(100) });
+        RetentionOutcome outcome = writer.ReleaseDependencies([segment], "superseded", Committed);
+        Assert.True(outcome.AwaitingRelease);
+
+        Assert.True(SpinWait.SpinUntil(
+            () => writer.RemoveOrphans().Contains(segment),
+            TimeSpan.FromSeconds(5)));
+        Assert.True(lease.IsReleased);
+        Assert.False(File.Exists(Path.Combine(session.Path, segment)));
+    }
+
     [Fact(DisplayName = "I18: released evidence goes once the last lease on it is released")]
     public void ReleasedEvidenceGoesWhenTheLastLeaseDoes()
     {
@@ -505,5 +577,26 @@ public sealed class EvidenceRetentionTests
             {
             }
         }
+    }
+
+    private sealed class ReadOnlyOwnedDirectory(IOwnedDirectory inner) : IOwnedDirectory
+    {
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(
+            string name,
+            FileMode mode,
+            FileAccess access,
+            FileShare share,
+            FileOptions options) =>
+            mode == FileMode.Open && access == FileAccess.Read
+                ? inner.OpenOwnedFile(name, mode, access, share, options)
+                : throw new UnauthorizedAccessException("Viewer root is read-only.");
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName) =>
+            throw new UnauthorizedAccessException("Viewer root is read-only.");
+
+        public bool RemoveOwnedFile(string name) =>
+            throw new UnauthorizedAccessException("Viewer root is read-only.");
     }
 }
