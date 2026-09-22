@@ -1,7 +1,8 @@
 # InterCat canonical import v1
 
-Status: **source identity, import identity, canonical record keys, equal-time multiplicity and the
-bounded external-sort path implemented; ETL decoding into admitted envelopes not yet connected**.
+Status: **source identity, import identity, canonical record keys, equal-time multiplicity, the
+bounded external-sort path and standalone ETL import implemented and measured; reuse of a completed
+import from a catalogue not yet implemented**.
 
 This contract freezes the first IC-013 boundary: how a source's bytes become an identity, how one
 record becomes a canonical key, what ordering an import may claim, and what it must refuse. It is a
@@ -48,6 +49,29 @@ The kind decides what gives an imported record its persistent identity:
 
 A journal import therefore keeps the source's own order and its record identities. A standalone ETL is
 keyed, ordered canonically and counted.
+
+## 3.1 Clock identity for imported evidence
+
+A journal names its own clock. Evidence recorded outside InterCat carries readings but none of our
+identities, and both identities it needs are derived from the evidence rather than minted or borrowed:
+
+```text
+clock ID = uuid-v8("InterCat.Import.DerivedClock.v1|<source identity>|<encoding>|<ticks per second>")
+host ID  = uuid-v8("InterCat.Import.DerivedHost.v1|<source identity>")
+```
+
+Minting a fresh clock ID per import would be worse than untidy: the clock ID is inside the canonical
+record key, so two imports of one file would not even agree on their records' identities. Claiming the
+reading machine's host would be worse still - it would let imported readings be compared against local
+captures as though they shared a clock.
+
+The rate is the recording machine's fact, so it comes from the file. The adapter library does not
+expose the recorded performance-counter frequency, so an import derives it from the file's own native
+readings and their relative times, rounds it to whole ticks per second, and then **checks** it: every
+sampled reading must reproduce the file's own relative time under the derived rate, within one
+microsecond. A file whose readings span too little time to derive a rate, or that does not reproduce
+under the derived one, is refused rather than read at an assumed rate. On the measured 25H2 build this
+derives exactly 10,000,000 ticks per second and every sampled reading reproduces.
 
 ## 4. Canonical record key
 
@@ -119,11 +143,23 @@ cancellation — removes every spilled run it created, and the merged index remo
 result is disposed. An import that spills produces exactly the index it would have produced in memory;
 that equality is a test, not an assumption.
 
-## 8. Not yet implemented
+## 8. Reading a standalone ETL
 
-- Decoding a standalone ETL into admitted envelopes. The canonical importer consumes `RecordEnvelopeV1`
-  values, which is what admission produces; the Windows adapter that replays an ETL through admission is
-  not connected to it yet, so `StandaloneEtl` is exercised by envelopes rather than by a real ETL file.
+`InterCat.Capture.Journal` composes the pieces: it hashes the file, derives and checks its clock,
+replays it through the same admission adapter live capture uses, maps each admitted record into a
+`journal-v1` envelope and hands that envelope to the import builder, which keeps its 64-byte index entry
+and lets the envelope go immediately. Holding the envelopes would undo the bound the importer exists to
+keep.
+
+`icat import <source.etl>` runs it. The command needs no elevation, writes machine-readable data to
+stdout and progress to stderr, refuses to overwrite an output without `--overwrite`, and refuses
+`--retain-content` outright, because no source has the validated payload contract, pre-persistence
+scope proof and payload-specific impact evidence that content retention requires. It writes an import
+summary, never a session, and says so in the document it writes.
+
+## 9. Not yet implemented
+
+- A session. Nothing writes an `.icat`; the import produces an identity and an index.
 - Reuse of a matching completed import from a persistent catalogue. The identity is computed and
   comparable; nothing stores it yet.
 - Derivation generations for normalizer upgrades, and bookmark fallback to raw evidence when a fact is

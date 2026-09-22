@@ -1,0 +1,42 @@
+{
+  "contract": "import-v1",
+  "importContractVersion": 1,
+  "importedAtUtc": "2026-09-22T09:37:40.8034572+00:00",
+  "sourcePath": "E:\\InterCat\\fixtures\\FX-IMPORT-001\\runs\\import-probe.etl",
+  "sourceKind": "StandaloneEtl",
+  "sourceLengthBytes": 245760,
+  "sourceContentDigest": "sha256:a97f9cee0f443700b43bda78f85dbabe338db4cad260daa6465e28f5f80a7c1e",
+  "importDigest": "sha256:7a0844f3a13d0aac942b2bb6d7b1e8a44b469b5a48dc9ff2af5c7367668951bf",
+  "retainedEvidence": "MetadataOnly",
+  "identityBasis": "CanonicalKeyWithOccurrence",
+  "schemaTableDigest": "sha256:b2838c1adf5d83c23ad7026ac2a42190e1f7893284b35ce6d2ce332b2bac8ece",
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "hostId": "4eb33a1ce3008870a274404b2cefbd9a",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "referenceNativeTicks": 18683281748319,
+    "derivation": "Derived from the file\u0027s content identity and its own readings, then checked against every sampled reading; an unverifiable rate is refused rather than assumed."
+  },
+  "counts": {
+    "observedRecords": 1090,
+    "admittedRecords": 555,
+    "policyOmissions": 535,
+    "undecodableRecords": 0,
+    "sourceEventsLost": 0,
+    "indexedRecords": 555,
+    "distinctFacts": 555,
+    "maximumMultiplicity": 1,
+    "elapsedMilliseconds": 31.6262
+  },
+  "spill": {
+    "runsWritten": 0,
+    "bytesSpilled": 0
+  },
+  "producesSession": false,
+  "notes": [
+    "This is a canonical import index, not a session. No .icat file is written in this milestone.",
+    "Records are identified by canonical key and occurrence index, because ETL callback delivery order is not reproducible.",
+    "Read on build 10.0.26220.0-x64; the file was recorded elsewhere, so its clock and host identities are derived from its own content rather than from this machine."
+  ]
+}

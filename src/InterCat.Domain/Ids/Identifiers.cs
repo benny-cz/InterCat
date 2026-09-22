@@ -25,6 +25,17 @@ public readonly record struct HostId(Guid Value)
     /// the same name and build produce the same value. Cross-host correlation therefore needs the stronger
     /// evidence IC-013 owns, never this identity alone.
     /// </summary>
+    /// <summary>
+    /// A host identity derived from evidence rather than from this machine. An imported file was
+    /// recorded somewhere, and claiming it was recorded here would let an import's records be compared
+    /// against local captures as if they shared a clock.
+    /// </summary>
+    public static HostId Derive(string canonicalForm)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalForm);
+        return new(StableIdentityHash.CreateUuidV8(canonicalForm));
+    }
+
     public static HostId ForLocalMachine() => new(StableIdentityHash.CreateUuidV8(string.Create(
         CultureInfo.InvariantCulture,
         $"intercat.host.v1|{Environment.MachineName}|{RuntimeInformation.OSDescription}|{RuntimeInformation.OSArchitecture}")));
@@ -41,6 +52,18 @@ public readonly record struct BootId(Guid Value)
 public readonly record struct ClockId(Guid Value)
 {
     public static ClockId New() => new(Guid.NewGuid());
+
+    /// <summary>
+    /// A clock identity derived from evidence rather than minted for a run. Evidence recorded outside
+    /// InterCat carries no clock ID of ours, and minting one per import would make two imports of the
+    /// same file disagree about which clock its readings are on.
+    /// </summary>
+    public static ClockId Derive(string canonicalForm)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalForm);
+        return new(StableIdentityHash.CreateUuidV8(canonicalForm));
+    }
+
     public override string ToString() => Value.ToString("N");
 }
 

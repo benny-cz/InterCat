@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using InterCat.Analysis;
+using InterCat.Capture.Journal;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -50,7 +51,7 @@ internal static partial class Program
 
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture must carry a source clock descriptor.");
-        var mapper = new CallbackEnvelopeMapper(sources, clock.Descriptor.Id);
+        var mapper = new AdmittedEventEnvelopeMapper(sources, clock.Descriptor.Id);
         var outcome = new JournalWriterOutcome();
 
         // The writer owns one thread from open to terminal frame, so its processor time and allocations
@@ -99,7 +100,7 @@ internal static partial class Program
         long extendedReplayed = 0;
         foreach (RecordEnvelopeV1 envelope in replayed.Records)
         {
-            CallbackEnvelopeMapper.AppendFingerprint(replayHash, envelope);
+            AdmittedEventEnvelopeMapper.AppendFingerprint(replayHash, envelope);
             AdmittedEventPlan? plan = session.AdmissionTable.Find(
                 envelope.Header.ProviderId,
                 envelope.Header.EventId,
@@ -113,7 +114,7 @@ internal static partial class Program
             extendedReplayed += envelope.ExtendedItems.Count;
             if (admittedRecords.Count < settings.RecordBudget)
             {
-                admittedRecords.Add(CallbackEnvelopeMapper.FromEnvelope(envelope, plan));
+                admittedRecords.Add(AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan));
             }
         }
 
@@ -219,7 +220,7 @@ internal static partial class Program
     private static void RunWriterThread(
         string evidencePath,
         OwnedCaptureSession session,
-        CallbackEnvelopeMapper mapper,
+        AdmittedEventEnvelopeMapper mapper,
         CaptureId captureId,
         ComparisonSettings settings,
         CaptureClockEvidence clock,
@@ -286,7 +287,7 @@ internal static partial class Program
     /// </summary>
     private static void ChannelDrain(
         OwnedCaptureSession session,
-        CallbackEnvelopeMapper mapper,
+        AdmittedEventEnvelopeMapper mapper,
         CaptureId captureId,
         FileStream file,
         JournalV1Writer writer,
@@ -317,7 +318,7 @@ internal static partial class Program
                 RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, captureId);
                 outcome.ExtendedItemsPersisted += envelope.ExtendedItems.Count;
                 outcome.ExtendedItemsPolicyOmitted += envelope.OmittedExtendedItemCount;
-                CallbackEnvelopeMapper.AppendFingerprint(fingerprint, envelope);
+                AdmittedEventEnvelopeMapper.AppendFingerprint(fingerprint, envelope);
 
                 // The append that fills the batch is the one that encodes and writes it, so it is the
                 // only one whose latency is an encode cost. Timing every append would measure a list add.

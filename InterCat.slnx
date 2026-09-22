@@ -6,6 +6,7 @@
     <Project Path="src/InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <Project Path="src/InterCat.Application/InterCat.Application.csproj" />
     <Project Path="src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <Project Path="src/InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
     <Project Path="src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />
     <Project Path="src/InterCat.Desktop/InterCat.Desktop.csproj" />
     <Project Path="src/InterCat.Cli/InterCat.Cli.csproj" />
@@ -21,6 +22,7 @@
     <Project Path="tests/InterCat.Application.Tests/InterCat.Application.Tests.csproj" />
     <Project Path="tests/InterCat.Analysis.Tests/InterCat.Analysis.Tests.csproj" />
     <Project Path="tests/InterCat.Capture.Windows.Tests/InterCat.Capture.Windows.Tests.csproj" />
+    <Project Path="tests/InterCat.Capture.Journal.Tests/InterCat.Capture.Journal.Tests.csproj" />
     <Project Path="tests/InterCat.CaptureBroker.Tests/InterCat.CaptureBroker.Tests.csproj" />
     <Project Path="tests/InterCat.CaptureComparison.Tests/InterCat.CaptureComparison.Tests.csproj" />
     <Project Path="tests/InterCat.Desktop.Tests/InterCat.Desktop.Tests.csproj" />

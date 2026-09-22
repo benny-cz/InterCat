@@ -406,6 +406,10 @@
       ],
       "I2": [
         "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",
+        "I2: an import names the evidence it cannot find instead of importing nothing",
+        "I2: an import refuses a bound outside its declared range before reading a record",
+        "I2: an import requires both a path and a compiled admission plan",
+        "I2: records keyed against a derived clock keep one identity across imports",
         "I2: the same bytes under a different retained-evidence policy are a different import"
       ],
       "I3": [
@@ -429,12 +433,16 @@
       "I8": [
         "I8: a capture clock stays unconfirmed until a delivered record is checked against it",
         "I8: a checked clock is never re-checked by a later record",
+        "I8: a clock with no source or no rate is refused rather than defaulted",
         "I8: a corrupted source clock frame is refused, never read as a partial clock",
+        "I8: a different rate or a different file is a different clock",
         "I8: a reading from this process's own clock confirms the capture's encoding",
         "I8: a reading on another clock refuses the assumed encoding instead of converting it",
         "I8: a record naming a clock the source does not describe is refused, not converted",
         "I8: a record whose encoding differs from the source clock's is refused",
         "I8: a second clock frame is refused rather than silently replacing the first",
+        "I8: an imported clock identity comes from the evidence, so two imports agree",
+        "I8: imported evidence never claims the machine that is reading it",
         "I8: native clock, local time and workspace time remain distinct"
       ],
       "I9": [

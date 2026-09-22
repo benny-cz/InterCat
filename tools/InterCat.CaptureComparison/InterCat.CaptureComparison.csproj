@@ -8,6 +8,7 @@
     <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
     <ProjectReference Include="../../src/InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <ProjectReference Include="../../src/InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="InterCat.CaptureComparison.Tests" />

@@ -4,7 +4,7 @@ using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
 
-namespace InterCat.CaptureComparison;
+namespace InterCat.Capture.Journal;
 
 /// <summary>
 /// Maps one admitted callback record into a journal-v1 envelope: the bounded field projection as an
@@ -13,15 +13,15 @@ namespace InterCat.CaptureComparison;
 /// the metadata policy denies loses its bytes and is counted, and the clock is the one the session
 /// recorded rather than a fresh identifier per run.
 /// </summary>
-internal sealed class CallbackEnvelopeMapper
+public sealed class AdmittedEventEnvelopeMapper
 {
-    internal const string PolicyId = CaptureBodyAdmissionPolicies.MetadataOnlyPolicyId;
+    public const string PolicyId = CaptureBodyAdmissionPolicies.MetadataOnlyPolicyId;
     private const uint ProjectionMagic = 0x31504149; // "IAP1" little-endian.
 
     private readonly JournalV1SchemaTable schemas = new();
     private readonly ClockId clockId;
 
-    public CallbackEnvelopeMapper(IReadOnlyList<SourceAdmissionPlan> sources, ClockId clockId)
+    public AdmittedEventEnvelopeMapper(IReadOnlyList<SourceAdmissionPlan> sources, ClockId clockId)
     {
         ArgumentNullException.ThrowIfNull(sources);
         foreach (SourceAdmissionPlan source in sources)

@@ -113,7 +113,8 @@ public sealed record CanonicalImportOptions
     /// <summary>Where spilled runs are written. The caller's temporary directory when null.</summary>
     public string? SpillDirectory { get; init; }
 
-    internal string? Validate() =>
+    /// <summary>Returns the reason these bounds are not usable, or null when they are.</summary>
+    public string? Validate() =>
         MaximumEntriesInMemory is < 1 or > 16_777_216
             ? "An import holds between 1 and 16,777,216 entries in memory."
             : MaximumSpillRuns is < 1 or > 65_536
@@ -224,85 +225,20 @@ public static class CanonicalImporter
         uint normalizerContractVersion = 1,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(schemas);
         ArgumentNullException.ThrowIfNull(records);
-        CanonicalImportOptions bounds = options ?? CanonicalImportOptions.Default;
-        string? problem = bounds.Validate();
-        if (problem is not null)
+        using var builder = new CanonicalImportBuilder(
+            source,
+            retainedEvidence,
+            sourceClock,
+            schemas,
+            options,
+            normalizerContractVersion);
+        foreach (RecordEnvelopeV1 record in records)
         {
-            throw new ArgumentException(problem, nameof(options));
+            builder.Add(record, cancellationToken);
         }
 
-        ImportIdentity identity = ImportIdentity.Create(source, retainedEvidence, normalizerContractVersion);
-        ImportIdentityBasis basis = source.Kind == ImportSourceKind.JournalV1
-            ? ImportIdentityBasis.PreservedRawRecordId
-            : ImportIdentityBasis.CanonicalKeyWithOccurrence;
-        string schemaDigest = DigestOf(schemas);
-        var spills = new List<string>();
-        long spilledBytes = 0;
-        try
-        {
-            List<ImportedRecordEntry> run = new(Math.Min(bounds.MaximumEntriesInMemory, 4_096));
-            List<ImportedRecordEntry>? ordered = basis == ImportIdentityBasis.PreservedRawRecordId
-                ? new List<ImportedRecordEntry>()
-                : null;
-            long count = 0;
-            foreach (RecordEnvelopeV1 record in records)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                RequireDescribed(record, sourceClock, schemas, count);
-                if (++count > bounds.MaximumRecordCount)
-                {
-                    throw new InvalidDataException(
-                        $"This source carries more than the {bounds.MaximumRecordCount} records one import "
-                        + "reads. It is refused rather than imported in part.");
-                }
-
-                var entry = new ImportedRecordEntry(
-                    CanonicalRecordKeyBuilder.Create(source, record),
-                    record.NativeTicks,
-                    record.RecordOrdinal,
-                    record.StreamId,
-                    record.SourceEpoch,
-                    0,
-                    1);
-                if (ordered is not null)
-                {
-                    // A journal's stored order is its acquisition order, which is reproducible; keeping
-                    // it is the whole point of preserving its identities.
-                    ordered.Add(entry);
-                    continue;
-                }
-
-                run.Add(entry);
-                if (run.Count >= bounds.MaximumEntriesInMemory)
-                {
-                    spilledBytes += Spill(run, spills, bounds, cancellationToken);
-                }
-            }
-
-            return ordered is not null
-                ? Resident(identity, basis, sourceClock, schemaDigest, ordered, spills, spilledBytes)
-                : Merge(
-                    identity,
-                    basis,
-                    sourceClock,
-                    schemaDigest,
-                    run,
-                    spills,
-                    spilledBytes,
-                    bounds,
-                    cancellationToken);
-        }
-        catch
-        {
-            foreach (string spill in spills)
-            {
-                Remove(spill);
-            }
-
-            throw;
-        }
+        return builder.Complete(cancellationToken);
     }
 
     /// <summary>
@@ -354,6 +290,46 @@ public static class CanonicalImporter
 
         return CanonicalImportContract.Render(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())));
     }
+
+    internal static long SpillRun(
+        List<ImportedRecordEntry> run,
+        List<string> spills,
+        CanonicalImportOptions bounds,
+        CancellationToken cancellationToken) =>
+        Spill(run, spills, bounds, cancellationToken);
+
+    internal static CanonicalImportIndex Finish(
+        ImportIdentity identity,
+        ImportIdentityBasis basis,
+        SourceClockDescriptor sourceClock,
+        string schemaDigest,
+        List<ImportedRecordEntry> tail,
+        List<ImportedRecordEntry>? ordered,
+        List<string> spills,
+        long spilledBytes,
+        CanonicalImportOptions bounds,
+        CancellationToken cancellationToken) =>
+        ordered is not null
+            ? Resident(identity, basis, sourceClock, schemaDigest, ordered, spills, spilledBytes)
+            : Merge(
+                identity,
+                basis,
+                sourceClock,
+                schemaDigest,
+                tail,
+                spills,
+                spilledBytes,
+                bounds,
+                cancellationToken);
+
+    internal static void RequireSourceDescribes(
+        RecordEnvelopeV1 record,
+        SourceClockDescriptor sourceClock,
+        JournalV1SchemaTable schemas,
+        long position) =>
+        RequireDescribed(record, sourceClock, schemas, position);
+
+    internal static string NewSpillFilePath(CanonicalImportOptions bounds) => NewSpillPath(bounds);
 
     internal static void Remove(string path)
     {

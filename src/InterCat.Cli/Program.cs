@@ -27,6 +27,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "capabilities" => await CapabilitiesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "profiles" => await ProfilesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -76,6 +77,12 @@ static void PrintHelp()
     ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
     ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat import <source.etl> [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("             [--max-entries-in-memory <n>] [--spill-directory <dir>]");
+    ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");
+    ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
+    ConsoleUi.Line("      Needs no elevation. Writes an import summary, not a session.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

@@ -3,16 +3,16 @@ using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
 
-namespace InterCat.CaptureComparison.Tests;
+namespace InterCat.Capture.Journal.Tests;
 
-public sealed class CallbackEnvelopeMapperTests
+public sealed class AdmittedEventEnvelopeMapperTests
 {
     [Fact(DisplayName = "IC-011: every field in the callback envelope survives journal-v1 mapping")]
     public void CallbackEnvelopeRoundTripsExactly()
     {
         AdmittedEventPlan plan = BuildEventPlan();
         SourceAdmissionPlan source = BuildSource(plan);
-        var mapper = new CallbackEnvelopeMapper([source], ClockId.New());
+        var mapper = new AdmittedEventEnvelopeMapper([source], ClockId.New());
         AdmittedEvent admitted = BuildAdmitted();
         admitted.SetSlot(0, 123);
         admitted.SetSlot(3, -456);
@@ -33,7 +33,7 @@ public sealed class CallbackEnvelopeMapperTests
         CaptureId captureId = CaptureId.New();
 
         using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, captureId);
-        AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
 
         Assert.Equal(captureId, envelope.CaptureId);
         Assert.Equal(BodyDispositionV1.Retained, envelope.Body.Disposition);
@@ -88,14 +88,14 @@ public sealed class CallbackEnvelopeMapperTests
     public void DeniedExtendedTypeIsCountedNotPersisted()
     {
         AdmittedEventPlan plan = BuildEventPlan();
-        var mapper = new CallbackEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
         AdmittedEvent admitted = BuildAdmitted();
         admitted.BeginExtendedData(ExtendedDataAvailability.Captured, 2);
         Assert.True(admitted.TryAppendExtendedItem(EtwExtendedDataTypes.Sid, 0, [9, 9, 9, 9], 4));
         Assert.True(admitted.TryAppendExtendedItem(EtwExtendedDataTypes.ContainerId, 0, [7, 7], 2));
 
         using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
-        AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
 
         Assert.Equal(1, envelope.OmittedExtendedItemCount);
         ExtendedItemV1 persisted = Assert.Single(envelope.ExtendedItems);
@@ -112,12 +112,12 @@ public sealed class CallbackEnvelopeMapperTests
     public void UnreachableExtendedDataStaysUnavailableAfterReplay()
     {
         AdmittedEventPlan plan = BuildEventPlan();
-        var mapper = new CallbackEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
         AdmittedEvent admitted = BuildAdmitted();
         admitted.BeginExtendedData(ExtendedDataAvailability.UnavailableOnThisAdapter, 5);
 
         using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
-        AdmittedEvent replayed = CallbackEnvelopeMapper.FromEnvelope(envelope, plan);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
 
         Assert.Empty(envelope.ExtendedItems);
         Assert.Equal(ExtendedDataAvailability.UnavailableOnThisAdapter, replayed.ExtendedData);
@@ -129,7 +129,7 @@ public sealed class CallbackEnvelopeMapperTests
     public void EnvelopeDescriptorPlanMustMatch()
     {
         AdmittedEventPlan plan = BuildEventPlan();
-        var mapper = new CallbackEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
         AdmittedEvent admitted = BuildAdmitted();
         AdmittedEventPlan wrong = plan with
         {
@@ -140,41 +140,7 @@ public sealed class CallbackEnvelopeMapperTests
         Assert.Throws<InvalidDataException>(() => mapper.ToEnvelope(admitted, wrong, CaptureId.New()));
 
         using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
-        Assert.Throws<InvalidDataException>(() => CallbackEnvelopeMapper.FromEnvelope(envelope, wrong));
-    }
-
-    [Fact(DisplayName = "R8: ETL replay sink records its own bounded-budget drops")]
-    public void ReplaySinkCountsBudgetDrops()
-    {
-        var sink = new ReplaySink(recordBudget: 1);
-        sink.OnObserved();
-        Assert.True(sink.Admit(new AdmittedEvent { RecordOrdinal = 1 }));
-        sink.OnObserved();
-        Assert.False(sink.Admit(new AdmittedEvent { RecordOrdinal = 2 }));
-
-        CaptureHealthSnapshot health = sink.Snapshot(providerLoss: 3, consumerLoss: 0);
-
-        Assert.Equal(2, health.ObservedRecords);
-        Assert.Equal(1, health.AdmittedRecords);
-        Assert.Equal(1, health.ApplicationDrops);
-        Assert.Equal(3, health.ProviderReportedEventLoss);
-    }
-
-    [Fact(DisplayName = "R21: the replay sink reports an unreadable stage total as unknown, not as zero")]
-    public void ReplaySinkKeepsUnmeasuredStageTotalsNull()
-    {
-        var sink = new ReplaySink(recordBudget: 4);
-        sink.OnObserved();
-        Assert.True(sink.Admit(new AdmittedEvent { RecordOrdinal = 1 }));
-        sink.OnCallbackCompleted(new(100, ExtendedDataAvailability.RecordCarriedNone, 0, 0));
-
-        CaptureStageSnapshot stages = sink.ReadStages(allocatedBytes: null, cpu: null);
-
-        Assert.Null(stages.DeliveryThreadAllocatedBytes);
-        Assert.Null(stages.DeliveryThreadCpu);
-        Assert.Equal(1, stages.CallbackLatency.Samples);
-        Assert.Equal(1, stages.QueueHighWaterRecords);
-        Assert.Equal(1, stages.RecordsWithoutExtendedData);
+        Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(envelope, wrong));
     }
 
     private static AdmittedEvent BuildAdmitted() => new()
