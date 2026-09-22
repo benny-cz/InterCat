@@ -388,6 +388,13 @@
         "I13: every journal probe record has retained evidence or an explicit omission"
       ],
       "I14": [
+        "I14: a cancelled import leaves no spilled run behind",
+        "I14: a canonical key changes with every field the envelope carries",
+        "I14: an import bound that would be exceeded is a refusal, not a partial import",
+        "I14: an import option outside its declared range is refused before anything is read",
+        "I14: an import that spills to disk produces exactly the index it would in memory",
+        "I14: equal-time byte-identical records keep their multiplicity and gain no order",
+        "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: one admitted record cannot satisfy two truth operations"
       ],
       "I19": [
@@ -396,6 +403,10 @@
       ],
       "I21": [
         "I21: an over-long extended item keeps its original length and a truncation flag"
+      ],
+      "I2": [
+        "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",
+        "I2: the same bytes under a different retained-evidence policy are a different import"
       ],
       "I3": [
         "I3: bucket boundaries are half-open and contiguous",
@@ -409,12 +420,20 @@
       "I5": [
         "I5: cell counts match the records those cells resolve to"
       ],
+      "I7": [
+        "I7: a reference the source's tables do not describe is refused",
+        "I7: a schema table digest changes with the descriptors, not with their order",
+        "I7: importing a journal preserves its record identities and its stored order",
+        "I7: re-importing the same journal reuses its identity, clock and schema table"
+      ],
       "I8": [
         "I8: a capture clock stays unconfirmed until a delivered record is checked against it",
         "I8: a checked clock is never re-checked by a later record",
         "I8: a corrupted source clock frame is refused, never read as a partial clock",
         "I8: a reading from this process's own clock confirms the capture's encoding",
         "I8: a reading on another clock refuses the assumed encoding instead of converting it",
+        "I8: a record naming a clock the source does not describe is refused, not converted",
+        "I8: a record whose encoding differs from the source clock's is refused",
         "I8: a second clock frame is refused rather than silently replacing the first",
         "I8: native clock, local time and workspace time remain distinct"
       ],
@@ -667,10 +686,6 @@
         "reason": "Pinned evidence survival needs retention from IC-016.",
         "plannedBy": "IC-016"
       },
-      "I2": {
-        "reason": "Deterministic fact keys arrive with the canonical importer of IC-013.",
-        "plannedBy": "IC-013"
-      },
       "I20": {
         "reason": "Boundary censoring needs the checkpoint work of IC-016.",
         "plannedBy": "IC-016"
@@ -682,10 +697,6 @@
       "I6": {
         "reason": "Byte-domain conservation needs the metric contributions of IC-015.",
         "plannedBy": "IC-015"
-      },
-      "I7": {
-        "reason": "Acquisition versus display order needs the import metadata of IC-013.",
-        "plannedBy": "IC-013"
       },
       "P11": {
         "reason": "Quality dimensions stay separate once IC-015 publishes them.",
