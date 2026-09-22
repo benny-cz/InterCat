@@ -1,2 +1,3 @@
-Console.Error.WriteLine("InterCat capture broker is not enabled in this M0 slice.");
+Console.Error.WriteLine(
+    "InterCat broker protocol v1 can freeze local capture plans, but the authenticated service and live start command are not enabled.");
 return 3;

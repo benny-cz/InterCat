@@ -2,7 +2,7 @@
 
 ## 1. Purpose and product decisions
 
-**Status:** reviewed product architecture and implementation blueprint, revision 14, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 14 separates a bounded Content request preview from an enforceable production admission policy: validating requested limits is useful, but it cannot make an unvalidated payload source available.
+**Status:** reviewed product architecture and implementation blueprint, revision 15, 2026-09-22. M0 implementation has started; progress and measured limitations are tracked in `docs/IMPLEMENTATION-STATUS.md`. M0 must resolve the stated capture feasibility gates before dependent features are committed for delivery. This design document does not itself imply a capture benchmark or capability claim. Revision 15 corrects the broker prepare trust boundary: an ordinary client may preview a plan, but it never supplies privileged provider/body settings. The broker compiles the typed profile request locally, returns an exact effective summary/digest, and start remains blocked if that result differs from what the user reviewed.
 
 InterCat is a new Windows application for exploring communication between processes: who talks to whom, through which mechanism, when, how often, with what measurable volume, and with what observable contents. Its primary experience is a synchronized communication graph and time visualization, each given equal prominence. Users move fluidly from a whole-machine overview to a process, channel, time interval, operation, and underlying evidence.
 
@@ -1624,6 +1624,8 @@ GetStatus(capture ID)
 StopCapture(capture ID, request ID)
 RenewOwnerLease(capture ID)
 ```
+
+`PrepareCapture` accepts only the profile ID and bounded typed overrides, quota and retention policy. It never accepts a serialized effective plan, provider settings, event IDs, body offsets or schema fingerprints from the ordinary-integrity client. The broker discovers capabilities and compiles the effective plan locally from its installed allowlist. It returns the exact effective summary and deterministic prepared-plan digest; if either differs from the preview the user reviewed, the client blocks start and returns to review rather than accepting a fallback. The digest is plan identity only, not authentication or a prepared token. `contracts/broker-v1.md` freezes the canonical prepare handoff and records which transport/ownership pieces remain unimplemented.
 
 The broker authenticates the local OS identity and connection ownership as follows; a supplied PID or random nonce is never accepted as authentication:
 

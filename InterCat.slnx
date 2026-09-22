@@ -21,6 +21,7 @@
     <Project Path="tests/InterCat.Application.Tests/InterCat.Application.Tests.csproj" />
     <Project Path="tests/InterCat.Analysis.Tests/InterCat.Analysis.Tests.csproj" />
     <Project Path="tests/InterCat.Capture.Windows.Tests/InterCat.Capture.Windows.Tests.csproj" />
+    <Project Path="tests/InterCat.CaptureBroker.Tests/InterCat.CaptureBroker.Tests.csproj" />
     <Project Path="tests/InterCat.CaptureComparison.Tests/InterCat.CaptureComparison.Tests.csproj" />
     <Project Path="tests/InterCat.Desktop.Tests/InterCat.Desktop.Tests.csproj" />
     <Project Path="tests/InterCat.Ui.Tests/InterCat.Ui.Tests.csproj" />
