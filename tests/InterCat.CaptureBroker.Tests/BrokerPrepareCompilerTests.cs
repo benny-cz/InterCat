@@ -22,8 +22,8 @@ public sealed class BrokerPrepareCompilerTests
             ],
         };
 
-        BrokerPrepareResult first = BrokerPrepareCompiler.Prepare(mutable, Runtime);
-        BrokerPrepareResult second = BrokerPrepareCompiler.Prepare(mutable, Runtime);
+        BrokerPrepareResult first = Prepare(mutable);
+        BrokerPrepareResult second = Prepare(mutable);
 
         Assert.True(first.IsPrepared);
         Assert.Null(first.Refusal);
@@ -65,8 +65,8 @@ public sealed class BrokerPrepareCompilerTests
             Scope = plan.Scope with { Sources = [.. plan.Scope.Sources.Reverse()] },
         };
 
-        string left = BrokerPrepareCompiler.Prepare(plan, Runtime).PreparedPlan!.Digest;
-        string right = BrokerPrepareCompiler.Prepare(reordered, Runtime).PreparedPlan!.Digest;
+        string left = Prepare(plan).PreparedPlan!.Digest;
+        string right = Prepare(reordered).PreparedPlan!.Digest;
 
         Assert.Equal(left, right);
     }
@@ -75,10 +75,10 @@ public sealed class BrokerPrepareCompilerTests
     public void DifferentReviewedProcessFocusChangesDigest()
     {
         PreparedCapturePlan first = BrokerPrepareCompiler
-            .Prepare(CompileFocused([84], allowBroaderCapture: true), Runtime)
+            .Prepare(CompileFocused([84], allowBroaderCapture: true), Quota, BrokerRetentionPolicy.StopAtLimit, Runtime)
             .PreparedPlan!;
         PreparedCapturePlan second = BrokerPrepareCompiler
-            .Prepare(CompileFocused([85], allowBroaderCapture: true), Runtime)
+            .Prepare(CompileFocused([85], allowBroaderCapture: true), Quota, BrokerRetentionPolicy.StopAtLimit, Runtime)
             .PreparedPlan!;
 
         Assert.NotEqual(first.Digest, second.Digest);
@@ -99,7 +99,7 @@ public sealed class BrokerPrepareCompilerTests
             _ => Runtime with { AdapterVersion = "different-adapter" },
         };
 
-        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(CompileFocused(), runtime);
+        BrokerPrepareResult result = Prepare(CompileFocused(), runtime);
 
         Assert.False(result.IsPrepared);
         Assert.Null(result.PreparedPlan);
@@ -111,7 +111,7 @@ public sealed class BrokerPrepareCompilerTests
     {
         EffectiveCapturePlan blocked = CompileFocused([84], allowBroaderCapture: false);
 
-        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(blocked, Runtime);
+        BrokerPrepareResult result = Prepare(blocked);
 
         Assert.False(result.IsPrepared);
         Assert.Equal(BrokerPrepareRefusalCode.PlanNotStartable, result.Refusal!.Code);
@@ -140,7 +140,7 @@ public sealed class BrokerPrepareCompilerTests
             ],
         };
 
-        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(forgedPlan, Runtime);
+        BrokerPrepareResult result = Prepare(forgedPlan);
 
         Assert.False(result.IsPrepared);
         Assert.Equal(BrokerPrepareRefusalCode.UnsupportedAdmissionPolicy, result.Refusal!.Code);
@@ -159,11 +159,50 @@ public sealed class BrokerPrepareCompilerTests
             ],
         };
 
-        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(forged, Runtime);
+        BrokerPrepareResult result = Prepare(forged);
 
         Assert.False(result.IsPrepared);
         Assert.Equal(BrokerPrepareRefusalCode.InvalidCapturePlan, result.Refusal!.Code);
         Assert.Contains("allowlist", result.Refusal.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ReviewedOperationalLimitsAreFrozenAndChangeDigest()
+    {
+        EffectiveCapturePlan plan = CompileFocused();
+        PreparedCapturePlan first = Prepare(plan).PreparedPlan!;
+        var shorter = Quota with { MaximumDurationSeconds = Quota.MaximumDurationSeconds - 1 };
+        PreparedCapturePlan second = BrokerPrepareCompiler
+            .Prepare(plan, shorter, BrokerRetentionPolicy.StopAtLimit, Runtime)
+            .PreparedPlan!;
+
+        Assert.Equal(Quota, first.Quota);
+        Assert.Equal(BrokerRetentionPolicy.StopAtLimit, first.Retention);
+        Assert.NotEqual(first.Digest, second.Digest);
+    }
+
+    [Fact]
+    public void InvalidOperationalLimitsCannotBePrepared()
+    {
+        var invalid = Quota with { MinimumFreeDiskBytes = Quota.MaximumJournalBytes };
+
+        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(
+            CompileFocused(),
+            invalid,
+            BrokerRetentionPolicy.StopAtLimit,
+            Runtime);
+
+        Assert.False(result.IsPrepared);
+        Assert.Equal(BrokerPrepareRefusalCode.InvalidOperationalLimits, result.Refusal!.Code);
+    }
+
+    private static BrokerPrepareResult Prepare(
+        EffectiveCapturePlan plan,
+        BrokerRuntimeIdentity? runtime = null) =>
+        BrokerPrepareCompiler.Prepare(
+            plan,
+            Quota,
+            BrokerRetentionPolicy.StopAtLimit,
+            runtime ?? Runtime);
 
 }

@@ -13,6 +13,7 @@ internal enum BrokerWireType : byte
     Guid = 6,
     Int32List = 7,
     Utf8List = 8,
+    Int32ListList = 9,
 }
 
 [Flags]
@@ -102,6 +103,35 @@ internal sealed class BrokerWireFieldWriter : IDisposable
         }
 
         Write(fieldId, BrokerWireType.Utf8List, required, valueStream.GetBuffer().AsSpan(0, checked((int)valueStream.Length)));
+    }
+
+    public void WriteInt32Lists(
+        ushort fieldId,
+        IReadOnlyList<IReadOnlyList<int>> values,
+        bool required = true)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        using var valueStream = new MemoryStream();
+        Span<byte> number = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(number, values.Count);
+        valueStream.Write(number);
+        foreach (IReadOnlyList<int> value in values)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            BinaryPrimitives.WriteInt32LittleEndian(number, value.Count);
+            valueStream.Write(number);
+            foreach (int item in value)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(number, item);
+                valueStream.Write(number);
+            }
+        }
+
+        Write(
+            fieldId,
+            BrokerWireType.Int32ListList,
+            required,
+            valueStream.GetBuffer().AsSpan(0, checked((int)valueStream.Length)));
     }
 
     public byte[] Build()
@@ -216,6 +246,8 @@ internal sealed class BrokerWireFieldSet
     public long RequiredInt64(ushort fieldId) =>
         ReadFixed(fieldId, BrokerWireType.Int64, 8, value => BinaryPrimitives.ReadInt64LittleEndian(value));
 
+    public long? OptionalInt64(ushort fieldId) => fields.ContainsKey(fieldId) ? RequiredInt64(fieldId) : null;
+
     public ulong RequiredUInt64(ushort fieldId) =>
         ReadFixed(fieldId, BrokerWireType.UInt64, 8, value => BinaryPrimitives.ReadUInt64LittleEndian(value));
 
@@ -230,6 +262,9 @@ internal sealed class BrokerWireFieldSet
         return field.Value[0] == 1;
     }
 
+    public bool? OptionalBoolean(ushort fieldId) =>
+        fields.ContainsKey(fieldId) ? RequiredBoolean(fieldId) : null;
+
     public Guid RequiredGuid(ushort fieldId)
     {
         Field field = Required(fieldId, BrokerWireType.Guid);
@@ -240,6 +275,8 @@ internal sealed class BrokerWireFieldSet
 
         return new(field.Value, bigEndian: true);
     }
+
+    public Guid? OptionalGuid(ushort fieldId) => fields.ContainsKey(fieldId) ? RequiredGuid(fieldId) : null;
 
     public string RequiredString(ushort fieldId, int maximumBytes, bool allowControls = false)
     {
@@ -275,6 +312,16 @@ internal sealed class BrokerWireFieldSet
         }
 
         return values;
+    }
+
+    public IReadOnlyList<int> RequiredInt32List(ushort fieldId, int maximumCount)
+    {
+        if (!fields.ContainsKey(fieldId))
+        {
+            throw new InvalidDataException($"Required broker wire field {fieldId} is missing.");
+        }
+
+        return OptionalInt32List(fieldId, maximumCount);
     }
 
     public IReadOnlyList<string> OptionalStringList(
@@ -325,6 +372,72 @@ internal sealed class BrokerWireFieldSet
         }
 
         return values;
+    }
+
+    public IReadOnlyList<string> RequiredStringList(
+        ushort fieldId,
+        int maximumCount,
+        int maximumItemBytes)
+    {
+        if (!fields.ContainsKey(fieldId))
+        {
+            throw new InvalidDataException($"Required broker wire field {fieldId} is missing.");
+        }
+
+        return OptionalStringList(fieldId, maximumCount, maximumItemBytes);
+    }
+
+    public IReadOnlyList<IReadOnlyList<int>> RequiredInt32Lists(
+        ushort fieldId,
+        int maximumGroups,
+        int maximumItemsPerGroup)
+    {
+        Field field = Required(fieldId, BrokerWireType.Int32ListList);
+        if (field.Value.Length < 4)
+        {
+            throw new InvalidDataException($"Integer-list-list field {fieldId} is invalid.");
+        }
+
+        ReadOnlySpan<byte> bytes = field.Value;
+        int groupCount = BinaryPrimitives.ReadInt32LittleEndian(bytes[..4]);
+        if (groupCount is < 0 || groupCount > maximumGroups)
+        {
+            throw new InvalidDataException($"Integer-list-list field {fieldId} exceeds its group-count bound.");
+        }
+
+        int offset = 4;
+        var groups = new IReadOnlyList<int>[groupCount];
+        for (int groupIndex = 0; groupIndex < groupCount; groupIndex++)
+        {
+            if (bytes.Length - offset < 4)
+            {
+                throw new InvalidDataException($"Integer-list-list field {fieldId} is truncated.");
+            }
+
+            int count = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(offset, 4));
+            offset += 4;
+            int remainingItems = (bytes.Length - offset) / 4;
+            if (count is < 0 || count > maximumItemsPerGroup || count > remainingItems)
+            {
+                throw new InvalidDataException($"Integer-list-list field {fieldId} exceeds an item-count bound.");
+            }
+
+            var group = new int[count];
+            for (int itemIndex = 0; itemIndex < count; itemIndex++)
+            {
+                group[itemIndex] = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(offset, 4));
+                offset += 4;
+            }
+
+            groups[groupIndex] = group;
+        }
+
+        if (offset != bytes.Length)
+        {
+            throw new InvalidDataException($"Integer-list-list field {fieldId} has trailing bytes.");
+        }
+
+        return groups;
     }
 
     private T ReadFixed<T>(

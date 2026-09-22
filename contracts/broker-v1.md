@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery and bounded request framing implemented; response dispatcher, authenticated transport and live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery and bounded request/response dispatch implemented; authenticated transport and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -55,6 +55,7 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 
 - compilation UTC ticks, build ID, architecture and adapter version;
 - requested/effective profile and admission;
+- maximum duration, journal-byte allowance, minimum free-space reserve and stop-at-limit retention;
 - body policy, retained-byte bound and extended-data allowlist;
 - extended-data and stack settings;
 - requested/effective mechanism, selected and initial-view PIDs, aggregate broader-capture state,
@@ -138,9 +139,9 @@ as failed, pending and partial stops resume, an expired recording stops, and onl
 unexpired owner lease is preserved. A matching name or capture ID without the token is insufficient.
 The in-memory store remains available only as a deterministic behavior fixture.
 
-## 5. Planned wire and authenticated host
+## 5. Implemented wire protocol and dispatcher
 
-The remaining v1 commands are:
+The v1 command set is:
 
 ```text
 Hello(protocol range, client instance, negotiated features)
@@ -152,8 +153,8 @@ StopCapture(capture ID, request ID)
 RenewOwnerLease(capture ID)
 ```
 
-They will use a bounded length-prefixed binary schema, not .NET object or unrestricted JSON
-deserialization. The local named pipe will use first-instance semantics, an explicit DACL and remote
+They use a bounded length-prefixed binary schema, not .NET object or unrestricted JSON deserialization.
+The remaining local named-pipe host will use first-instance semantics, an explicit DACL and remote
 client rejection. Every connection will be authenticated from its OS token (SID, logon session,
 integrity and elevation); a supplied PID or nonce is diagnostic only.
 
@@ -182,9 +183,32 @@ Hello uses protocol range plus requested/required feature bits. Unknown optional
 ignored; unknown required bits or no common major version are refused. The currently negotiable bits
 are prepared-plan digest, owner leases, separate stop milestones and durable recovery.
 
-Response payload schemas, command dispatch, connection state, authentication and the pipe listener are
-not implemented yet. A decoded request therefore still cannot reach the lifecycle coordinator from an
-external process.
+### 5.2 Implemented response and dispatch schema
+
+Every command has a bounded typed response. Hello returns the selected protocol/features and server
+instance. Capabilities returns build/support/elevation identity plus parallel, count-checked profile and
+mechanism summaries. Prepare returns either one complete owner-bound grant or one typed refusal, never a
+partial combination, together with the exact effective profile/admission/scope disclosure the client
+must compare with its reviewed preview. Per-source scope includes the capture-side process mode, bounded
+applied PID group, wider-capture flag and reason. The prepared digest now binds the requested duration,
+journal limit, free-space reserve and retention as well as provider/body/scope semantics.
+
+Start, status, stop and renewal responses preserve the lifecycle operation code, lease and independent
+stop milestones. Status is owner-only and never exposes the broker session name, session ownership token
+or owner identity. Protocol errors use a separate error frame with an enum code, a control-free message
+of at most 512 UTF-8 bytes and an explicit retry hint. Unknown optional response fields are skipped and
+unknown required fields are refused under the same limits as requests.
+
+`BrokerConnectionDispatcher` is per authenticated connection. It requires one successful Hello before
+any command, permits a corrected Hello after negotiation refusal, refuses renegotiation after success,
+preserves correlation IDs and rejects a duplicate ID while its first command is in flight. Unexpected
+service exceptions produce one generic typed failure without exposing exception text. A local-only
+preparation coordinator serializes metadata access, probes capabilities, compiles the effective profile
+inside the broker, revalidates/freezes it, and only then issues the owner-bound prepared secret.
+
+The dispatcher is transport-independent and currently exercised only in process with a fake
+OS-authenticated connection and fake capture runtime. No external process can reach it yet because the
+named-pipe authentication/listener layer is intentionally absent.
 
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
@@ -204,9 +228,10 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no response/dispatch loop, named pipe, OS-token authentication host, broker-owned
-directory provisioning, ACL integration, log compaction or ETW/journal runtime binding.
+The current slice has no named pipe, OS-token authentication host, broker-owned directory provisioning,
+ACL integration, log compaction or ETW/journal runtime binding.
 `InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
-durable lifecycle/recovery operations are connected only by in-process tests and a fake runtime. Those
+durable lifecycle/recovery operations are connected only by the in-process dispatcher tests and a fake
+authenticated connection/runtime. Those
 absences are deliberate: a live UI control must not appear until authentication, directory security and
 real cleanup behavior are implemented and tested together.

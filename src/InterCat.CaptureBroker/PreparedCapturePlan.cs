@@ -40,6 +40,7 @@ public enum BrokerPrepareRefusalCode
     UnsupportedContentCapture = 9,
     UnsupportedOriginalEvidence = 10,
     InvalidCapturePlan = 11,
+    InvalidOperationalLimits = 12,
 }
 
 public sealed record BrokerPrepareRefusal(BrokerPrepareRefusalCode Code, string Message);
@@ -78,6 +79,8 @@ public sealed class PreparedCapturePlan
         string effectiveProfileId,
         AdmissionMode requestedAdmission,
         AdmissionMode effectiveAdmission,
+        BrokerCaptureQuota quota,
+        BrokerRetentionPolicy retention,
         CompiledBodyAdmissionPolicy bodyPolicy,
         ImmutableArray<SourceAdmissionPlan> sources,
         ImmutableArray<ProviderEnablementRequest> providers,
@@ -95,6 +98,8 @@ public sealed class PreparedCapturePlan
         EffectiveProfileId = effectiveProfileId;
         RequestedAdmission = requestedAdmission;
         EffectiveAdmission = effectiveAdmission;
+        Quota = quota;
+        Retention = retention;
         BodyPolicy = bodyPolicy;
         Sources = sources;
         Providers = providers;
@@ -113,6 +118,8 @@ public sealed class PreparedCapturePlan
     public string EffectiveProfileId { get; }
     public AdmissionMode RequestedAdmission { get; }
     public AdmissionMode EffectiveAdmission { get; }
+    public BrokerCaptureQuota Quota { get; }
+    public BrokerRetentionPolicy Retention { get; }
     public CompiledBodyAdmissionPolicy BodyPolicy { get; }
     public ImmutableArray<SourceAdmissionPlan> Sources { get; }
     public ImmutableArray<ProviderEnablementRequest> Providers { get; }
@@ -134,12 +141,15 @@ public static class BrokerPrepareCompiler
 
     public static BrokerPrepareResult Prepare(
         EffectiveCapturePlan plan,
+        BrokerCaptureQuota quota,
+        BrokerRetentionPolicy retention,
         BrokerRuntimeIdentity? runtime = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(quota);
         runtime ??= BrokerRuntimeIdentity.Current();
 
-        BrokerPrepareResult? refusal = Validate(plan, runtime);
+        BrokerPrepareResult? refusal = Validate(plan, quota, retention, runtime);
         if (refusal is not null)
         {
             return refusal;
@@ -169,6 +179,8 @@ public static class BrokerPrepareCompiler
             plan.EffectiveProfileId!,
             plan.RequestedAdmission,
             plan.EffectiveAdmission!.Value,
+            quota,
+            retention,
             bodyPolicy,
             sources,
             providers,
@@ -185,6 +197,8 @@ public static class BrokerPrepareCompiler
             plan.EffectiveProfileId!,
             plan.RequestedAdmission,
             plan.EffectiveAdmission.Value,
+            quota,
+            retention,
             bodyPolicy,
             sources,
             providers,
@@ -194,7 +208,11 @@ public static class BrokerPrepareCompiler
             digest));
     }
 
-    private static BrokerPrepareResult? Validate(EffectiveCapturePlan plan, BrokerRuntimeIdentity runtime)
+    private static BrokerPrepareResult? Validate(
+        EffectiveCapturePlan plan,
+        BrokerCaptureQuota quota,
+        BrokerRetentionPolicy retention,
+        BrokerRuntimeIdentity runtime)
     {
         if (string.IsNullOrWhiteSpace(runtime.BuildId)
             || string.IsNullOrWhiteSpace(runtime.Architecture)
@@ -203,6 +221,14 @@ public static class BrokerPrepareCompiler
             return Refused(
                 BrokerPrepareRefusalCode.InvalidRuntimeIdentity,
                 "The broker runtime identity is incomplete; no capture was prepared.");
+        }
+
+        string? quotaProblem = quota.Validate();
+        if (quotaProblem is not null || retention != BrokerRetentionPolicy.StopAtLimit)
+        {
+            return Refused(
+                BrokerPrepareRefusalCode.InvalidOperationalLimits,
+                quotaProblem ?? "Stop-at-limit is the only broker retention policy in protocol v1.");
         }
 
         if (!plan.CanStart)
@@ -666,6 +692,8 @@ internal static class PreparedPlanDigest
         string effectiveProfileId,
         AdmissionMode requestedAdmission,
         AdmissionMode effectiveAdmission,
+        BrokerCaptureQuota quota,
+        BrokerRetentionPolicy retention,
         CompiledBodyAdmissionPolicy bodyPolicy,
         ImmutableArray<SourceAdmissionPlan> sources,
         ImmutableArray<ProviderEnablementRequest> providers,
@@ -686,6 +714,10 @@ internal static class PreparedPlanDigest
             WriteString(writer, effectiveProfileId);
             writer.Write((int)requestedAdmission);
             writer.Write((int)effectiveAdmission);
+            writer.Write(quota.MaximumDurationSeconds);
+            writer.Write(quota.MaximumJournalBytes);
+            writer.Write(quota.MinimumFreeDiskBytes);
+            writer.Write((int)retention);
             WriteBodyPolicy(writer, bodyPolicy);
             writer.Write(preserveExtendedData);
             writer.Write(requestCallStacks);

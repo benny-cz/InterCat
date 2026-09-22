@@ -63,6 +63,22 @@ public sealed class BrokerWireFrame
             correlationId,
             payload.ToArray(),
             takeOwnership: true);
+
+    public static BrokerWireFrame CreateResponse(
+        BrokerMessageType messageType,
+        Guid correlationId,
+        ReadOnlySpan<byte> payload,
+        bool isError = false,
+        ushort protocolMajor = BrokerWireFrameCodec.CurrentMajor,
+        ushort protocolMinor = BrokerWireFrameCodec.CurrentMinor) =>
+        new(
+            protocolMajor,
+            protocolMinor,
+            messageType,
+            BrokerFrameAttributes.Response | (isError ? BrokerFrameAttributes.Error : 0),
+            correlationId,
+            payload.ToArray(),
+            takeOwnership: true);
 }
 
 /// <summary>

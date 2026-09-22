@@ -30,11 +30,18 @@ internal static class BrokerPlanFixture
         0x2000,
         false);
 
+    public static BrokerCaptureQuota Quota { get; } = new(
+        MaximumDurationSeconds: 1_800,
+        MaximumJournalBytes: 4L * 1024 * 1024 * 1024,
+        MinimumFreeDiskBytes: 512L * 1024 * 1024);
+
     public static PreparedCapturePlan PreparedFocused(
         IReadOnlyList<int>? processIds = null,
         bool allowBroaderCapture = false) =>
         BrokerPrepareCompiler.Prepare(
             CompileFocused(processIds, allowBroaderCapture),
+            Quota,
+            BrokerRetentionPolicy.StopAtLimit,
             Runtime).PreparedPlan!;
 
     public static EffectiveCapturePlan CompileFocused(

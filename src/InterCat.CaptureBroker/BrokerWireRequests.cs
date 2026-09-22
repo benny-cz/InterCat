@@ -436,7 +436,10 @@ public sealed record BrokerHelloResponse(
     int SelectedMajor,
     int SelectedMinor,
     BrokerProtocolFeature EnabledFeatures,
-    string ServerVersion);
+    string ServerVersion) : BrokerWireResponse
+{
+    public override BrokerMessageType MessageType => BrokerMessageType.Hello;
+}
 
 public sealed record BrokerHelloNegotiation(BrokerHelloResponse? Response, string? Refusal)
 {
