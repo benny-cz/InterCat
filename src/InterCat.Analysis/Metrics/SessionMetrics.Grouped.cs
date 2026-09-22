@@ -11,6 +11,19 @@ namespace InterCat.Analysis;
 /// </summary>
 public static partial class SessionMetrics
 {
+    private static MetricResult? WhatOwnerNeeds(MetricRequest request, long generation)
+    {
+        Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
+        bool crossSide = (effective == Metric.BytesSent && request.AccountingSide == AccountingSide.ReceiveSide)
+            || (effective == Metric.BytesReceived && request.AccountingSide == AccountingSide.SendSide);
+        return crossSide
+            ? Unavailable(request, generation, MetricUnavailableReason.NoTransferAssociations,
+                $"An owner-filtered {effective} total measured at the other end of a transfer needs a proven "
+                + "association: the record names its own process, not the process at the other end. Use the "
+                + "sender side for sent bytes or the receiver side for received bytes.")
+            : null;
+    }
+
     /// <summary>What a grouping needs that this session may not have. Null when it can be answered.</summary>
     private static MetricResult? WhatGroupingNeeds(MetricRequest request, long generation, SourceClockDescriptor? clock)
     {
@@ -63,7 +76,7 @@ public static partial class SessionMetrics
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         bool isCount = effective == Metric.Observations;
         ProcessInstanceIndex? processes = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
-            ? ProcessInstanceIndex.Derive(
+            ? context.Processes ?? ProcessInstanceIndex.Derive(
                 [.. context.Segments.Select(segment => segment.Reader)],
                 context.Clock!.Value,
                 context.FieldSegments,
@@ -88,12 +101,14 @@ public static partial class SessionMetrics
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
+        long outsideOwner = 0;
         long outsideInterval = 0;
         MeasurementUnit? unit = null;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int[] groups = layout.Assign(reader);
+            ReadOnlySpan<bool> ownerMask = context.OwnerMask(reader);
             if (isCount)
             {
                 long[] segmentCounts = SegmentMeasurement.CountObservationsByGroup(
@@ -102,14 +117,17 @@ public static partial class SessionMetrics
                     request.Mechanism,
                     request.Interval,
                     groups,
-                    layout.Count);
+                    layout.Count,
+                    ownerMask);
                 for (int group = 0; group < layout.Count; group++)
                 {
                     counts[group] += segmentCounts[group];
                 }
 
-                ObservationCount scope = SegmentMeasurement.CountObservations(reader, request.Layer, request.Mechanism, request.Interval);
+                ObservationCount scope = SegmentMeasurement.CountObservations(
+                    reader, request.Layer, request.Mechanism, request.Interval, ownerMask: ownerMask);
                 outsideProjection += scope.ExcludedByProjection;
+                outsideOwner += scope.ExcludedByOwnerFilter;
                 outsideInterval += scope.ExcludedOutsideInterval;
                 continue;
             }
@@ -124,7 +142,8 @@ public static partial class SessionMetrics
                     Interval = request.Interval,
                 },
                 groups,
-                layout.Count);
+                layout.Count,
+                ownerMask);
             if (measured.Unit is { } segmentUnit)
             {
                 if (unit is { } established && established != segmentUnit)
@@ -148,6 +167,7 @@ public static partial class SessionMetrics
             otherDomain += measured.ExcludedOtherDomain;
             noSlot += measured.ExcludedNoDeclaredSlot;
             outsideProjection += measured.ExcludedByProjection;
+            outsideOwner += measured.ExcludedByOwnerFilter;
             outsideInterval += measured.ExcludedOutsideInterval;
         }
 
@@ -272,12 +292,13 @@ public static partial class SessionMetrics
             ExcludedOtherSide = sides.Where(side => !taken.Contains(side.Side)).Sum(side => side.DeclaredContributions),
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
+            ExcludedByOwnerFilter = outsideOwner,
             ExcludedOutsideInterval = outsideInterval,
             Groups = ordered,
             Remainder = remainder,
             Unattributed = unattributed,
             GroupsPartitionTotal = true,
-            BindingRule = processes is null ? null : ProcessInstanceIndex.BindingRule,
+            BindingRule = processes is null && request.Owner is null ? null : ProcessInstanceIndex.BindingRule,
         };
 
         if (!isCount && totalKnown == 0)
@@ -294,6 +315,10 @@ public static partial class SessionMetrics
         if (!isCount)
         {
             caveats.AddRange(ByteCaveats(request with { Metric = effective }, answer));
+        }
+        else if (request.Owner is not null)
+        {
+            caveats.Add(OwnerFilterCaveat(request));
         }
 
         caveats.RemoveAll(caveat => caveat.StartsWith("This total spans every process", StringComparison.Ordinal));
@@ -516,6 +541,34 @@ public static partial class SessionMetrics
             }
 
             return slots;
+        }
+
+        public bool[] MaskFor(SegmentReaderV1 segment, ProcessInstanceId owner)
+        {
+            int instance = -1;
+            for (int indexAt = 0; indexAt < index.Instances.Count; indexAt++)
+            {
+                if (index.Instances[indexAt].Id == owner)
+                {
+                    instance = indexAt;
+                    break;
+                }
+            }
+
+            if (instance < 0)
+            {
+                throw new ArgumentException($"Process instance {owner} does not belong to this index.", nameof(owner));
+            }
+
+            int first = SlotOf(instance, 0);
+            int[] slots = Assign(segment);
+            var mask = new bool[slots.Length];
+            for (int row = 0; row < slots.Length; row++)
+            {
+                mask[row] = slots[row] >= first && slots[row] < first + Strengths.Length;
+            }
+
+            return mask;
         }
 
         private static int SlotOf(int instance, int strength) => ReasonSlots + (instance * Strengths.Length) + strength;

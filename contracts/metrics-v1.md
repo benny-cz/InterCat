@@ -1,6 +1,6 @@
 # InterCat metrics v1
 
-Status: **frozen for the source-observations basis, with grouping by process instance and by mechanism, and
+Status: **frozen for the source-observations basis, with grouping by process instance, executable and mechanism, and
 implemented**. The logical-operations and resource-topology bases, grouping by any other entity and canonical-owner
 accounting are defined here as contract and reported as unavailable by every session until the derivations they need
 exist (§12).
@@ -25,6 +25,8 @@ A metric request names:
 | `accountingSide` | `EN-AccountingSide` | the metric's fixed side, when it has one |
 | `rateNumerator` | `EN-Metric`, a rate only | none |
 | `evidencePolicy` | `EN-EvidencePolicy` | `IncludeCorrelated` |
+| `owner` | one `ProcessInstanceId` from this generation | none |
+| `participant` | one `ProcessInstanceId` (not yet verified against a relation revision) | none; unavailable until relations are derived |
 | `timeScope` | `EN-TimeScope` | `AnalysisInterval` when an interval is named, otherwise `RetainedCapture` |
 | `grouping` | `EN-Grouping` | none: one total |
 | `interval` | half-open `[start, end)` in the native ticks of the session's clock | none |
@@ -69,6 +71,7 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - A rate with no numerator, a rate as its own numerator, and a numerator that is not additive over time —
   `Duration`, `ActiveChannels`, `ActivePeers` and `MappingCapacity`. A numerator on anything but a rate.
 - Requested rows on a request that is not grouped, or fewer than one.
+- Both `owner` and `participant` in one request, or an empty instance id. A PID is not an instance id.
 
 ## 3. A contribution
 
@@ -126,8 +129,18 @@ compared with a transfer total.
 
 ## 5. Scope
 
-A result is scoped by its projection and its interval together. Rows outside the layer or mechanism
-projection and rows outside the interval are counted separately and never taken.
+A result is scoped by its process filter, projection and interval together. Rows outside the interval are
+counted first; within it, rows outside the owner filter are counted separately from rows outside the layer or
+mechanism projection. These categories do not overlap. The same eligible rows feed an ungrouped answer, its
+evidence listing and every group, so a grouped result partitions its **filtered** total.
+
+`owner(P)` uses `process-binding-v2` on the record's payload owner and the selected evidence policy. It
+selects one instance id, never a PID or header PID; unresolved, late-after-exit and policy-excluded candidates
+remain outside the filter. A process id absent from the generation is `ProcessInstanceNotFound`, not an empty
+zero. Owner filtering of a cross-side sent/received metric is `NoTransferAssociations` until a relation proves
+the other end. `participant(P)` is accepted as a meaningful request but returns `NoParticipantRelations` until
+the relation derivation exists; it is not silently reduced to direct ownership. The binding rule is named in
+every owner-filtered result, grouped or not.
 
 An interval is half-open (I3) and is expressed in native ticks of the session's clock. A caller that accepts a
 session-relative time converts each bound to the **first native reading at or after it** under exactly the
@@ -194,12 +207,14 @@ with no value:
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations basis, before any correlator derives operations |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
-| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound; process grouping on a session that does not describe its clock |
+| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound; process grouping or owner filtering on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
-| `NoTransferAssociations` | `CanonicalOwner`, and a cross-side total grouped by process, before a correlator proves an association |
+| `NoTransferAssociations` | `CanonicalOwner`, and a cross-side total grouped or filtered by process, before a correlator proves an association |
 | `NoInterval` | a rate with no interval |
 | `NothingMeasured` | a byte total that takes no known contribution |
 | `GroupingNotDerived` | a grouping whose derivation this session does not have |
+| `NoParticipantRelations` | `participant(P)` before a relation revision proves the peer or resource participation |
+| `ProcessInstanceNotFound` | `owner(P)` names no instance in the selected generation |
 
 `NothingMeasured` is the rule R21 and P1 require of a byte total. A sum of nothing is not an observed zero:
 when no contribution in scope is known — there is no declared slot the accounting takes, or every one is
@@ -219,7 +234,7 @@ evidence: the records of one group are the records of an ungrouped request proje
 ## 10. Reading a generation
 
 A result answers exactly one generation and names it, together with the normalizer derivations it read and, when
-grouped by process, the binding rule (I16). It is computed under an evidence lease and from the manifest that lease
+grouped by process or filtered by owner, the binding rule (I16). It is computed under an evidence lease and from the manifest that lease
 holds, so neither a retention nor a later commit changes what it reads (I18).
 
 A generation whose segments hold two derivations of one capture is refused: they describe the same evidence
@@ -237,14 +252,14 @@ not exist yet and are answered as unavailable today.
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
 | Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
-| PID 400 exits, is reused, and a late event belongs to the earlier instance | Grouped by process, the late event binds to the earlier instance by its reading, and the newer instance's total never includes it: by default the newer instance's own records are unadmitted candidates, and with candidates it holds exactly them. Binding the late event by its start key is owed with the source-field carriage of `entities-v1` §8. |
+| PID 400 exits, is reused, and a late event belongs to the earlier instance | Grouped by process or filtered with `owner(P)`, the late event binds to the earlier instance by its reading, and the newer instance's total never includes it. By default the newer instance's own non-lifecycle records are unadmitted candidates; `IncludeCandidates` includes them, labelled by the selected policy. Provider start keys carried by `source-fields-v1` strengthen lifecycle identity where the source supplies them. |
 
 ## 12. Not defined at this version
 
-- Grouping by executable, service, session, host, endpoint or package, and grouping by channel or peer, each of
+- Grouping by service, session, host, endpoint or package, and grouping by channel or peer, each of
   which needs an entity derivation this version does not have.
-- The process filters of §19.1 — `owner(P)`, `participant(P)`, `sender(P)`, `receiver(P)`, `between(A,B)`,
-  `peer(P,Q)` — which select by instance rather than break a total down by it.
+- Relation-derived filtering (`participant(P)`, `sender(P)`, `receiver(P)`, `between(A,B)`, `peer(P,Q)`).
+  `participant(P)` has a fail-closed unavailable result; the remaining filters have no request syntax yet.
 - The canonical-owner choice itself (§5.3 rules 1–3), which needs proven transfer associations and the
   correlation-quality ADR.
 - Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution

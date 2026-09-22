@@ -50,12 +50,33 @@ public sealed record MetricRequest
     /// </summary>
     public EvidencePolicy EvidencePolicy { get; init; } = EvidencePolicy.IncludeCorrelated;
 
+    /// <summary>Limit rows to those bound to this directly named process instance under <see cref="EvidencePolicy"/>.</summary>
+    public ProcessInstanceId? Owner { get; init; }
+
+    /// <summary>A process participating through a proven relation. Unavailable until relation derivation exists.</summary>
+    public ProcessInstanceId? Participant { get; init; }
+
     /// <summary>`requestedRows`: how many ranked groups to return. The rest are one exact remainder (§5.2).</summary>
     public int? RequestedRows { get; init; }
 
     /// <summary>The reason this request means nothing, or null when it means something.</summary>
     public MetricRejection? Check()
     {
+        if (Owner is not null && Participant is not null)
+        {
+            return new("Select either an owner or a participant process filter, not both.", []);
+        }
+
+        if (Owner is { } owner && owner.Value == Guid.Empty)
+        {
+            return new("An owner filter names a nonempty process instance id.", []);
+        }
+
+        if (Participant is { } participant && participant.Value == Guid.Empty)
+        {
+            return new("A participant filter names a nonempty process instance id.", []);
+        }
+
         if (Grouping is { } grouping && !Enum.IsDefined(grouping))
         {
             return new("A request names a grouping §23 defines.", []);
@@ -137,6 +158,12 @@ public enum MetricUnavailableReason
 
     /// <summary>The grouping asked for needs a derivation this session does not have, such as image names.</summary>
     GroupingNotDerived = 9,
+
+    /// <summary>A participant needs a proven relationship; direct ownership alone cannot answer it.</summary>
+    NoParticipantRelations = 10,
+
+    /// <summary>The selected process instance is not present in this generation.</summary>
+    ProcessInstanceNotFound = 11,
 }
 
 /// <summary>What one group of a grouped result is a group of.</summary>
@@ -313,6 +340,9 @@ public sealed record MetricResult
 
     public long ExcludedByProjection { get; init; }
 
+    /// <summary>Rows inside the interval excluded by the requested process owner.</summary>
+    public long ExcludedByOwnerFilter { get; init; }
+
     public long ExcludedOutsideInterval { get; init; }
 
     /// <summary>How many segments were read, so a total names the breadth it covers.</summary>
@@ -459,21 +489,51 @@ public static partial class SessionMetrics
 
         SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
-        if (materialized.Grouping is { } grouping)
+        if (materialized.Owner is not null || materialized.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable)
         {
-            if (grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable)
+            context = context with
             {
-                // Instances need the capture's source fields - start keys, parents, sessions - when the generation
-                // publishes them; a generation derived before they existed publishes none and is keyed without them.
-                context = context with
-                {
-                    FieldSegments =
-                    [
-                        .. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name)),
-                    ],
-                };
+                FieldSegments =
+                [
+                    .. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name)),
+                ],
+            };
+        }
+
+        if (materialized.Owner is { } owner)
+        {
+            if (clock is null)
+            {
+                return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.NoEntityBindings,
+                    "An owner filter needs a capture clock to identify process instances within its host and boot.");
             }
 
+            MetricResult? ownerGap = WhatOwnerNeeds(materialized, manifest.Generation);
+            if (ownerGap is not null)
+            {
+                return ownerGap;
+            }
+
+            ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(
+                [.. segments.Select(segment => segment.Reader)], clock.Value, context.FieldSegments, cancellationToken);
+            if (!processes.Instances.Any(instance => instance.Id == owner))
+            {
+                return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.ProcessInstanceNotFound,
+                    $"Process instance {owner} is not present in generation {manifest.Generation}. Select an instance id "
+                    + "from this generation's process grouping; a PID alone is not an instance identity.");
+            }
+
+            var layout = new ProcessLayout(processes, materialized.EvidencePolicy, byExecutable: false);
+            context = context with
+            {
+                Processes = processes,
+                OwnerMasks = segments.ToDictionary(segment => segment.Reader,
+                    segment => layout.MaskFor(segment.Reader, owner)),
+            };
+        }
+
+        if (materialized.Grouping is { } grouping)
+        {
             if (bounds.EvidenceLimit > 0)
             {
                 throw new ArgumentException(
@@ -501,6 +561,13 @@ public static partial class SessionMetrics
     /// </summary>
     private static MetricResult? WhatIsMissing(MetricRequest request, long generation)
     {
+        if (request.Participant is not null)
+        {
+            return Unavailable(request, generation, MetricUnavailableReason.NoParticipantRelations,
+                "A participant filter needs a proven transfer or resource relation. This generation derives direct "
+                + "process owners only; treating an owner as every participant would silently omit peers.");
+        }
+
         if (request.Basis == AnalysisBasis.LogicalOperations)
         {
             return Unavailable(
@@ -619,6 +686,7 @@ public static partial class SessionMetrics
     {
         long count = 0;
         long outsideProjection = 0;
+        long outsideOwner = 0;
         long outsideInterval = 0;
         var evidence = new List<MetricEvidence>();
         foreach ((string name, SegmentReaderV1 reader) in context.Segments)
@@ -629,9 +697,11 @@ public static partial class SessionMetrics
                 request.Layer,
                 request.Mechanism,
                 request.Interval,
-                Math.Max(0, context.EvidenceLimit - evidence.Count));
+                Math.Max(0, context.EvidenceLimit - evidence.Count),
+                context.OwnerMask(reader));
             count += counted.Counted;
             outsideProjection += counted.ExcludedByProjection;
+            outsideOwner += counted.ExcludedByOwnerFilter;
             outsideInterval += counted.ExcludedOutsideInterval;
             evidence.AddRange(counted.EvidenceRows.Select(row => Evidence(name, reader, row)));
         }
@@ -641,6 +711,11 @@ public static partial class SessionMetrics
             "An observation count is sensitive to instrumentation density and says nothing about volume (§5). It is "
             + "not an operation count.",
         };
+        if (request.Owner is not null)
+        {
+            caveats.Add(OwnerFilterCaveat(request));
+        }
+
         if (count == 0)
         {
             caveats.Add(
@@ -654,6 +729,7 @@ public static partial class SessionMetrics
             Unit = MeasurementUnit.Count,
             KnownContributions = count,
             ExcludedByProjection = outsideProjection,
+            ExcludedByOwnerFilter = outsideOwner,
             ExcludedOutsideInterval = outsideInterval,
             Evidence = evidence,
             Caveats = caveats,
@@ -671,6 +747,7 @@ public static partial class SessionMetrics
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
+        long outsideOwner = 0;
         long outsideInterval = 0;
         MeasurementUnit? unit = null;
         var evidence = new List<MetricEvidence>();
@@ -687,7 +764,7 @@ public static partial class SessionMetrics
                     Interval = request.Interval,
                     EvidenceSides = taken,
                     EvidenceLimit = Math.Max(0, context.EvidenceLimit - evidence.Count),
-                });
+                }, context.OwnerMask(reader));
             if (measured.Unit is { } segmentUnit)
             {
                 if (unit is { } established && established != segmentUnit)
@@ -719,6 +796,7 @@ public static partial class SessionMetrics
             otherDomain += measured.ExcludedOtherDomain;
             noSlot += measured.ExcludedNoDeclaredSlot;
             outsideProjection += measured.ExcludedByProjection;
+            outsideOwner += measured.ExcludedByOwnerFilter;
             outsideInterval += measured.ExcludedOutsideInterval;
             evidence.AddRange(measured.EvidenceRows.Select(row => Evidence(name, reader, row)));
         }
@@ -760,6 +838,7 @@ public static partial class SessionMetrics
             ExcludedOtherSide = otherSide,
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
+            ExcludedByOwnerFilter = outsideOwner,
             ExcludedOutsideInterval = outsideInterval,
             Evidence = evidence,
         };
@@ -871,8 +950,16 @@ public static partial class SessionMetrics
                     ? $"These are {(request.Metric == Metric.BytesSent ? "sent" : "received")} bytes measured at the "
                         + "other end of each transfer. That is well defined for the whole session; attributing them to "
                         + "one process needs a proven transfer association, which no correlator has produced yet."
-                    : "This total spans every process in scope. Per-process totals need process instances, "
-                        + "which this session does not derive yet (R22).");
+                    : request.Owner is not null
+                        ? "This total belongs to the selected process instance under its binding policy. A record "
+                            + "of another instance, an unresolved owner, or a binding excluded by policy adds nothing."
+                        : "This total spans every process in scope; select an owner instance or group by process "
+                            + "to inspect direct process attribution (R22).");
+        }
+
+        if (request.Owner is not null && request.Metric is not (Metric.BytesSent or Metric.BytesReceived))
+        {
+            caveats.Add(OwnerFilterCaveat(request));
         }
 
         if (answer.UnknownContributions > 0)
@@ -901,6 +988,10 @@ public static partial class SessionMetrics
 
         return caveats;
     }
+
+    private static string OwnerFilterCaveat(MetricRequest request) =>
+        $"Only records bound to owner instance {request.Owner} under {request.EvidencePolicy} contribute. "
+        + "An unresolved owner, another instance or a binding this policy excludes is outside this filter (R22).";
 
     private static MetricEvidence Evidence(string segment, SegmentReaderV1 reader, int row)
     {
@@ -963,8 +1054,15 @@ public static partial class SessionMetrics
         SourceClockDescriptor? Clock,
         int EvidenceLimit)
     {
-        /// <summary>The generation's `source-fields-v1` segments, opened only when a grouping needs them.</summary>
+        /// <summary>The generation's `source-fields-v1` segments, opened only for process grouping or filtering.</summary>
         public IReadOnlyList<SegmentReaderV1> FieldSegments { get; init; } = [];
+
+        public Dictionary<SegmentReaderV1, bool[]> OwnerMasks { get; init; } = [];
+
+        public ProcessInstanceIndex? Processes { get; init; }
+
+        public ReadOnlySpan<bool> OwnerMask(SegmentReaderV1 reader) =>
+            OwnerMasks.TryGetValue(reader, out bool[]? mask) ? mask : default;
 
         public MetricResult Answer(MetricRequest request) => new()
         {
@@ -981,6 +1079,7 @@ public static partial class SessionMetrics
                     .OrderBy(derivation => derivation.Value),
             ],
             Clock = Clock,
+            BindingRule = request.Owner is null ? null : ProcessInstanceIndex.BindingRule,
             FirstNativeTicks = Segments.Min(segment => segment.Reader.MinNativeTicks),
             LastNativeTicks = Segments.Max(segment => segment.Reader.MaxNativeTicks),
         };

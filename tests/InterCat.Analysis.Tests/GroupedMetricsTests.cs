@@ -12,6 +12,117 @@ namespace InterCat.Analysis.Tests;
 /// </summary>
 public sealed class GroupedMetricsTests
 {
+    [Fact(DisplayName = "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime")]
+    public void OwnerFilterScopesTotalsGroupsAndEvidence()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusySession());
+        ProcessInstanceId owner = ProcessInstanceIndex.Derive(TestSessions.Segments(session.Store), TestClock)
+            .Instances.Single(instance => instance.ProcessId == 100).Id;
+
+        MetricRequest request = Request(Metric.Observations) with { Owner = owner };
+        MetricResult count = SessionMetrics.Evaluate(session.Store, request, new() { EvidenceLimit = 10 });
+        Assert.Equal(4, count.Value);
+        Assert.Equal(5, count.ExcludedByOwnerFilter);
+        Assert.Equal([1UL, 2UL, 5UL, 6UL], count.Evidence.Select(item => item.ObservationId.RawRecordId.RecordOrdinal));
+        Assert.Equal(ProcessInstanceIndex.BindingRule, count.BindingRule);
+
+        MetricResult projected = SessionMetrics.Evaluate(session.Store, request with
+        {
+            Interval = new TimeRange(0, 70),
+            Layer = ObservationLayer.Transport,
+        });
+        Assert.Equal(2, projected.Value);
+        Assert.Equal(3, projected.ExcludedOutsideInterval);
+        Assert.Equal(2, projected.ExcludedByOwnerFilter);
+        Assert.Equal(2, projected.ExcludedByProjection);
+        Assert.Equal(9, projected.Value + projected.ExcludedOutsideInterval
+            + projected.ExcludedByOwnerFilter + projected.ExcludedByProjection);
+
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, request with { Grouping = LaneGrouping.Mechanism });
+        Assert.True(grouped.GroupsPartitionTotal);
+        Assert.Equal(4, grouped.Value);
+        Assert.Equal(5, grouped.ExcludedByOwnerFilter);
+        Assert.Equal(4, grouped.Groups.Sum(group => group.Value));
+
+        MetricResult bytes = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with { Owner = owner },
+            new() { EvidenceLimit = 10 });
+        Assert.Equal(100, bytes.Value);
+        Assert.Equal(5, bytes.ExcludedByOwnerFilter);
+        Assert.Single(bytes.Evidence);
+        Assert.Equal(2UL, bytes.Evidence[0].ObservationId.RawRecordId.RecordOrdinal);
+    }
+
+    [Fact(DisplayName = "R22: participant and cross-side owner filters fail closed without a proven relation")]
+    public void ParticipantAndCrossSideOwnerNeedRelations()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusySession());
+        ProcessInstanceId owner = ProcessInstanceIndex.Derive(TestSessions.Segments(session.Store), TestClock)
+            .Instances.Single(instance => instance.ProcessId == 100).Id;
+
+        MetricResult participant = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Participant = owner });
+        Assert.Equal(MetricUnavailableReason.NoParticipantRelations, participant.Unavailable);
+
+        MetricResult crossSide = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide) with { Owner = owner });
+        Assert.Equal(MetricUnavailableReason.NoTransferAssociations, crossSide.Unavailable);
+
+        MetricResult absent = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Owner = ProcessInstanceId.New() });
+        Assert.Equal(MetricUnavailableReason.ProcessInstanceNotFound, absent.Unavailable);
+        Assert.NotNull((Request(Metric.Observations) with { Owner = owner, Participant = owner }).Check());
+    }
+
+    [Fact(DisplayName = "R22: an owner filter distinguishes reused PID instances and honors candidate policy")]
+    public void OwnerFilterHonorsReuseAndEvidencePolicy()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 2),
+            Lifecycle(30, ObservationKind.Exit, 100, 3),
+            Lifecycle(40, ObservationKind.Create, 100, 4),
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 20, 100, 5),
+            Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 30, 100, 6),
+        ]);
+        ProcessInstanceId[] instances =
+        [
+            .. ProcessInstanceIndex.Derive(TestSessions.Segments(session.Store), TestClock).Instances
+                .Where(instance => instance.ProcessId == 100)
+                .OrderBy(instance => instance.CreatedNativeTicks)
+                .Select(instance => instance.Id),
+        ];
+        Assert.Equal(2, instances.Length);
+
+        MetricResult first = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Owner = instances[0] });
+        MetricResult laterDefault = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Owner = instances[1] });
+        MetricResult laterCandidates = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Owner = instances[1], EvidencePolicy = EvidencePolicy.IncludeCandidates });
+        Assert.Equal(3, first.Value);
+        Assert.Equal(1, laterDefault.Value);
+        Assert.Equal(3, laterCandidates.Value);
+        Assert.Equal(3, first.ExcludedByOwnerFilter);
+        Assert.Equal(5, laterDefault.ExcludedByOwnerFilter);
+        Assert.Equal(3, laterCandidates.ExcludedByOwnerFilter);
+
+        MetricResult firstBytes = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with { Owner = instances[0] });
+        MetricResult laterBytes = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with
+            {
+                Owner = instances[1],
+                EvidencePolicy = EvidencePolicy.IncludeCandidates,
+            });
+        Assert.Equal(10, firstBytes.Value);
+        Assert.Equal(50, laterBytes.Value);
+    }
+
     [Fact(DisplayName = "I5: grouped rows, the remainder and the unattributed rows partition the total exactly")]
     public void GroupsPartitionTheTotal()
     {

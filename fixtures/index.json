@@ -728,7 +728,10 @@
         "R22: a peer or channel count is unavailable rather than counted from reusable values",
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a sent total measured at the receiving end is not attributed to a sender without an association",
-        "R22: an operation on an unobserved create is left unresolved, not matched by name"
+        "R22: an operation on an unobserved create is left unresolved, not matched by name",
+        "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
+        "R22: participant and cross-side owner filters fail closed without a proven relation",
+        "R22: an owner filter distinguishes reused PID instances and honors candidate policy"
       ],
       "R3": [
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",

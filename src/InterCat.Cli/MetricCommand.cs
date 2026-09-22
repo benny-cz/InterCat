@@ -14,6 +14,7 @@ internal sealed record MetricDocument
     public required long Generation { get; init; }
     public required bool FromLastKnownGood { get; init; }
     public required MetricSpecificationDocument Specification { get; init; }
+    public required string? BindingRule { get; init; }
     public required bool Available { get; init; }
     public required MetricUnavailableDocument? Unavailable { get; init; }
     public required long? Value { get; init; }
@@ -130,6 +131,8 @@ internal sealed record MetricSpecificationDocument
     public required string TimeScope { get; init; }
     public required string? Layer { get; init; }
     public required string? Mechanism { get; init; }
+    public required string? OwnerInstanceId { get; init; }
+    public required string? ParticipantInstanceId { get; init; }
     public required MetricIntervalDocument? Interval { get; init; }
 }
 
@@ -190,6 +193,7 @@ internal sealed record MetricExclusionsDocument
     public required long OtherDomain { get; init; }
     public required long NoDeclaredSlot { get; init; }
     public required long ByProjection { get; init; }
+    public required long ByOwnerFilter { get; init; }
     public required long OutsideInterval { get; init; }
 }
 
@@ -271,12 +275,21 @@ internal static class MetricCommand
         string? groupOption = command.TakeOption("--group-by");
         string? topOption = command.TakeOption("--top");
         string? policyOption = command.TakeOption("--evidence-policy");
+        string? ownerOption = command.TakeOption("--owner");
+        string? participantOption = command.TakeOption("--participant");
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if ((ownerOption is not null && !Guid.TryParse(ownerOption, out _))
+            || (participantOption is not null && !Guid.TryParse(participantOption, out _)))
+        {
+            ConsoleUi.Failure("--owner and --participant each require a process instance id from a process-grouped result (not a PID).");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -330,6 +343,8 @@ internal static class MetricCommand
             Mechanism = mechanism,
             Grouping = grouping,
             EvidencePolicy = policy,
+            Owner = ownerOption is null ? null : new ProcessInstanceId(Guid.Parse(ownerOption)),
+            Participant = participantOption is null ? null : new ProcessInstanceId(Guid.Parse(participantOption)),
             RequestedRows = top,
         };
 
@@ -439,6 +454,8 @@ internal static class MetricCommand
                 TimeScope = request.TimeScope.ToString(),
                 Layer = request.Layer?.ToString(),
                 Mechanism = request.Mechanism?.ToString(),
+                OwnerInstanceId = request.Owner?.ToString(),
+                ParticipantInstanceId = request.Participant?.ToString(),
                 Interval = request.Interval is { } interval
                     ? new()
                     {
@@ -449,6 +466,7 @@ internal static class MetricCommand
                     }
                     : null,
             },
+            BindingRule = result.BindingRule,
             Available = result.IsAvailable,
             Unavailable = result.IsAvailable
                 ? null
@@ -499,6 +517,7 @@ internal static class MetricCommand
                 OtherDomain = result.ExcludedOtherDomain,
                 NoDeclaredSlot = result.ExcludedNoDeclaredSlot,
                 ByProjection = result.ExcludedByProjection,
+                ByOwnerFilter = result.ExcludedByOwnerFilter,
                 OutsideInterval = result.ExcludedOutsideInterval,
             },
             Read = new()
@@ -712,6 +731,17 @@ internal static class MetricCommand
         }
 
         ConsoleUi.Field("Scope", Scope(result));
+        if (request.Owner is { } owner)
+        {
+            ConsoleUi.Field("Owner process instance", owner.ToString());
+            ConsoleUi.Field("Binding policy", request.EvidencePolicy.ToString());
+        }
+
+        if (request.Participant is { } participant)
+        {
+            ConsoleUi.Field("Participant process instance", participant.ToString());
+        }
+
         ConsoleUi.Field(
             "Projection",
             string.Join(
@@ -807,6 +837,11 @@ internal static class MetricCommand
         }
 
         rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
+        if (result.Request.Owner is not null)
+        {
+            rows.Add(["outside the owner filter", ConsoleUi.Count(document.Excluded.ByOwnerFilter)]);
+        }
+
         rows.Add(["outside the interval", ConsoleUi.Count(document.Excluded.OutsideInterval)]);
         ConsoleUi.Line();
         ConsoleUi.Line("  Records left out of this answer:");
@@ -1193,6 +1228,7 @@ internal static class MetricCommand
         ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
         ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
         ConsoleUi.Line("             [--group-by process|executable|mechanism] [--top <n>] [--evidence-policy <name>]");
+        ConsoleUi.Line("             [--owner <process-instance-id> | --participant <process-instance-id>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");
@@ -1201,6 +1237,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      is reported as unavailable with what it needs. --matrix prints the matrix.");
         ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s.");
         ConsoleUi.Line("      --evidence lists the first records the answer counted.");
+        ConsoleUi.Line("      --owner scopes the answer to a process instance, using the binding policy.");
+        ConsoleUi.Line("      --participant is unavailable until peer relations are proven; it never guesses from owner.");
         ConsoleUi.Line("      --group-by ranks the total by process instance or mechanism, with an exact");
         ConsoleUi.Line("      remainder past --top; --evidence-policy include-candidates also attributes the");
         ConsoleUi.Line("      records of reused PIDs, labelled as candidates.");
