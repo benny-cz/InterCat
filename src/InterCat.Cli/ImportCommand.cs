@@ -164,14 +164,13 @@ internal static class ImportCommand
         string? sessionPath = intoOption is null ? null : Path.GetFullPath(intoOption);
         if (sessionPath is not null
             && Directory.Exists(sessionPath)
-            && Directory.EnumerateFileSystemEntries(sessionPath).Any()
-            && !overwrite)
+            && Directory.EnumerateFileSystemEntries(sessionPath).Any())
         {
-            // Evidence is never published into a directory that already holds something. A session that
-            // gained files from two unrelated imports would name dependencies neither of them produced.
             ConsoleUi.Failure(
-                $"{sessionPath} is not empty. Pass --overwrite to publish into an existing session directory, "
-                + "or choose a directory of its own.");
+                $"{sessionPath} is not empty. An import needs a new empty session directory: appending "
+                + "could count one capture twice or mix unrelated evidence. Use 'icat session' to inspect "
+                + "it, 'icat rederive' to rebuild its retained journal, or choose a new directory. "
+                + "--overwrite applies only to the optional report file.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -524,6 +523,7 @@ internal static class ImportCommand
         ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
         ConsoleUi.Line("      With --into it also publishes a session: the admitted journal-v1 evidence and");
         ConsoleUi.Line("      the observation-v1 segments derived from it, as one committed generation.");
+        ConsoleUi.Line("      --into requires a new empty directory; --overwrite replaces only a report file.");
         ConsoleUi.Line("      Needs no elevation.");
     }
 }

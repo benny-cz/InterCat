@@ -98,6 +98,7 @@ static void PrintHelp()
     ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
     ConsoleUi.Line("      With --into it publishes a session: the admitted journal-v1 evidence and the");
     ConsoleUi.Line("      observation-v1 segments derived from it, as one committed generation.");
+    ConsoleUi.Line("      --into requires a new empty directory; --overwrite replaces only a report file.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat rederive <directory> [--check] [--rows-per-segment <n>] [--output <path>] [--json]");
     ConsoleUi.Line("      Without --check, rebuilds from the retained journal and saved plan, publishing");

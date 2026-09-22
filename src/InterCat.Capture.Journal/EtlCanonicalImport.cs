@@ -77,6 +77,14 @@ public static class EtlCanonicalImport
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
+        if (store.Current is not null)
+        {
+            throw new InvalidOperationException(
+                "An ETL import publishes only into a session with no generation. Appending another copy of "
+                + "the capture would count its observations twice. Open the existing session, use 'icat "
+                + "rederive' for its retained journal, or choose a new empty directory for a separate import.");
+        }
+
         EtlSessionImportResult result = Run(
             etlPath,
             admissionPlan,

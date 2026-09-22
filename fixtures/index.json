@@ -704,6 +704,7 @@
         "R20: a published journal re-derives byte-identical segments in a replacement generation",
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
         "R20: an in-place change after store open and a cancelled check never publish",
+        "R20: importing into an existing generation is refused before reading an ETL",
         "R20: colour measurements match published reference values",
         "R20: greyscale simulation keeps luminance and drops chroma",
         "R20: the committed theme report matches what the palette computes today"

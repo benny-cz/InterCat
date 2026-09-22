@@ -125,6 +125,31 @@ public sealed class ObservationNormalizerV1Tests
         SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(2, reopened.Current!.Generation);
         Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
+
+    }
+
+    [Fact(DisplayName = "R20: importing into an existing generation is refused before reading an ETL")]
+    public void ASecondImportCannotDoubleCountTheExistingGeneration()
+    {
+        using var session = new TemporarySession();
+        using StoreStagingFile staged = session.Store.Stage("already-published.idx", StoreDependencyKind.Index);
+        staged.Content.Write("published"u8);
+        _ = staged.Complete();
+        _ = session.Store.Commit([staged], CommittedBoundary.None, DateTimeOffset.UtcNow);
+        var importPlan = new OwnedSessionPlan
+        {
+            Identity = CaptureSessionIdentity.Create("testimport", System.Environment.ProcessId),
+            Sources = [Source(TransferPlan())],
+            Providers = [],
+            MaximumDuration = TimeSpan.FromMinutes(1),
+            PreserveExtendedData = true,
+        };
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            EtlCanonicalImport.ImportIntoSession(
+                "this-file-does-not-exist.etl", importPlan, session.Store, DateTimeOffset.UtcNow));
+        Assert.Contains("count its observations twice", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1, session.Store.Current!.Generation);
     }
 
     [Fact(DisplayName = "R20: a legacy journal without its descriptor plan is refused without changing the generation")]

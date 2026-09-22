@@ -1,8 +1,8 @@
 # InterCat canonical import v1
 
 Status: **source identity, import identity, canonical record keys, equal-time multiplicity, the
-bounded external-sort path and standalone ETL import implemented and measured; reuse of a completed
-import from a catalogue not yet implemented**.
+bounded external-sort path and standalone ETL import into a published session implemented and measured;
+reuse of a completed import from a catalogue not yet implemented**.
 
 This contract freezes the first IC-013 boundary: how a source's bytes become an identity, how one
 record becomes a canonical key, what ordering an import may claim, and what it must refuse. It is a
@@ -152,18 +152,22 @@ and lets the envelope go immediately. Holding the envelopes would undo the bound
 keep.
 
 `icat import <source.etl>` runs it. The command needs no elevation, writes machine-readable data to
-stdout and progress to stderr, refuses to overwrite an output without `--overwrite`, and refuses
+stdout and progress to stderr, refuses to overwrite a report without `--overwrite`, and refuses
 `--retain-content` outright, because no source has the validated payload contract, pre-persistence
-scope proof and payload-specific impact evidence that content retention requires. It writes an import
-summary, never a session, and says so in the document it writes.
+scope proof and payload-specific impact evidence that content retention requires. Without `--into` it
+writes an import summary, not a session. With `--into <new-empty-directory>` it publishes the admitted
+journal, its retained descriptor plan and derived observation/source-field segments as one committed
+generation. `--overwrite` applies only to an optional report file; it never allows import into a
+nonempty session directory. The import API also refuses a store with an existing generation, because
+appending the same evidence would silently count one capture twice. Re-derive an existing journal with
+`icat rederive` rather than re-importing it into that session.
 
 ## 9. Not yet implemented
 
-- A session. Nothing writes an `.icat`; the import produces an identity and an index.
 - Reuse of a matching completed import from a persistent catalogue. The identity is computed and
   comparable; nothing stores it yet.
-- Derivation generations for normalizer upgrades, and bookmark fallback to raw evidence when a fact is
-  split or renamed (§18.4). The normalizer contract version is already part of import identity, so a new
-  generation is a different import rather than a silent rewrite.
+- Semantic normalizer upgrades and bookmark fallback to raw evidence when a fact is split or renamed
+  (§18.4). Same-version replacement derivation generations exist; a new normalizer contract version
+  requires a real mapping change and stable-raw-identity tests rather than an arbitrary version bump.
 - Overlap disclosure between a journal and its companion ETL. Both identities exist; the comparison that
   discloses overlap belongs with the store layers of §20.1.
