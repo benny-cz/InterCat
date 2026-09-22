@@ -117,6 +117,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             {
                 CaptureId = captureId,
                 Owner = client.Owner,
+                Session = BrokerSessionOwnership.Create(captureId),
                 PlanDigest = resolution.Plan!.Digest,
                 State = CaptureLifecycle.Starting,
                 CreatedAtUtc = now,
@@ -157,7 +158,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             try
             {
                 runtimeOutcome = await runtime
-                    .StartAsync(captureId, resolution.Plan, CancellationToken.None)
+                    .StartAsync(ownership, resolution.Plan, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -201,7 +202,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             {
                 if (runtimeOutcome.Started)
                 {
-                    await TryCompensatingStopAsync(captureId).ConfigureAwait(false);
+                    await TryCompensatingStopAsync(ownership).ConfigureAwait(false);
                 }
 
                 return PersistenceFailure(captureId, CaptureLifecycle.Starting, exception);
@@ -357,6 +358,151 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         }
     }
 
+    /// <summary>
+    /// Reconciles a reopened durable store before accepting commands. Interrupted starts are never
+    /// promoted to success; the runtime receives the persisted session ownership token and is asked to
+    /// stop it. Pending/partial stops resume, expired recordings stop, and only unexpired recordings are
+    /// preserved.
+    /// </summary>
+    public async Task<BrokerRecoveryReport> RecoverAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            BrokerLifecycleSnapshot snapshot = await store
+                .ReadSnapshotAsync(cancellationToken)
+                .ConfigureAwait(false);
+            Dictionary<CaptureId, BrokerCaptureOwnership> captures = snapshot.Captures.ToDictionary(
+                capture => capture.CaptureId);
+            var handled = new HashSet<CaptureId>();
+            var items = new List<BrokerRecoveryItem>();
+
+            foreach (BrokerStoredRequest pending in snapshot.Requests
+                .Where(request => !request.Completed)
+                .OrderBy(request => request.RequestId))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!captures.TryGetValue(pending.CaptureId, out BrokerCaptureOwnership? ownership))
+                {
+                    throw new InvalidDataException(
+                        $"Pending request '{pending.RequestId}' has no capture ownership record.");
+                }
+
+                BrokerRuntimeStopOutcome runtimeStop = await StopForRecoveryAsync(ownership).ConfigureAwait(false);
+                BrokerStopMilestones milestones = runtimeStop.Milestones with { Requested = true };
+                CaptureLifecycle state = ResolveStopState(milestones, ownership.State);
+                string? runtimeFailure = BoundReason(runtimeStop.FailureReason);
+                BrokerCaptureOwnership updated = ownership with
+                {
+                    State = state,
+                    UpdatedAtUtc = clock.GetUtcNow(),
+                    StopMilestones = milestones,
+                    FailureReason = runtimeFailure,
+                };
+
+                if (pending.Kind == BrokerRequestKind.Start)
+                {
+                    string reason = BoundReason(
+                        "Recovered an interrupted start. No start success was durably exposed; the broker "
+                        + "conservatively requested stop using the persisted session ownership token."
+                        + (runtimeFailure is null ? string.Empty : $" {runtimeFailure}"))!;
+                    BrokerStartOutcome startOutcome = new(
+                        BrokerOperationCode.StartFailed,
+                        ownership.CaptureId,
+                        state,
+                        null,
+                        reason);
+                    await store.SaveStartCompletionAsync(
+                            updated with { FailureReason = reason },
+                            pending with { Completed = true, StartOutcome = startOutcome },
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                    items.Add(new(
+                        BrokerRecoveryAction.InterruptedStartStopped,
+                        ownership.CaptureId,
+                        state,
+                        milestones,
+                        reason));
+                }
+                else
+                {
+                    BrokerOperationCode code = milestones.FullyFinalized
+                        ? BrokerOperationCode.Stopped
+                        : BrokerOperationCode.StopPartial;
+                    BrokerStopOutcome stopOutcome = new(
+                        code,
+                        ownership.CaptureId,
+                        state,
+                        milestones,
+                        runtimeFailure);
+                    await store.SaveStopCompletionAsync(
+                            updated,
+                            pending with { Completed = true, StopOutcome = stopOutcome },
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                    items.Add(new(
+                        BrokerRecoveryAction.PendingStopResumed,
+                        ownership.CaptureId,
+                        state,
+                        milestones,
+                        runtimeFailure ?? "Recovered and completed a pending stop request."));
+                }
+
+                handled.Add(ownership.CaptureId);
+            }
+
+            snapshot = await store.ReadSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
+            DateTimeOffset now = clock.GetUtcNow();
+            foreach (BrokerCaptureOwnership ownership in snapshot.Captures.OrderBy(item => item.CreatedAtUtc))
+            {
+                if (handled.Contains(ownership.CaptureId) || ownership.State == CaptureLifecycle.Closed)
+                {
+                    continue;
+                }
+
+                if (ownership.State == CaptureLifecycle.Recording && ownership.LeaseExpiresAtUtc > now)
+                {
+                    items.Add(new(
+                        BrokerRecoveryAction.ActiveLeasePreserved,
+                        ownership.CaptureId,
+                        ownership.State,
+                        ownership.StopMilestones,
+                        "The recording has an unexpired owner lease and remains active."));
+                    continue;
+                }
+
+                BrokerRecoveryAction action = ownership.State switch
+                {
+                    CaptureLifecycle.Stopping or CaptureLifecycle.Finalizing =>
+                        BrokerRecoveryAction.PartialStopRetried,
+                    CaptureLifecycle.Recording => BrokerRecoveryAction.ExpiredLeaseStopped,
+                    _ => BrokerRecoveryAction.UnownedStateStopped,
+                };
+                BrokerStopOutcome outcome = await StopOwnedAsync(
+                        ownership.CaptureId,
+                        Guid.NewGuid(),
+                        BrokerRequestKind.RecoveryStop,
+                        ownership.Owner,
+                        verifyOwner: false,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                items.Add(new(
+                    action,
+                    ownership.CaptureId,
+                    outcome.State,
+                    outcome.Milestones,
+                    outcome.FailureReason ?? "Recovery requested stop using the persisted session ownership token."));
+            }
+
+            return new(items);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     /// <summary>Stops every expired interactive owner lease. A partial stop remains retryable.</summary>
     public async Task<IReadOnlyList<BrokerStopOutcome>> StopExpiredLeasesAsync(
         CancellationToken cancellationToken = default)
@@ -484,7 +630,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             try
             {
                 runtimeOutcome = await runtime
-                    .StopAsync(captureId, CancellationToken.None)
+                    .StopAsync(ownership, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -539,16 +685,30 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         return outcome;
     }
 
-    private async Task TryCompensatingStopAsync(CaptureId captureId)
+    private async Task TryCompensatingStopAsync(BrokerCaptureOwnership ownership)
     {
         try
         {
-            _ = await runtime.StopAsync(captureId, CancellationToken.None).ConfigureAwait(false);
+            _ = await runtime.StopAsync(ownership, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // The durable start intent remains for recovery. Never replace the persistence failure with
             // an exception from best-effort compensation.
+        }
+    }
+
+    private async Task<BrokerRuntimeStopOutcome> StopForRecoveryAsync(BrokerCaptureOwnership ownership)
+    {
+        try
+        {
+            return await runtime.StopAsync(ownership, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(
+                ownership.StopMilestones with { Requested = true },
+                BoundReason($"Recovery stop failed: {exception.Message}"));
         }
     }
 

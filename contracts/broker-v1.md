@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare handoff plus transport-independent token/ownership/lease/idempotency core implemented; durable storage, authenticated transport and live capture commands not yet enabled**.
+Status: **prepare, token/ownership/lease/idempotency and crash-durable recovery core implemented; authenticated transport and live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -109,10 +109,34 @@ the registry is not an identity oracle. Restart invalidates every grant by desig
   `analysisFinalized` independently. Replaying one partial request returns the same partial result; a new
   request may retry incomplete finalization.
 
-The runtime is still an interface and tests use a fake. The included in-memory store preserves the
-atomic API boundaries but is explicitly not crash-durable. A completion-write failure never exposes
-start success and triggers best-effort compensating stop; the stored intent remains for recovery. A
-production durable store plus restart recovery are required before this coordinator may drive ETW.
+The runtime is still an interface and tests use a fake. A completion-write failure never exposes start
+success and triggers best-effort compensating stop; the stored intent remains for recovery.
+
+### 4.1 Durable ownership log
+
+`FileBrokerLifecycleStore` is the production persistence primitive for this state. Its directory must
+already exist with its final broker-owned ACL; the store refuses a missing root, a root marked as a
+reparse point, or an existing ownership file marked as a reparse point. The fixed filename is
+`broker-ownership-v1.log`; no client path or filename is accepted.
+
+Each mutation appends a complete snapshot frame containing all capture ownership and request-ID state.
+A frame carries version, monotonic sequence, bounded payload length, SHA-256 over version/sequence/
+length/payload, and a repeated-length end marker. The payload is at most 4 MiB, the log at most 64 MiB,
+and snapshots at most 4,096 captures and 16,384 request records. The frame is flushed to the physical
+device before in-memory state changes or success is returned. Prepared token secrets are never written;
+only their SHA-256 fingerprints appear as start-request targets.
+
+On reopen, recovery scans in sequence and validates the checksum, end marker, strict internal schema,
+owner/session identity, lifecycle values and referential integrity of every frame. It restores the last
+complete valid snapshot and truncates only the rejected tail. A nonempty file with no valid frame is
+refused and left unchanged instead of being reset. This avoids treating filesystem rename as a power-
+failure guarantee.
+
+Every ownership record persists a unique session name and a separate random ownership token. Restart
+reconciliation passes both to the runtime: an interrupted start is conservatively stopped and completed
+as failed, pending and partial stops resume, an expired recording stops, and only a recording with an
+unexpired owner lease is preserved. A matching name or capture ID without the token is insufficient.
+The in-memory store remains available only as a deterministic behavior fixture.
 
 ## 5. Planned wire and authenticated host
 
@@ -151,9 +175,9 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no named pipe, OS-token authentication host, broker-owned directory, crash-durable
-ownership store, restart recovery or ETW/journal runtime binding. `InterCat.CaptureBroker` returns a
-failure exit code when launched. Prepared tokens and lifecycle operations exist only behind the
-transport-independent API and fake runtime. Those absences are deliberate: a live UI control must not
-appear until authentication, durable ownership/recovery and cleanup behavior are implemented and tested
-together.
+The current slice has no named pipe, OS-token authentication host, broker-owned directory provisioning,
+ACL integration, log compaction or ETW/journal runtime binding. `InterCat.CaptureBroker` returns a
+failure exit code when launched. Prepared tokens and durable lifecycle/recovery operations exist only
+behind the transport-independent API and fake runtime. Those absences are deliberate: a live UI control
+must not appear until authentication, directory security and real cleanup behavior are implemented and
+tested together.

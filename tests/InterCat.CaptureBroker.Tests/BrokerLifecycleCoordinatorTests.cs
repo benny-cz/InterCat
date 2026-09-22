@@ -13,7 +13,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     {
         var clock = new ManualTimeProvider(StartTime);
         var store = new InMemoryBrokerLifecycleStore();
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
         runtime.BeforeStart = async captureId =>
@@ -46,7 +46,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task TokenIsBoundToOwnerAndExpiryWithoutRevealingWhichCheckFailed()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock, TimeSpan.FromSeconds(5));
         PreparedPlanGrant wrongOwnerGrant = registry.Issue(PreparedFocused(), OwnerA);
         using var coordinator = new BrokerLifecycleCoordinator(
@@ -76,7 +76,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task PreparedTokenIsSingleUseAndRequestIdCannotBeRebound()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant firstGrant = registry.Issue(PreparedFocused(), OwnerA);
         PreparedPlanGrant secondGrant = registry.Issue(PreparedFocused(), OwnerA);
@@ -108,7 +108,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task StopMilestonesAndDuplicateRequestRemainExact()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime
+        var runtime = new BrokerFakeRuntime
         {
             StopOutcome = new(new(true, true, true, false, false), "Journal flush is still pending."),
         };
@@ -143,7 +143,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task NewStopRequestCanRetryPartialFinalization()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         runtime.StopOutcomes.Enqueue(new(new(true, true, true, false, false), "Flush pending."));
         runtime.StopOutcomes.Enqueue(new(new(true, true, true, true, true)));
         var registry = new PreparedPlanRegistry(clock);
@@ -174,7 +174,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task OtherOwnerCannotReadRenewOrStopCapture()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
         using var coordinator = new BrokerLifecycleCoordinator(
@@ -199,7 +199,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task LeaseRenewsBeforeExpiryButCannotBeRevivedAfterExpiry()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
         using var coordinator = new BrokerLifecycleCoordinator(
@@ -226,7 +226,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task ExpiredLeaseSweepStopsOrphanAndPersistsFinalStatus()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
         using var coordinator = new BrokerLifecycleCoordinator(
@@ -253,7 +253,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task FailedStartIsPersistedAndDoesNotRunTwice()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime
+        var runtime = new BrokerFakeRuntime
         {
             StartOutcome = new(false, "Provider enablement failed."),
         };
@@ -279,7 +279,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task IntentPersistenceFailurePreventsRuntimeStart()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var store = new FaultingStore { FailStartIntent = true };
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
@@ -296,7 +296,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     public async Task CompletionPersistenceFailureTriggersCompensatingStopAndNoSuccess()
     {
         var clock = new ManualTimeProvider(StartTime);
-        var runtime = new FakeRuntime();
+        var runtime = new BrokerFakeRuntime();
         var store = new FaultingStore { FailStartCompletion = true };
         var registry = new PreparedPlanRegistry(clock);
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
@@ -307,42 +307,6 @@ public sealed class BrokerLifecycleCoordinatorTests
         Assert.Equal(BrokerOperationCode.PersistenceFailure, outcome.Code);
         Assert.Equal(1, runtime.StartCount);
         Assert.Equal(1, runtime.StopCount);
-    }
-
-    private sealed class FakeRuntime : IBrokerCaptureRuntime
-    {
-        public BrokerRuntimeStartOutcome StartOutcome { get; init; } = new(true);
-        public BrokerRuntimeStopOutcome StopOutcome { get; init; } = new(new(true, true, true, true, true));
-        public Func<CaptureId, Task>? BeforeStart { get; set; }
-        public Queue<BrokerRuntimeStopOutcome> StopOutcomes { get; } = [];
-        public int StartCount { get; private set; }
-        public int StopCount { get; private set; }
-
-        public async Task<BrokerRuntimeStartOutcome> StartAsync(
-            CaptureId captureId,
-            PreparedCapturePlan plan,
-            CancellationToken cancellationToken)
-        {
-            Assert.NotNull(plan);
-            cancellationToken.ThrowIfCancellationRequested();
-            StartCount++;
-            if (BeforeStart is not null)
-            {
-                await BeforeStart(captureId);
-            }
-
-            return StartOutcome;
-        }
-
-        public Task<BrokerRuntimeStopOutcome> StopAsync(
-            CaptureId captureId,
-            CancellationToken cancellationToken)
-        {
-            Assert.NotEqual(Guid.Empty, captureId.Value);
-            cancellationToken.ThrowIfCancellationRequested();
-            StopCount++;
-            return Task.FromResult(StopOutcomes.Count > 0 ? StopOutcomes.Dequeue() : StopOutcome);
-        }
     }
 
     private sealed class FaultingStore : InMemoryBrokerLifecycleStore

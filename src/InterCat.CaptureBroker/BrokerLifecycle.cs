@@ -25,6 +25,7 @@ public enum BrokerRequestKind
     Start = 1,
     Stop = 2,
     ExpiredLeaseStop = 3,
+    RecoveryStop = 4,
 }
 
 /// <summary>Stop progress is never collapsed into one optimistic success flag.</summary>
@@ -62,20 +63,68 @@ public sealed record BrokerLeaseOutcome(
     DateTimeOffset? LeaseExpiresAtUtc,
     string? FailureReason);
 
+public enum BrokerRecoveryAction
+{
+    InterruptedStartStopped = 1,
+    PendingStopResumed = 2,
+    PartialStopRetried = 3,
+    UnownedStateStopped = 4,
+    ExpiredLeaseStopped = 5,
+    ActiveLeasePreserved = 6,
+}
+
+public sealed record BrokerRecoveryItem(
+    BrokerRecoveryAction Action,
+    CaptureId CaptureId,
+    CaptureLifecycle State,
+    BrokerStopMilestones Milestones,
+    string Summary);
+
+public sealed record BrokerRecoveryReport(IReadOnlyList<BrokerRecoveryItem> Items)
+{
+    public int StoppedOrRetriedCount => Items.Count(item => item.Action != BrokerRecoveryAction.ActiveLeasePreserved);
+}
+
 public sealed record BrokerRuntimeStartOutcome(bool Started, string? FailureReason = null);
 
 public sealed record BrokerRuntimeStopOutcome(BrokerStopMilestones Milestones, string? FailureReason = null);
+
+/// <summary>
+/// Name plus unguessable proof for exactly one broker-created session. A matching name without the
+/// ownership token never authorizes recovery cleanup.
+/// </summary>
+public sealed record BrokerSessionOwnership(string SessionName, Guid OwnershipToken)
+{
+    public static BrokerSessionOwnership Create(CaptureId captureId)
+    {
+        if (captureId.Value == Guid.Empty)
+        {
+            throw new ArgumentException("A session requires a non-empty capture ID.", nameof(captureId));
+        }
+
+        Guid token = Guid.NewGuid();
+        return new(
+            $"InterCat-broker-{captureId.Value:N}-{token:N}"[..64],
+            token);
+    }
+
+    public bool IsValid =>
+        OwnershipToken != Guid.Empty
+        && SessionName.Length is > 0 and <= 64
+        && SessionName.StartsWith("InterCat-broker-", StringComparison.Ordinal)
+        && SessionName.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
+}
 
 /// <summary>Future ETW/journal integration plugs in here; tests use a deterministic fake.</summary>
 public interface IBrokerCaptureRuntime
 {
     Task<BrokerRuntimeStartOutcome> StartAsync(
-        CaptureId captureId,
+        BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
         CancellationToken cancellationToken);
 
     Task<BrokerRuntimeStopOutcome> StopAsync(
-        CaptureId captureId,
+        BrokerCaptureOwnership ownership,
         CancellationToken cancellationToken);
 }
 
@@ -84,6 +133,7 @@ public sealed record BrokerCaptureOwnership
 {
     public required CaptureId CaptureId { get; init; }
     public required BrokerOwnerIdentity Owner { get; init; }
+    public required BrokerSessionOwnership Session { get; init; }
     public required string PlanDigest { get; init; }
     public required CaptureLifecycle State { get; init; }
     public required DateTimeOffset CreatedAtUtc { get; init; }
@@ -104,6 +154,10 @@ public sealed record BrokerStoredRequest
     public BrokerStartOutcome? StartOutcome { get; init; }
     public BrokerStopOutcome? StopOutcome { get; init; }
 }
+
+public sealed record BrokerLifecycleSnapshot(
+    IReadOnlyList<BrokerCaptureOwnership> Captures,
+    IReadOnlyList<BrokerStoredRequest> Requests);
 
 /// <summary>
 /// Atomic persistence boundary. A production implementation must durably commit intent before a runtime
@@ -147,6 +201,8 @@ public interface IBrokerLifecycleStore
     ValueTask<IReadOnlyList<BrokerCaptureOwnership>> FindExpiredLeasesAsync(
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken);
+
+    ValueTask<BrokerLifecycleSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -275,6 +331,18 @@ public class InMemoryBrokerLifecycleStore : IBrokerLifecycleStore
                     .OrderBy(capture => capture.LeaseExpiresAtUtc),
             ];
             return ValueTask.FromResult(expired);
+        }
+    }
+
+    public virtual ValueTask<BrokerLifecycleSnapshot> ReadSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            return ValueTask.FromResult(new BrokerLifecycleSnapshot(
+                [.. captures.Values.OrderBy(capture => capture.CreatedAtUtc)],
+                [.. requests.Values.OrderBy(request => request.RequestId)]));
         }
     }
 

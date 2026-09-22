@@ -113,3 +113,50 @@ internal sealed class ManualTimeProvider(DateTimeOffset value) : TimeProvider
 
     public void Advance(TimeSpan duration) => value = value.Add(duration);
 }
+
+internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime
+{
+    public BrokerRuntimeStartOutcome StartOutcome { get; init; } = new(true);
+    public BrokerRuntimeStopOutcome StopOutcome { get; init; } = new(new(true, true, true, true, true));
+    public Func<CaptureId, Task>? BeforeStart { get; set; }
+    public Queue<BrokerRuntimeStopOutcome> StopOutcomes { get; } = [];
+    public List<BrokerSessionOwnership> StoppedSessions { get; } = [];
+    public int StartCount { get; private set; }
+    public int StopCount { get; private set; }
+
+    public async Task<BrokerRuntimeStartOutcome> StartAsync(
+        BrokerCaptureOwnership ownership,
+        PreparedCapturePlan plan,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!ownership.Session.IsValid)
+        {
+            throw new InvalidOperationException("The fixture received invalid session ownership.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        StartCount++;
+        if (BeforeStart is not null)
+        {
+            await BeforeStart(ownership.CaptureId);
+        }
+
+        return StartOutcome;
+    }
+
+    public Task<BrokerRuntimeStopOutcome> StopAsync(
+        BrokerCaptureOwnership ownership,
+        CancellationToken cancellationToken)
+    {
+        if (ownership.CaptureId.Value == Guid.Empty || !ownership.Session.IsValid)
+        {
+            throw new InvalidOperationException("The fixture received invalid capture ownership.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        StopCount++;
+        StoppedSessions.Add(ownership.Session);
+        return Task.FromResult(StopOutcomes.Count > 0 ? StopOutcomes.Dequeue() : StopOutcome);
+    }
+}

@@ -1,3 +1,3 @@
 Console.Error.WriteLine(
-    "InterCat broker protocol v1 can freeze local capture plans, but the authenticated service and live start command are not enabled.");
+    "InterCat broker protocol v1 has prepare and durable ownership/recovery cores, but the authenticated service and live capture runtime are not enabled.");
 return 3;

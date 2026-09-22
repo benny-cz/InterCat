@@ -1,0 +1,592 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using InterCat.Domain;
+
+namespace InterCat.CaptureBroker;
+
+public sealed record BrokerStoreRecoveryReport(
+    long RecoveredSequence,
+    long TruncatedTailBytes,
+    string? RecoveryReason);
+
+/// <summary>
+/// Append-only, checksummed lifecycle store. Every frame is a complete ownership/request snapshot and
+/// is flushed before the in-memory state changes. Recovery keeps the last complete valid frame and
+/// truncates only the untrusted tail, so it never depends on directory-rename atomicity.
+/// </summary>
+public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposable
+{
+    public const string FileName = "broker-ownership-v1.log";
+    public const int MaximumPayloadBytes = 4 * 1024 * 1024;
+    public const long MaximumFileBytes = 64L * 1024 * 1024;
+    public const int MaximumCaptures = 4096;
+    public const int MaximumRequests = 16384;
+
+    private const int FormatVersion = 1;
+    private const int HeaderSize = 56;
+    private const int TrailerSize = 12;
+    private static readonly byte[] HeaderMagic = "ICBOWN1\0"u8.ToArray();
+    private static readonly byte[] TrailerMagic = "ICBEND1\0"u8.ToArray();
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        MaxDepth = 32,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+    };
+
+    private readonly Dictionary<CaptureId, BrokerCaptureOwnership> captures = [];
+    private readonly Dictionary<RequestKey, BrokerStoredRequest> requests = [];
+    private readonly FileStream stream;
+    private readonly Lock gate = new();
+    private long sequence;
+    private bool disposed;
+
+    public FileBrokerLifecycleStore(string brokerOwnedDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(brokerOwnedDirectory);
+        string root = Path.GetFullPath(brokerOwnedDirectory);
+        if (!Directory.Exists(root))
+        {
+            throw new DirectoryNotFoundException(
+                $"Broker ownership directory '{root}' must already exist with its final ACL.");
+        }
+
+        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException("The broker ownership directory cannot be a reparse point.");
+        }
+
+        FilePath = Path.Combine(root, FileName);
+        if (File.Exists(FilePath)
+            && (File.GetAttributes(FilePath) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException("The broker ownership file cannot be a reparse point.");
+        }
+
+        stream = new(
+            FilePath,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.Read,
+            4096,
+            FileOptions.WriteThrough);
+        try
+        {
+            Recovery = Recover();
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }
+
+    public string FilePath { get; }
+
+    public BrokerStoreRecoveryReport Recovery { get; }
+
+    public ValueTask<BrokerStoredRequest?> FindRequestAsync(
+        BrokerOwnerIdentity owner,
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            requests.TryGetValue(new(owner, requestId), out BrokerStoredRequest? request);
+            return ValueTask.FromResult(request);
+        }
+    }
+
+    public ValueTask<BrokerCaptureOwnership?> FindCaptureAsync(
+        CaptureId captureId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            captures.TryGetValue(captureId, out BrokerCaptureOwnership? ownership);
+            return ValueTask.FromResult(ownership);
+        }
+    }
+
+    public ValueTask SaveStartIntentAsync(
+        BrokerCaptureOwnership ownership,
+        BrokerStoredRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            var requestKey = new RequestKey(request.Owner, request.RequestId);
+            if (captures.ContainsKey(ownership.CaptureId) || requests.ContainsKey(requestKey))
+            {
+                throw new InvalidOperationException("The start intent already exists.");
+            }
+
+            Dictionary<CaptureId, BrokerCaptureOwnership> nextCaptures = CopyCaptures();
+            Dictionary<RequestKey, BrokerStoredRequest> nextRequests = CopyRequests();
+            nextCaptures.Add(ownership.CaptureId, ownership);
+            nextRequests.Add(requestKey, request);
+            Persist(nextCaptures, nextRequests);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask SaveStartCompletionAsync(
+        BrokerCaptureOwnership ownership,
+        BrokerStoredRequest request,
+        CancellationToken cancellationToken) =>
+        SaveCompletionAsync(ownership, request, BrokerRequestKind.Start, cancellationToken);
+
+    public ValueTask SaveStopIntentAsync(
+        BrokerCaptureOwnership ownership,
+        BrokerStoredRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            var requestKey = new RequestKey(request.Owner, request.RequestId);
+            if (!captures.ContainsKey(ownership.CaptureId) || requests.ContainsKey(requestKey))
+            {
+                throw new InvalidOperationException("The stop intent conflicts with stored state.");
+            }
+
+            Dictionary<CaptureId, BrokerCaptureOwnership> nextCaptures = CopyCaptures();
+            Dictionary<RequestKey, BrokerStoredRequest> nextRequests = CopyRequests();
+            nextCaptures[ownership.CaptureId] = ownership;
+            nextRequests.Add(requestKey, request);
+            Persist(nextCaptures, nextRequests);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask SaveStopCompletionAsync(
+        BrokerCaptureOwnership ownership,
+        BrokerStoredRequest request,
+        CancellationToken cancellationToken) =>
+        SaveCompletionAsync(ownership, request, request.Kind, cancellationToken);
+
+    public ValueTask SaveLeaseAsync(
+        BrokerCaptureOwnership ownership,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            if (!captures.ContainsKey(ownership.CaptureId))
+            {
+                throw new InvalidOperationException("The capture ownership record does not exist.");
+            }
+
+            Dictionary<CaptureId, BrokerCaptureOwnership> nextCaptures = CopyCaptures();
+            nextCaptures[ownership.CaptureId] = ownership;
+            Persist(nextCaptures, CopyRequests());
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<IReadOnlyList<BrokerCaptureOwnership>> FindExpiredLeasesAsync(
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            IReadOnlyList<BrokerCaptureOwnership> expired =
+            [
+                .. captures.Values
+                    .Where(capture =>
+                        capture.LeaseExpiresAtUtc <= nowUtc
+                        && capture.State is CaptureLifecycle.Starting
+                            or CaptureLifecycle.Recording
+                            or CaptureLifecycle.Stopping
+                            or CaptureLifecycle.Finalizing)
+                    .OrderBy(capture => capture.LeaseExpiresAtUtc),
+            ];
+            return ValueTask.FromResult(expired);
+        }
+    }
+
+    public ValueTask<BrokerLifecycleSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return ValueTask.FromResult(new BrokerLifecycleSnapshot(
+                [.. captures.Values.OrderBy(capture => capture.CreatedAtUtc)],
+                [.. requests.Values.OrderBy(request => request.RequestId)]));
+        }
+    }
+
+    private ValueTask SaveCompletionAsync(
+        BrokerCaptureOwnership ownership,
+        BrokerStoredRequest request,
+        BrokerRequestKind expectedKind,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            var requestKey = new RequestKey(request.Owner, request.RequestId);
+            if (!captures.ContainsKey(ownership.CaptureId)
+                || !requests.TryGetValue(requestKey, out BrokerStoredRequest? existing)
+                || existing.Kind != expectedKind
+                || existing.Completed)
+            {
+                throw new InvalidOperationException("The operation completion has no matching pending intent.");
+            }
+
+            Dictionary<CaptureId, BrokerCaptureOwnership> nextCaptures = CopyCaptures();
+            Dictionary<RequestKey, BrokerStoredRequest> nextRequests = CopyRequests();
+            nextCaptures[ownership.CaptureId] = ownership;
+            nextRequests[requestKey] = request;
+            Persist(nextCaptures, nextRequests);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private void Persist(
+        Dictionary<CaptureId, BrokerCaptureOwnership> nextCaptures,
+        Dictionary<RequestKey, BrokerStoredRequest> nextRequests)
+    {
+        long nextSequence = checked(sequence + 1);
+        ValidateState(nextCaptures.Values, nextRequests.Values, nextSequence);
+        var document = new SnapshotDocument
+        {
+            FormatVersion = FormatVersion,
+            Sequence = nextSequence,
+            Captures = [.. nextCaptures.Values.OrderBy(capture => capture.CaptureId.Value)],
+            Requests =
+            [
+                .. nextRequests.Values
+                    .OrderBy(request => request.Owner.UserSid, StringComparer.Ordinal)
+                    .ThenBy(request => request.Owner.LogonSessionId)
+                    .ThenBy(request => request.RequestId),
+            ],
+        };
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
+        if (payload.Length is < 1 or > MaximumPayloadBytes)
+        {
+            throw new IOException(
+                $"Broker ownership snapshot is {payload.Length} bytes; the limit is {MaximumPayloadBytes}.");
+        }
+
+        long frameLength = checked(HeaderSize + payload.Length + TrailerSize);
+        if (stream.Length + frameLength > MaximumFileBytes)
+        {
+            throw new IOException(
+                $"Broker ownership log would exceed its {MaximumFileBytes}-byte bound. "
+                + "Live capture remains blocked until a reviewed compaction publishes a fresh log.");
+        }
+
+        byte[] header = BuildHeader(nextSequence, payload);
+        byte[] trailer = BuildTrailer(payload.Length);
+        long frameStart = stream.Length;
+        try
+        {
+            stream.Position = frameStart;
+            stream.Write(header);
+            stream.Write(payload);
+            stream.Write(trailer);
+            stream.Flush(flushToDisk: true);
+        }
+        catch
+        {
+            try
+            {
+                stream.SetLength(frameStart);
+                stream.Flush(flushToDisk: true);
+            }
+            catch (Exception truncationException) when (truncationException is not OutOfMemoryException)
+            {
+                disposed = true;
+                stream.Dispose();
+            }
+
+            throw;
+        }
+
+        captures.Clear();
+        foreach ((CaptureId key, BrokerCaptureOwnership value) in nextCaptures)
+        {
+            captures.Add(key, value);
+        }
+
+        requests.Clear();
+        foreach ((RequestKey key, BrokerStoredRequest value) in nextRequests)
+        {
+            requests.Add(key, value);
+        }
+
+        sequence = nextSequence;
+    }
+
+    private BrokerStoreRecoveryReport Recover()
+    {
+        long originalLength = stream.Length;
+        long lastGoodOffset = 0;
+        long recoveredSequence = 0;
+        string? recoveryReason = null;
+        SnapshotDocument? latest = null;
+        stream.Position = 0;
+
+        while (stream.Position < originalLength)
+        {
+            long frameStart = stream.Position;
+            long remaining = originalLength - frameStart;
+            if (remaining < HeaderSize)
+            {
+                recoveryReason = "Ignored an incomplete ownership-frame header at the end of the log.";
+                break;
+            }
+
+            byte[] header = new byte[HeaderSize];
+            stream.ReadExactly(header);
+            if (!header.AsSpan(0, HeaderMagic.Length).SequenceEqual(HeaderMagic))
+            {
+                recoveryReason = "Ignored an ownership frame with an invalid header magic.";
+                break;
+            }
+
+            int version = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8, 4));
+            long frameSequence = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(12, 8));
+            int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20, 4));
+            bool invalidHeader = version != FormatVersion
+                || frameSequence != recoveredSequence + 1
+                || payloadLength is < 1 or > MaximumPayloadBytes;
+            if (invalidHeader)
+            {
+                recoveryReason = "Ignored an ownership frame with an unsupported version, sequence, or length.";
+                break;
+            }
+
+            if (originalLength - stream.Position < payloadLength + TrailerSize)
+            {
+                recoveryReason = "Ignored an incomplete ownership-frame payload at the end of the log.";
+                break;
+            }
+
+            byte[] payload = new byte[payloadLength];
+            stream.ReadExactly(payload);
+            byte[] trailer = new byte[TrailerSize];
+            stream.ReadExactly(trailer);
+            bool validTrailer = BinaryPrimitives.ReadInt32LittleEndian(trailer.AsSpan(0, 4)) == payloadLength
+                && trailer.AsSpan(4, TrailerMagic.Length).SequenceEqual(TrailerMagic);
+            byte[] expectedDigest = header.AsSpan(24, 32).ToArray();
+            byte[] actualDigest = ComputeDigest(frameSequence, payload);
+            if (!validTrailer || !CryptographicOperations.FixedTimeEquals(expectedDigest, actualDigest))
+            {
+                recoveryReason = "Ignored an ownership frame whose checksum or trailer is invalid.";
+                break;
+            }
+
+            SnapshotDocument? candidate;
+            try
+            {
+                candidate = JsonSerializer.Deserialize<SnapshotDocument>(payload, JsonOptions);
+                if (candidate is null
+                    || candidate.FormatVersion != FormatVersion
+                    || candidate.Sequence != frameSequence)
+                {
+                    throw new InvalidDataException("The ownership payload identity does not match its frame.");
+                }
+
+                ValidateState(candidate.Captures, candidate.Requests, frameSequence);
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidDataException)
+            {
+                recoveryReason = $"Ignored an invalid ownership payload: {exception.Message}";
+                break;
+            }
+
+            latest = candidate;
+            recoveredSequence = frameSequence;
+            lastGoodOffset = stream.Position;
+        }
+
+        if (originalLength > 0 && latest is null)
+        {
+            throw new InvalidDataException(
+                recoveryReason ?? "The ownership log contains no complete valid snapshot.");
+        }
+
+        if (latest is not null)
+        {
+            foreach (BrokerCaptureOwnership ownership in latest.Captures)
+            {
+                captures.Add(ownership.CaptureId, ownership);
+            }
+
+            foreach (BrokerStoredRequest request in latest.Requests)
+            {
+                requests.Add(new(request.Owner, request.RequestId), request);
+            }
+        }
+
+        long truncatedBytes = originalLength - lastGoodOffset;
+        if (truncatedBytes > 0)
+        {
+            stream.SetLength(lastGoodOffset);
+            stream.Flush(flushToDisk: true);
+        }
+
+        stream.Position = stream.Length;
+        sequence = recoveredSequence;
+        return new(recoveredSequence, truncatedBytes, recoveryReason);
+    }
+
+    private static void ValidateState(
+        IEnumerable<BrokerCaptureOwnership> captureValues,
+        IEnumerable<BrokerStoredRequest> requestValues,
+        long expectedSequence)
+    {
+        if (expectedSequence <= 0)
+        {
+            throw new InvalidDataException("The ownership sequence must be positive.");
+        }
+
+        BrokerCaptureOwnership[] captureArray = [.. captureValues];
+        BrokerStoredRequest[] requestArray = [.. requestValues];
+        if (captureArray.Length > MaximumCaptures || requestArray.Length > MaximumRequests)
+        {
+            throw new InvalidDataException("The ownership snapshot exceeds its capture or request count bound.");
+        }
+
+        if (captureArray.Select(item => item.CaptureId).Distinct().Count() != captureArray.Length)
+        {
+            throw new InvalidDataException("The ownership snapshot contains a duplicate capture ID.");
+        }
+
+        foreach (BrokerCaptureOwnership ownership in captureArray)
+        {
+            bool validDigest = ownership.PlanDigest is not null
+                && ownership.PlanDigest.Length == 71
+                && ownership.PlanDigest.StartsWith("sha256:", StringComparison.Ordinal)
+                && ownership.PlanDigest.AsSpan(7).ToString().All(Uri.IsHexDigit);
+            if (ownership.CaptureId.Value == Guid.Empty
+                || !ValidOwner(ownership.Owner)
+                || ownership.Session is null
+                || !ownership.Session.IsValid
+                || !validDigest
+                || !Enum.IsDefined(ownership.State)
+                || ownership.CreatedAtUtc == default
+                || ownership.UpdatedAtUtc < ownership.CreatedAtUtc
+                || ownership.LeaseExpiresAtUtc < ownership.CreatedAtUtc
+                || ownership.StopMilestones is null
+                || (ownership.FailureReason?.Length ?? 0) > 512)
+            {
+                throw new InvalidDataException(
+                    $"Capture '{ownership.CaptureId}' has an invalid ownership record.");
+            }
+        }
+
+        var requestKeys = new HashSet<RequestKey>();
+        HashSet<CaptureId> captureIds = [.. captureArray.Select(item => item.CaptureId)];
+        foreach (BrokerStoredRequest request in requestArray)
+        {
+            var key = new RequestKey(request.Owner, request.RequestId);
+            bool outcomeValid = request.Completed
+                ? request.Kind == BrokerRequestKind.Start
+                    ? request.StartOutcome is not null && request.StopOutcome is null
+                    : request.StopOutcome is not null && request.StartOutcome is null
+                : request.StartOutcome is null && request.StopOutcome is null;
+            if (!requestKeys.Add(key)
+                || !ValidOwner(request.Owner)
+                || request.RequestId == Guid.Empty
+                || !Enum.IsDefined(request.Kind)
+                || string.IsNullOrWhiteSpace(request.TargetKey)
+                || request.TargetKey.Length > 128
+                || request.TargetKey.Any(char.IsControl)
+                || !captureIds.Contains(request.CaptureId)
+                || !outcomeValid)
+            {
+                throw new InvalidDataException(
+                    $"Request '{request.RequestId}' has an invalid ownership/idempotency record.");
+            }
+        }
+    }
+
+    private static bool ValidOwner(BrokerOwnerIdentity owner) =>
+        !string.IsNullOrWhiteSpace(owner.UserSid)
+        && owner.UserSid.Length <= 184
+        && owner.UserSid.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase)
+        && owner.UserSid.All(character =>
+            char.IsAsciiDigit(character) || character is 'S' or 's' or '-')
+        && owner.LogonSessionId != 0;
+
+    private static byte[] BuildHeader(long frameSequence, byte[] payload)
+    {
+        byte[] header = new byte[HeaderSize];
+        HeaderMagic.CopyTo(header, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8, 4), FormatVersion);
+        BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(12, 8), frameSequence);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(20, 4), payload.Length);
+        ComputeDigest(frameSequence, payload).CopyTo(header, 24);
+        return header;
+    }
+
+    private static byte[] BuildTrailer(int payloadLength)
+    {
+        byte[] trailer = new byte[TrailerSize];
+        BinaryPrimitives.WriteInt32LittleEndian(trailer.AsSpan(0, 4), payloadLength);
+        TrailerMagic.CopyTo(trailer, 4);
+        return trailer;
+    }
+
+    private static byte[] ComputeDigest(long frameSequence, byte[] payload)
+    {
+        byte[] preimage = new byte[16 + payload.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(preimage.AsSpan(0, 4), FormatVersion);
+        BinaryPrimitives.WriteInt64LittleEndian(preimage.AsSpan(4, 8), frameSequence);
+        BinaryPrimitives.WriteInt32LittleEndian(preimage.AsSpan(12, 4), payload.Length);
+        payload.CopyTo(preimage, 16);
+        return SHA256.HashData(preimage);
+    }
+
+    private Dictionary<CaptureId, BrokerCaptureOwnership> CopyCaptures() => new(captures);
+
+    private Dictionary<RequestKey, BrokerStoredRequest> CopyRequests() => new(requests);
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(disposed, this);
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            stream.Dispose();
+        }
+    }
+
+    private readonly record struct RequestKey(BrokerOwnerIdentity Owner, Guid RequestId);
+
+    private sealed record SnapshotDocument
+    {
+        public required int FormatVersion { get; init; }
+        public required long Sequence { get; init; }
+        public required IReadOnlyList<BrokerCaptureOwnership> Captures { get; init; }
+        public required IReadOnlyList<BrokerStoredRequest> Requests { get; init; }
+    }
+}
