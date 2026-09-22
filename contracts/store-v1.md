@@ -1,9 +1,9 @@
 # InterCat session store v1
 
-Status: **the commit protocol, manifests, the current-generation pointer, recovery, and the derived segments
-and dictionaries a generation publishes are implemented and tested; retention checkpoints and evidence leases
-are not**. The segment and dictionary formats are frozen separately in `contracts/segment-v1.md`; this
-contract owns how a generation publishes them.
+Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
+dictionaries a generation publishes, evidence leases and the retention of a dependency or a journal prefix
+are implemented and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats
+are frozen separately in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
 what a reader acquires, and what recovery does with a publication that was interrupted. It owns nothing
@@ -37,6 +37,7 @@ SessionManifestV1 = (
     source identity, previous generation,
     committed boundary,
     dependencies: [ (name, kind, length, sha256) ],
+    retention?,
     digest)
 ```
 
@@ -72,8 +73,7 @@ declares no boundary is distinct from one that declares zero.
 5. The manifest is written through a staging name and a replacing rename. The existing pointer is copied
    to `previous-generation.json`, and the new pointer is written the same way.
 
-A generation's dependencies include its predecessor's. Retiring one is retention, which §20.2 owns and
-this contract does not yet implement.
+A generation's dependencies include its predecessor's. Retiring one is retention (§8).
 
 ## 6. Acquiring and recovering
 
@@ -120,11 +120,84 @@ The formats themselves are `contracts/segment-v1.md`. This contract does not rea
 segment is a named file with a length and a digest, which is what lets a future format arrive without
 changing the commit sequence.
 
-## 8. Not yet implemented
+## 8. Leases and retention
 
-- Evidence leases (I18). A reader acquires a generation by reading the current manifest; nothing yet
-  pins it against a concurrent retention or compaction, because neither exists.
-- Retention checkpoints (§20.2) and the journal release ADR-010 describes.
-- Open-operation censoring at a capture or retention boundary (I20).
+### A lease
+
+A reader acquires the current generation **and every dependency it names** as one lease, which is the unit
+§20.1's fifth step describes and the thing I18 makes inviolable: while a lease is live, nothing this store
+does removes a file the lease holds.
+
+A lease has a kind and an expiry. An `Interactive` lease is short and reserves nothing. A `Pinned` lease
+declares the disk allowance it reserves, because §10.1 forbids promising an indefinite pin inside a circular
+quota without one; a pin that reserves less than the evidence it would pin is refused. An expired lease holds
+nothing and is not revivable — a hold that can come back from expiry is not a bound on anything.
+
+A lease on a session with no published generation is refused. An empty session is not a generation with no
+data.
+
+### Retention
+
+Retention publishes a new generation that no longer names what it released, together with a **retention
+record** saying what went and why:
+
+```text
+RetentionRecord = (kind, released UTC, reason, released files, released bytes, released records, source digest)
+```
+
+The reason is required. A release with no stated reason is indistinguishable from data loss. The kind is
+`DerivedFiles` — segments, dictionaries or indices, all rebuildable from the journal — or `JournalPrefix`,
+which ADR-010 makes the explicit action it is.
+
+The record is appended to the manifest's canonical digest text **only when it is present**, so a generation
+published before retention existed verifies with exactly the digest it always had.
+
+Releasing and removing are separate steps. The generation stops naming a file immediately, which is what
+makes the retention visible; the bytes go when the last reader that acquired them lets go. A file a live
+lease still holds is reported as awaiting release rather than removed behind the reader.
+
+A retention that released anything re-aims the retained last-known-good pointer at the retention generation
+itself. The earlier generation is missing a file, now or as soon as a lease lets go, and a pointer that named
+it would promise a rollback that cannot be performed.
+
+### Releasing a journal prefix
+
+A journal is append-only and its published file is immutable, so a release does not truncate it: it publishes
+a new journal holding the retained suffix — same capture, same clock frame, same schema table, then the
+retained batches and a terminal frame — names the released extent in the retention record, and lets the old
+file go.
+
+**A batch is the unit of release.** A frame's checksum covers its records, so releasing part of a batch would
+mean publishing a frame whose digest describes records it no longer holds. A boundary that falls inside a
+batch releases nothing and says so, naming the boundaries the journal does allow; a journal written as a
+single batch has none, which is a fact about how it was written rather than a refusal. The granularity is the
+journal's batch size, which a capture or an import declares.
+
+A release that would leave no admitted evidence at all is refused. ADR-010 keeps a journal by default, and a
+session with no journal cannot re-derive anything.
+
+### What a reader sees afterwards
+
+A retention generation is a generation like any other: it reopens, its manifest verifies against its own
+digest, and every dependency it names is re-measured. The generation it superseded becomes unreferenced and
+its manifest is reported as an orphan and kept, like any other unreferenced file.
+
+## 9. What the sweep treats as referenced
+
+Opening a session reports every file no generation needs. Both pointers count, and so does the manifest and
+dependency list of **each** generation a pointer names — including the retained last-known-good. A sweep that
+treated the last-known-good as unreferenced would let `RemoveOrphans` delete the one thing a rollback needs,
+and the next torn pointer would turn a recoverable interruption into a refused session.
+
+## 10. Not yet implemented
+
+- The entity-state checkpoint of §20.2. A rolling eviction must publish the still-live process, thread and
+  resource identities, the known endpoint bindings, the continuity quality and the pending-operation
+  summaries it carries across the boundary. Nothing derives those yet — they need the entity and operation
+  revisions IC-015 owns — so the retention record deliberately carries what was released and no fields
+  nothing can fill.
+- Open-operation censoring at a capture or retention boundary (I20). It needs operations.
+- Rolling retention by time or size. Retention here is an explicit action on a named extent; the policy that
+  decides when to take it, and the disclosure S5 requires before it bites, are separate work.
 - Binding to the broker's validated root for live capture. The interface is shared; the composition
   belongs with the live runtime.

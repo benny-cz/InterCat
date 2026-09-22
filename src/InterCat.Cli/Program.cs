@@ -29,6 +29,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -91,6 +92,11 @@ static void PrintHelp()
     ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");
     ConsoleUi.Line("      names, and reports its evidence boundary, its segments, their column");
     ConsoleUi.Line("      availability and their byte metrics. Read-only; repairs nothing.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
+    ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal would give up, and");
+    ConsoleUi.Line("      performs it only with --confirm and a stated reason (ADR-010).");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

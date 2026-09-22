@@ -1,0 +1,40 @@
+{
+  "contract": "store-v1",
+  "path": "E:\\InterCat\\bench\\results\\retention-20260922T144500Z\\store",
+  "action": "release-journal-prefix",
+  "performed": true,
+  "preview": {
+    "generation": 1,
+    "journalName": "journal-0000000001.icatj",
+    "journalBytes": 130594,
+    "totalRecords": 555,
+    "releasedRecords": 300,
+    "retainedRecords": 255,
+    "releasedBatches": 3,
+    "retainedBatches": 3,
+    "releasesAnything": true,
+    "wouldEmptyTheJournal": false,
+    "smallestReleasingBoundary": 100,
+    "largestReleasingBoundary": 500
+  },
+  "result": {
+    "generation": 2,
+    "manifestDigest": "sha256:fdb3f8a3ffecfb3786f2e7288af105a2052acd3cf090a7c48baba9776bb19908",
+    "retainedJournalName": "journal-0000000002.icatj",
+    "retainedJournalBytes": 61066,
+    "retainedJournalRecords": 255,
+    "releasedBytes": 69528,
+    "reclaimedBytes": 130594,
+    "releasedFiles": [
+      "journal-0000000001.icatj"
+    ],
+    "removedFiles": [
+      "journal-0000000001.icatj"
+    ],
+    "heldByLease": []
+  },
+  "notes": [
+    "Releasing admitted evidence gives up the ability to re-derive those records after a normalizer revision. ADR-010 keeps a journal by default, which is why this needs a separate decision.",
+    "A batch is the unit of release: a boundary inside a batch releases nothing, because a frame\u0027s checksum covers the records it holds."
+  ]
+}

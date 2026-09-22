@@ -411,7 +411,9 @@
         "I15: a dependency that changed under a generation fails it rather than being read",
         "I15: a dictionary is sorted and unique, and a column resolves through it",
         "I15: a generation over its row bound publishes several segments, each complete",
+        "I15: a generation published before retention existed verifies unchanged",
         "I15: a generation publishes its journal, its dictionaries and its segments together",
+        "I15: a journal release that would leave no evidence at all is refused",
         "I15: a later generation carries its predecessor's dependencies forward",
         "I15: a manifest naming a dependency outside its root is refused",
         "I15: a manifest this reader cannot read exactly is refused, never read at a guess",
@@ -419,7 +421,10 @@
         "I15: a null bitmap and its availability counters describe the same rows",
         "I15: a published generation names every dependency with its length and digest",
         "I15: a published name is immutable, so republishing it is refused",
+        "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",
+        "I15: a retention generation publishes what it released and why",
+        "I15: a retention record with no stated reason is refused",
         "I15: a segment referencing a dictionary the generation does not name is refused",
         "I15: a segment round-trips every column, including its nulls and its names",
         "I15: a segment whose trailing digest does not cover its bytes is refused",
@@ -428,13 +433,24 @@
         "I15: a text column past the dictionary budget falls back to the variable chunk",
         "I15: a torn pointer rolls back to the retained last-known-good",
         "I15: an abandoned generation publishes nothing and leaves only staging files",
+        "I15: an admitted journal is not released by dropping its name",
         "I15: an empty segment is never published, because absence is not data",
         "I15: an empty session is empty, not a refusal",
         "I15: an incomplete staged file is never published",
         "I15: an interrupted staging file is removed on the next open",
         "I15: an orphan is reported on open and removed only when that is asked for",
         "I15: every derived row is writable into a segment as it stands",
+        "I15: releasing a journal prefix publishes a shorter journal and names the extent",
+        "I15: retention refuses a file the current generation does not hold",
         "I15: time blocks cover every row and state the interval their rows actually hold"
+      ],
+      "I18": [
+        "I18: a lease acquires the generation and every dependency it names as one thing",
+        "I18: a lease on a session with no generation is refused rather than empty",
+        "I18: a pin that reserves less than it holds is refused, not silently promised",
+        "I18: an expired lease holds nothing, and is not revivable",
+        "I18: released evidence goes once the last lease on it is released",
+        "I18: retention cannot remove evidence a live lease holds"
       ],
       "I19": [
         "I19: clearing view selection does not mutate source data",
@@ -740,10 +756,6 @@
       },
       "I17": {
         "reason": "Late-evidence revisions need the storage generations of IC-016.",
-        "plannedBy": "IC-016"
-      },
-      "I18": {
-        "reason": "Pinned evidence survival needs retention from IC-016.",
         "plannedBy": "IC-016"
       },
       "I20": {

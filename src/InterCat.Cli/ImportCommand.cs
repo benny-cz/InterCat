@@ -101,6 +101,7 @@ internal static class ImportCommand
         string? sourcePath = command.TakePositional();
         string? intoOption = command.TakeOption("--into");
         string? rowsOption = command.TakeOption("--rows-per-segment");
+        string? batchOption = command.TakeOption("--journal-batch-records");
         string? outputOption = command.TakeOption("--output");
         string? entriesOption = command.TakeOption("--max-entries-in-memory");
         string? spillOption = command.TakeOption("--spill-directory");
@@ -145,6 +146,17 @@ internal static class ImportCommand
         if (!TryReadRowsPerSegment(rowsOption, out int rowsPerSegment, out string? rowProblem))
         {
             ConsoleUi.Failure(rowProblem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (!TryReadPositive(
+            batchOption,
+            DerivedGenerationOptions.Default.JournalBatchRecords,
+            "--journal-batch-records",
+            out int journalBatchRecords,
+            out string? batchProblem))
+        {
+            ConsoleUi.Failure(batchProblem!);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -230,7 +242,11 @@ internal static class ImportCommand
                 DateTimeOffset.UtcNow,
                 RetainedEvidencePolicy.MetadataOnly,
                 bounds,
-                new DerivedGenerationOptions { RowsPerSegment = rowsPerSegment },
+                new DerivedGenerationOptions
+                {
+                    RowsPerSegment = rowsPerSegment,
+                    JournalBatchRecords = journalBatchRecords,
+                },
                 cancellationToken);
             result = published.Import;
             generation = published.Generation;
@@ -452,9 +468,22 @@ internal static class ImportCommand
         return true;
     }
 
-    private static bool TryReadRowsPerSegment(string? option, out int value, out string? problem)
+    private static bool TryReadRowsPerSegment(string? option, out int value, out string? problem) =>
+        TryReadPositive(
+            option,
+            DerivedGenerationOptions.Default.RowsPerSegment,
+            "--rows-per-segment",
+            out value,
+            out problem);
+
+    private static bool TryReadPositive(
+        string? option,
+        int fallback,
+        string name,
+        out int value,
+        out string? problem)
     {
-        value = DerivedGenerationOptions.Default.RowsPerSegment;
+        value = fallback;
         problem = null;
         if (option is null)
         {
@@ -463,7 +492,7 @@ internal static class ImportCommand
 
         if (!int.TryParse(option, NumberStyles.None, CultureInfo.InvariantCulture, out value) || value < 1)
         {
-            problem = $"--rows-per-segment expects a positive whole number; '{option}' is not one.";
+            problem = $"{name} expects a positive whole number; '{option}' is not one.";
             return false;
         }
 
@@ -473,6 +502,7 @@ internal static class ImportCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
+        ConsoleUi.Line("             [--journal-batch-records <n>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("             [--max-entries-in-memory <n>] [--spill-directory <dir>]");
         ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");

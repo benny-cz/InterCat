@@ -57,6 +57,103 @@ public sealed record CommittedBoundary(
         $"{JournalName}|{CommittedBytes}|{CommittedRecords}|{Digest}");
 }
 
+/// <summary>What kind of evidence a retention action released.</summary>
+public enum RetentionExtentKind
+{
+    /// <summary>Derived files — segments, dictionaries or indices. They are rebuildable from the journal.</summary>
+    DerivedFiles = 1,
+
+    /// <summary>
+    /// A prefix of the admitted journal. ADR-010 makes this the explicit action it is: releasing it gives up
+    /// the ability to re-derive those records after a normalizer revision.
+    /// </summary>
+    JournalPrefix = 2,
+}
+
+/// <summary>
+/// What one retention action released, published in the generation that no longer names it. §20.2 requires
+/// the released extent to be visible, and ADR-010 requires a journal release to state exactly what it gave
+/// up: a retention that cannot be read afterwards is indistinguishable from data loss.
+/// </summary>
+/// <remarks>
+/// A checkpoint records what was released and nothing about what the released interval contained. It does
+/// not prove activity in the removed extent and does not turn a missing start into an observed start
+/// (§20.2); what still-live entity and pending-operation state a rolling eviction must carry across the
+/// boundary needs the entity and operation revisions IC-015 owns, and is deliberately absent here rather
+/// than present and empty.
+/// </remarks>
+public sealed record RetentionRecord(
+    RetentionExtentKind Kind,
+    DateTimeOffset ReleasedUtc,
+    string Reason,
+    IReadOnlyList<string> ReleasedFiles,
+    long ReleasedBytes,
+    long ReleasedRecords,
+    string SourceDigest)
+{
+    public static RetentionRecord ForDerivedFiles(
+        DateTimeOffset releasedUtc,
+        string reason,
+        IReadOnlyList<string> releasedFiles,
+        long releasedBytes)
+    {
+        ArgumentNullException.ThrowIfNull(releasedFiles);
+        return new(
+            RetentionExtentKind.DerivedFiles,
+            releasedUtc,
+            reason ?? string.Empty,
+            releasedFiles,
+            releasedBytes,
+            0,
+            string.Empty);
+    }
+
+    /// <summary>Returns the reason this record is not readable, or null when it is.</summary>
+    public string? Validate()
+    {
+        if (!Enum.IsDefined(Kind))
+        {
+            return $"A retention record declares kind {(int)Kind}, which this reader does not implement.";
+        }
+
+        if (ReleasedBytes < 0 || ReleasedRecords < 0)
+        {
+            return "A retention record releases a non-negative extent.";
+        }
+
+        if (ReleasedFiles.Count is 0 or > 65_536)
+        {
+            return "A retention record names between one and 65,536 released files.";
+        }
+
+        foreach (string file in ReleasedFiles)
+        {
+            if (OwnedFileName.Validate(file) is { } problem)
+            {
+                return $"Released file '{file}' is not an owned file name: {problem}";
+            }
+        }
+
+        return Reason.Length switch
+        {
+            0 => "A retention record states why the extent was released. A release with no stated reason is "
+                + "indistinguishable from data loss.",
+            > 512 => "A retention reason is at most 512 characters.",
+            _ => Kind == RetentionExtentKind.JournalPrefix && !SessionManifestV1.IsDigest(SourceDigest)
+                ? "A journal release names the digest of the journal it started from. The released bytes are "
+                    + "gone, so the file that held them is what stays identifiable afterwards."
+                : Kind == RetentionExtentKind.DerivedFiles && SourceDigest.Length > 0
+                    ? "A derived-file release names no source digest; the files it released are listed instead."
+                    : null,
+        };
+    }
+
+    internal string CanonicalForm => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{(int)Kind}|{ReleasedUtc.ToUniversalTime().UtcTicks}|{Reason}|{string.Join(',', ReleasedFiles)}"
+        + $"|{ReleasedBytes}|{ReleasedRecords}|{SourceDigest}");
+}
+
 /// <summary>
 /// One immutable generation of a session. A manifest carries its own digest and its complete dependency
 /// list, which is what lets a torn publication be detected and rolled back instead of trusted.
@@ -94,6 +191,13 @@ public sealed record SessionManifestV1
 
     public required IReadOnlyList<StoreDependency> Dependencies { get; init; }
 
+    /// <summary>
+    /// What this generation released, when it is a retention generation. Absent on an ordinary one, and
+    /// absent from the digest when it is absent, so a manifest written before retention existed still
+    /// verifies unchanged.
+    /// </summary>
+    public RetentionRecord? Retention { get; init; }
+
     /// <summary>`sha256:` and 64 lowercase hexadecimal characters over everything above.</summary>
     public required string Digest { get; init; }
 
@@ -104,7 +208,8 @@ public sealed record SessionManifestV1
         string sourceIdentity,
         long? previousGeneration,
         CommittedBoundary boundary,
-        IReadOnlyList<StoreDependency> dependencies)
+        IReadOnlyList<StoreDependency> dependencies,
+        RetentionRecord? retention = null)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(boundary);
@@ -118,6 +223,7 @@ public sealed record SessionManifestV1
             PreviousGeneration = previousGeneration,
             Boundary = boundary,
             Dependencies = dependencies,
+            Retention = retention,
             Digest = string.Empty,
         };
         string? problem = manifest.Validate();
@@ -200,7 +306,7 @@ public sealed record SessionManifestV1
             return "The committed boundary names a journal, a non-negative extent and a digest, or none.";
         }
 
-        return null;
+        return Retention?.Validate();
     }
 
     /// <summary>Returns the reason this manifest's own bytes do not match its digest, or null.</summary>
@@ -231,6 +337,14 @@ public sealed record SessionManifestV1
         foreach (StoreDependency dependency in Dependencies)
         {
             canonical.Append(dependency.CanonicalForm).Append('\n');
+        }
+
+        // A retention record is appended only when there is one, so a generation published before retention
+        // existed hashes exactly as it did. An absent optional field that changed every digest would make
+        // every already-published manifest unverifiable.
+        if (Retention is { } retention)
+        {
+            canonical.Append(retention.CanonicalForm).Append('\n');
         }
 
         return string.Concat(

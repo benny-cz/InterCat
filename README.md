@@ -10,7 +10,8 @@ InterCat is a Windows IPC visualizer for exploring which processes communicate, 
 - an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
 - seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
 - a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
-- a durable session store: a commit protocol that publishes an immutable generation and rolls a torn publication back, `journal-v1` admitted evidence, and frozen `observation-v1` columnar segments with null bitmaps, availability counters, sorted dictionaries, a raw-record locator and time-block metadata;
+- a durable session store: a commit protocol that publishes an immutable generation and rolls a torn publication back, `journal-v1` admitted evidence, frozen `observation-v1` columnar segments with null bitmaps, availability counters, sorted dictionaries, a raw-record locator and time-block metadata, and evidence leases that retention cannot break;
+- retention that publishes what it released and why rather than merely deleting it, with a journal release that is measured before it is performed and refused when it would leave no admitted evidence;
 - an unelevated import that turns a standalone ETL into a session a reader can open, and a read-only `session` command that re-verifies every dependency and reports each byte domain and side separately;
 - pure viewport, tier and semantic-domain contracts with automated tests.
 
@@ -49,6 +50,10 @@ dotnet run --project src/InterCat.Cli -- measure rpc
 # Import a standalone ETL into a session, then open it. Both need no elevation.
 dotnet run --project src/InterCat.Cli -- import <source.etl> --into <session directory>
 dotnet run --project src/InterCat.Cli -- session <session directory> --rows 10
+
+# Measure what releasing a prefix of the admitted journal would give up. This is a dry run;
+# it is performed only with --confirm and a stated reason (ADR-010).
+dotnet run --project src/InterCat.Cli -- retain <session directory> --release-journal-before-record 4096
 
 # Offline re-evaluation into shareable, fixture-scoped evidence.
 dotnet run --project src/InterCat.Cli -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence

@@ -1,0 +1,63 @@
+{
+  "contract": "import-v1",
+  "importContractVersion": 1,
+  "importedAtUtc": "2026-09-22T14:44:23.6258182+00:00",
+  "sourcePath": "E:\\InterCat\\fixtures\\FX-IMPORT-001\\runs\\import-probe.etl",
+  "sourceKind": "StandaloneEtl",
+  "sourceLengthBytes": 245760,
+  "sourceContentDigest": "sha256:a97f9cee0f443700b43bda78f85dbabe338db4cad260daa6465e28f5f80a7c1e",
+  "importDigest": "sha256:7a0844f3a13d0aac942b2bb6d7b1e8a44b469b5a48dc9ff2af5c7367668951bf",
+  "retainedEvidence": "MetadataOnly",
+  "identityBasis": "CanonicalKeyWithOccurrence",
+  "schemaTableDigest": "sha256:b2838c1adf5d83c23ad7026ac2a42190e1f7893284b35ce6d2ce332b2bac8ece",
+  "clock": {
+    "clockId": "73a4e848f2fa86a1b46881de84732d7f",
+    "hostId": "4eb33a1ce3008870a274404b2cefbd9a",
+    "encoding": "Qpc",
+    "ticksPerSecond": 10000000,
+    "referenceNativeTicks": 18683281748319,
+    "derivation": "Derived from the file\u0027s content identity and its own readings, then checked against every sampled reading; an unverifiable rate is refused rather than assumed."
+  },
+  "counts": {
+    "observedRecords": 1090,
+    "admittedRecords": 555,
+    "policyOmissions": 535,
+    "undecodableRecords": 0,
+    "sourceEventsLost": 0,
+    "indexedRecords": 555,
+    "distinctFacts": 555,
+    "maximumMultiplicity": 1,
+    "elapsedMilliseconds": 177.7902
+  },
+  "spill": {
+    "runsWritten": 0,
+    "bytesSpilled": 0
+  },
+  "producesSession": true,
+  "session": {
+    "path": "E:\\InterCat\\bench\\results\\retention-20260922T144500Z\\store",
+    "generation": 1,
+    "manifestDigest": "sha256:0199bbea937a5588226caacc30bb73305a57b55d4c3764e3c7ca219dd7e1518a",
+    "journalName": "journal-0000000001.icatj",
+    "journalRecords": 555,
+    "journalBytes": 130594,
+    "observationRows": 555,
+    "segments": [
+      {
+        "name": "seg-0000000001-0000.icats",
+        "rowCount": 555,
+        "lengthBytes": 100528,
+        "minNativeTicks": 18683281839181,
+        "maxNativeTicks": 18683454506122,
+        "dictionaries": [
+          "dict-0000000001-0001.icatd"
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "The admitted records are this session\u0027s own journal-v1 evidence, and every published segment names the durable extent of that journal it derives from (ADR-010).",
+    "Records are identified by canonical key and occurrence index, because ETL callback delivery order is not reproducible.",
+    "Read on build 10.0.26220.0-x64; the file was recorded elsewhere, so its clock and host identities are derived from its own content rather than from this machine."
+  ]
+}

@@ -124,6 +124,7 @@ public sealed class SessionStore
 
     private readonly IOwnedDirectory directory;
     private readonly Lock gate = new();
+    private readonly Dictionary<Guid, EvidenceLease> leases = [];
     private SessionManifestV1? current;
 
     private SessionStore(
@@ -339,18 +340,205 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Removes files no generation references. It is separate from opening on purpose: a file that is
-    /// unreferenced now may be a dependency of a generation whose publication was interrupted, and
-    /// deleting it would turn a recoverable interruption into lost evidence. Staging files are the one
-    /// exception, and opening removes those by itself.
+    /// Acquires the current generation and every dependency it names as one lease. §20.1's fifth step makes
+    /// this the unit a reader holds, and I18 makes it the thing retention cannot break: while a lease is
+    /// live, nothing this store does removes a file the lease names.
     /// </summary>
-    public IReadOnlyList<string> RemoveOrphans()
+    public EvidenceLease AcquireLease(
+        EvidenceLeaseRequest? request = null,
+        DateTimeOffset? nowUtc = null)
     {
+        EvidenceLeaseRequest bounds = request ?? EvidenceLeaseRequest.Interactive;
+        string? problem = bounds.Validate();
+        if (problem is not null)
+        {
+            throw new ArgumentException(problem, nameof(request));
+        }
+
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         lock (gate)
         {
+            SessionManifestV1 manifest = current
+                ?? throw new InvalidOperationException(
+                    "This session has published no generation, so there is nothing to acquire. An empty "
+                    + "session is not a generation with no data.");
+
+            // A pinned lease reserves space, so it is refused when the evidence it would pin is already
+            // larger than the allowance. §10.1 forbids promising a pin the quota cannot honour.
+            long held = manifest.Dependencies.Sum(dependency => dependency.LengthBytes);
+            if (bounds.Kind == EvidenceLeaseKind.Pinned && bounds.ReservedBytes < held)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {manifest.Generation} holds {held} bytes of evidence and this pin reserves "
+                    + $"{bounds.ReservedBytes}. A pin that reserves less than it pins is refused rather than "
+                    + "promising space it does not have.");
+            }
+
+            Sweep(now);
+            var lease = new EvidenceLease(
+                Guid.NewGuid(),
+                bounds.Kind,
+                manifest.Generation,
+                [.. manifest.Dependencies.Select(dependency => dependency.Name)],
+                SessionManifestV1.FileNameFor(manifest.Generation),
+                bounds.ReservedBytes,
+                now,
+                now + bounds.Duration,
+                Release);
+            leases.Add(lease.Id, lease);
+            return lease;
+        }
+    }
+
+    /// <summary>Every lease still holding evidence at this moment. An expired one holds nothing.</summary>
+    public IReadOnlyList<EvidenceLease> LiveLeases(DateTimeOffset? nowUtc = null)
+    {
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            Sweep(now);
+            return [.. leases.Values.Where(lease => !lease.HasExpiredAt(now))];
+        }
+    }
+
+    /// <summary>
+    /// Publishes a generation that no longer names the given dependencies, with the retention record that
+    /// says what was released and why, and then removes each released file that no live lease holds.
+    /// </summary>
+    /// <remarks>
+    /// Releasing and removing are separate steps on purpose. The generation stops naming a file immediately,
+    /// which is what makes the retention visible; the bytes go when the last reader that acquired them lets
+    /// go. A file a lease still holds is reported as awaiting release rather than removed behind the reader
+    /// (I18, S6).
+    /// </remarks>
+    public RetentionOutcome ReleaseDependencies(
+        IReadOnlyList<string> names,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        cancellationToken.ThrowIfCancellationRequested();
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            SessionManifestV1 manifest = current
+                ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            var released = new List<StoreDependency>();
+            foreach (string name in names)
+            {
+                StoreDependency dependency = manifest.Dependencies.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new ArgumentException(
+                        $"Generation {manifest.Generation} does not name '{name}', so retention has nothing "
+                        + "to release. A retention that names a file the generation does not hold would "
+                        + "publish a checkpoint for something that never existed.",
+                        nameof(names));
+                if (released.Any(already => already.Name.Equals(dependency.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new ArgumentException(
+                        $"'{name}' is released twice in one retention action.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.Journal)
+                {
+                    throw new ArgumentException(
+                        "An admitted journal is not released by dropping its name. ADR-010 makes a journal "
+                        + "release an extent with its own record; use the journal retention path.",
+                        nameof(names));
+                }
+
+                released.Add(dependency);
+            }
+
+            return Publish(
+                manifest,
+                [.. manifest.Dependencies.Except(released)],
+                manifest.Boundary,
+                RetentionRecord.ForDerivedFiles(
+                    now,
+                    reason,
+                    [.. released.Select(dependency => dependency.Name)],
+                    released.Sum(dependency => dependency.LengthBytes)),
+                committedUtc,
+                released,
+                now);
+        }
+    }
+
+    /// <summary>
+    /// Publishes a retention generation that replaces the journal with a shorter one, recording the extent
+    /// that was released. The caller has already staged and completed the retained journal; this step is the
+    /// publication and the checkpoint (ADR-010).
+    /// </summary>
+    public RetentionOutcome ReleaseJournalPrefix(
+        StoreStagingFile retainedJournal,
+        CommittedBoundary boundary,
+        RetentionRecord record,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(retainedJournal);
+        ArgumentNullException.ThrowIfNull(boundary);
+        ArgumentNullException.ThrowIfNull(record);
+        if (record.Kind != RetentionExtentKind.JournalPrefix)
+        {
+            throw new ArgumentException(
+                "A journal release publishes a journal-prefix retention record.",
+                nameof(record));
+        }
+
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            SessionManifestV1 manifest = current
+                ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            StoreDependency previous = manifest.Dependencies.FirstOrDefault(dependency =>
+                dependency.Kind == StoreDependencyKind.Journal
+                && record.ReleasedFiles.Contains(dependency.Name, StringComparer.OrdinalIgnoreCase))
+                ?? throw new ArgumentException(
+                    "The retention record names no journal this generation holds.",
+                    nameof(record));
+            StoreDependency retained = retainedJournal.Dependency
+                ?? throw new InvalidOperationException(
+                    "The retained journal was not completed, so its contents are not durable and it cannot "
+                    + "be published.");
+
+            directory.ReplaceOwnedFile(retainedJournal.StagingName, retainedJournal.PublishedName);
+            return Publish(
+                manifest,
+                [.. manifest.Dependencies.Where(dependency => dependency != previous), retained],
+                boundary,
+                record,
+                committedUtc,
+                [previous],
+                now);
+        }
+    }
+
+    /// <summary>
+    /// Removes files no generation references and no live lease holds. It is separate from opening on
+    /// purpose: a file that is unreferenced now may be a dependency of a generation whose publication was
+    /// interrupted, and deleting it would turn a recoverable interruption into lost evidence. Staging files
+    /// are the one exception, and opening removes those by itself.
+    /// </summary>
+    public IReadOnlyList<string> RemoveOrphans(DateTimeOffset? nowUtc = null)
+    {
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            Sweep(now);
             var removed = new List<string>();
             foreach (string name in Orphans(directory, current))
             {
+                if (IsLeased(name, now))
+                {
+                    continue;
+                }
+
                 if (directory.RemoveOwnedFile(name))
                 {
                     removed.Add(name);
@@ -358,6 +546,97 @@ public sealed class SessionStore
             }
 
             return removed;
+        }
+    }
+
+    /// <summary>
+    /// Publishes a generation whose dependency list is given rather than added to, which is what a retention
+    /// generation is. Every retained dependency is still re-measured before it is named, so a retention
+    /// cannot publish a generation over a dependency that changed.
+    /// </summary>
+    private RetentionOutcome Publish(
+        SessionManifestV1 previousManifest,
+        IReadOnlyList<StoreDependency> dependencies,
+        CommittedBoundary boundary,
+        RetentionRecord record,
+        DateTimeOffset committedUtc,
+        List<StoreDependency> released,
+        DateTimeOffset now)
+    {
+        SessionManifestV1 manifest = SessionManifestV1.Create(
+            previousManifest.Generation + 1,
+            SessionId,
+            committedUtc,
+            SourceIdentity,
+            previousManifest.Generation,
+            boundary,
+            dependencies,
+            record);
+        string? unverifiable = VerifyDependencies(directory, manifest);
+        if (unverifiable is not null)
+        {
+            throw new IOException($"Generation {manifest.Generation} was not published: {unverifiable}");
+        }
+
+        Write(directory, SessionManifestV1.FileNameFor(manifest.Generation), manifest, SessionManifestV1.Json);
+        RetainPreviousPointer(directory);
+        Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+        current = manifest;
+
+        // The generation has stopped naming the released files. Whether their bytes go now depends on
+        // whether a reader is still holding them, and a reader that is wins (I18).
+        Sweep(now);
+        var removed = new List<string>();
+        var heldByLease = new List<string>();
+        long reclaimed = 0;
+        foreach (StoreDependency dependency in released)
+        {
+            if (IsLeased(dependency.Name, now))
+            {
+                heldByLease.Add(dependency.Name);
+                continue;
+            }
+
+            if (directory.RemoveOwnedFile(dependency.Name))
+            {
+                removed.Add(dependency.Name);
+                reclaimed += dependency.LengthBytes;
+            }
+        }
+
+        // A retention has made the previous generation incomplete - now, or as soon as the lease still
+        // holding its files lets go - so the retained last-known-good is re-aimed at this one. A pointer that
+        // named a generation missing a dependency would promise a rollback that cannot be performed, which is
+        // worse than naming no earlier one. The retention generation was re-measured before it was named, so
+        // it is a complete last-known-good.
+        if (released.Count > 0)
+        {
+            Write(directory, SessionPointerV1.PreviousFileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+        }
+
+        return new(manifest, [.. released.Select(dependency => dependency.Name)], removed, heldByLease, reclaimed);
+    }
+
+    private bool IsLeased(string name, DateTimeOffset now) =>
+        leases.Values.Any(lease => lease.Holds(name, now));
+
+    /// <summary>Forgets released and expired leases. An expired lease is not revivable.</summary>
+    private void Sweep(DateTimeOffset now)
+    {
+        foreach (Guid id in leases
+            .Where(entry => entry.Value.IsReleased || entry.Value.HasExpiredAt(now))
+            .Select(entry => entry.Key)
+            .ToList())
+        {
+            _ = leases.Remove(id);
+        }
+    }
+
+    private void Release(EvidenceLease lease)
+    {
+        lock (gate)
+        {
+            _ = leases.Remove(lease.Id);
         }
     }
 
@@ -478,6 +757,7 @@ public sealed class SessionStore
         var removed = new List<string>();
         var orphans = new List<string>();
         long orphanBytes = 0;
+        HashSet<string> referenced = Referenced(directory, manifest);
         foreach (string name in List(directory))
         {
             if (IsStaging(name))
@@ -490,7 +770,7 @@ public sealed class SessionStore
                 continue;
             }
 
-            if (IsReferenced(manifest, name))
+            if (referenced.Contains(name))
             {
                 continue;
             }
@@ -509,16 +789,52 @@ public sealed class SessionStore
         return (removed, orphans, orphanBytes);
     }
 
-    private static IEnumerable<string> Orphans(IOwnedDirectory directory, SessionManifestV1? manifest) =>
-        List(directory).Where(name => !IsStaging(name) && !IsReferenced(manifest, name));
+    private static IEnumerable<string> Orphans(IOwnedDirectory directory, SessionManifestV1? manifest)
+    {
+        HashSet<string> referenced = Referenced(directory, manifest);
+        return List(directory).Where(name => !IsStaging(name) && !referenced.Contains(name));
+    }
 
-    private static bool IsReferenced(SessionManifestV1? manifest, string name) =>
-        name.Equals(SessionPointerV1.FileName, StringComparison.OrdinalIgnoreCase)
-        || name.Equals(SessionPointerV1.PreviousFileName, StringComparison.OrdinalIgnoreCase)
-        || (manifest is not null
-            && (name.Equals(SessionManifestV1.FileNameFor(manifest.Generation), StringComparison.OrdinalIgnoreCase)
-                || manifest.Dependencies.Any(dependency =>
-                    dependency.Name.Equals(name, StringComparison.OrdinalIgnoreCase))));
+    /// <summary>
+    /// Every file the session still needs: both pointers, and the manifest and dependencies of each
+    /// generation a pointer names.
+    /// </summary>
+    /// <remarks>
+    /// The retained last-known-good counts. It is the whole point of keeping it: a sweep that treated the
+    /// generation it names as unreferenced would let <c>RemoveOrphans</c> delete the one thing a rollback
+    /// needs, and the next torn pointer would turn a recoverable interruption into a refused session.
+    /// </remarks>
+    private static HashSet<string> Referenced(IOwnedDirectory directory, SessionManifestV1? manifest)
+    {
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            SessionPointerV1.FileName,
+            SessionPointerV1.PreviousFileName,
+        };
+        Add(referenced, manifest);
+        if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
+            && previous.Validate() is null)
+        {
+            referenced.Add(previous.ManifestName);
+            Add(referenced, Read<SessionManifestV1>(directory, previous.ManifestName));
+        }
+
+        return referenced;
+    }
+
+    private static void Add(HashSet<string> referenced, SessionManifestV1? manifest)
+    {
+        if (manifest is null || manifest.Validate() is not null)
+        {
+            return;
+        }
+
+        referenced.Add(SessionManifestV1.FileNameFor(manifest.Generation));
+        foreach (StoreDependency dependency in manifest.Dependencies)
+        {
+            referenced.Add(dependency.Name);
+        }
+    }
 
     private static bool IsStaging(string name) =>
         name.StartsWith(StagingPrefix, StringComparison.OrdinalIgnoreCase)

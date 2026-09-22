@@ -17,6 +17,13 @@ public sealed record DerivedGenerationOptions
     /// <summary>How many segments one generation may publish before it refuses.</summary>
     public int MaximumSegments { get; init; } = 1_024;
 
+    /// <summary>
+    /// How many admitted records one journal batch holds. It is the granularity retention can act at, because
+    /// a batch is the unit ADR-010's release works in: a journal written as one batch has no releasable
+    /// boundary at all. Smaller batches cost one more frame header and checksum each.
+    /// </summary>
+    public int JournalBatchRecords { get; init; } = 4_096;
+
     public string? Validate() =>
         RowsPerSegment is < 1 or > SegmentFormatV1.MaximumRowsPerSegment
             ? $"A segment holds between 1 and {SegmentFormatV1.MaximumRowsPerSegment} rows."
@@ -24,7 +31,9 @@ public sealed record DerivedGenerationOptions
                 ? $"A segment stages between 4,096 and {SegmentFormatV1.MaximumSegmentBytes} bytes."
                 : MaximumSegments is < 1 or > 4_000
                     ? "A generation publishes between 1 and 4,000 segments."
-                    : null;
+                    : JournalBatchRecords is < 1 or > 1_000_000
+                        ? "A journal batch holds between 1 and 1,000,000 records."
+                        : null;
 }
 
 /// <summary>What one published segment holds, as the generation that published it recorded it.</summary>
@@ -140,7 +149,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
                 journalFile.Content,
                 identity.CaptureId,
                 sourceClock,
-                createdUtc);
+                createdUtc,
+                bounds.JournalBatchRecords);
             return new(store, identity, bounds, generation, journalFile, journal);
         }
         catch
