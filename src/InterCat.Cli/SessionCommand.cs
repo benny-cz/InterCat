@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Capture.Journal;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -13,10 +14,18 @@ internal sealed record SessionDocument
     public required bool IsEmpty { get; init; }
     public required SessionGenerationDocument? Generation { get; init; }
     public required SessionRecoveryDocument Recovery { get; init; }
+    public required SessionRederivationDocument Rederivation { get; init; }
     public required IReadOnlyList<SessionSegmentDocument> Segments { get; init; }
     public required IReadOnlyList<SessionFieldSegmentDocument> FieldSegments { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
+}
+
+internal sealed record SessionRederivationDocument
+{
+    public required bool CanAttempt { get; init; }
+    public required string Explanation { get; init; }
+    public required string? Command { get; init; }
 }
 
 internal sealed record SessionGenerationDocument
@@ -302,11 +311,20 @@ internal static class SessionCommand
                 + "interrupted, and deleting it would turn a recoverable interruption into lost evidence.");
         }
 
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
         return new()
         {
             Contract = "store-v1",
             Path = path,
             IsEmpty = manifest is null,
+            Rederivation = new()
+            {
+                CanAttempt = readiness.CanAttempt,
+                Explanation = readiness.Explanation,
+                Command = readiness.CanAttempt
+                    ? $"icat rederive \"{path}\""
+                    : null,
+            },
             Generation = manifest is null ? null : new()
             {
                 Generation = manifest.Generation,
@@ -424,6 +442,7 @@ internal static class SessionCommand
         if (document.Generation is not { } generation)
         {
             ConsoleUi.Field("Generation", "none published yet");
+            ConsoleUi.Field("Re-derivation", document.Rederivation.Explanation);
             RenderRecovery(document);
             RenderNotes(document);
             return;
@@ -434,6 +453,12 @@ internal static class SessionCommand
         ConsoleUi.Field("Session", generation.SessionId);
         ConsoleUi.Field("Derived from", generation.SourceIdentity.Length == 0 ? "not stated" : generation.SourceIdentity);
         ConsoleUi.Field("Manifest digest", generation.Digest);
+        ConsoleUi.Field("Re-derivation", document.Rederivation.CanAttempt ? "can attempt" : "not available");
+        ConsoleUi.Note(document.Rederivation.Explanation);
+        if (document.Rederivation.Command is { } rederiveCommand)
+        {
+            ConsoleUi.Note(rederiveCommand);
+        }
 
         ConsoleUi.Heading("Evidence this generation derives from");
         if (generation.Boundary is { } boundary)

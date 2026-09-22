@@ -95,6 +95,9 @@ public sealed class ObservationNormalizerV1Tests
         byte[][] observations = [.. original.Segments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
         byte[][] fields = [.. original.FieldSegments.Select(segment => File.ReadAllBytes(Path.Combine(session.Path, segment.Name)))];
         JournalRederivationResult replay = JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow, options);
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(session.Store.Current);
+        Assert.True(readiness.CanAttempt);
+        Assert.Contains("Full schema and batch validation", readiness.Explanation, StringComparison.Ordinal);
         Assert.Equal((1L, 2L, 4L),
             (replay.SourceGeneration, replay.Generation.Manifest.Generation, replay.ReplayedRecords));
         Assert.Equal(original.JournalName, replay.Generation.JournalName);
@@ -145,6 +148,9 @@ public sealed class ObservationNormalizerV1Tests
 
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(session.Store.Current);
+        Assert.False(readiness.CanAttempt);
+        Assert.Contains("legacy session", readiness.Explanation, StringComparison.Ordinal);
         Assert.Contains("no retained normalization plan", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(1, session.Store.Current!.Generation);
     }

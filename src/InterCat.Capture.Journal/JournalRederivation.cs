@@ -11,12 +11,65 @@ public sealed record JournalRederivationResult(
     DerivedGenerationResult Generation);
 
 /// <summary>
+/// Manifest-level preflight only. An eligible session still needs the full journal and saved-plan replay;
+/// this status never promises that a rebuild will succeed or changes the generation.
+/// </summary>
+public sealed record JournalRederivationReadiness(bool CanAttempt, string Explanation);
+
+/// <summary>
 /// Replays a journal and its exact retained descriptor interpretation under one evidence lease. The old
 /// generation is never edited: a successful replay atomically publishes new segments and fields as the
 /// next generation, and an interrupted or invalid replay leaves the prior pointer current.
 /// </summary>
 public static class JournalRederivation
 {
+    public static JournalRederivationReadiness Assess(SessionManifestV1? manifest)
+    {
+        if (manifest is null)
+        {
+            return new(false, "No generation has been published yet.");
+        }
+
+        if (!manifest.Boundary.IsDeclared)
+        {
+            return new(false, "This generation names no committed journal boundary.");
+        }
+
+        StoreDependency[] journals = [.. manifest.Dependencies.Where(dependency =>
+            dependency.Kind == StoreDependencyKind.Journal)];
+        if (journals.Length != 1)
+        {
+            return new(false, journals.Length == 0
+                ? "No admitted journal is retained."
+                : "More than one journal is retained; replacement would risk dropping another capture's rows.");
+        }
+
+        if (!string.Equals(journals[0].Name, manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)
+            || journals[0].LengthBytes != manifest.Boundary.CommittedBytes
+            || !string.Equals(journals[0].Digest, manifest.Boundary.Digest, StringComparison.Ordinal))
+        {
+            return new(false, "The committed boundary and retained journal dependency disagree.");
+        }
+
+        StoreDependency[] plans = [.. manifest.Dependencies.Where(dependency =>
+            dependency.Kind == StoreDependencyKind.DerivationPlan)];
+        if (plans.Length != 1)
+        {
+            return new(false, plans.Length == 0
+                ? "No retained normalization plan; this legacy session needs a verified plan migration."
+                : "More than one retained normalization plan is present; the interpretation is ambiguous.");
+        }
+
+        if (plans[0].LengthBytes is < 1 or > JournalNormalizationPlanV1.MaximumBytes)
+        {
+            return new(false, "The retained normalization plan is outside its 1 MiB bound.");
+        }
+
+        return new(true,
+            "One committed journal and one retained plan are present. Full schema and batch validation runs "
+            + "when re-derivation starts.");
+    }
+
     public static JournalRederivationResult Rebuild(
         SessionStore store,
         DateTimeOffset committedUtc,

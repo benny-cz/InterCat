@@ -25,3 +25,8 @@ missing plan is a refusal, not a best-effort parse.
 The plan is an admitted-evidence companion, not a rebuildable index. Ordinary derived-file retention
 cannot drop it. An explicit journal-prefix release retains the plan with the suffix. A legacy session
 without one needs a separate migration that proves an exact descriptor match; none is implemented.
+
+`icat session` reports manifest-level re-derivation readiness and the exact refusal reason. “Can attempt”
+means one committed journal and one bounded retained plan are named by the verified manifest; it is not a
+promise that replay will succeed. Schema, policy, batch and record-count validation occurs during
+`icat rederive`, before publication. An invalid replay leaves the current generation unchanged.
