@@ -62,6 +62,7 @@ public static class BrokerRootLocation
 [SupportedOSPlatform("windows")]
 public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposable
 {
+    private const uint Delete = 0x0001_0000;
     private const uint ReadControl = 0x0002_0000;
     private const uint WriteDac = 0x0004_0000;
     private const uint WriteOwner = 0x0008_0000;
@@ -91,6 +92,11 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
     private const uint LabelSecurityInformation = 0x0000_0010;
     private const uint ProtectedDaclSecurityInformation = 0x8000_0000;
     private const int SeFileObject = 1;
+    private const int FileRenameInformation = 3;
+    private const int FileDispositionInformation = 4;
+
+    /// <summary>ReplaceIfExists, padding, RootDirectory and FileNameLength ahead of the name itself.</summary>
+    private const int RenameInformationHeaderSize = 20;
     private const int SddlRevision1 = 1;
     private const int ErrorAlreadyExists = 183;
     private const int ErrorFileNotFound = 2;
@@ -247,12 +253,186 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
         }
     }
 
+    /// <inheritdoc />
+    public void ReplaceOwnedFile(string sourceName, string destinationName)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        BrokerOwnedFileName.Require(sourceName, nameof(sourceName));
+        BrokerOwnedFileName.Require(destinationName, nameof(destinationName));
+        if (sourceName.Equals(destinationName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "An owned file is never replaced by itself.",
+                nameof(destinationName));
+        }
+
+        string sourcePath = System.IO.Path.Combine(Path, sourceName);
+        string destinationPath = System.IO.Path.Combine(Path, destinationName);
+        using SafeFileHandle source = OpenOwnedEntry(
+            sourcePath,
+            Delete | Synchronize,
+            FileShareRead | FileShareWrite | FileShareDelete);
+        Rename(source, sourcePath, destinationPath);
+    }
+
+    /// <inheritdoc />
+    public bool RemoveOwnedFile(string name)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        BrokerOwnedFileName.Require(name, nameof(name));
+        string path = System.IO.Path.Combine(Path, name);
+        // Backup semantics so a directory opens and can be named in the refusal, rather than failing
+        // as an access denial that says nothing about what is actually there.
+        SafeFileHandle entry = CreateFile(
+            path,
+            Delete | Synchronize,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            OpenExisting,
+            FileFlagOpenReparsePoint | FileFlagBackupSemantics);
+        if (entry.IsInvalid)
+        {
+            int error = Marshal.GetLastWin32Error();
+            entry.Dispose();
+            return error is ErrorFileNotFound or ErrorPathNotFound
+                ? false
+                : throw OpenFailure(path, error);
+        }
+
+        using (entry)
+        {
+            BY_HANDLE_FILE_INFORMATION information = ReadFileInformation(entry, path);
+            if ((information.FileAttributes & FileAttributeDirectory) != 0)
+            {
+                throw new IOException(
+                    $"'{path}' is a directory beneath the broker root and is refused rather than deleted.");
+            }
+
+            if (information.VolumeSerialNumber != VolumeSerialNumber)
+            {
+                throw new IOException(
+                    $"'{path}' is on volume 0x{information.VolumeSerialNumber:x8}, "
+                    + $"not the validated root volume 0x{VolumeSerialNumber:x8}.");
+            }
+
+            MarkForDeletion(entry, path);
+        }
+
+        return true;
+    }
+
     public void Dispose()
     {
         if (!disposed)
         {
             disposed = true;
             handle.Dispose();
+        }
+    }
+
+    /// <summary>Opens one existing owned file for a control operation and proves it is that file.</summary>
+    private SafeFileHandle OpenOwnedEntry(string path, uint desiredAccess, uint shareMode)
+    {
+        SafeFileHandle entry = CreateFile(
+            path,
+            desiredAccess,
+            shareMode,
+            OpenExisting,
+            FileFlagOpenReparsePoint);
+        if (entry.IsInvalid)
+        {
+            int error = Marshal.GetLastWin32Error();
+            entry.Dispose();
+            throw OpenFailure(path, error);
+        }
+
+        try
+        {
+            BY_HANDLE_FILE_INFORMATION information = ReadFileInformation(entry, path);
+            if ((information.FileAttributes & FileAttributeReparsePoint) != 0)
+            {
+                throw new IOException($"Broker file '{path}' is a reparse point and is never operated on.");
+            }
+
+            if ((information.FileAttributes & FileAttributeDirectory) != 0)
+            {
+                throw new IOException($"Broker file '{path}' is a directory, not an owned file.");
+            }
+
+            if (information.VolumeSerialNumber != VolumeSerialNumber)
+            {
+                throw new IOException(
+                    $"Broker file '{path}' is on volume 0x{information.VolumeSerialNumber:x8}, "
+                    + $"not the validated root volume 0x{VolumeSerialNumber:x8}.");
+            }
+
+            RequireFinalPath(entry, path);
+            return entry;
+        }
+        catch
+        {
+            entry.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Renames an open owned file onto another name beneath the same validated root, replacing it.
+    /// The destination is written as a full path because the root itself is held open and cannot be
+    /// renamed or deleted, so the prefix it is composed from is the one that passed validation.
+    /// </summary>
+    private static void Rename(SafeFileHandle source, string sourcePath, string destinationPath)
+    {
+        int nameBytes = checked((destinationPath.Length + 1) * 2);
+        int size = RenameInformationHeaderSize + nameBytes;
+        nint buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            unsafe
+            {
+                new Span<byte>((void*)buffer, size).Clear();
+                Marshal.WriteInt32(buffer, 0, 1);
+                Marshal.WriteIntPtr(buffer, 8, 0);
+                Marshal.WriteInt32(buffer, 16, nameBytes - 2);
+                fixed (char* name = destinationPath)
+                {
+                    Buffer.MemoryCopy(
+                        name,
+                        (byte*)buffer + RenameInformationHeaderSize,
+                        nameBytes,
+                        (destinationPath.Length + 1) * 2);
+                }
+            }
+
+            if (!SetFileInformationByHandle(source, FileRenameInformation, buffer, size))
+            {
+                throw new IOException(
+                    $"The broker could not replace '{destinationPath}' with '{sourcePath}'.",
+                    NativeFailure("SetFileInformationByHandle(FileRenameInfo) failed."));
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    /// <summary>Marks an already validated owned file for deletion; it goes when the handle closes.</summary>
+    private static void MarkForDeletion(SafeFileHandle entry, string path)
+    {
+        nint buffer = Marshal.AllocHGlobal(4);
+        try
+        {
+            Marshal.WriteInt32(buffer, 0, 1);
+            if (!SetFileInformationByHandle(entry, FileDispositionInformation, buffer, 4))
+            {
+                throw new IOException(
+                    $"The broker could not delete '{path}'.",
+                    NativeFailure("SetFileInformationByHandle(FileDispositionInfo) failed."));
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
 
@@ -696,6 +876,14 @@ public sealed partial class WindowsBrokerRoot : IBrokerOwnedDirectory, IDisposab
         uint creationDisposition,
         uint flagsAndAttributes,
         nint templateFile);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetFileInformationByHandle(
+        SafeFileHandle file,
+        int informationClass,
+        nint information,
+        int informationSize);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

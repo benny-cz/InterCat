@@ -1,6 +1,6 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery, bounded dispatch, the OS-authenticated pipe boundary and the broker-owned filesystem root implemented; ownership-log compaction and live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery and compaction, bounded dispatch, the OS-authenticated pipe boundary and the broker-owned filesystem root implemented; live capture commands not yet enabled**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
@@ -115,15 +115,17 @@ success and triggers best-effort compensating stop; the stored intent remains fo
 
 ### 4.1 Durable ownership log
 
-`FileBrokerLifecycleStore` is the production persistence primitive for this state. Its directory must
-already exist with its final broker-owned ACL; the store refuses a missing root, a root marked as a
-reparse point, or an existing ownership file marked as a reparse point. The fixed filename is
-`broker-ownership-v1.log`; no client path or filename is accepted.
+`FileBrokerLifecycleStore` is the production persistence primitive for this state. It is constructed
+from the validated broker root of §5.4, not from a path, and opens its log through that root, so it
+cannot be pointed at a directory whose security was never checked. The fixed filenames are
+`broker-ownership-v1.log` and its compaction temporary `broker-ownership-v1.compacting`; no client
+path or filename is accepted.
 
 Each mutation appends a complete snapshot frame containing all capture ownership and request-ID state.
 A frame carries version, monotonic sequence, bounded payload length, SHA-256 over version/sequence/
-length/payload, and a repeated-length end marker. The payload is at most 4 MiB, the log at most 64 MiB,
-and snapshots at most 4,096 captures and 16,384 request records. The frame is flushed to the physical
+length/payload, and a repeated-length end marker, and its payload carries the log's generation. The
+payload is at most 4 MiB, the log at most 64 MiB by default, and snapshots at most 4,096 captures and
+16,384 request records. The frame is flushed to the physical
 device before in-memory state changes or success is returned. Prepared token secrets are never written;
 only their SHA-256 fingerprints appear as start-request targets.
 
@@ -131,7 +133,23 @@ On reopen, recovery scans in sequence and validates the checksum, end marker, st
 owner/session identity, lifecycle values and referential integrity of every frame. It restores the last
 complete valid snapshot and truncates only the rejected tail. A nonempty file with no valid frame is
 refused and left unchanged instead of being reset. This avoids treating filesystem rename as a power-
-failure guarantee.
+failure guarantee. One file is one generation: a frame carrying another generation is rejected as the
+tail even when its own sequence and checksum are valid, because it is a fragment of a different log
+rather than a later state of this one.
+
+Compaction publishes the current snapshot as the single frame of the next generation. It writes that
+one frame to the temporary, flushes it to the device, closes the live log and replaces it in one
+directory operation through the root's validated rename. A restart therefore finds one of exactly two
+states: the previous log complete, possibly beside a temporary that is discarded because the recovered
+log already contains everything in it; or the new generation complete, with no temporary. The temporary
+is bounded by one frame, and a compaction that cannot fit one frame inside the bound is refused before
+anything is written, so the live log is never replaced by a generation that is already over budget.
+
+Compaction reclaims superseded snapshots and never records. A completed request stays in the log after
+compaction, because dropping it would turn its idempotent replay into a second capture; the 4,096 and
+16,384 record bounds remain the retention policy, and a retention rule for old records is still owed.
+An append that would pass the bound compacts first and only then refuses, so a long-lived broker
+performs its own maintenance instead of stopping at a limit it could have reclaimed.
 
 Every ownership record persists a unique session name and a separate random ownership token. Restart
 reconciliation passes both to the runtime: an interrupted start is conservatively stopped and completed
@@ -229,7 +247,7 @@ The authenticated connection processor reads only the bounded v1 frame codec, wr
 response at a time and closes a connection after at most 4,096 commands. Windows fixtures exercise the
 real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
 refusal and a complete Hello exchange. The broker executable remains fail-closed: it does not start this
-listener until bounded ownership-log compaction and the real runtime cleanup boundary are also composed.
+listener until the real ETW/journal runtime and its cleanup boundary are also composed.
 
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
@@ -290,7 +308,8 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no bounded ownership-log compaction and no ETW/journal runtime binding.
+The current slice has no ETW/journal runtime binding, and no retention rule for ownership and request
+records that outlive their usefulness inside the store's count bounds.
 `InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
 durable lifecycle/recovery operations are connected through real authenticated pipe fixtures but still
 use a fake capture runtime. Those

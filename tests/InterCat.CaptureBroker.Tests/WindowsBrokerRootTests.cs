@@ -194,6 +194,80 @@ public sealed class WindowsBrokerRootTests
             Directory.GetFiles(temporary.Root.Path));
     }
 
+    [Fact(DisplayName = "R16: replacing an owned file publishes it under the destination name in one step")]
+    public void ReplacingAnOwnedFilePublishesItInOneStep()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        Write(temporary.Root, "live.log", [1, 1, 1]);
+        Write(temporary.Root, "next.log", [2, 2, 2, 2]);
+
+        temporary.Root.ReplaceOwnedFile("next.log", "live.log");
+
+        Assert.Equal([2, 2, 2, 2], File.ReadAllBytes(Path.Combine(temporary.Root.Path, "live.log")));
+        Assert.Equal(
+            [Path.Combine(temporary.Root.Path, "live.log")],
+            Directory.GetFiles(temporary.Root.Path));
+    }
+
+    [Fact(DisplayName = "R16: replacing a destination that is not there publishes the source anyway")]
+    public void ReplacingAnAbsentDestinationPublishesTheSource()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        Write(temporary.Root, "next.log", [3, 3]);
+
+        temporary.Root.ReplaceOwnedFile("next.log", "live.log");
+
+        Assert.Equal([3, 3], File.ReadAllBytes(Path.Combine(temporary.Root.Path, "live.log")));
+        Assert.False(File.Exists(Path.Combine(temporary.Root.Path, "next.log")));
+    }
+
+    [Fact(DisplayName = "R16: a replacement whose source is missing leaves the destination untouched")]
+    public void ReplacementWithAMissingSourceLeavesTheDestinationUntouched()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        Write(temporary.Root, "live.log", [4, 4]);
+
+        Assert.Throws<FileNotFoundException>(() => temporary.Root.ReplaceOwnedFile("next.log", "live.log"));
+        Assert.Equal([4, 4], File.ReadAllBytes(Path.Combine(temporary.Root.Path, "live.log")));
+    }
+
+    [Theory(DisplayName = "R16: a replacement outside the root or onto itself never reaches the filesystem")]
+    [InlineData("next.log", "next.log")]
+    [InlineData("next.log", @"..\live.log")]
+    [InlineData(@"..\next.log", "live.log")]
+    public void ReplacementOutsideTheRootIsRefused(string source, string destination)
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        Write(temporary.Root, "next.log", [5]);
+
+        Assert.Throws<ArgumentException>(() => temporary.Root.ReplaceOwnedFile(source, destination));
+        Assert.Equal([5], File.ReadAllBytes(Path.Combine(temporary.Root.Path, "next.log")));
+    }
+
+    [Fact(DisplayName = "R16: removing an owned file reports whether one was there")]
+    public void RemovingAnOwnedFileReportsWhetherOneWasThere()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        Write(temporary.Root, "stale.log", [6]);
+
+        Assert.True(temporary.Root.RemoveOwnedFile("stale.log"));
+        Assert.False(temporary.Root.RemoveOwnedFile("stale.log"));
+        Assert.Empty(Directory.GetFileSystemEntries(temporary.Root.Path));
+    }
+
+    [Fact(DisplayName = "R16: a directory beneath the root is refused rather than deleted")]
+    public void ADirectoryBeneathTheRootIsRefusedRatherThanDeleted()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        string nested = Path.Combine(temporary.Root.Path, "nested");
+        Directory.CreateDirectory(nested);
+
+        IOException refusal = Assert.Throws<IOException>(() => temporary.Root.RemoveOwnedFile("nested"));
+
+        Assert.Contains("is a directory", refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(nested));
+    }
+
     [Fact(DisplayName = "R16: append mode is refused because it hides where a broker write landed")]
     public void AppendModeIsRefused()
     {
@@ -290,6 +364,18 @@ public sealed class WindowsBrokerRootTests
         {
             Directory.Delete(parent, recursive: true);
         }
+    }
+
+    private static void Write(WindowsBrokerRoot root, string name, byte[] payload)
+    {
+        using FileStream stream = root.OpenOwnedFile(
+            name,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            FileOptions.WriteThrough);
+        stream.Write(payload);
+        stream.Flush(flushToDisk: true);
     }
 
     [Fact(DisplayName = "R16: a missing parent is a named refusal, not a directory the broker creates")]

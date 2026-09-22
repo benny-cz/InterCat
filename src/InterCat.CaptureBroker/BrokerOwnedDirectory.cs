@@ -24,6 +24,18 @@ public interface IBrokerOwnedDirectory
         FileAccess access,
         FileShare share,
         FileOptions options);
+
+    /// <summary>
+    /// Replaces one owned file with another in a single directory operation, so a reader either sees
+    /// the previous complete file or the new complete one and never an absent or half-written name.
+    /// </summary>
+    void ReplaceOwnedFile(string sourceName, string destinationName);
+
+    /// <summary>
+    /// Removes one owned file if it is there. Returns whether a file was removed; a directory beneath
+    /// the root is refused rather than deleted, because only the broker creates entries there.
+    /// </summary>
+    bool RemoveOwnedFile(string name);
 }
 
 /// <summary>
