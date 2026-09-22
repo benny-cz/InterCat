@@ -52,6 +52,39 @@ public sealed class ManifestSchemaTests
         </instrumentationManifest>
         """;
 
+    private const string ProcessManifest = """
+        <instrumentationManifest xmlns="http://schemas.microsoft.com/win/2004/08/events">
+         <instrumentation><events>
+          <provider name="Sample-Process" guid="{22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716}">
+           <templates>
+            <template tid="Start">
+             <data name="ProcessID" inType="win:UInt32" />
+             <data name="ProcessSequenceNumber" inType="win:UInt64" />
+             <data name="CreateTime" inType="win:FILETIME" />
+             <data name="ParentProcessID" inType="win:UInt32" />
+             <data name="ParentProcessSequenceNumber" inType="win:UInt64" />
+             <data name="SessionID" inType="win:UInt32" />
+             <data name="UserSID" inType="win:SID" />
+             <data name="ImageName" inType="win:UnicodeString" />
+            </template>
+            <template tid="Stop">
+             <data name="ProcessID" inType="win:UInt32" />
+             <data name="ProcessSequenceNumber" inType="win:UInt64" />
+             <data name="CreateTime" inType="win:FILETIME" />
+             <data name="ExitTime" inType="win:FILETIME" />
+             <data name="ExitCode" inType="win:UInt32" />
+             <data name="ImageName" inType="win:AnsiString" />
+            </template>
+           </templates>
+           <events>
+            <event value="1" version="4" template="Start" />
+            <event value="2" version="2" template="Stop" />
+           </events>
+          </provider>
+         </events></instrumentation>
+        </instrumentationManifest>
+        """;
+
     [Fact(DisplayName = "R5: the manifest parser resolves descriptors, keyword masks and template fields")]
     public void ParsesDescriptorsAndFields()
     {
@@ -143,6 +176,37 @@ public sealed class ManifestSchemaTests
 
         Assert.Empty(plan.Events);
         Assert.Contains(plan.Diagnostics, diagnostic => diagnostic.Contains("not declared", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets")]
+    public void ProcessImageShapesAreCompiled()
+    {
+        ProviderSchema schema = ManifestParser.Parse(ProcessManifest);
+        WindowsSourceDefinition definition = BuildDefinition(
+        [
+            new(1, 4, "start", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create,
+                Direction.DirectionNotApplicable,
+                [
+                    new("ProcessID", FieldRole.ProcessAttribution),
+                    new("ProcessSequenceNumber", FieldRole.CorrelationKey, SourceField: SourceField.ProcessStartSequence),
+                    new("ImageName", FieldRole.ResourceName),
+                ]),
+            new(2, 2, "stop", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Exit,
+                Direction.DirectionNotApplicable,
+                [
+                    new("ProcessID", FieldRole.ProcessAttribution),
+                    new("ImageName", FieldRole.ResourceName),
+                ]),
+        ]);
+
+        SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(definition, schema, 0);
+        AdmittedEventPlan start = plan.Events.Single(item => item.EventId == 1);
+        AdmittedEventPlan stop = plan.Events.Single(item => item.EventId == 2);
+        Assert.Equal(AdmittedSlotKind.ResourceNameAfterSid, start.Slots.Single(item => item.Role == FieldRole.ResourceName).Kind);
+        Assert.Equal(36, start.Slots.Single(item => item.Role == FieldRole.ResourceName).Offset);
+        Assert.Equal(SourceField.ProcessStartSequence, start.Slots.Single(item => item.SourceField is not null).SourceField);
+        Assert.Equal(AdmittedSlotKind.AnsiResourceName, stop.Slots.Single(item => item.Role == FieldRole.ResourceName).Kind);
+        Assert.Equal(32, stop.Slots.Single(item => item.Role == FieldRole.ResourceName).Offset);
     }
 
     private static WindowsSourceDefinition BuildDefinition(IReadOnlyList<AdmittedEventIntent> events) => new()

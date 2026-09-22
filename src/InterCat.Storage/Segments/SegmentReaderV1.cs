@@ -288,6 +288,29 @@ public sealed class SegmentReaderV1
             ordered.Add(column);
         }
 
+        // A table's column set is frozen, so a segment carries exactly it: a missing column would fail the first
+        // reader that needed it, and a column the table does not define would be read by nobody. Both are refused
+        // at open, with the column named.
+        IReadOnlyList<SegmentColumnSpec> declared = SegmentFormatV1.ColumnsOf(table);
+        if (ordered.Count != declared.Count)
+        {
+            throw new InvalidDataException(
+                $"This {table} segment carries {ordered.Count} columns and the table defines {declared.Count}.");
+        }
+
+        for (int index = 0; index < declared.Count; index++)
+        {
+            SegmentColumnSpec expected = declared[index];
+            SegmentColumnDescriptor actual = ordered[index];
+            if (actual.Id != expected.Id || actual.Type != expected.Type || actual.Nullable != expected.Nullable)
+            {
+                throw new InvalidDataException(
+                    $"Column {index} of this {table} segment is {actual.Id} ({actual.Type}, "
+                    + $"{(actual.Nullable ? "nullable" : "required")}); the table defines {expected.Id} "
+                    + $"({expected.Type}, {(expected.Nullable ? "nullable" : "required")}) there.");
+            }
+        }
+
         var timeBlocks = new List<SegmentTimeBlockV1>(timeBlockCount);
         int expectedFirst = 0;
         for (int index = 0; index < timeBlockCount; index++)
@@ -553,9 +576,34 @@ public sealed class SegmentReaderV1
                 + "descriptor cannot be resolved.");
     }
 
-    /// <summary>Materializes one row. It is the inspection path, not the aggregation path.</summary>
+    /// <summary>Materializes one `source-fields-v1` row. It is the inspection path, not the aggregation path.</summary>
+    public SourceFieldRowV1 FieldRow(int row)
+    {
+        RequireTable(SegmentTableId.SourceFieldsV1);
+        RequireRow(row);
+        SourceFieldRowV1 result = new()
+        {
+            RawStreamId = (uint)UnsignedValue(SegmentColumnId.RawStreamId, row)!.Value,
+            RawSourceEpoch = (uint)UnsignedValue(SegmentColumnId.RawSourceEpoch, row)!.Value,
+            RawRecordOrdinal = UnsignedValue(SegmentColumnId.RawRecordOrdinal, row)!.Value,
+            FactKey = new(
+                UnsignedValue(SegmentColumnId.FactKeyHigh, row)!.Value,
+                UnsignedValue(SegmentColumnId.FactKeyLow, row)!.Value),
+            NativeTicks = SignedValue(SegmentColumnId.NativeTicks, row)!.Value,
+            Field = FieldCode(row),
+            Value = SignedValue(SegmentColumnId.FieldValue, row),
+            Text = TextValue(SegmentColumnId.FieldText, row),
+            Availability = Code<FieldAvailability>(SegmentColumnId.FieldAvailability, row),
+        };
+        return result.Validate() is { } problem
+            ? throw new InvalidDataException($"Source-field row {row} is invalid: {problem}")
+            : result;
+    }
+
+    /// <summary>Materializes one `observation-v1` row. It is the inspection path, not the aggregation path.</summary>
     public ObservationRowV1 Row(int row)
     {
+        RequireTable(SegmentTableId.ObservationV1);
         RequireRow(row);
         (Guid ProviderId, ushort EventId, byte Version, string Fingerprint) schema = SchemaOf(row);
         return new()
@@ -842,8 +890,28 @@ public sealed class SegmentReaderV1
     private SegmentColumnDescriptor Require(SegmentColumnId id) =>
         columns.TryGetValue(id, out SegmentColumnDescriptor? column)
             ? column
+            : throw new InvalidOperationException(
+                $"This {Table} segment has no column {id}; that column belongs to another table.");
+
+    private void RequireTable(SegmentTableId expected)
+    {
+        if (Table != expected)
+        {
+            throw new InvalidOperationException(
+                $"This segment holds {Table}, not {expected}. A row is read with the shape of its own table.");
+        }
+    }
+
+    private SourceField FieldCode(int row)
+    {
+        ulong value = UnsignedValue(SegmentColumnId.SourceField, row)!.Value;
+        var field = (SourceField)(ushort)value;
+        return Enum.IsDefined(field)
+            ? field
             : throw new InvalidDataException(
-                $"This segment does not carry column {id}, which `observation-v1` requires.");
+                $"Row {row} carries source field {value}, which §23 does not define. A required field with an unknown "
+                + "code refuses the artifact (§23).");
+    }
 
     private void RequireRow(int row)
     {

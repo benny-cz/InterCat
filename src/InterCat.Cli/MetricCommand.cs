@@ -54,6 +54,7 @@ internal sealed record MetricGroupDocument
     public required string? PerSecond { get; init; }
     public required ProcessInstanceDocument? Process { get; init; }
     public required string? Mechanism { get; init; }
+    public required string? Executable { get; init; }
     public required string? Reason { get; init; }
     public required int? GroupsMerged { get; init; }
     public required IReadOnlyDictionary<string, long> Bindings { get; init; }
@@ -76,6 +77,16 @@ internal sealed record ProcessInstanceDocument
     public required long? LifetimeStartNativeTicks { get; init; }
     public required long? LifetimeEndNativeTicks { get; init; }
     public required ObservationId WitnessRecord { get; init; }
+    public required ulong? StartSequence { get; init; }
+    public required string? ImagePath { get; init; }
+    public required string? ImageName { get; init; }
+    public required int? ParentProcessId { get; init; }
+    public required ulong? ParentStartSequence { get; init; }
+    public required string? ParentInstanceId { get; init; }
+    public required string? ParentBinding { get; init; }
+    public required uint? SessionId { get; init; }
+    public required long? CreateFileTime { get; init; }
+    public required long? ExitFileTime { get; init; }
 
     public static ProcessInstanceDocument From(ProcessInstance instance, SourceClockDescriptor? clock) => new()
     {
@@ -95,6 +106,16 @@ internal sealed record ProcessInstanceDocument
         LifetimeStartNativeTicks = instance.LifetimeStartNativeTicks,
         LifetimeEndNativeTicks = instance.LifetimeEndNativeTicks,
         WitnessRecord = instance.WitnessRecord,
+        StartSequence = instance.StartKey?.SequenceNumber,
+        ImagePath = instance.ImagePath,
+        ImageName = instance.ImageName,
+        ParentProcessId = instance.ParentProcessId,
+        ParentStartSequence = instance.ParentStartSequence,
+        ParentInstanceId = instance.Parent?.ToString(),
+        ParentBinding = instance.ParentBinding?.ToString(),
+        SessionId = instance.SessionId,
+        CreateFileTime = instance.CreateFileTime,
+        ExitFileTime = instance.ExitFileTime,
     };
 }
 
@@ -545,6 +566,7 @@ internal static class MetricCommand
         PerSecond = group.Rate?.PerSecond?.ToString("0.000", CultureInfo.InvariantCulture),
         Process = group.Process is { } process ? ProcessInstanceDocument.From(process, result.Clock) : null,
         Mechanism = group.Mechanism?.ToString(),
+        Executable = group.Executable,
         Reason = group.Reason?.ToString(),
         GroupsMerged = group.Kind == MetricGroupKind.Remainder ? group.GroupsMerged : null,
         Bindings = group.Bindings.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
@@ -558,10 +580,11 @@ internal static class MetricCommand
             pidReused: group.Process!.LifecycleEpoch > 1
                 || result.Groups.Any(other => other.Process is { } peer && peer.ProcessId == group.Process.ProcessId && peer.Id != group.Process.Id)),
         MetricGroupKind.Mechanism => group.Mechanism!.Value.ToString(),
+        MetricGroupKind.Executable => group.Executable!,
         MetricGroupKind.Unattributed => SessionText.Reason(group.Reason!.Value),
         MetricGroupKind.Remainder => string.Create(
             CultureInfo.CurrentCulture,
-            $"{group.GroupsMerged:N0} more {(result.Request.Grouping == LaneGrouping.Mechanism ? "mechanisms" : "instances")}"),
+            $"{group.GroupsMerged:N0} more {(result.Request.Grouping == LaneGrouping.Mechanism ? "mechanisms" : result.Request.Grouping == LaneGrouping.Executable ? "executables" : "instances")}"),
         _ => group.Kind.ToString(),
     };
 
@@ -572,11 +595,14 @@ internal static class MetricCommand
             return;
         }
 
-        bool byProcess = result.Request.Grouping == LaneGrouping.InstanceOnly;
+        bool byProcess = result.Request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable;
+        bool byExecutable = result.Request.Grouping == LaneGrouping.Executable;
         ConsoleUi.Line();
-        ConsoleUi.Line(byProcess
-            ? $"  By process instance ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
-            : "  By mechanism:");
+        ConsoleUi.Line(byExecutable
+            ? $"  By witnessed executable path ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
+            : byProcess
+                ? $"  By process instance ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
+                : "  By mechanism:");
         var rows = new List<string[]>();
         foreach (MetricGroupDocument group in grouping.Groups)
         {
@@ -593,8 +619,8 @@ internal static class MetricCommand
         bool measures = result.TakenSides.Count > 0;
         IReadOnlyList<string> headers = (byProcess, measures) switch
         {
-            (true, true) => ["Rank", "Process instance", "Value", "Measured on", "Bound as"],
-            (true, false) => ["Rank", "Process instance", "Value", "Bound as"],
+            (true, true) => ["Rank", byExecutable ? "Executable path" : "Process instance", "Value", "Measured on", "Bound as"],
+            (true, false) => ["Rank", byExecutable ? "Executable path" : "Process instance", "Value", "Bound as"],
             (false, true) => ["Rank", "Mechanism", "Value", "Measured on"],
             (false, false) => ["Rank", "Mechanism", "Value"],
         };
@@ -602,7 +628,9 @@ internal static class MetricCommand
         if (grouping.Unattributed.Count > 0)
         {
             ConsoleUi.Line();
-            ConsoleUi.Line("  Not attributed to an instance, by reason (never a peer, never ranked):");
+            ConsoleUi.Line(byExecutable
+                ? "  Not attributed to an executable, by reason (never a peer, never ranked):"
+                : "  Not attributed to an instance, by reason (never a peer, never ranked):");
             ConsoleUi.Table(
                 ["Reason", "Value", "Contributions"],
                 [
@@ -877,9 +905,15 @@ internal static class MetricCommand
             return true;
         }
 
+        if (compact.Equals("executable", StringComparison.OrdinalIgnoreCase))
+        {
+            grouping = LaneGrouping.Executable;
+            return true;
+        }
+
         if (!TryParse(value, LaneGrouping.InstanceOnly, "--group-by", out LaneGrouping parsed, out problem))
         {
-            problem = $"--group-by expects process or mechanism, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
+            problem = $"--group-by expects process, executable or mechanism, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
             return false;
         }
 
@@ -1158,7 +1192,7 @@ internal static class MetricCommand
         ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
         ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
         ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
-        ConsoleUi.Line("             [--group-by process|mechanism] [--top <n>] [--evidence-policy <name>]");
+        ConsoleUi.Line("             [--group-by process|executable|mechanism] [--top <n>] [--evidence-policy <name>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");

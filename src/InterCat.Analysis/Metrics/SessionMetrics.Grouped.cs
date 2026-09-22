@@ -17,7 +17,7 @@ public static partial class SessionMetrics
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         switch (request.Grouping)
         {
-            case LaneGrouping.InstanceOnly:
+            case LaneGrouping.InstanceOnly or LaneGrouping.Executable:
                 if (clock is null)
                 {
                     return Unavailable(
@@ -49,10 +49,6 @@ public static partial class SessionMetrics
                     MetricUnavailableReason.GroupingNotDerived,
                     request.Grouping switch
                     {
-                        LaneGrouping.Executable =>
-                            "Grouping by executable needs each instance's image name, and this session's lifecycle "
-                            + "records carry none yet. Group by process instance instead; each instance names its PID and "
-                            + "lifetime.",
                         LaneGrouping.Endpoint =>
                             "Grouping by endpoint needs endpoint instances with their lifetimes, and this session derives "
                             + "none. Grouping address and port pairs directly would merge reused ports (R22).",
@@ -66,10 +62,25 @@ public static partial class SessionMetrics
         MetricRequest request = context.Request;
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         bool isCount = effective == Metric.Observations;
-        ProcessInstanceIndex? processes = grouping == LaneGrouping.InstanceOnly
-            ? ProcessInstanceIndex.Derive([.. context.Segments.Select(segment => segment.Reader)], context.Clock!.Value, cancellationToken)
+        ProcessInstanceIndex? processes = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
+            ? ProcessInstanceIndex.Derive(
+                [.. context.Segments.Select(segment => segment.Reader)],
+                context.Clock!.Value,
+                context.FieldSegments,
+                cancellationToken)
             : null;
-        GroupLayout layout = processes is null ? new MechanismLayout() : new ProcessLayout(processes, request.EvidencePolicy);
+        if (grouping == LaneGrouping.Executable && !processes!.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ImagePath)))
+        {
+            return Unavailable(
+                request,
+                context.Generation,
+                MetricUnavailableReason.GroupingNotDerived,
+                "No process lifecycle record in this generation carries a full image name. An executable cannot be "
+                + "identified from a PID or an exit basename; import evidence with admitted process image names.");
+        }
+        GroupLayout layout = processes is null
+            ? new MechanismLayout()
+            : new ProcessLayout(processes, request.EvidencePolicy, byExecutable: grouping == LaneGrouping.Executable);
         IReadOnlyList<AccountingSide> taken = isCount ? [] : MetricCompatibility.RowSidesTakenBy(request.AccountingSide!.Value);
 
         var totals = new SideTotal?[layout.Count, (int)AccountingSide.CanonicalOwner + 1];
@@ -354,7 +365,8 @@ public static partial class SessionMetrics
         caveats.Add(
             $"Records are bound to process instances by {ProcessInstanceIndex.BindingRule}: a record names its owner in "
             + "its own payload, and binds to the instance of that PID whose witnessed lifetime holds its reading. The "
-            + "event header's process is never used (§4.1). The rule assumes no lifecycle record was lost.");
+            + "event header's process is never used (§4.1). Start keys distinguish lifecycle instances when present; "
+            + "records without a key still rely on complete lifecycle evidence.");
         MetricGroup? notAdmitted = unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
@@ -395,7 +407,8 @@ public static partial class SessionMetrics
         string StableKey,
         ProcessInstance? Process = null,
         Mechanism? Mechanism = null,
-        ProcessBindingReason? Reason = null);
+        ProcessBindingReason? Reason = null,
+        string? Executable = null);
 
     /// <summary>
     /// Slots by process instance. The first slots hold the reasons a record is unattributed; each instance then has
@@ -403,18 +416,25 @@ public static partial class SessionMetrics
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.NotAdmittedByPolicy + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.ExecutableUnknown + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;
+        private readonly bool byExecutable;
 
-        public ProcessLayout(ProcessInstanceIndex index, EvidencePolicy policy)
+        public ProcessLayout(ProcessInstanceIndex index, EvidencePolicy policy, bool byExecutable)
         {
             this.index = index;
             this.policy = policy;
+            this.byExecutable = byExecutable;
             var groups = new List<GroupDefinition>();
             for (int reason = 1; reason < ReasonSlots; reason++)
             {
+                if (reason == (int)ProcessBindingReason.ExecutableUnknown && !byExecutable)
+                {
+                    continue;
+                }
+
                 groups.Add(new(
                     MetricGroupKind.Unattributed,
                     [(reason, null)],
@@ -422,13 +442,33 @@ public static partial class SessionMetrics
                     Reason: (ProcessBindingReason)reason));
             }
 
-            for (int instance = 0; instance < index.Instances.Count; instance++)
+            if (byExecutable)
             {
-                groups.Add(new(
-                    MetricGroupKind.ProcessInstance,
-                    [.. Strengths.Select((strength, offset) => (SlotOf(instance, offset), (RelationStrength?)strength))],
-                    index.Instances[instance].Id.ToString(),
-                    Process: index.Instances[instance]));
+                // A basename alone can denote different binaries. Only the full path witnessed at start/rundown
+                // groups instances; an exit's name alone is retained on the instance but never merged as an identity.
+                foreach (IGrouping<string, (ProcessInstance Item, int Index)> executable in index.Instances
+                    .Select((item, at) => (Item: item, Index: at))
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Item.ImagePath))
+                    .GroupBy(entry => entry.Item.ImagePath!, StringComparer.OrdinalIgnoreCase))
+                {
+                    groups.Add(new(
+                        MetricGroupKind.Executable,
+                        [.. executable.SelectMany(entry => Strengths.Select((strength, offset) =>
+                            (SlotOf(entry.Index, offset), (RelationStrength?)strength)))],
+                        executable.Key.ToUpperInvariant(),
+                        Executable: executable.Key));
+                }
+            }
+            else
+            {
+                for (int instance = 0; instance < index.Instances.Count; instance++)
+                {
+                    groups.Add(new(
+                        MetricGroupKind.ProcessInstance,
+                        [.. Strengths.Select((strength, offset) => (SlotOf(instance, offset), (RelationStrength?)strength))],
+                        index.Instances[instance].Id.ToString(),
+                        Process: index.Instances[instance]));
+                }
             }
 
             Groups = groups;
@@ -444,6 +484,11 @@ public static partial class SessionMetrics
             SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
             SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
+            SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
+            SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
+            SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+            SegmentColumnSlice factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
+            SegmentColumnSlice factLow = segment.Slice(SegmentColumnId.FactKeyLow);
             int[] slots = new int[segment.RowCount];
             for (int row = 0; row < segment.RowCount; row++)
             {
@@ -451,11 +496,22 @@ public static partial class SessionMetrics
                     (Mechanism)mechanisms.UnsignedAt(row)!.Value,
                     (ObservationKind)kinds.UnsignedAt(row)!.Value);
                 long? owner = owners.SignedAt(row);
-                ProcessBinding binding = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle);
+                ObservationId? exact = lifecycle && owner is not null
+                    ? new ObservationId(
+                        new RawRecordId(segment.CaptureId,
+                            (uint)streams.UnsignedAt(row)!.Value,
+                            (uint)epochs.UnsignedAt(row)!.Value,
+                            ordinals.UnsignedAt(row)!.Value),
+                        segment.Derivation,
+                        new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value))
+                    : null;
+                ProcessBinding binding = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle, exact);
                 slots[row] = !binding.IsBound
                     ? (int)binding.Reason
                     : !binding.IsAdmittedUnder(policy)
                         ? (int)ProcessBindingReason.NotAdmittedByPolicy
+                        : byExecutable && string.IsNullOrWhiteSpace(index.Instances[binding.Instance].ImagePath)
+                            ? (int)ProcessBindingReason.ExecutableUnknown
                         : SlotOf(binding.Instance, Array.IndexOf(Strengths, binding.Strength));
             }
 
@@ -557,6 +613,7 @@ public static partial class SessionMetrics
             {
                 Kind = Definition.Kind,
                 Process = Definition.Process,
+                Executable = Definition.Executable,
                 Mechanism = Definition.Mechanism,
                 Reason = Definition.Reason,
                 Value = isMeasured ? value : null,

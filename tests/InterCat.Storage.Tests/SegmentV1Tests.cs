@@ -357,6 +357,18 @@ public sealed class SegmentV1Tests
         Assert.Equal(SegmentColumnEncoding.Dictionary, segment.Column(SegmentColumnId.SchemaCode)!.Encoding);
     }
 
+    [Fact(DisplayName = "R8: staged UTF-8 resource names count against the segment's flush budget")]
+    public void StagedTextCountsTowardTheFlushBudget()
+    {
+        var writer = new SegmentWriterV1(Identity, 0);
+        long before = writer.StagedBytes;
+        string name = new('é', 1_000);
+        writer.Add(Row(100, bytes: null, availability: FieldAvailability.NotApplicable, declareSlot: false)
+            with { ResourceName = name });
+
+        Assert.True(writer.StagedBytes - before >= System.Text.Encoding.UTF8.GetByteCount(name));
+    }
+
     [Theory(DisplayName = "I15: a damaged or dishonest segment is refused, never read at a guess")]
     [InlineData(0, "not a segment-v1 segment")]
     [InlineData(8, "format major")]

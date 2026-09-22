@@ -139,6 +139,27 @@ internal sealed class TraceEventRecordAdmitter
                 continue;
             }
 
+            if (slot.Kind == AdmittedSlotKind.AnsiResourceName)
+            {
+                ReadBoundedAnsiName(body, slot.Offset, data.EventDataLength, ref admitted);
+                continue;
+            }
+
+            if (slot.Kind == AdmittedSlotKind.ResourceNameAfterSid)
+            {
+                if (!TryOffsetAfterSid(body, slot.Offset, data.EventDataLength, out int nameOffset))
+                {
+                    // A SID that claims more sub-authorities than a SID has, or runs past the record, is a record whose
+                    // shape does not match its schema. It is undecodable rather than read at a guessed offset.
+                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed);
+                    ReportRejectedCallback(callbackStarted);
+                    return;
+                }
+
+                ReadBoundedName(body, nameOffset, data.EventDataLength, ref admitted);
+                continue;
+            }
+
             if (slot.Kind == AdmittedSlotKind.Identifier)
             {
                 ReadIdentifier(body, slot.Offset, ref admitted);
@@ -227,6 +248,73 @@ internal sealed class TraceEventRecordAdmitter
         {
             admitted.SetName(buffer[..length], truncated);
         }
+    }
+
+    /// <summary>
+    /// Copies an 8-bit name, widening each byte to one character. ASCII - every image file name the stop descriptor
+    /// has been seen to carry - reads exactly; any other byte is kept as the character of the same code point rather
+    /// than guessed through a code page the recording machine may not share.
+    /// </summary>
+    private static void ReadBoundedAnsiName(IntPtr body, int offset, int bodyLength, ref AdmittedEvent admitted)
+    {
+        Span<char> buffer = stackalloc char[AdmittedEvent.MaximumNameLength];
+        int length = 0;
+        bool truncated = false;
+        for (int position = offset; position < bodyLength; position++)
+        {
+            byte value = Marshal.ReadByte(body, position);
+            if (value == 0)
+            {
+                break;
+            }
+
+            if (length == buffer.Length)
+            {
+                truncated = true;
+                break;
+            }
+
+            buffer[length++] = (char)value;
+        }
+
+        if (length > 0)
+        {
+            admitted.SetName(buffer[..length], truncated);
+        }
+    }
+
+    /// <summary>
+    /// The offset just past a SID, from the SID's own sub-authority count: revision, count, a six-byte authority,
+    /// then four bytes per sub-authority. One byte is read, and the result is bounded by the record's length.
+    /// </summary>
+    internal static bool TryOffsetAfterSid(IntPtr body, int sidOffset, int bodyLength, out int offsetAfter)
+    {
+        offsetAfter = 0;
+        if (sidOffset < 0 || bodyLength - sidOffset < AdmissionPlanCompiler.MinimumSidLength)
+        {
+            return false;
+        }
+
+        // Windows SID revision 1 is the only revision whose count and sub-authority layout this reader knows.
+        if (Marshal.ReadByte(body, sidOffset) != 1)
+        {
+            return false;
+        }
+
+        int subAuthorities = Marshal.ReadByte(body, sidOffset + 1);
+        if (subAuthorities > AdmissionPlanCompiler.MaximumSidSubAuthorities)
+        {
+            return false;
+        }
+
+        int after = sidOffset + AdmissionPlanCompiler.MinimumSidLength + (4 * subAuthorities);
+        if (after > bodyLength)
+        {
+            return false;
+        }
+
+        offsetAfter = after;
+        return true;
     }
 
     private static void ReadIdentifier(IntPtr body, int offset, ref AdmittedEvent admitted)

@@ -117,7 +117,8 @@ internal static class TestSessions
         int rowsPerSegment = 250_000,
         NormalizerContractVersion? derivation = null,
         CaptureId? capture = null,
-        SourceClockDescriptor? clock = null)
+        SourceClockDescriptor? clock = null,
+        IReadOnlyList<SourceFieldRowV1>? fields = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -155,6 +156,11 @@ internal static class TestSessions
                 policy,
                 captureId,
                 sourceClock.Id));
+        }
+
+        foreach (SourceFieldRowV1 field in fields ?? [])
+        {
+            builder.AddFieldRow(field);
         }
 
         return builder.Complete(Committed);

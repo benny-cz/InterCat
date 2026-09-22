@@ -153,6 +153,9 @@ public enum MetricGroupKind
 
     /// <summary>Every ranked group past the requested rows, summed exactly. A grouping, not a peer (§5.2).</summary>
     Remainder = 4,
+
+    /// <summary>All process instances whose witnessed full image path is the same.</summary>
+    Executable = 5,
 }
 
 /// <summary>
@@ -165,6 +168,9 @@ public sealed record MetricGroup
 
     /// <summary>The instance, for a process group.</summary>
     public ProcessInstance? Process { get; init; }
+
+    /// <summary>The witnessed image path, for an executable group. A name-only exit is not a path identity.</summary>
+    public string? Executable { get; init; }
 
     /// <summary>The mechanism, for a mechanism group.</summary>
     public Mechanism? Mechanism { get; init; }
@@ -455,6 +461,19 @@ public static partial class SessionMetrics
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
         if (materialized.Grouping is { } grouping)
         {
+            if (grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable)
+            {
+                // Instances need the capture's source fields - start keys, parents, sessions - when the generation
+                // publishes them; a generation derived before they existed publishes none and is keyed without them.
+                context = context with
+                {
+                    FieldSegments =
+                    [
+                        .. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name)),
+                    ],
+                };
+            }
+
             if (bounds.EvidenceLimit > 0)
             {
                 throw new ArgumentException(
@@ -944,6 +963,9 @@ public static partial class SessionMetrics
         SourceClockDescriptor? Clock,
         int EvidenceLimit)
     {
+        /// <summary>The generation's `source-fields-v1` segments, opened only when a grouping needs them.</summary>
+        public IReadOnlyList<SegmentReaderV1> FieldSegments { get; init; } = [];
+
         public MetricResult Answer(MetricRequest request) => new()
         {
             Request = request,

@@ -348,7 +348,13 @@ public static class EtlCanonicalImport
                 // The index entry and the derived row are taken first; the journal takes ownership of the
                 // envelope last, because appending it transfers the buffers it holds (§18.1).
                 builder.Add(envelope, cancellationToken);
-                generation.AddRow(normalizer.ToRow(envelope, plan, journalIndex));
+                ObservationRowV1 row = normalizer.ToRow(envelope, plan, journalIndex);
+                generation.AddRow(row);
+                foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, plan, row))
+                {
+                    generation.AddFieldRow(field);
+                }
+
                 generation.Journal.Append(envelope);
                 journalIndex++;
                 Admitted++;

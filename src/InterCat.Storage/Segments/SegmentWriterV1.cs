@@ -11,6 +11,9 @@ public enum SegmentTableId : uint
 {
     /// <summary>The normalized source observations of §7.3, as `observation-v1`.</summary>
     ObservationV1 = 1,
+
+    /// <summary>§7.3's source correlation and object fields that `observation-v1` has no column for.</summary>
+    SourceFieldsV1 = 2,
 }
 
 /// <summary>What a segment is a segment of: the capture, the clock its readings are on, and the derivation.</summary>
@@ -34,6 +37,17 @@ public sealed record SegmentIdentityV1
         StableSegmentId.Derive(string.Create(
             CultureInfo.InvariantCulture,
             $"InterCat.Segment.v1|{CaptureId}|{ClockId}|{Derivation}|{ordinal}|{rowCount}|{minNativeTicks}|{maxNativeTicks}"));
+
+    /// <summary>
+    /// The identity of a segment of a table other than `observation-v1`. The table is part of the derivation, so a
+    /// fields segment and an observation segment with the same ordinal and extent never share an identity.
+    /// </summary>
+    public Guid SegmentIdFor(SegmentTableId table, int ordinal, int rowCount, long minNativeTicks, long maxNativeTicks) =>
+        table == SegmentTableId.ObservationV1
+            ? SegmentIdFor(ordinal, rowCount, minNativeTicks, maxNativeTicks)
+            : StableSegmentId.Derive(string.Create(
+                CultureInfo.InvariantCulture,
+                $"InterCat.Segment.v1.table{(uint)table}|{CaptureId}|{ClockId}|{Derivation}|{ordinal}|{rowCount}|{minNativeTicks}|{maxNativeTicks}"));
 }
 
 /// <summary>One finished segment: its bytes, the dictionaries it references, and what it holds.</summary>
@@ -53,52 +67,25 @@ public sealed record SegmentBuildResult(
 /// </summary>
 public sealed class SegmentWriterV1
 {
-    private readonly SegmentIdentityV1 identity;
-    private readonly int ordinal;
-    private readonly byte[][] values;
-    private readonly bool[][] presence;
-    private readonly List<string?> resourceNames = [];
-    private readonly List<SortKey> keys = [];
-    private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), (string Entry, uint Local)> schemas = [];
-    private readonly List<string> schemaEntries = [];
-    private int rowCount;
+    private readonly SegmentTableBuilder builder;
 
     public SegmentWriterV1(SegmentIdentityV1 identity, int ordinal)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentOutOfRangeException.ThrowIfNegative(ordinal);
-        this.identity = identity;
-        this.ordinal = ordinal;
-        int columns = SegmentFormatV1.ObservationColumns.Count;
-        values = new byte[columns][];
-        presence = new bool[columns][];
-        for (int index = 0; index < columns; index++)
-        {
-            values[index] = [];
-            presence[index] = [];
-        }
+        builder = new(
+            identity,
+            ordinal,
+            SegmentTableId.ObservationV1,
+            SegmentFormatV1.ObservationColumns,
+            textColumn: SegmentColumnId.ResourceName,
+            schemaColumn: SegmentColumnId.SchemaCode);
     }
 
-    public int RowCount => rowCount;
+    public int RowCount => builder.RowCount;
 
-    /// <summary>
-    /// How many bytes this segment's columns will occupy, so a caller can flush on §20.1's size. It is read
-    /// once per row, so the per-row and fixed parts are computed from the frozen column set rather than by
-    /// walking it every time.
-    /// </summary>
-    public long StagedBytes =>
-        FixedBytes + ((long)rowCount * FixedWidthPerRow) + ((long)NullableColumnCount * ((rowCount + 7) / 8));
-
-    private static long FixedBytes { get; } =
-        SegmentFormatV1.HeaderLength
-        + (SegmentFormatV1.ObservationColumns.Count * (long)SegmentFormatV1.ColumnEntryLength)
-        + SegmentFormatV1.TrailerLength;
-
-    private static int FixedWidthPerRow { get; } =
-        SegmentFormatV1.ObservationColumns.Sum(column => SegmentFormatV1.WidthOf(column.Type));
-
-    private static int NullableColumnCount { get; } =
-        SegmentFormatV1.ObservationColumns.Count(column => column.Nullable);
+    /// <summary>How many bytes this segment's columns will occupy, so a caller can flush on §20.1's size.</summary>
+    public long StagedBytes => builder.StagedBytes;
 
     /// <summary>Encodes one row into the columns. The row itself is not retained.</summary>
     public void Add(ObservationRowV1 row)
@@ -110,63 +97,224 @@ public sealed class SegmentWriterV1
             throw new ArgumentException(problem, nameof(row));
         }
 
-        if (rowCount == SegmentFormatV1.MaximumRowsPerSegment)
-        {
-            throw new InvalidOperationException(
-                $"A segment holds at most {SegmentFormatV1.MaximumRowsPerSegment} rows. This one is full and "
-                + "the derivation flushes it rather than writing past the bound.");
-        }
-
-        int at = rowCount;
-        SetUInt32(SegmentColumnId.RawStreamId, at, row.RawStreamId);
-        SetUInt32(SegmentColumnId.RawSourceEpoch, at, row.RawSourceEpoch);
-        SetUInt64(SegmentColumnId.RawRecordOrdinal, at, row.RawRecordOrdinal);
-        SetNullableUInt64(SegmentColumnId.JournalRecordIndex, at, row.JournalRecordIndex);
-        SetUInt64(SegmentColumnId.FactKeyHigh, at, row.FactKey.High);
-        SetUInt64(SegmentColumnId.FactKeyLow, at, row.FactKey.Low);
-        SetUInt32(SegmentColumnId.SchemaCode, at, InternSchema(row));
-        SetUInt8(SegmentColumnId.Opcode, at, row.Opcode);
-        SetInt64(SegmentColumnId.NativeTicks, at, row.NativeTicks);
-        SetNullableInt64(SegmentColumnId.SessionRelativeTicks, at, row.SessionRelativeTicks);
-        SetInt32(SegmentColumnId.HeaderProcessId, at, row.HeaderProcessId);
-        SetInt32(SegmentColumnId.HeaderThreadId, at, row.HeaderThreadId);
-        SetUInt16(SegmentColumnId.ProcessorNumber, at, row.ProcessorNumber);
-        SetNullableGuid(SegmentColumnId.ActivityId, at, row.ActivityId);
-        SetNullableGuid(SegmentColumnId.RelatedActivityId, at, row.RelatedActivityId);
-        SetUInt8(SegmentColumnId.Mechanism, at, checked((byte)row.Mechanism));
-        SetUInt8(SegmentColumnId.Layer, at, checked((byte)row.Layer));
-        SetUInt8(SegmentColumnId.ObservationKind, at, checked((byte)row.Kind));
-        SetUInt8(SegmentColumnId.Direction, at, checked((byte)row.Direction));
-        SetNullableInt32(SegmentColumnId.OwnerProcessId, at, row.OwnerProcessId);
-        SetText(SegmentColumnId.ResourceName, at, row.ResourceName);
-        SetNullableGuid(SegmentColumnId.SourceIdentifier, at, row.SourceIdentifier);
-        SetNullableUInt8(SegmentColumnId.EndpointAddressFamily, at, row.EndpointAddressFamily);
-        SetNullableUInt32(SegmentColumnId.SourceEndpointAddress, at, row.SourceEndpointAddress);
-        SetNullableUInt16(SegmentColumnId.SourceEndpointPort, at, row.SourceEndpointPort);
-        SetNullableUInt32(SegmentColumnId.DestinationEndpointAddress, at, row.DestinationEndpointAddress);
-        SetNullableUInt16(SegmentColumnId.DestinationEndpointPort, at, row.DestinationEndpointPort);
-        SetNullableInt64(SegmentColumnId.ByteValue, at, row.ByteValue);
-        SetNullableUInt8(SegmentColumnId.ByteDomain, at, row.ByteDomain is { } domain ? checked((byte)domain) : null);
-        SetNullableUInt8(SegmentColumnId.AccountingSide, at, row.AccountingSide is { } side ? checked((byte)side) : null);
-        SetNullableUInt8(SegmentColumnId.MeasurementUnit, at, row.MeasurementUnit is { } unit ? checked((byte)unit) : null);
-        SetUInt8(SegmentColumnId.ByteAvailability, at, checked((byte)row.ByteAvailability));
-        SetNullableInt64(SegmentColumnId.StatusCode, at, row.StatusCode);
-        SetUInt8(SegmentColumnId.StatusAvailability, at, checked((byte)row.StatusAvailability));
-        SetUInt8(SegmentColumnId.AttributionQuality, at, checked((byte)row.AttributionQuality));
-        SetUInt8(SegmentColumnId.CorrelationQuality, at, checked((byte)row.CorrelationQuality));
-        SetUInt8(SegmentColumnId.MeasurementQuality, at, checked((byte)row.MeasurementQuality));
-        SetUInt8(SegmentColumnId.TimingQuality, at, checked((byte)row.TimingQuality));
-        SetUInt16(SegmentColumnId.Markers, at, (ushort)row.Markers);
-
-        keys.Add(new(row.NativeTicks, row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey));
-        rowCount++;
+        int at = builder.BeginRow();
+        builder.SetUInt32(SegmentColumnId.RawStreamId, at, row.RawStreamId);
+        builder.SetUInt32(SegmentColumnId.RawSourceEpoch, at, row.RawSourceEpoch);
+        builder.SetUInt64(SegmentColumnId.RawRecordOrdinal, at, row.RawRecordOrdinal);
+        builder.SetNullableUInt64(SegmentColumnId.JournalRecordIndex, at, row.JournalRecordIndex);
+        builder.SetUInt64(SegmentColumnId.FactKeyHigh, at, row.FactKey.High);
+        builder.SetUInt64(SegmentColumnId.FactKeyLow, at, row.FactKey.Low);
+        builder.SetUInt32(
+            SegmentColumnId.SchemaCode,
+            at,
+            builder.InternSchema(row.ProviderId, row.EventId, row.DescriptorVersion, row.SchemaFingerprint));
+        builder.SetUInt8(SegmentColumnId.Opcode, at, row.Opcode);
+        builder.SetInt64(SegmentColumnId.NativeTicks, at, row.NativeTicks);
+        builder.SetNullableInt64(SegmentColumnId.SessionRelativeTicks, at, row.SessionRelativeTicks);
+        builder.SetInt32(SegmentColumnId.HeaderProcessId, at, row.HeaderProcessId);
+        builder.SetInt32(SegmentColumnId.HeaderThreadId, at, row.HeaderThreadId);
+        builder.SetUInt16(SegmentColumnId.ProcessorNumber, at, row.ProcessorNumber);
+        builder.SetNullableGuid(SegmentColumnId.ActivityId, at, row.ActivityId);
+        builder.SetNullableGuid(SegmentColumnId.RelatedActivityId, at, row.RelatedActivityId);
+        builder.SetUInt8(SegmentColumnId.Mechanism, at, checked((byte)row.Mechanism));
+        builder.SetUInt8(SegmentColumnId.Layer, at, checked((byte)row.Layer));
+        builder.SetUInt8(SegmentColumnId.ObservationKind, at, checked((byte)row.Kind));
+        builder.SetUInt8(SegmentColumnId.Direction, at, checked((byte)row.Direction));
+        builder.SetNullableInt32(SegmentColumnId.OwnerProcessId, at, row.OwnerProcessId);
+        builder.SetText(SegmentColumnId.ResourceName, at, row.ResourceName);
+        builder.SetNullableGuid(SegmentColumnId.SourceIdentifier, at, row.SourceIdentifier);
+        builder.SetNullableUInt8(SegmentColumnId.EndpointAddressFamily, at, row.EndpointAddressFamily);
+        builder.SetNullableUInt32(SegmentColumnId.SourceEndpointAddress, at, row.SourceEndpointAddress);
+        builder.SetNullableUInt16(SegmentColumnId.SourceEndpointPort, at, row.SourceEndpointPort);
+        builder.SetNullableUInt32(SegmentColumnId.DestinationEndpointAddress, at, row.DestinationEndpointAddress);
+        builder.SetNullableUInt16(SegmentColumnId.DestinationEndpointPort, at, row.DestinationEndpointPort);
+        builder.SetNullableInt64(SegmentColumnId.ByteValue, at, row.ByteValue);
+        builder.SetNullableUInt8(SegmentColumnId.ByteDomain, at, row.ByteDomain is { } domain ? checked((byte)domain) : null);
+        builder.SetNullableUInt8(SegmentColumnId.AccountingSide, at, row.AccountingSide is { } side ? checked((byte)side) : null);
+        builder.SetNullableUInt8(SegmentColumnId.MeasurementUnit, at, row.MeasurementUnit is { } unit ? checked((byte)unit) : null);
+        builder.SetUInt8(SegmentColumnId.ByteAvailability, at, checked((byte)row.ByteAvailability));
+        builder.SetNullableInt64(SegmentColumnId.StatusCode, at, row.StatusCode);
+        builder.SetUInt8(SegmentColumnId.StatusAvailability, at, checked((byte)row.StatusAvailability));
+        builder.SetUInt8(SegmentColumnId.AttributionQuality, at, checked((byte)row.AttributionQuality));
+        builder.SetUInt8(SegmentColumnId.CorrelationQuality, at, checked((byte)row.CorrelationQuality));
+        builder.SetUInt8(SegmentColumnId.MeasurementQuality, at, checked((byte)row.MeasurementQuality));
+        builder.SetUInt8(SegmentColumnId.TimingQuality, at, checked((byte)row.TimingQuality));
+        builder.SetUInt16(SegmentColumnId.Markers, at, (ushort)row.Markers);
+        builder.EndRow(new(row.NativeTicks, row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey, 0));
     }
 
     /// <summary>
     /// Writes the segment. Rows are sorted into the canonical order — time, then the raw locator, then the
     /// fact key — which is total, so the file is a function of its row set rather than of arrival order.
     /// </summary>
-    public SegmentBuildResult Build(ushort firstDictionaryId = 1)
+    public SegmentBuildResult Build(ushort firstDictionaryId = 1) => builder.Build(firstDictionaryId);
+}
+
+/// <summary>
+/// Builds one immutable `source-fields-v1` segment: the source correlation and object fields of the observations
+/// its rows name, one row per (observation, field). The container, the order, the bitmaps and the refusals are the
+/// ones every segment has; only the column set differs.
+/// </summary>
+public sealed class SourceFieldWriterV1
+{
+    private readonly SegmentTableBuilder builder;
+
+    public SourceFieldWriterV1(SegmentIdentityV1 identity, int ordinal)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentOutOfRangeException.ThrowIfNegative(ordinal);
+        builder = new(
+            identity,
+            ordinal,
+            SegmentTableId.SourceFieldsV1,
+            SegmentFormatV1.SourceFieldColumns,
+            textColumn: SegmentColumnId.FieldText,
+            schemaColumn: null);
+    }
+
+    public int RowCount => builder.RowCount;
+
+    public long StagedBytes => builder.StagedBytes;
+
+    public void Add(SourceFieldRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        string? problem = row.Validate();
+        if (problem is not null)
+        {
+            throw new ArgumentException(problem, nameof(row));
+        }
+
+        int at = builder.BeginRow();
+        builder.SetUInt32(SegmentColumnId.RawStreamId, at, row.RawStreamId);
+        builder.SetUInt32(SegmentColumnId.RawSourceEpoch, at, row.RawSourceEpoch);
+        builder.SetUInt64(SegmentColumnId.RawRecordOrdinal, at, row.RawRecordOrdinal);
+        builder.SetUInt64(SegmentColumnId.FactKeyHigh, at, row.FactKey.High);
+        builder.SetUInt64(SegmentColumnId.FactKeyLow, at, row.FactKey.Low);
+        builder.SetInt64(SegmentColumnId.NativeTicks, at, row.NativeTicks);
+        builder.SetUInt16(SegmentColumnId.SourceField, at, (ushort)row.Field);
+        builder.SetNullableInt64(SegmentColumnId.FieldValue, at, row.Value);
+        builder.SetText(SegmentColumnId.FieldText, at, row.Text);
+        builder.SetUInt8(SegmentColumnId.FieldAvailability, at, checked((byte)row.Availability));
+        builder.EndRow(new(row.NativeTicks, row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey, (ushort)row.Field));
+    }
+
+    /// <summary>
+    /// Writes the segment in canonical order — time, raw locator, fact key, then field — which is total because one
+    /// observation carries each field at most once.
+    /// </summary>
+    public SegmentBuildResult Build(ushort firstDictionaryId = 1) => builder.Build(firstDictionaryId);
+}
+
+/// <summary>
+/// The container mechanics every table shares: column buffers that grow with the rows, one optional text column with
+/// §10.2's dictionary budget and variable-chunk fallback, one optional schema column interned into a schema
+/// dictionary, the canonical sort, time blocks, the directory, the header and the trailing digest.
+/// </summary>
+internal sealed class SegmentTableBuilder
+{
+    private readonly SegmentIdentityV1 identity;
+    private readonly int ordinal;
+    private readonly SegmentTableId table;
+    private readonly IReadOnlyList<SegmentColumnSpec> columns;
+    private readonly SegmentColumnId? textColumn;
+    private readonly SegmentColumnId? schemaColumn;
+    private readonly Dictionary<SegmentColumnId, int> positions;
+    private readonly byte[][] values;
+    private readonly bool[][] presence;
+    private readonly List<string?> texts = [];
+    private readonly List<SortKey> keys = [];
+    private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), (string Entry, uint Local)> schemas = [];
+    private readonly List<string> schemaEntries = [];
+    private readonly long fixedBytes;
+    private readonly int fixedWidthPerRow;
+    private long stagedTextBytes;
+    private readonly int nullableColumns;
+    private int rowCount;
+
+    public SegmentTableBuilder(
+        SegmentIdentityV1 identity,
+        int ordinal,
+        SegmentTableId table,
+        IReadOnlyList<SegmentColumnSpec> columns,
+        SegmentColumnId? textColumn,
+        SegmentColumnId? schemaColumn)
+    {
+        this.identity = identity;
+        this.ordinal = ordinal;
+        this.table = table;
+        this.columns = columns;
+        this.textColumn = textColumn;
+        this.schemaColumn = schemaColumn;
+        positions = [];
+        for (int index = 0; index < columns.Count; index++)
+        {
+            positions[columns[index].Id] = index;
+        }
+
+        values = new byte[columns.Count][];
+        presence = new bool[columns.Count][];
+        for (int index = 0; index < columns.Count; index++)
+        {
+            values[index] = [];
+            presence[index] = [];
+        }
+
+        fixedBytes = SegmentFormatV1.HeaderLength
+            + (columns.Count * (long)SegmentFormatV1.ColumnEntryLength)
+            + SegmentFormatV1.TrailerLength;
+        fixedWidthPerRow = columns.Sum(column => SegmentFormatV1.WidthOf(column.Type));
+        nullableColumns = columns.Count(column => column.Nullable);
+    }
+
+    public int RowCount => rowCount;
+
+    public long StagedBytes =>
+        fixedBytes + ((long)rowCount * fixedWidthPerRow) + ((long)nullableColumns * ((rowCount + 7) / 8))
+        + stagedTextBytes;
+
+    private int TimeBlockCount => Math.Max(1, (rowCount + SegmentFormatV1.RowsPerTimeBlock - 1) / SegmentFormatV1.RowsPerTimeBlock);
+
+    /// <summary>Starts one row and returns its position. A full segment refuses rather than writing past its bound.</summary>
+    public int BeginRow() =>
+        rowCount == SegmentFormatV1.MaximumRowsPerSegment
+            ? throw new InvalidOperationException(
+                $"A segment holds at most {SegmentFormatV1.MaximumRowsPerSegment} rows. This one is full and "
+                + "the derivation flushes it rather than writing past the bound.")
+            : rowCount;
+
+    /// <summary>Finishes the row begun last, with its place in canonical order.</summary>
+    public void EndRow(SortKey key)
+    {
+        keys.Add(key);
+        rowCount++;
+    }
+
+    /// <summary>
+    /// Interns a descriptor and returns the local code the schema column stores until <c>Build</c> remaps it onto
+    /// the published dictionary. A descriptor's canonical text is built once per distinct descriptor, never per row.
+    /// </summary>
+    public uint InternSchema(Guid providerId, ushort eventId, byte version, string fingerprint)
+    {
+        (Guid, ushort, byte) key = (providerId, eventId, version);
+        string expected = SegmentFormatV1.SchemaEntry(providerId, eventId, version, fingerprint);
+        if (schemas.TryGetValue(key, out (string Entry, uint Local) existing))
+        {
+            return existing.Entry.Equals(expected, StringComparison.Ordinal)
+                ? existing.Local
+                : throw new InvalidOperationException(
+                    $"Descriptor {providerId:D}/{eventId}/v{version} already carries a different schema "
+                    + "fingerprint in this segment. A descriptor cannot change shape inside one derivation without "
+                    + "a new identity.");
+        }
+
+        var local = (uint)schemaEntries.Count;
+        schemaEntries.Add(expected);
+        schemas.Add(key, (expected, local));
+        return local;
+    }
+
+    public SegmentBuildResult Build(ushort firstDictionaryId)
     {
         if (rowCount == 0)
         {
@@ -187,42 +335,54 @@ public sealed class SegmentWriterV1
             if (SortKey.Compare(keys[order[index - 1]], keys[order[index]]) == 0)
             {
                 throw new InvalidOperationException(
-                    "Two rows of this segment share one observation identity. A segment is refused rather "
-                    + "than published with a fact that would be counted twice (I2, I5).");
+                    table == SegmentTableId.ObservationV1
+                        ? "Two rows of this segment share one observation identity. A segment is refused rather "
+                            + "than published with a fact that would be counted twice (I2, I5)."
+                        : "Two rows of this segment carry the same field of one observation. A segment is refused "
+                            + "rather than published with a field that says two different things (I2).");
             }
         }
 
-        SegmentDictionaryV1 schemaDictionary = SegmentDictionaryV1.Create(
-            firstDictionaryId,
-            SegmentDictionaryKind.Schema,
-            schemaEntries);
-        SegmentDictionaryV1? nameDictionary = TryBuildNameDictionary((ushort)(firstDictionaryId + 1));
-        List<SegmentDictionaryV1> dictionaries = nameDictionary is null
-            ? [schemaDictionary]
-            : [schemaDictionary, nameDictionary];
+        ushort nextDictionary = firstDictionaryId;
+        SegmentDictionaryV1? schemaDictionary = null;
+        if (schemaColumn is not null)
+        {
+            schemaDictionary = SegmentDictionaryV1.Create(nextDictionary++, SegmentDictionaryKind.Schema, schemaEntries);
+        }
 
-        var plan = new List<SegmentColumnDescriptor>(SegmentFormatV1.ObservationColumns.Count);
+        SegmentDictionaryV1? textDictionary = textColumn is null ? null : TryBuildTextDictionary(nextDictionary);
+        List<SegmentDictionaryV1> dictionaries = [];
+        if (schemaDictionary is not null)
+        {
+            dictionaries.Add(schemaDictionary);
+        }
+
+        if (textDictionary is not null)
+        {
+            dictionaries.Add(textDictionary);
+        }
+
+        var plan = new List<SegmentColumnDescriptor>(columns.Count);
         int nullBitmapBytes = (rowCount + 7) / 8;
         int cursor = Align(
             SegmentFormatV1.HeaderLength
-            + (SegmentFormatV1.ObservationColumns.Count * SegmentFormatV1.ColumnEntryLength)
+            + (columns.Count * SegmentFormatV1.ColumnEntryLength)
             + (TimeBlockCount * SegmentFormatV1.TimeBlockEntryLength));
 
-        foreach (SegmentColumnSpec column in SegmentFormatV1.ObservationColumns)
+        foreach (SegmentColumnSpec column in columns)
         {
-            SegmentColumnEncoding encoding = column.Id == SegmentColumnId.ResourceName
-                ? nameDictionary is null
+            SegmentColumnEncoding encoding = column.Id == textColumn
+                ? textDictionary is null
                     ? SegmentColumnEncoding.VariableReference
                     : SegmentColumnEncoding.Dictionary
-                : column.Id == SegmentColumnId.SchemaCode
+                : column.Id == schemaColumn
                     ? SegmentColumnEncoding.Dictionary
                     : SegmentColumnEncoding.Plain;
-            ushort dictionaryId = column.Id switch
-            {
-                SegmentColumnId.SchemaCode => schemaDictionary.DictionaryId,
-                SegmentColumnId.ResourceName when nameDictionary is not null => nameDictionary.DictionaryId,
-                _ => 0,
-            };
+            ushort dictionaryId = column.Id == schemaColumn
+                ? schemaDictionary!.DictionaryId
+                : column.Id == textColumn && textDictionary is not null
+                    ? textDictionary.DictionaryId
+                    : (ushort)0;
             int width = encoding == SegmentColumnEncoding.VariableReference
                 ? 2 * sizeof(uint)
                 : encoding == SegmentColumnEncoding.Dictionary
@@ -256,7 +416,7 @@ public sealed class SegmentWriterV1
         }
 
         int chunkOffset = cursor;
-        byte[] chunk = nameDictionary is null ? BuildVariableChunk(order) : [];
+        byte[] chunk = textColumn is not null && textDictionary is null ? BuildVariableChunk(order) : [];
         cursor = Align(chunkOffset + chunk.Length);
         int fileLength = cursor + SegmentFormatV1.TrailerLength;
         if (fileLength > SegmentFormatV1.MaximumSegmentBytes)
@@ -269,13 +429,13 @@ public sealed class SegmentWriterV1
         byte[] file = new byte[fileLength];
         for (int index = 0; index < plan.Count; index++)
         {
-            plan[index] = WriteColumn(file, plan[index], order, schemaDictionary, nameDictionary);
+            plan[index] = WriteColumn(file, plan[index], order, schemaDictionary, textDictionary);
         }
 
         chunk.CopyTo(file.AsSpan(chunkOffset));
         long minTicks = keys[order[0]].NativeTicks;
         long maxTicks = keys[order[rowCount - 1]].NativeTicks;
-        Guid segmentId = identity.SegmentIdFor(ordinal, rowCount, minTicks, maxTicks);
+        Guid segmentId = identity.SegmentIdFor(table, ordinal, rowCount, minTicks, maxTicks);
         WriteTimeBlocks(file, order);
         WriteDirectory(file, plan);
         WriteHeader(file, segmentId, minTicks, maxTicks, chunkOffset, chunk.Length, fileLength);
@@ -285,49 +445,107 @@ public sealed class SegmentWriterV1
         return new(file, dictionaries, segmentId, rowCount, minTicks, maxTicks, plan);
     }
 
-    private int TimeBlockCount => Math.Max(1, (rowCount + SegmentFormatV1.RowsPerTimeBlock - 1) / SegmentFormatV1.RowsPerTimeBlock);
+    public void SetUInt8(SegmentColumnId id, int row, byte value) => Slot(id, row, 1)[0] = value;
+
+    public void SetUInt16(SegmentColumnId id, int row, ushort value) =>
+        BinaryPrimitives.WriteUInt16LittleEndian(Slot(id, row, 2), value);
+
+    public void SetUInt32(SegmentColumnId id, int row, uint value) =>
+        BinaryPrimitives.WriteUInt32LittleEndian(Slot(id, row, 4), value);
+
+    public void SetInt32(SegmentColumnId id, int row, int value) =>
+        BinaryPrimitives.WriteInt32LittleEndian(Slot(id, row, 4), value);
+
+    public void SetUInt64(SegmentColumnId id, int row, ulong value) =>
+        BinaryPrimitives.WriteUInt64LittleEndian(Slot(id, row, 8), value);
+
+    public void SetInt64(SegmentColumnId id, int row, long value) =>
+        BinaryPrimitives.WriteInt64LittleEndian(Slot(id, row, 8), value);
+
+    public void SetNullableUInt8(SegmentColumnId id, int row, byte? value)
+    {
+        Slot(id, row, 1)[0] = value ?? 0;
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableUInt16(SegmentColumnId id, int row, ushort? value)
+    {
+        BinaryPrimitives.WriteUInt16LittleEndian(Slot(id, row, 2), value ?? 0);
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableUInt32(SegmentColumnId id, int row, uint? value)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(Slot(id, row, 4), value ?? 0);
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableInt32(SegmentColumnId id, int row, int? value)
+    {
+        BinaryPrimitives.WriteInt32LittleEndian(Slot(id, row, 4), value ?? 0);
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableUInt64(SegmentColumnId id, int row, ulong? value)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(Slot(id, row, 8), value ?? 0);
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableInt64(SegmentColumnId id, int row, long? value)
+    {
+        BinaryPrimitives.WriteInt64LittleEndian(Slot(id, row, 8), value ?? 0);
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetNullableGuid(SegmentColumnId id, int row, Guid? value)
+    {
+        Span<byte> slot = Slot(id, row, 16);
+        if (value is { } identifier)
+        {
+            _ = identifier.TryWriteBytes(slot, bigEndian: true, out _);
+        }
+        else
+        {
+            slot.Clear();
+        }
+
+        MarkPresent(id, row, value is not null);
+    }
+
+    public void SetText(SegmentColumnId id, int row, string? value)
+    {
+        if (id != textColumn)
+        {
+            throw new InvalidOperationException($"Column {id} is not this table's text column.");
+        }
+
+        while (texts.Count <= row)
+        {
+            texts.Add(null);
+        }
+
+        if (texts[row] is { } previous)
+        {
+            stagedTextBytes -= Encoding.UTF8.GetByteCount(previous);
+        }
+
+        texts[row] = value;
+        if (value is not null)
+        {
+            stagedTextBytes += Encoding.UTF8.GetByteCount(value);
+        }
+
+        MarkPresent(id, row, value is not null);
+    }
 
     private static int Align(int offset) => (offset + 7) & ~7;
 
-    /// <summary>
-    /// Interns a row's descriptor and returns the local code the column stores until <c>Build</c> remaps it
-    /// onto the published dictionary. A descriptor's canonical text is built once per distinct descriptor,
-    /// never once per row.
-    /// </summary>
-    private uint InternSchema(ObservationRowV1 row)
-    {
-        (Guid, ushort, byte) key = (row.ProviderId, row.EventId, row.DescriptorVersion);
-        if (schemas.TryGetValue(key, out (string Entry, uint Local) existing))
-        {
-            string expected = SegmentFormatV1.SchemaEntry(
-                row.ProviderId,
-                row.EventId,
-                row.DescriptorVersion,
-                row.SchemaFingerprint);
-            return existing.Entry.Equals(expected, StringComparison.Ordinal)
-                ? existing.Local
-                : throw new InvalidOperationException(
-                    $"Descriptor {row.ProviderId:D}/{row.EventId}/v{row.DescriptorVersion} already carries a "
-                    + "different schema fingerprint in this segment. A descriptor cannot change shape inside "
-                    + "one derivation without a new identity.");
-        }
-
-        string entry = SegmentFormatV1.SchemaEntry(
-            row.ProviderId,
-            row.EventId,
-            row.DescriptorVersion,
-            row.SchemaFingerprint);
-        var local = (uint)schemaEntries.Count;
-        schemaEntries.Add(entry);
-        schemas.Add(key, (entry, local));
-        return local;
-    }
-
-    private SegmentDictionaryV1? TryBuildNameDictionary(ushort dictionaryId)
+    private SegmentDictionaryV1? TryBuildTextDictionary(ushort dictionaryId)
     {
         // A column no row has a value in needs no dictionary. Publishing an empty one would make every
         // generation carry a file that resolves nothing, and a reader would have to load it to find that out.
-        if (!resourceNames.Any(name => name is not null))
+        if (!texts.Any(text => text is not null))
         {
             return null;
         }
@@ -337,7 +555,7 @@ public sealed class SegmentWriterV1
             return SegmentDictionaryV1.Create(
                 dictionaryId,
                 SegmentDictionaryKind.Utf8Text,
-                resourceNames.Where(name => name is not null).Select(name => name!));
+                texts.Where(text => text is not null).Select(text => text!));
         }
         catch (SegmentDictionaryBudgetException)
         {
@@ -352,13 +570,13 @@ public sealed class SegmentWriterV1
         var chunk = new List<byte>();
         foreach (int row in order)
         {
-            string? name = resourceNames[row];
-            if (name is null)
+            string? text = row < texts.Count ? texts[row] : null;
+            if (text is null)
             {
                 continue;
             }
 
-            chunk.AddRange(Encoding.UTF8.GetBytes(name));
+            chunk.AddRange(Encoding.UTF8.GetBytes(text));
             if (chunk.Count > SegmentFormatV1.MaximumVariableChunkBytes)
             {
                 throw new InvalidOperationException(
@@ -374,21 +592,21 @@ public sealed class SegmentWriterV1
         byte[] file,
         SegmentColumnDescriptor descriptor,
         int[] order,
-        SegmentDictionaryV1 schemaDictionary,
-        SegmentDictionaryV1? nameDictionary)
+        SegmentDictionaryV1? schemaDictionary,
+        SegmentDictionaryV1? textDictionary)
     {
         Span<byte> destination = file.AsSpan(descriptor.ValueOffset, descriptor.ValueLength);
         Span<byte> bitmap = descriptor.Nullable
             ? file.AsSpan(descriptor.NullBitmapOffset, descriptor.NullBitmapLength)
             : [];
-        int position = IndexOf(descriptor.Id);
+        int position = positions[descriptor.Id];
         int known = 0;
         int chunkCursor = 0;
 
         for (int row = 0; row < rowCount; row++)
         {
             int source = order[row];
-            bool present = !descriptor.Nullable || presence[position][source];
+            bool present = !descriptor.Nullable || (source < presence[position].Length && presence[position][source]);
             if (present && descriptor.Nullable)
             {
                 bitmap[row >> 3] |= (byte)(1 << (row & 7));
@@ -401,11 +619,10 @@ public sealed class SegmentWriterV1
 
             switch (descriptor.Encoding)
             {
-                case SegmentColumnEncoding.Dictionary when descriptor.Id == SegmentColumnId.SchemaCode:
+                case SegmentColumnEncoding.Dictionary when descriptor.Id == schemaColumn:
                 {
-                    uint local = BinaryPrimitives.ReadUInt32LittleEndian(
-                        values[position].AsSpan(source * sizeof(uint)));
-                    _ = schemaDictionary.TryGetCode(schemaEntries[(int)local], out uint code);
+                    uint local = BinaryPrimitives.ReadUInt32LittleEndian(values[position].AsSpan(source * sizeof(uint)));
+                    _ = schemaDictionary!.TryGetCode(schemaEntries[(int)local], out uint code);
                     BinaryPrimitives.WriteUInt32LittleEndian(destination[(row * sizeof(uint))..], code);
                     break;
                 }
@@ -413,9 +630,9 @@ public sealed class SegmentWriterV1
                 case SegmentColumnEncoding.Dictionary:
                 {
                     uint code = 0;
-                    if (present && nameDictionary is not null)
+                    if (present && textDictionary is not null)
                     {
-                        _ = nameDictionary.TryGetCode(resourceNames[source]!, out code);
+                        _ = textDictionary.TryGetCode(texts[source]!, out code);
                     }
 
                     BinaryPrimitives.WriteUInt32LittleEndian(destination[(row * sizeof(uint))..], code);
@@ -424,7 +641,7 @@ public sealed class SegmentWriterV1
 
                 case SegmentColumnEncoding.VariableReference:
                 {
-                    int length = present ? Encoding.UTF8.GetByteCount(resourceNames[source]!) : 0;
+                    int length = present ? Encoding.UTF8.GetByteCount(texts[source]!) : 0;
                     BinaryPrimitives.WriteUInt32LittleEndian(
                         destination[(row * 2 * sizeof(uint))..],
                         present ? (uint)chunkCursor : 0);
@@ -438,7 +655,12 @@ public sealed class SegmentWriterV1
                 default:
                 {
                     int width = SegmentFormatV1.WidthOf(descriptor.Type);
-                    values[position].AsSpan(source * width, width).CopyTo(destination[(row * width)..]);
+                    ReadOnlySpan<byte> stored = values[position].AsSpan();
+                    if ((source + 1) * width <= stored.Length)
+                    {
+                        stored.Slice(source * width, width).CopyTo(destination[(row * width)..]);
+                    }
+
                     break;
                 }
             }
@@ -455,8 +677,7 @@ public sealed class SegmentWriterV1
 
     private void WriteTimeBlocks(byte[] file, int[] order)
     {
-        int offset = SegmentFormatV1.HeaderLength
-            + (SegmentFormatV1.ObservationColumns.Count * SegmentFormatV1.ColumnEntryLength);
+        int offset = SegmentFormatV1.HeaderLength + (columns.Count * SegmentFormatV1.ColumnEntryLength);
         for (int block = 0; block < TimeBlockCount; block++)
         {
             int first = block * SegmentFormatV1.RowsPerTimeBlock;
@@ -518,38 +739,28 @@ public sealed class SegmentWriterV1
         BinaryPrimitives.WriteUInt32LittleEndian(header[68..], (uint)rowCount);
         BinaryPrimitives.WriteInt64LittleEndian(header[72..], minTicks);
         BinaryPrimitives.WriteInt64LittleEndian(header[80..], maxTicks);
-        BinaryPrimitives.WriteUInt16LittleEndian(header[88..], (ushort)SegmentFormatV1.ObservationColumns.Count);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[88..], (ushort)columns.Count);
         BinaryPrimitives.WriteUInt16LittleEndian(header[90..], (ushort)TimeBlockCount);
         BinaryPrimitives.WriteUInt32LittleEndian(header[92..], (uint)identity.TimestampEncoding);
         BinaryPrimitives.WriteUInt32LittleEndian(header[96..], SegmentFormatV1.HeaderLength);
         BinaryPrimitives.WriteUInt32LittleEndian(
             header[100..],
-            (uint)(SegmentFormatV1.HeaderLength
-                + (SegmentFormatV1.ObservationColumns.Count * SegmentFormatV1.ColumnEntryLength)));
+            (uint)(SegmentFormatV1.HeaderLength + (columns.Count * SegmentFormatV1.ColumnEntryLength)));
         BinaryPrimitives.WriteUInt32LittleEndian(header[104..], (uint)chunkOffset);
         BinaryPrimitives.WriteUInt32LittleEndian(header[108..], (uint)chunkLength);
         BinaryPrimitives.WriteUInt32LittleEndian(header[112..], (uint)fileLength);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[116..], (uint)SegmentTableId.ObservationV1);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[116..], (uint)table);
         BinaryPrimitives.WriteUInt32LittleEndian(header[120..], Crc32C.Compute(header[..120]));
         BinaryPrimitives.WriteUInt32LittleEndian(header[124..], 0);
     }
 
-    private static int IndexOf(SegmentColumnId id)
-    {
-        for (int index = 0; index < SegmentFormatV1.ObservationColumns.Count; index++)
-        {
-            if (SegmentFormatV1.ObservationColumns[index].Id == id)
-            {
-                return index;
-            }
-        }
-
-        throw new ArgumentOutOfRangeException(nameof(id), id, "This column is not part of `observation-v1`.");
-    }
-
     private Span<byte> Slot(SegmentColumnId id, int row, int width)
     {
-        int position = IndexOf(id);
+        if (!positions.TryGetValue(id, out int position))
+        {
+            throw new ArgumentOutOfRangeException(nameof(id), id, $"This column is not part of this table's {table} layout.");
+        }
+
         int required = (row + 1) * width;
         if (values[position].Length < required)
         {
@@ -561,7 +772,7 @@ public sealed class SegmentWriterV1
 
     private void MarkPresent(SegmentColumnId id, int row, bool present)
     {
-        int position = IndexOf(id);
+        int position = positions[id];
         if (presence[position].Length <= row)
         {
             Array.Resize(ref presence[position], Math.Max(row + 1, Math.Max(64, presence[position].Length * 2)));
@@ -569,127 +780,30 @@ public sealed class SegmentWriterV1
 
         presence[position][row] = present;
     }
+}
 
-    private void SetUInt8(SegmentColumnId id, int row, byte value) => Slot(id, row, 1)[0] = value;
-
-    private void SetUInt16(SegmentColumnId id, int row, ushort value) =>
-        BinaryPrimitives.WriteUInt16LittleEndian(Slot(id, row, 2), value);
-
-    private void SetUInt32(SegmentColumnId id, int row, uint value) =>
-        BinaryPrimitives.WriteUInt32LittleEndian(Slot(id, row, 4), value);
-
-    private void SetInt32(SegmentColumnId id, int row, int value) =>
-        BinaryPrimitives.WriteInt32LittleEndian(Slot(id, row, 4), value);
-
-    private void SetUInt64(SegmentColumnId id, int row, ulong value) =>
-        BinaryPrimitives.WriteUInt64LittleEndian(Slot(id, row, 8), value);
-
-    private void SetInt64(SegmentColumnId id, int row, long value) =>
-        BinaryPrimitives.WriteInt64LittleEndian(Slot(id, row, 8), value);
-
-    private void SetNullableUInt8(SegmentColumnId id, int row, byte? value)
+/// <summary>
+/// The canonical order of a segment: the instant, then the raw-record locator, then the fact key, then a table's own
+/// discriminator. The locator is unique inside a capture (I1), so the order is total and the file is reproducible;
+/// the tie breaks are not a claim about which of two records happened first.
+/// </summary>
+internal readonly record struct SortKey(
+    long NativeTicks,
+    uint StreamId,
+    uint SourceEpoch,
+    ulong RecordOrdinal,
+    FactKey FactKey,
+    ushort Discriminator)
+{
+    public static int Compare(SortKey left, SortKey right)
     {
-        Slot(id, row, 1)[0] = value ?? 0;
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableUInt16(SegmentColumnId id, int row, ushort? value)
-    {
-        BinaryPrimitives.WriteUInt16LittleEndian(Slot(id, row, 2), value ?? 0);
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableUInt32(SegmentColumnId id, int row, uint? value)
-    {
-        BinaryPrimitives.WriteUInt32LittleEndian(Slot(id, row, 4), value ?? 0);
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableInt32(SegmentColumnId id, int row, int? value)
-    {
-        BinaryPrimitives.WriteInt32LittleEndian(Slot(id, row, 4), value ?? 0);
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableUInt64(SegmentColumnId id, int row, ulong? value)
-    {
-        BinaryPrimitives.WriteUInt64LittleEndian(Slot(id, row, 8), value ?? 0);
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableInt64(SegmentColumnId id, int row, long? value)
-    {
-        BinaryPrimitives.WriteInt64LittleEndian(Slot(id, row, 8), value ?? 0);
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetNullableGuid(SegmentColumnId id, int row, Guid? value)
-    {
-        Span<byte> slot = Slot(id, row, 16);
-        if (value is { } identifier)
-        {
-            _ = identifier.TryWriteBytes(slot, bigEndian: true, out _);
-        }
-        else
-        {
-            slot.Clear();
-        }
-
-        MarkPresent(id, row, value is not null);
-    }
-
-    private void SetText(SegmentColumnId id, int row, string? value)
-    {
-        while (resourceNames.Count <= row)
-        {
-            resourceNames.Add(null);
-        }
-
-        resourceNames[row] = value;
-        MarkPresent(id, row, value is not null);
-    }
-
-    /// <summary>
-    /// The canonical order of a segment: the instant, then the raw-record locator, then the fact key. The
-    /// locator is unique inside a capture (I1), so the order is total and the file is reproducible; the tie
-    /// breaks are not a claim about which of two records happened first.
-    /// </summary>
-    private readonly record struct SortKey(
-        long NativeTicks,
-        uint StreamId,
-        uint SourceEpoch,
-        ulong RecordOrdinal,
-        FactKey FactKey)
-    {
-        public static int Compare(SortKey left, SortKey right)
-        {
-            int order = left.NativeTicks.CompareTo(right.NativeTicks);
-            if (order != 0)
-            {
-                return order;
-            }
-
-            order = left.StreamId.CompareTo(right.StreamId);
-            if (order != 0)
-            {
-                return order;
-            }
-
-            order = left.SourceEpoch.CompareTo(right.SourceEpoch);
-            if (order != 0)
-            {
-                return order;
-            }
-
-            order = left.RecordOrdinal.CompareTo(right.RecordOrdinal);
-            if (order != 0)
-            {
-                return order;
-            }
-
-            order = left.FactKey.High.CompareTo(right.FactKey.High);
-            return order != 0 ? order : left.FactKey.Low.CompareTo(right.FactKey.Low);
-        }
+        int order = left.NativeTicks.CompareTo(right.NativeTicks);
+        order = order != 0 ? order : left.StreamId.CompareTo(right.StreamId);
+        order = order != 0 ? order : left.SourceEpoch.CompareTo(right.SourceEpoch);
+        order = order != 0 ? order : left.RecordOrdinal.CompareTo(right.RecordOrdinal);
+        order = order != 0 ? order : left.FactKey.High.CompareTo(right.FactKey.High);
+        order = order != 0 ? order : left.FactKey.Low.CompareTo(right.FactKey.Low);
+        return order != 0 ? order : left.Discriminator.CompareTo(right.Discriminator);
     }
 }
 

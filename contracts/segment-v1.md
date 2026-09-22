@@ -1,7 +1,7 @@
 # InterCat derived segment v1
 
-Status: **frozen and implemented**. `observation-v1` is the only table defined at this version. Entity
-binding revisions, relation revisions and aggregate tiles reuse the container and are not defined here.
+Status: **frozen and implemented**. `observation-v1` and the additive `source-fields-v1` table are defined here.
+Entity binding revisions, relation revisions and aggregate tiles reuse the container and are not defined here.
 
 This contract freezes what §20.1 calls the minimum store: immutable fixed-width little-endian columns, null
 bitmaps, variable-data chunks, dictionaries, a raw-record locator and time-block metadata. It owns nothing
@@ -23,7 +23,8 @@ Files are named by the generation that publishes them:
 
 | Name | What it is |
 |---|---|
-| `seg-<generation:D10>-<ordinal:D4>.icats` | One segment. |
+| `seg-<generation:D10>-<ordinal:D4>.icats` | One `observation-v1` segment. |
+| `fld-<generation:D10>-<ordinal:D4>.icats` | One `source-fields-v1` segment. |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | One dictionary, named by the id its segments reference. |
 | `journal-<generation:D10>.icatj` | The admitted `journal-v1` evidence the generation derives from. |
 
@@ -88,13 +89,14 @@ identifier is printed.
 | 104 | 4 | variable chunk offset |
 | 108 | 4 | variable chunk length |
 | 112 | 4 | file length |
-| 116 | 4 | table id, 1 for `observation-v1` |
+| 116 | 4 | table id: 1 `observation-v1`, 2 `source-fields-v1` |
 | 120 | 4 | CRC-32C over bytes `[0, 120)` |
 | 124 | 4 | reserved, zero |
 
 The segment id is derived, not minted: it is a UUIDv8 over the capture, the clock, the derivation, the
-segment's ordinal, its row count and its native interval. Rebuilding a generation from the same evidence
-therefore names the same segment.
+segment's ordinal, its row count and its native interval. For table 2 the table id is also in the segment-id
+preimage; table 1 keeps its original preimage for byte compatibility. Rebuilding a generation from the same
+evidence therefore names the same segment.
 
 ### Column directory entry, 48 bytes
 
@@ -152,6 +154,9 @@ they are deliberately not a claim about which of two indistinguishable records h
 Two rows that compare equal share one observation identity. A writer refuses them rather than publishing a
 fact that would be counted twice (I2, I5).
 
+For `source-fields-v1`, the source-field code follows the fact key as the last sort key. Two rows for one
+observation and one field compare equal and are refused; one observation can carry several distinct fields.
+
 The ordering is chronological, not acquisition order. Acquisition order is in the `RawRecordOrdinal` and
 `JournalRecordIndex` columns and stays distinguishable from it (I7).
 
@@ -207,6 +212,28 @@ product does not have (P11, R2).
 
 No column holds a status *domain*: §7.3 names one but §23 assigns it no enumeration, so a status is stored
 as the code the source reported and nothing claims which domain it is in. That enumeration is owed.
+
+### `source-fields-v1` (table 2)
+
+This table carries the source correlation and object fields that do not fit `observation-v1`. Each row names
+one observation by its raw locator and fact key, carries that observation's native reading, and states one
+`EN-SourceField` meaning. A descriptor that does not admit a field creates no row for it; a declared field
+whose record supplied no value creates a row with a null and an availability reason. The observation table's
+39 columns and bytes do not change. A generation predating this table names no `fld-` dependency.
+
+| Code | Column | Type | Null | Meaning |
+|---|---|---|---|---|
+| 1, 2, 3 | `RawStreamId`, `RawSourceEpoch`, `RawRecordOrdinal` | u32, u32, u64 | no | Locator of the observation carrying the field. |
+| 5, 6 | `FactKeyHigh`, `FactKeyLow` | u64, u64 | no | Its fact key. |
+| 9 | `NativeTicks` | i64 | no | The observation's source reading. |
+| 40 | `SourceField` | u16 | no | `EN-SourceField` meaning; an unknown code refuses the row. |
+| 41 | `FieldValue` | i64 | yes | Numeric source value, without interpretation or unit conversion. |
+| 42 | `FieldText` | text | yes | Text source value, mutually exclusive with `FieldValue`. |
+| 43 | `FieldAvailability` | u8 | no | `Present` with exactly one value; otherwise why neither value is present. |
+
+Its fields, like the observations, are immutable source facts. A process binding may join them by locator
+and fact key but never write its resolved instance into either table. The table uses the same checksums,
+bitmaps, dictionary budget and variable-chunk fallback as table 1.
 
 ## 6. The measurement slot and the measurement
 

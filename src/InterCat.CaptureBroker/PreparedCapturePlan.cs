@@ -436,13 +436,17 @@ public static class BrokerPrepareCompiler
                     int minimumWidth = slot.Kind switch
                     {
                         AdmittedSlotKind.ResourceName => 2,
+                        AdmittedSlotKind.AnsiResourceName => 1,
+                        AdmittedSlotKind.ResourceNameAfterSid => AdmissionPlanCompiler.MinimumSidLength,
                         AdmittedSlotKind.Identifier => 16,
                         _ => slot.Width,
                     };
                     bool widthValid = slot.Kind switch
                     {
                         AdmittedSlotKind.Numeric => slot.Width is > 0 and <= AdmissionPlanCompiler.MaximumSlotWidth,
-                        AdmittedSlotKind.ResourceName => slot.Width == 0,
+                        AdmittedSlotKind.ResourceName
+                            or AdmittedSlotKind.AnsiResourceName
+                            or AdmittedSlotKind.ResourceNameAfterSid => slot.Width == 0,
                         AdmittedSlotKind.Identifier => slot.Width == 16,
                         _ => false,
                     };

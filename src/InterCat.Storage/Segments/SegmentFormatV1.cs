@@ -157,6 +157,21 @@ public enum SegmentColumnId : ushort
 
     /// <summary>Row markers. See <see cref="SegmentRowMarkers"/>; a bit this reader does not know is refused.</summary>
     Markers = 39,
+
+    /// <summary>
+    /// `source-fields-v1`: which source field a row carries, as an `EN-SourceField` code. Column codes are one space
+    /// across tables, so a code means the same thing in every table that carries it.
+    /// </summary>
+    SourceField = 40,
+
+    /// <summary>`source-fields-v1`: the field's value as the source delivered it, or null when it delivered none.</summary>
+    FieldValue = 41,
+
+    /// <summary>`source-fields-v1`: the field's text, for a field whose value is text.</summary>
+    FieldText = 42,
+
+    /// <summary>`source-fields-v1`: why the value is absent when it is.</summary>
+    FieldAvailability = 43,
 }
 
 /// <summary>
@@ -292,6 +307,32 @@ public static class SegmentFormatV1
         new(SegmentColumnId.Markers, SegmentColumnType.Unsigned16, Nullable: false),
     ];
 
+    /// <summary>
+    /// Every column of `source-fields-v1`, in directory order: one row per (observation, source field) for the fields
+    /// §7.3 names as source correlation and object fields that `observation-v1` has no column for.
+    /// </summary>
+    public static IReadOnlyList<SegmentColumnSpec> SourceFieldColumns { get; } =
+    [
+        new(SegmentColumnId.RawStreamId, SegmentColumnType.Unsigned32, Nullable: false),
+        new(SegmentColumnId.RawSourceEpoch, SegmentColumnType.Unsigned32, Nullable: false),
+        new(SegmentColumnId.RawRecordOrdinal, SegmentColumnType.Unsigned64, Nullable: false),
+        new(SegmentColumnId.FactKeyHigh, SegmentColumnType.Unsigned64, Nullable: false),
+        new(SegmentColumnId.FactKeyLow, SegmentColumnType.Unsigned64, Nullable: false),
+        new(SegmentColumnId.NativeTicks, SegmentColumnType.Signed64, Nullable: false),
+        new(SegmentColumnId.SourceField, SegmentColumnType.Unsigned16, Nullable: false),
+        new(SegmentColumnId.FieldValue, SegmentColumnType.Signed64, Nullable: true),
+        new(SegmentColumnId.FieldText, SegmentColumnType.Text, Nullable: true),
+        new(SegmentColumnId.FieldAvailability, SegmentColumnType.Unsigned8, Nullable: false),
+    ];
+
+    /// <summary>The frozen column set of one table, in the order its segments' directories record them.</summary>
+    public static IReadOnlyList<SegmentColumnSpec> ColumnsOf(SegmentTableId table) => table switch
+    {
+        SegmentTableId.ObservationV1 => ObservationColumns,
+        SegmentTableId.SourceFieldsV1 => SourceFieldColumns,
+        _ => throw new ArgumentOutOfRangeException(nameof(table), table, "This reader implements no such table."),
+    };
+
     /// <summary>How wide one value of a plain fixed-width column is.</summary>
     public static int WidthOf(SegmentColumnType type) => type switch
     {
@@ -319,6 +360,16 @@ public static class SegmentFormatV1
                 : string.Create(
                     CultureInfo.InvariantCulture,
                     $"seg-{generation:D10}-{ordinal:D4}.icats");
+
+    /// <summary>The name a generation publishes one `source-fields-v1` segment under.</summary>
+    public static string FieldSegmentFileName(long generation, int ordinal) =>
+        generation is < 1 or > 9_999_999_999
+            ? throw new ArgumentOutOfRangeException(nameof(generation), generation, "A generation is 1..9,999,999,999.")
+            : ordinal is < 0 or > 9_999
+                ? throw new ArgumentOutOfRangeException(nameof(ordinal), ordinal, "A generation publishes at most 10,000 segments.")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"fld-{generation:D10}-{ordinal:D4}.icats");
 
     /// <summary>The name a generation publishes one dictionary under.</summary>
     public static string DictionaryFileName(long generation, int ordinal) =>

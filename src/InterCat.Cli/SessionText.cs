@@ -64,6 +64,7 @@ internal static class SessionText
         ProcessBindingReason.BetweenInstances => "between one instance's exit and the next one's creation",
         ProcessBindingReason.AfterExit => "after the PID's last exit",
         ProcessBindingReason.NotAdmittedByPolicy => "a reused PID: a candidate the evidence policy does not admit",
+        ProcessBindingReason.ExecutableUnknown => "the process is known, but its full image path was not witnessed",
         _ => reason.ToString(),
     };
 

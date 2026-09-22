@@ -258,8 +258,125 @@ public sealed class ProcessInstanceTests
         Assert.NotEqual(a.Id, b.Id);
     }
 
+    [Fact(DisplayName = "I12: source start keys, image paths and a parent's start key survive publication and bind exactly")]
+    public void ProviderFieldsIdentifyProcessesAndLinkParents()
+    {
+        ObservationRowV1 parent = Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\worker.exe" };
+        ObservationRowV1 child = Lifecycle(20, ObservationKind.Create, 401, 2) with { ResourceName = @"C:\Tools\worker.exe" };
+        ObservationRowV1 childExit = Lifecycle(30, ObservationKind.Exit, 401, 3) with { ResourceName = "worker.exe" };
+        using var session = new TemporarySession();
+        Publish(session.Store, [parent, child, childExit], fields:
+        [
+            Field(parent, SourceField.ProcessStartSequence, 800),
+            Field(child, SourceField.ProcessStartSequence, 801),
+            Field(child, SourceField.ParentProcessId, 400),
+            Field(child, SourceField.ParentStartSequence, 800),
+            Field(child, SourceField.ProcessSessionId, 2),
+            Field(childExit, SourceField.ProcessStartSequence, 801),
+        ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+        ProcessInstance mother = index.Instances.Single(item => item.ProcessId == 400);
+        ProcessInstance offspring = index.Instances.Single(item => item.ProcessId == 401);
+        Assert.True(index.StartKeysAvailable);
+        Assert.Equal(ProcessIdentityEvidenceKind.ProviderStartKey, offspring.Key.EvidenceKind);
+        Assert.Equal(801UL, offspring.StartKey?.SequenceNumber);
+        Assert.Equal(mother.Id, offspring.Parent);
+        Assert.Equal(RelationStrength.Direct, offspring.ParentBinding);
+        Assert.Equal(("worker.exe", @"C:\Tools\worker.exe"), (offspring.ImageName, offspring.ImagePath));
+        Assert.Equal(2u, offspring.SessionId);
+
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, new()
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Observations,
+            Grouping = LaneGrouping.Executable,
+        });
+        MetricGroup executable = Assert.Single(grouped.Groups);
+        Assert.Equal(3, executable.Value);
+        Assert.Equal(@"C:\Tools\worker.exe", executable.Executable);
+        Assert.True(grouped.GroupsPartitionTotal);
+    }
+
+    [Fact(DisplayName = "I12: a contradictory provider start key opens a separate lifetime with explicit gaps")]
+    public void ConflictingStartKeysSplitALifetime()
+    {
+        ObservationRowV1 created = Lifecycle(10, ObservationKind.Create, 400, 1);
+        ObservationRowV1 later = Lifecycle(30, ObservationKind.Inventory, 400, 2);
+        using var session = new TemporarySession();
+        Publish(session.Store, [created, later], fields:
+        [
+            Field(created, SourceField.ProcessStartSequence, 7),
+            Field(later, SourceField.ProcessStartSequence, 8),
+        ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+        Assert.Equal(2, index.InstancesOf(400));
+        Assert.Equal(ProcessEvidenceGaps.ExitNotWitnessed, index.Instances[0].Gaps);
+        Assert.Equal(ProcessEvidenceGaps.CreationNotWitnessed, index.Instances[1].Gaps);
+        Assert.Equal((10L, 30L), (index.Instances[0].LifetimeStartNativeTicks, index.Instances[0].LifetimeEndNativeTicks));
+        Assert.Equal(8UL, index.Instances[1].StartKey?.SequenceNumber);
+    }
+
+    [Fact(DisplayName = "I2: process identity refuses a field repeated across field segments")]
+    public void DuplicateFieldAcrossSegmentsIsRefused()
+    {
+        ObservationRowV1 created = Lifecycle(10, ObservationKind.Create, 400, 1);
+        using var session = new TemporarySession();
+        Publish(session.Store, [created], rowsPerSegment: 1, fields:
+        [
+            Field(created, SourceField.ProcessStartSequence, 7),
+            Field(created, SourceField.ProcessStartSequence, 8),
+        ]);
+
+        Assert.Contains("more than one source-field segment", Assert.Throws<InvalidDataException>(() => Derive(session.Store)).Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I12: same-tick exit and reuse bind their lifecycle records by observation identity")]
+    public void SameTickReuseDoesNotMoveTheExit()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(100, ObservationKind.Create, 400, 1),
+            Lifecycle(200, ObservationKind.Exit, 400, 2),
+            Lifecycle(200, ObservationKind.Create, 400, 3),
+        ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+        ProcessInstance first = index.Instances[0];
+        ProcessInstance second = index.Instances[1];
+        Assert.Equal(0, index.Bind(400, 200, true, first.ExitRecord).Instance);
+        Assert.Equal(1, index.Bind(400, 200, true, second.CreationRecord).Instance);
+
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, new()
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Observations,
+            Grouping = LaneGrouping.InstanceOnly,
+        });
+        Assert.Equal(2, grouped.Groups.Single(group => group.Process?.Id == first.Id).Value);
+        Assert.Equal(1, grouped.Groups.Single(group => group.Process?.Id == second.Id).Value);
+    }
+
     private static ProcessInstanceIndex Derive(SessionStore store) =>
-        ProcessInstanceIndex.Derive(TestSessions.Segments(store), TestClock);
+        ProcessInstanceIndex.Derive(
+            TestSessions.Segments(store),
+            TestClock,
+            [.. SessionSegments.FieldNames(store.Current!).Select(name => SessionSegments.Open(store.Root, store.Current!, name))]);
+
+    private static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
+    {
+        RawStreamId = observation.RawStreamId,
+        RawSourceEpoch = observation.RawSourceEpoch,
+        RawRecordOrdinal = observation.RawRecordOrdinal,
+        FactKey = observation.FactKey,
+        NativeTicks = observation.NativeTicks,
+        Field = code,
+        Value = value,
+        Availability = FieldAvailability.Present,
+    };
 
     private static MetricResult SentByProcess(SessionStore store, EvidencePolicy policy) =>
         SessionMetrics.Evaluate(

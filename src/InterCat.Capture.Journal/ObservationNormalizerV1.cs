@@ -137,6 +137,51 @@ public sealed class ObservationNormalizerV1
         };
     }
 
+    /// <summary>
+    /// The §7.3 source correlation and object fields one admitted record carries, which `observation-v1` has no column
+    /// for: one row per admitted slot the catalog gives a meaning, keyed to the observation <paramref name="row"/>
+    /// derived from the same record. A value is carried exactly as the source delivered it; a descriptor that does not
+    /// admit a field yields no row for it, because the capability report already says why per descriptor.
+    /// </summary>
+    public static IReadOnlyList<SourceFieldRowV1> FieldRows(RecordEnvelopeV1 envelope, AdmittedEventPlan plan, ObservationRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(row);
+        IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
+        List<SourceFieldRowV1>? fields = null;
+        AdmittedEvent admitted = default;
+        bool decoded = false;
+        for (int index = 0; index < slots.Count; index++)
+        {
+            if (slots[index].SourceField is not { } field || slots[index].Kind != AdmittedSlotKind.Numeric)
+            {
+                continue;
+            }
+
+            if (!decoded)
+            {
+                admitted = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
+                decoded = true;
+            }
+
+            bool known = admitted.TryGetSlot(index, out long value);
+            (fields ??= []).Add(new()
+            {
+                RawStreamId = row.RawStreamId,
+                RawSourceEpoch = row.RawSourceEpoch,
+                RawRecordOrdinal = row.RawRecordOrdinal,
+                FactKey = row.FactKey,
+                NativeTicks = row.NativeTicks,
+                Field = field,
+                Value = known ? value : null,
+                Availability = known ? FieldAvailability.Present : FieldAvailability.EventLost,
+            });
+        }
+
+        return (IReadOnlyList<SourceFieldRowV1>?)fields ?? [];
+    }
+
     private static SegmentRowMarkers Markers(
         in AdmittedEvent admitted,
         RecordEnvelopeV1 envelope,

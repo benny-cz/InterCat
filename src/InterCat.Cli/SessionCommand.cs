@@ -14,6 +14,7 @@ internal sealed record SessionDocument
     public required SessionGenerationDocument? Generation { get; init; }
     public required SessionRecoveryDocument Recovery { get; init; }
     public required IReadOnlyList<SessionSegmentDocument> Segments { get; init; }
+    public required IReadOnlyList<SessionFieldSegmentDocument> FieldSegments { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
 }
@@ -69,6 +70,15 @@ internal sealed record SessionSegmentDocument
     public required int TimeBlocks { get; init; }
     public required IReadOnlyList<SessionColumnDocument> Columns { get; init; }
     public required IReadOnlyList<SessionMeasurementDocument> Measurements { get; init; }
+}
+
+internal sealed record SessionFieldSegmentDocument
+{
+    public required string Name { get; init; }
+    public required int RowCount { get; init; }
+    public required long MinNativeTicks { get; init; }
+    public required long MaxNativeTicks { get; init; }
+    public required IReadOnlyDictionary<string, long> Fields { get; init; }
 }
 
 internal sealed record SessionColumnDocument
@@ -198,6 +208,7 @@ internal static class SessionCommand
         SessionManifestV1? manifest = store.Current;
         var notes = new List<string>();
         var segments = new List<SessionSegmentDocument>();
+        var fieldSegments = new List<SessionFieldSegmentDocument>();
         SessionCoverageDocument? coverage = null;
 
         if (manifest is null)
@@ -226,6 +237,27 @@ internal static class SessionCommand
                     _ = mechanisms.Add(((Mechanism)mechanismColumn.UnsignedAt(row)!.Value).ToString());
                     _ = layers.Add(((ObservationLayer)layerColumn.UnsignedAt(row)!.Value).ToString());
                 }
+            }
+
+            foreach (string name in SessionSegments.FieldNames(manifest))
+            {
+                SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, name);
+                var counts = new SortedDictionary<string, long>(StringComparer.Ordinal);
+                for (int row = 0; row < segment.RowCount; row++)
+                {
+                    SourceFieldRowV1 field = segment.FieldRow(row);
+                    string key = field.Field.ToString();
+                    counts[key] = counts.GetValueOrDefault(key) + 1;
+                }
+
+                fieldSegments.Add(new()
+                {
+                    Name = name,
+                    RowCount = segment.RowCount,
+                    MinNativeTicks = segment.MinNativeTicks,
+                    MaxNativeTicks = segment.MaxNativeTicks,
+                    Fields = counts,
+                });
             }
 
             coverage = new()
@@ -312,6 +344,7 @@ internal static class SessionCommand
                 OrphanBytes = store.Recovery.OrphanBytes,
             },
             Segments = segments,
+            FieldSegments = fieldSegments,
             Coverage = coverage,
             Notes = notes,
         };
@@ -431,6 +464,7 @@ internal static class SessionCommand
             ConsoleUi.Heading("What the derived segments hold");
             ConsoleUi.Field("Segments", ConsoleUi.Count(coverage.SegmentCount));
             ConsoleUi.Field("Observations", ConsoleUi.Count(coverage.RowCount));
+            ConsoleUi.Field("Source fields", ConsoleUi.Count(document.FieldSegments.Sum(segment => (long)segment.RowCount)));
             ConsoleUi.Field(
                 "Native interval",
                 coverage.MinNativeTicks is null
@@ -438,6 +472,19 @@ internal static class SessionCommand
                     : $"[{coverage.MinNativeTicks:N0}, {coverage.MaxNativeTicks:N0}] source ticks");
             ConsoleUi.Field("Mechanisms", coverage.Mechanisms.Count == 0 ? "none" : string.Join(", ", coverage.Mechanisms));
             ConsoleUi.Field("Layers", coverage.Layers.Count == 0 ? "none" : string.Join(", ", coverage.Layers));
+        }
+
+        if (document.FieldSegments.Count > 0)
+        {
+            ConsoleUi.Heading("Source correlation and object fields");
+            foreach (SessionFieldSegmentDocument segment in document.FieldSegments)
+            {
+                ConsoleUi.Field("Segment", segment.Name);
+                ConsoleUi.Field("Fields", $"{segment.RowCount:N0} rows");
+                ConsoleUi.Table(
+                    ["Field", "Rows"],
+                    [.. segment.Fields.Select(entry => new[] { entry.Key, entry.Value.ToString("N0", CultureInfo.CurrentCulture) })]);
+            }
         }
 
         foreach (SessionSegmentDocument segment in document.Segments)

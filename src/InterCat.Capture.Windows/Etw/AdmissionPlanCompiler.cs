@@ -17,6 +17,12 @@ public static class AdmissionPlanCompiler
     /// <summary>Slots per descriptor, bounded so callback work stays constant (R8).</summary>
     public const int MaximumSlots = 8;
 
+    /// <summary>The shortest SID: revision, sub-authority count and a six-byte authority, with no sub-authority.</summary>
+    public const int MinimumSidLength = 8;
+
+    /// <summary>The most sub-authorities a SID carries (SID_MAX_SUB_AUTHORITIES); a record claiming more is undecodable.</summary>
+    public const int MaximumSidSubAuthorities = 15;
+
     public static SourceAdmissionPlan Compile(
         WindowsSourceDefinition definition,
         ProviderSchema schema,
@@ -99,13 +105,23 @@ public static class AdmissionPlanCompiler
         Dictionary<string, (int Offset, ProviderSchemaField Field)> resolvable = new(StringComparer.OrdinalIgnoreCase);
         int offset = 0;
         string? blockedFrom = null;
+        (int Offset, ProviderSchemaField Field)? leadingSid = null;
+        ProviderSchemaField? afterSid = null;
+        bool followsSid = false;
         foreach (ProviderSchemaField field in descriptor.Fields)
         {
             if (blockedFrom is null)
             {
                 resolvable[field.Name] = (offset, field);
             }
+            else if (followsSid)
+            {
+                // The field right after the first variable-length field, when that field is a SID. A SID states its
+                // own length in its second byte, so this one field is reachable with a bounded shape read.
+                afterSid = field;
+            }
 
+            followsSid = false;
             if (field.WidthKind == FieldWidthKind.Fixed)
             {
                 offset += field.FixedWidth;
@@ -118,7 +134,14 @@ public static class AdmissionPlanCompiler
                 continue;
             }
 
-            // A variable-length field resolves at its own offset but makes every later offset unknowable.
+            // A variable-length field resolves at its own offset but makes every later offset unknowable - except the
+            // one field after a leading SID, whose offset the SID itself determines.
+            if (blockedFrom is null && string.Equals(field.InType, "win:SID", StringComparison.Ordinal))
+            {
+                leadingSid = (offset, field);
+                followsSid = true;
+            }
+
             blockedFrom ??= field.Name;
         }
 
@@ -132,6 +155,40 @@ public static class AdmissionPlanCompiler
         {
             if (!resolvable.TryGetValue(fieldIntent.FieldName, out (int Offset, ProviderSchemaField Field) resolved))
             {
+                if (afterSid is { } named
+                    && leadingSid is { } sid
+                    && string.Equals(named.Name, fieldIntent.FieldName, StringComparison.OrdinalIgnoreCase)
+                    && fieldIntent.Role == FieldRole.ResourceName
+                    && string.Equals(named.InType, "win:UnicodeString", StringComparison.Ordinal)
+                    && !nameSlotTaken
+                    && slots.Count < MaximumSlots)
+                {
+                    slots.Add(new(
+                        named.Name,
+                        fieldIntent.Role,
+                        sid.Offset,
+                        0,
+                        fieldIntent.Unit,
+                        fieldIntent.ByteDomain,
+                        fieldIntent.Transform,
+                        AdmittedSlotKind.ResourceNameAfterSid)
+                    {
+                        SourceField = fieldIntent.SourceField,
+                    });
+                    nameSlotTaken = true;
+                    minimumLength = Math.Max(minimumLength, sid.Offset + MinimumSidLength);
+                    report.Add(new(
+                        named.Name,
+                        FieldAvailability.Present,
+                        fieldIntent.Role,
+                        named.InType,
+                        fieldIntent.Unit,
+                        fieldIntent.ByteDomain,
+                        $"Follows the SID '{sid.Field.Name}', and is reached through that SID's own sub-authority count, "
+                        + "bounded by the record's length."));
+                    continue;
+                }
+
                 bool declaredButUnreachable = false;
                 string? inType = null;
                 foreach (ProviderSchemaField declared in descriptor.Fields)
@@ -156,9 +213,12 @@ public static class AdmissionPlanCompiler
                 continue;
             }
 
-            bool isName = resolved.Field.WidthKind == FieldWidthKind.Variable
-                && fieldIntent.Role == FieldRole.ResourceName
-                && string.Equals(resolved.Field.InType, "win:UnicodeString", StringComparison.Ordinal);
+            bool isVariableName = resolved.Field.WidthKind == FieldWidthKind.Variable
+                && fieldIntent.Role == FieldRole.ResourceName;
+            bool isAnsiName = isVariableName
+                && string.Equals(resolved.Field.InType, "win:AnsiString", StringComparison.Ordinal);
+            bool isName = isAnsiName
+                || (isVariableName && string.Equals(resolved.Field.InType, "win:UnicodeString", StringComparison.Ordinal));
             bool isIdentifier = string.Equals(resolved.Field.InType, "win:GUID", StringComparison.Ordinal)
                 && fieldIntent.Role is FieldRole.CorrelationKey or FieldRole.ResourceName;
             int resolvedWidth = resolved.Field.WidthKind switch
@@ -228,14 +288,19 @@ public static class AdmissionPlanCompiler
                 fieldIntent.Unit,
                 fieldIntent.ByteDomain,
                 fieldIntent.Transform,
-                isName
-                    ? AdmittedSlotKind.ResourceName
-                    : isIdentifier ? AdmittedSlotKind.Identifier : AdmittedSlotKind.Numeric));
+                isAnsiName
+                    ? AdmittedSlotKind.AnsiResourceName
+                    : isName
+                        ? AdmittedSlotKind.ResourceName
+                        : isIdentifier ? AdmittedSlotKind.Identifier : AdmittedSlotKind.Numeric)
+            {
+                SourceField = fieldIntent.SourceField,
+            });
             nameSlotTaken |= isName;
             identifierSlotTaken |= isIdentifier;
             minimumLength = Math.Max(
                 minimumLength,
-                resolved.Offset + (isName ? 2 : isIdentifier ? 16 : resolvedWidth));
+                resolved.Offset + (isAnsiName ? 1 : isName ? 2 : isIdentifier ? 16 : resolvedWidth));
             report.Add(new(
                 resolved.Field.Name,
                 FieldAvailability.Present,

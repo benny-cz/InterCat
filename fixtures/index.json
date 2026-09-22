@@ -387,10 +387,13 @@
       "I12": [
         "I12: 21.1 scenario 5 - a reused PID is two instances, and a late record never moves the newer one's totals",
         "I12: PID and resource reuse produce distinct lifecycle epochs",
+        "I12: a contradictory provider start key opens a separate lifetime with explicit gaps",
         "I12: a created and exited process is one instance whose lifetime holds both records",
         "I12: a creation with no exit before it ends the earlier instance, and says the exit was not seen",
         "I12: a late record with an old start key resolves to the earlier epoch",
         "I12: a rundown and an exit are one instance that was running before the capture",
+        "I12: same-tick exit and reuse bind their lifecycle records by observation identity",
+        "I12: source start keys, image paths and a parent's start key survive publication and bind exactly",
         "I12: an absent activity id stays absent rather than becoming an empty identifier",
         "I12: equal process keys on different hosts never collide",
         "I12: the same PID and creation on another capture's clock is another instance",
@@ -476,7 +479,9 @@
         "I2: an import names the evidence it cannot find instead of importing nothing",
         "I2: an import refuses a bound outside its declared range before reading a record",
         "I2: an import requires both a path and a compiled admission plan",
+        "I2: process identity refuses a field repeated across field segments",
         "I2: records keyed against a derived clock keep one identity across imports",
+        "I2: one observation cannot publish the same source field twice",
         "I2: the same bytes under a different retained-evidence policy are a different import",
         "I2: the same record and derivation yield the same identity every time",
         "I2: two rows with one observation identity are refused rather than counted twice"
@@ -593,7 +598,8 @@
       ],
       "R1": [
         "R1: a published segment carries source facts only, never a resolved identity",
-        "R1: a published segment is immutable, and a later generation reads the same bytes"
+        "R1: a published segment is immutable, and a later generation reads the same bytes",
+        "R1: source fields round-trip with their observation identity and deterministic order"
       ],
       "R10": [
         "R10: inverse zoom restores the viewport within rounding tolerance",
@@ -739,6 +745,7 @@
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a rate with no interval is unavailable rather than divided by the observed span",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
+        "R3: a source field value and its availability cannot disagree",
         "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a single sample answers every quantile from the bucket it fell in",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
@@ -775,6 +782,7 @@
         "R8: invalid ETL bounds and ambiguous output paths are refused",
         "R8: loss before admission outranks every queue outcome",
         "R8: source-reported loss is read into its own counter, never merged with drops",
+        "R8: staged UTF-8 resource names count against the segment's flush budget",
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],
       "R9": [
@@ -783,6 +791,7 @@
         "R9: admitted fields compile to fixed offsets with a minimum body length",
         "R9: an admitted record owns its extended bytes after the source buffer changes",
         "R9: an envelope owns its bytes after the source memory changes",
+        "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets",
         "R9: the callback allocation budget is measurable, so it can be met",
         "R9: writing a batch returns every buffer the records held"
       ]

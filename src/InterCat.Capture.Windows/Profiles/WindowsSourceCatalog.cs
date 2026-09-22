@@ -21,7 +21,8 @@ public sealed record AdmittedFieldIntent(
     MeasurementUnit? Unit = null,
     ByteDomain? ByteDomain = null,
     SlotTransform Transform = SlotTransform.None,
-    string? Notes = null);
+    string? Notes = null,
+    SourceField? SourceField = null);
 
 /// <summary>One event descriptor the adapter intends to admit under a metadata-only policy (§18.2).</summary>
 /// <remarks>
@@ -96,44 +97,44 @@ public static class WindowsSourceCatalog
         new("sport", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the owning process's own endpoint."),
         new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address, Notes: "Network-order address of the peer endpoint."),
         new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the peer endpoint."),
-        new("connid", FieldRole.CorrelationKey, Notes: "Reported as zero on several builds; never an identity by itself (R22)."),
+        new("connid", FieldRole.CorrelationKey, Notes: "Reported as zero on several builds; never an identity by itself (R22).", SourceField: SourceField.ConnectionId),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileCreateFields =
     [
-        new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion."),
-        new("FileObject", FieldRole.ResourceHandle, Notes: "Instance handle of one open pipe or file. Reusable, so it is an identity only inside its observed lifetime (R22)."),
-        new("IssuingThreadId", FieldRole.ThreadAttribution),
+        new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion.", SourceField: SourceField.IoRequestPacket),
+        new("FileObject", FieldRole.ResourceHandle, Notes: "Instance handle of one open pipe or file. Reusable, so it is an identity only inside its observed lifetime (R22).", SourceField: SourceField.FileObject),
+        new("IssuingThreadId", FieldRole.ThreadAttribution, SourceField: SourceField.IssuingThreadId),
         new("FileName", FieldRole.ResourceName, Notes: "Bounded copy of the object path. A pipe name is metadata, not payload (section 18.2)."),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileTransferFields =
     [
-        new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion."),
-        new("FileObject", FieldRole.ResourceHandle),
-        new("FileKey", FieldRole.ResourceHandle, Notes: "Name key of the object, stable across handles to one name."),
-        new("IssuingThreadId", FieldRole.ThreadAttribution),
+        new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion.", SourceField: SourceField.IoRequestPacket),
+        new("FileObject", FieldRole.ResourceHandle, SourceField: SourceField.FileObject),
+        new("FileKey", FieldRole.ResourceHandle, Notes: "Name key of the object, stable across handles to one name.", SourceField: SourceField.FileKey),
+        new("IssuingThreadId", FieldRole.ThreadAttribution, SourceField: SourceField.IssuingThreadId),
         new("IOSize", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.RequestedIo, Notes: "Requested bytes. It is never relabelled as transferred bytes (P3)."),
-        new("ByteOffset", FieldRole.Unclassified),
+        new("ByteOffset", FieldRole.Unclassified, SourceField: SourceField.FileByteOffset),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileLifetimeFields =
     [
-        new("Irp", FieldRole.CorrelationKey),
-        new("FileObject", FieldRole.ResourceHandle),
-        new("FileKey", FieldRole.ResourceHandle),
-        new("IssuingThreadId", FieldRole.ThreadAttribution),
+        new("Irp", FieldRole.CorrelationKey, SourceField: SourceField.IoRequestPacket),
+        new("FileObject", FieldRole.ResourceHandle, SourceField: SourceField.FileObject),
+        new("FileKey", FieldRole.ResourceHandle, SourceField: SourceField.FileKey),
+        new("IssuingThreadId", FieldRole.ThreadAttribution, SourceField: SourceField.IssuingThreadId),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileNameFields =
     [
-        new("FileKey", FieldRole.ResourceHandle),
+        new("FileKey", FieldRole.ResourceHandle, SourceField: SourceField.FileKey),
         new("FileName", FieldRole.ResourceName),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileOperationEndFields =
     [
-        new("Irp", FieldRole.CorrelationKey, Notes: "The only link back to the operation this completion belongs to."),
+        new("Irp", FieldRole.CorrelationKey, Notes: "The only link back to the operation this completion belongs to.", SourceField: SourceField.IoRequestPacket),
         new("ExtraInformation", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.CompletedIo, Notes: "IO status information: completed bytes for a read or write completion."),
         new("Status", FieldRole.Status),
     ];
@@ -141,8 +142,8 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> RpcCallStartFields =
     [
         new("InterfaceUuid", FieldRole.CorrelationKey, Notes: "The RPC interface the call targets. It identifies an interface, never a process (R22)."),
-        new("ProcNum", FieldRole.CorrelationKey, Notes: "Operation number within the interface."),
-        new("Protocol", FieldRole.Unclassified, Notes: "Transport sequence identifier, which says whether the call stayed local."),
+        new("ProcNum", FieldRole.CorrelationKey, Notes: "Operation number within the interface.", SourceField: SourceField.RpcProcedureNumber),
+        new("Protocol", FieldRole.Unclassified, Notes: "Transport sequence identifier, which says whether the call stayed local.", SourceField: SourceField.RpcProtocolSequence),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> RpcCallStopFields =
@@ -153,20 +154,22 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStartFields =
     [
         new("ProcessID", FieldRole.ProcessAttribution),
-        new("ProcessSequenceNumber", FieldRole.CorrelationKey, Notes: "Non-reusable instance discriminator for PID reuse (I12)."),
-        new("CreateTime", FieldRole.Timing, Notes: "FILETIME of process creation; part of the start key."),
-        new("ParentProcessID", FieldRole.ProcessAttribution),
-        new("ParentProcessSequenceNumber", FieldRole.CorrelationKey),
-        new("SessionID", FieldRole.Unclassified),
+        new("ProcessSequenceNumber", FieldRole.CorrelationKey, Notes: "Non-reusable instance discriminator for PID reuse (I12).", SourceField: SourceField.ProcessStartSequence),
+        new("CreateTime", FieldRole.Timing, Notes: "FILETIME of process creation; part of the start key.", SourceField: SourceField.ProcessCreateTime),
+        new("ParentProcessID", FieldRole.ProcessAttribution, SourceField: SourceField.ParentProcessId),
+        new("ParentProcessSequenceNumber", FieldRole.CorrelationKey, SourceField: SourceField.ParentStartSequence),
+        new("SessionID", FieldRole.Unclassified, SourceField: SourceField.ProcessSessionId),
+        new("ImageName", FieldRole.ResourceName, Notes: "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID's own sub-authority count."),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStopFields =
     [
         new("ProcessID", FieldRole.ProcessAttribution),
-        new("ProcessSequenceNumber", FieldRole.CorrelationKey),
-        new("CreateTime", FieldRole.Timing),
-        new("ExitTime", FieldRole.Timing),
+        new("ProcessSequenceNumber", FieldRole.CorrelationKey, SourceField: SourceField.ProcessStartSequence),
+        new("CreateTime", FieldRole.Timing, SourceField: SourceField.ProcessCreateTime),
+        new("ExitTime", FieldRole.Timing, SourceField: SourceField.ProcessExitTime),
         new("ExitCode", FieldRole.Status),
+        new("ImageName", FieldRole.ResourceName, Notes: "The image file name as an 8-bit string, the last field of the stop descriptor."),
     ];
 
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();

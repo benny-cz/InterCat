@@ -218,9 +218,9 @@ internal static class ProcessesCommand
         long unattributed = records.Unattributed.Sum(group => group.Value ?? 0);
         var caveats = new List<string>
         {
-            "An instance is identified by host, boot, PID, which of the PID's instances it is, and the record that "
-            + "witnesses it - never by the PID alone (R22). One seen only in its own records is provisional: the "
-            + "capture holds no lifecycle record of it, so its start is unknown rather than invented.",
+            "An instance is identified by host, boot, PID and its witnessed start key when supplied; otherwise by "
+            + "its observed creation or first witness, never by the PID alone (R22). One seen only in its own "
+            + "records is provisional: the capture holds no lifecycle record of it, so its start is unknown.",
             "Sent and received bytes are each instance's own transport records: sender-accounted for what it sent and "
             + "receiver-accounted for what it received. Added across instances they count a local transfer at both "
             + "ends.",
@@ -327,13 +327,14 @@ internal static class ProcessesCommand
         else
         {
             ConsoleUi.Table(
-                ["PID", "Instance", "Records", "Sent (transport)", "Received (transport)"],
+                ["PID", "Image", "Instance", "Records", "Sent (transport)", "Received (transport)"],
                 [
                     .. shown.Select(item => new[]
                     {
                         reusedPids.Contains(item.Process.ProcessId)
                             ? string.Create(CultureInfo.InvariantCulture, $"{item.Process.ProcessId} #{item.Process.LifecycleEpoch}")
                             : item.Process.ProcessId.ToString(CultureInfo.InvariantCulture),
+                        item.Process.ImageName ?? "not witnessed",
                         Lifetime(item.Process, clock),
                         ConsoleUi.Count(item.Records),
                         item.TransportBytesSent is { } sentBytes ? ConsoleUi.Bytes(sentBytes) : "-",

@@ -14,7 +14,15 @@ public sealed record AdmittedSlotPlan(
     MeasurementUnit? Unit,
     ByteDomain? ByteDomain,
     SlotTransform Transform,
-    AdmittedSlotKind Kind = AdmittedSlotKind.Numeric);
+    AdmittedSlotKind Kind = AdmittedSlotKind.Numeric)
+{
+    /// <summary>
+    /// The meaning the catalog gives this field when it is one of §7.3's source correlation or object fields. It
+    /// decides which derived table the value is carried into, and it is not part of the admission fingerprint: it
+    /// changes what a derivation does with a copied value, never what is copied or persisted.
+    /// </summary>
+    public SourceField? SourceField { get; init; }
+}
 
 /// <summary>What a slot holds. A name is copied into a bounded inline buffer, never into new memory (R9).</summary>
 public enum AdmittedSlotKind
@@ -26,6 +34,19 @@ public enum AdmittedSlotKind
 
     /// <summary>A 16-byte identifier such as an interface UUID, copied whole into the record.</summary>
     Identifier = 3,
+
+    /// <summary>
+    /// An 8-bit resource name, such as the image name a process stop carries. Each byte is widened to one character,
+    /// which is exact for ASCII and is recorded as the admission's reading of any other byte.
+    /// </summary>
+    AnsiResourceName = 4,
+
+    /// <summary>
+    /// A UTF-16 resource name that immediately follows one security identifier. The slot's offset is the identifier's;
+    /// the name's offset is computed per record from the identifier's own sub-authority count, a one-byte shape read
+    /// bounded by the record's length (R9).
+    /// </summary>
+    ResourceNameAfterSid = 5,
 }
 
 /// <summary>A compiled admission plan for exactly one event descriptor version.</summary>

@@ -146,7 +146,12 @@ partition the total: their values add up to it, and a result says so.
 |---|---|---|
 | `InstanceOnly` | the process instance its binding names, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
 | `Mechanism` | its mechanism, a fact about the record | yes |
-| `Executable`, `ServiceContainer`, `UserSession`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
+| `Executable` | the witnessed full image path of its bound process instance; paths compare case-insensitively | yes when at least one path is witnessed |
+| `ServiceContainer`, `UserSession`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
+
+An executable is a full source-witnessed path, not an exit's basename: equal basenames can denote distinct
+binaries. An instance with no full path contributes to `ExecutableUnknown`, an unattributed reason. If no
+full path was witnessed at all, executable grouping is unavailable rather than a ranking with no peers.
 
 Under `InstanceOnly`, a record belongs to the process that **made** it: a send record to its sender, a receive
 record to its receiver, a record of any other kind to its owner. So a sent total under sender accounting and a

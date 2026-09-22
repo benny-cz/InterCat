@@ -62,6 +62,56 @@ public enum Metric
 }
 public enum ByteDomain { TransportObserved = 1, RequestedIo = 2, CompletedIo = 3, ApplicationPayload = 4, CapturedContent = 5, Capacity = 6 }
 public enum AccountingSide { SendSide = 1, ReceiveSide = 2, EndpointActivity = 3, CanonicalOwner = 4 }
+/// <summary>
+/// <c>EN-SourceField</c> (section 23): a source correlation or object field of §7.3 that <c>observation-v1</c> has no
+/// column for. The catalog names which admitted field each code is; a code is a meaning, never a field name, so two
+/// providers' fields of one meaning share it and a derivation reads meanings rather than provider layouts.
+/// </summary>
+public enum SourceField : ushort
+{
+    /// <summary>A process's non-reusable start sequence number: the provider start key (I12).</summary>
+    ProcessStartSequence = 1,
+
+    /// <summary>A process's creation time as the source reported it, a FILETIME.</summary>
+    ProcessCreateTime = 2,
+
+    /// <summary>The PID of the process that created this one.</summary>
+    ParentProcessId = 3,
+
+    /// <summary>The start sequence number of the process that created this one.</summary>
+    ParentStartSequence = 4,
+
+    /// <summary>A process's exit time as the source reported it, a FILETIME.</summary>
+    ProcessExitTime = 5,
+
+    /// <summary>The terminal session a process runs in.</summary>
+    ProcessSessionId = 6,
+
+    /// <summary>A transport connection identifier. Reusable and sometimes zero, so never an identity alone (R22).</summary>
+    ConnectionId = 7,
+
+    /// <summary>An I/O request packet address that pairs an operation with its completion.</summary>
+    IoRequestPacket = 8,
+
+    /// <summary>A file object address: one open instance, inside its observed lifetime only (R22).</summary>
+    FileObject = 9,
+
+    /// <summary>A file name key, stable across handles to one name.</summary>
+    FileKey = 10,
+
+    /// <summary>The thread that issued an operation.</summary>
+    IssuingThreadId = 11,
+
+    /// <summary>An RPC procedure number within its interface. A grouping key, never a call identity.</summary>
+    RpcProcedureNumber = 12,
+
+    /// <summary>An RPC protocol sequence code, which says whether a call stayed local.</summary>
+    RpcProtocolSequence = 13,
+
+    /// <summary>A file I/O byte offset.</summary>
+    FileByteOffset = 14,
+}
+
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>
 public enum TimeScope { AnalysisInterval = 1, RetainedCapture = 2, VisibleViewport = 3 }
 

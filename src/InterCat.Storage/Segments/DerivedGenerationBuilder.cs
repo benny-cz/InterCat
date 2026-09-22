@@ -55,6 +55,11 @@ public sealed record DerivedGenerationResult(
     IReadOnlyList<PublishedSegmentSummary> Segments)
 {
     public long RowCount => Segments.Sum(segment => (long)segment.RowCount);
+
+    /// <summary>The `source-fields-v1` segments the generation published beside its observation segments.</summary>
+    public IReadOnlyList<PublishedSegmentSummary> FieldSegments { get; init; } = [];
+
+    public long FieldRowCount => FieldSegments.Sum(segment => (long)segment.RowCount);
 }
 
 /// <summary>
@@ -81,7 +86,9 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private readonly JournalV1Writer journal;
     private readonly List<StoreStagingFile> staged = [];
     private readonly List<PendingSegment> segments = [];
+    private readonly List<PendingSegment> fieldSegments = [];
     private SegmentWriterV1 open;
+    private SourceFieldWriterV1 openFields;
     private ushort nextDictionaryId = 1;
     private bool completed;
     private bool disposed;
@@ -101,6 +108,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         this.journalFile = journalFile;
         this.journal = journal;
         open = new(identity, 0);
+        openFields = new(identity, 0);
     }
 
     /// <summary>The journal this generation derives from. A caller appends the admitted envelopes it keyed.</summary>
@@ -179,6 +187,32 @@ public sealed class DerivedGenerationBuilder : IDisposable
         RowCount++;
     }
 
+    /// <summary>How many source field rows have been derived so far, across every fields segment.</summary>
+    public long FieldRowCount { get; private set; }
+
+    /// <summary>
+    /// Adds one source correlation or object field of an observation already added. It is staged into
+    /// `source-fields-v1` segments that flush with the observation segments, so a generation publishes an
+    /// observation's fields together with the observation.
+    /// </summary>
+    public void AddFieldRow(SourceFieldRowV1 row)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(row);
+        if (completed)
+        {
+            throw new InvalidOperationException("This generation has already been published.");
+        }
+
+        if (openFields.RowCount >= options.RowsPerSegment || openFields.StagedBytes >= options.StagedBytesPerSegment)
+        {
+            FlushFieldSegment();
+        }
+
+        openFields.Add(row);
+        FieldRowCount++;
+    }
+
     /// <summary>
     /// Stages the open segment and its dictionaries. The journal's pending batch is flushed to the device
     /// first, so the evidence behind these rows is durable before the derivation that names it is staged.
@@ -186,16 +220,25 @@ public sealed class DerivedGenerationBuilder : IDisposable
     public void FlushSegment()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        FlushObservationSegment();
+
+        // The fields segment follows its observations, so an observation segment keeps the dictionary ids it
+        // would have had with no fields at all, and its bytes stay a function of its own rows.
+        FlushFieldSegment();
+    }
+
+    private void FlushObservationSegment()
+    {
         if (open.RowCount == 0)
         {
             return;
         }
 
-        if (segments.Count >= options.MaximumSegments)
+        if (segments.Count + fieldSegments.Count >= options.MaximumSegments)
         {
             throw new InvalidOperationException(
-                $"This generation has staged {segments.Count} segments, its declared bound. It refuses rather "
-                + "than publishing past it.");
+                $"This generation has staged {segments.Count + fieldSegments.Count} segments, its declared bound. It "
+                + "refuses rather than publishing past it.");
         }
 
         journal.FlushBatch();
@@ -222,6 +265,46 @@ public sealed class DerivedGenerationBuilder : IDisposable
             built.Segment.Length,
             dictionaryNames));
         open = new(identity, segments.Count);
+    }
+
+    /// <summary>Stages the open fields segment, after making the journal behind its rows durable.</summary>
+    private void FlushFieldSegment()
+    {
+        if (openFields.RowCount == 0)
+        {
+            return;
+        }
+
+        if (segments.Count + fieldSegments.Count >= options.MaximumSegments)
+        {
+            throw new InvalidOperationException(
+                $"This generation has staged {segments.Count + fieldSegments.Count} segments, its declared bound. It "
+                + "refuses rather than publishing past it.");
+        }
+
+        journal.FlushBatch();
+        FlushJournalToDevice();
+        SegmentBuildResult built = openFields.Build(nextDictionaryId);
+        var dictionaryNames = new List<string>(built.Dictionaries.Count);
+        foreach (SegmentDictionaryV1 dictionary in built.Dictionaries)
+        {
+            string name = SegmentFormatV1.DictionaryFileName(generation, dictionary.DictionaryId);
+            Stage(name, StoreDependencyKind.Dictionary, dictionary.Encode());
+            dictionaryNames.Add(name);
+            nextDictionaryId = (ushort)(dictionary.DictionaryId + 1);
+        }
+
+        string segmentName = SegmentFormatV1.FieldSegmentFileName(generation, fieldSegments.Count);
+        Stage(segmentName, StoreDependencyKind.Segment, built.Segment);
+        fieldSegments.Add(new(
+            segmentName,
+            built.SegmentId,
+            built.RowCount,
+            built.MinNativeTicks,
+            built.MaxNativeTicks,
+            built.Segment.Length,
+            dictionaryNames));
+        openFields = new(identity, fieldSegments.Count);
     }
 
     /// <summary>
@@ -251,26 +334,25 @@ public sealed class DerivedGenerationBuilder : IDisposable
         List<StoreStagingFile> all = [journalFile, .. staged];
         StoreCommitResult commit = store.Commit(all, boundary, committedUtc, cancellationToken);
         completed = true;
-        var published = new List<PublishedSegmentSummary>(segments.Count);
-        foreach (PendingSegment segment in segments)
-        {
-            published.Add(new(
-                segment.Name,
-                segment.SegmentId,
-                segment.RowCount,
-                segment.MinNativeTicks,
-                segment.MaxNativeTicks,
-                segment.LengthBytes,
-                segment.DictionaryNames));
-        }
-
         return new(
             commit.Manifest,
             journalDependency.Name,
             journal.RecordsWritten,
             journalDependency.LengthBytes,
-            published);
+            [.. segments.Select(Summarize)])
+        {
+            FieldSegments = [.. fieldSegments.Select(Summarize)],
+        };
     }
+
+    private static PublishedSegmentSummary Summarize(PendingSegment segment) => new(
+        segment.Name,
+        segment.SegmentId,
+        segment.RowCount,
+        segment.MinNativeTicks,
+        segment.MaxNativeTicks,
+        segment.LengthBytes,
+        segment.DictionaryNames);
 
     /// <summary>Abandoning an unpublished generation leaves only staging files, which the next open removes.</summary>
     public void Dispose()
@@ -328,17 +410,33 @@ public sealed class DerivedGenerationBuilder : IDisposable
 /// </summary>
 public static class SessionSegments
 {
-    /// <summary>The segments a generation names, in the order the manifest records them.</summary>
-    public static IReadOnlyList<string> Names(SessionManifestV1 manifest)
+    /// <summary>The `observation-v1` segments a generation names, in the order the manifest records them.</summary>
+    public static IReadOnlyList<string> Names(SessionManifestV1 manifest) => NamesOf(manifest, SegmentTableId.ObservationV1);
+
+    /// <summary>
+    /// The `source-fields-v1` segments a generation names, in manifest order. A generation derived before the table
+    /// existed names none, and a reader that needs the fields says so rather than inventing them.
+    /// </summary>
+    public static IReadOnlyList<string> FieldNames(SessionManifestV1 manifest) => NamesOf(manifest, SegmentTableId.SourceFieldsV1);
+
+    private static IReadOnlyList<string> NamesOf(SessionManifestV1 manifest, SegmentTableId table)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         return
         [
             .. manifest.Dependencies
-                .Where(dependency => dependency.Kind == StoreDependencyKind.Segment)
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Segment && TableOf(dependency.Name) == table)
                 .Select(dependency => dependency.Name),
         ];
     }
+
+    /// <summary>The table a published segment name holds, read from its prefix; null for a name of no segment table.</summary>
+    private static SegmentTableId? TableOf(string name) =>
+        name.StartsWith("seg-", StringComparison.Ordinal)
+            ? SegmentTableId.ObservationV1
+            : name.StartsWith("fld-", StringComparison.Ordinal)
+                ? SegmentTableId.SourceFieldsV1
+                : null;
 
     /// <summary>
     /// Opens one published segment together with the dictionaries its columns reference. A dictionary the
@@ -374,7 +472,11 @@ public static class SessionSegments
             dictionaries.Add(SegmentDictionaryV1.Decode(ReadAll(directory, name)));
         }
 
-        return SegmentReaderV1.Open(bytes, dictionaries);
+        SegmentReaderV1 reader = SegmentReaderV1.Open(bytes, dictionaries);
+        return reader.Table == TableOf(segmentDependency.Name)
+            ? reader
+            : throw new InvalidDataException(
+                $"'{segmentName}' is named as a {TableOf(segmentDependency.Name)} segment and holds {reader.Table}.");
     }
 
     /// <summary>
@@ -410,10 +512,10 @@ public static class SessionSegments
     /// <summary>The generation a published segment name belongs to.</summary>
     private static long GenerationOf(string segmentName)
     {
-        // `seg-<generation:D10>-<ordinal:D4>.icats`. The name is parsed rather than trusted, so a dependency
-        // that is not one of this format's names is refused instead of resolving to a plausible generation.
+        // `seg-` or `fld-<generation:D10>-<ordinal:D4>.icats`. The name is parsed rather than trusted, so a
+        // dependency that is not one of this format's names is refused instead of resolving to a plausible generation.
         return segmentName.Length == 25
-            && segmentName.StartsWith("seg-", StringComparison.Ordinal)
+            && TableOf(segmentName) is not null
             && segmentName[14] == '-'
             && segmentName.EndsWith(".icats", StringComparison.Ordinal)
             && long.TryParse(segmentName.AsSpan(4, 10), NumberStyles.None, CultureInfo.InvariantCulture, out long generation)

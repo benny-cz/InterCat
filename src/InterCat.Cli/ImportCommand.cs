@@ -8,8 +8,7 @@ using InterCat.Storage;
 namespace InterCat.Cli;
 
 /// <summary>
-/// The machine-readable result of one canonical import. It is an index summary, not a session: nothing
-/// in this milestone writes an `.icat`, and the document says so rather than implying one exists.
+/// The machine-readable result of one canonical import, including the session it published when requested.
 /// </summary>
 internal sealed record ImportSummaryDocument
 {
@@ -43,6 +42,8 @@ internal sealed record ImportGenerationDocument
     public required long JournalBytes { get; init; }
     public required long ObservationRows { get; init; }
     public required IReadOnlyList<ImportSegmentDocument> Segments { get; init; }
+    public required long SourceFieldRows { get; init; }
+    public required IReadOnlyList<ImportSegmentDocument> FieldSegments { get; init; }
 }
 
 internal sealed record ImportSegmentDocument
@@ -375,6 +376,19 @@ internal static class ImportCommand
                         Dictionaries = segment.DictionaryNames,
                     }),
                 ],
+                SourceFieldRows = generation.FieldRowCount,
+                FieldSegments =
+                [
+                    .. generation.FieldSegments.Select(segment => new ImportSegmentDocument
+                    {
+                        Name = segment.Name,
+                        RowCount = segment.RowCount,
+                        LengthBytes = segment.LengthBytes,
+                        MinNativeTicks = segment.MinNativeTicks,
+                        MaxNativeTicks = segment.MaxNativeTicks,
+                        Dictionaries = segment.DictionaryNames,
+                    }),
+                ],
             },
             Notes = notes,
         };
@@ -427,10 +441,11 @@ internal static class ImportCommand
                 "Journal",
                 $"{session.JournalName}, {session.JournalRecords:N0} records, {session.JournalBytes:N0} B");
             ConsoleUi.Field("Observations", session.ObservationRows.ToString("N0", CultureInfo.CurrentCulture));
+            ConsoleUi.Field("Source fields", session.SourceFieldRows.ToString("N0", CultureInfo.CurrentCulture));
             ConsoleUi.Table(
                 ["Segment", "Rows", "Bytes", "Native interval"],
                 [
-                    .. session.Segments.Select(segment => new[]
+                    .. session.Segments.Concat(session.FieldSegments).Select(segment => new[]
                     {
                         segment.Name,
                         segment.RowCount.ToString("N0", CultureInfo.CurrentCulture),
