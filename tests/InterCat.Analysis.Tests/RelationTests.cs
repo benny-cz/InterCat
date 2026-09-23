@@ -280,6 +280,82 @@ public sealed class RelationTests
             PeerIdentities(split.Store, splitProcesses, splitRelations));
     }
 
+    [Fact(DisplayName = "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve")]
+    public void APeerCountIsALowerBoundOnProcessInstances()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ConnectedSession());
+        (ProcessInstanceId client, ProcessInstanceId server, ProcessInstanceId other) = Instances(session.Store);
+        MetricRequest peers = Request(Metric.ActivePeers);
+
+        MetricResult serverPeers = SessionMetrics.Evaluate(session.Store, peers with { Participant = server }, new() { EvidenceLimit = 3 });
+        Assert.Equal(1, serverPeers.Value);
+        Assert.Equal((6L, 0L), (serverPeers.KnownContributions, serverPeers.UnknownContributions));
+        Assert.Equal(3, serverPeers.Evidence.Count);
+
+        // The client also sent to an endpoint nothing in the capture holds, and wrote one record with no endpoint
+        // pair: its one resolved peer is a lower bound, and the two ends it cannot name are counted by reason.
+        MetricResult clientPeers = SessionMetrics.Evaluate(session.Store, peers with { Participant = client });
+        Assert.Equal(1, clientPeers.Value);
+        Assert.Equal(
+            [(ProcessBindingReason.PeerEndpointIncomplete, 1L), (ProcessBindingReason.PeerNotObserved, 1L)],
+            clientPeers.UnknownCounterparts.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
+        Assert.Contains(clientPeers.Caveats, caveat => caveat.StartsWith("At least 1:", StringComparison.Ordinal));
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store, peers with { Sender = client }).Value);
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store, peers with { Receiver = client }).Value);
+
+        // A process none of whose records resolves its other end has no count at all, not zero peers (R21).
+        MetricResult unresolved = SessionMetrics.Evaluate(session.Store, peers with { Participant = other });
+        Assert.Equal(MetricUnavailableReason.NothingMeasured, unresolved.Unavailable);
+        Assert.Null(unresolved.Value);
+
+        MetricResult channels = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels));
+        Assert.Equal(MetricUnavailableReason.NoEntityBindings, channels.Unavailable);
+        Assert.Contains("time-scoped", channels.UnavailableExplanation!, StringComparison.Ordinal);
+        Assert.Contains("is one count", (peers with { Participant = client, Grouping = LaneGrouping.InstanceOnly }).Check()!.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R2: ranked by peers, each process counts its own, the rows overlap, and an unresolved-only process is unmeasured")]
+    public void RankingByPeersSaysItsRowsOverlap()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. ConnectedSession(),
+            Transfer(90, ObservationKind.Send, AccountingSide.SendSide, 1, 500, 13).Between("127.0.0.1:60000", "127.0.0.1:60001"),
+            Transfer(91, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 500, 14).Between("127.0.0.1:60001", "127.0.0.1:60000"),
+        ]);
+        (ProcessInstanceId client, ProcessInstanceId server, ProcessInstanceId other) = Instances(session.Store);
+        ProcessInstanceId self = ProcessInstanceIndex.Derive(Segments(session.Store), TestClock)
+            .Instances.Single(instance => instance.ProcessId == 500).Id;
+
+        MetricResult ranked = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.True(ranked.IsAvailable);
+        Assert.False(ranked.GroupsPartitionTotal);
+        Assert.Equal(3, ranked.Value);
+        Assert.Equal(
+            [(client, 1L, 6L, 2L), (server, 1L, 6L, 0L), (self, 1L, 2L, 0L), (other, (long?)null, 0L, 1L)],
+            ranked.Groups
+                .Select(group => (group.Process!.Id, group.Value, group.KnownContributions, group.UnknownContributions))
+                .OrderBy(entry => entry.Value is null)
+                .ThenByDescending(entry => entry.KnownContributions)
+                .ThenBy(entry => entry.Id == client ? 0 : 1)
+                .Select(entry => (entry.Id, entry.Value, entry.KnownContributions, entry.UnknownContributions)));
+        Assert.Null(ranked.Groups[^1].Rank);
+        Assert.Contains(ranked.Caveats, caveat => caveat.Contains("do not add up to the total", StringComparison.Ordinal));
+
+        // A process connected to itself is its own peer, counted once however many of its records name it.
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Participant = self }).Value);
+
+        MetricResult topTwo = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with
+        {
+            Grouping = LaneGrouping.InstanceOnly,
+            RequestedRows = 2,
+        });
+        Assert.Equal(2, topTwo.Groups.Count);
+        Assert.Equal((1L, 2), (topTwo.Remainder!.Value, topTwo.Remainder.GroupsMerged));
+    }
+
     /// <summary>
     /// A client (PID 100, created and exited in the capture) connects to a server (PID 200, running at capture start)
     /// over loopback and they exchange 100 and 40 bytes. A third process sends to an endpoint nothing in the capture

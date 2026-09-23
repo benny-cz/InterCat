@@ -395,14 +395,16 @@ public static partial class SessionMetrics
                 + "reported by that reason and never attributed to the nearest instance (P6).");
         }
 
-        if (roles.Relations is not null)
+        Metric effective = request.Metric == Metric.Rate && request.RateNumerator is { } numerator ? numerator : request.Metric;
+        if (roles.Relations is not null
+            && (request.Grouping == LaneGrouping.Peer || effective is Metric.BytesSent or Metric.BytesReceived))
         {
             caveats.Add(
                 request.Grouping == LaneGrouping.Peer
                     ? $"Each record is grouped under the process at its other end from instance {request.Focus!.Value.Instance}, "
                         + $"found by {TransportRelationIndex.RelationRule}: the record holding the mirrored endpoint pair "
                         + "is the other end of the same connection, and every record there binds to one instance."
-                    : $"A {(request.Metric == Metric.BytesSent || request.RateNumerator == Metric.BytesSent ? "sent" : "received")} "
+                    : $"A {(effective == Metric.BytesSent ? "sent" : "received")} "
                         + "total groups each record under the process the data left or reached. A record made at the other "
                         + $"end is grouped through {TransportRelationIndex.RelationRule}, which finds the process holding "
                         + "the mirrored endpoint pair.");

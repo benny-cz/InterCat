@@ -417,6 +417,27 @@ public static class SegmentMeasurement
     /// Counts observations over a projection and a half-open native-time interval, and returns the rows it did
     /// not count on each ground, so a count can be read against what it left out.
     /// </summary>
+    /// <summary>
+    /// Which rows lie inside an interval and a layer and mechanism projection: the scope every count and sum here
+    /// applies, for a caller that must visit the rows themselves, such as a distinct count. A process filter is the
+    /// caller's to apply on top, as it is everywhere else.
+    /// </summary>
+    public static bool[] RowsInScope(SegmentReaderV1 segment, ObservationLayer? layer, Mechanism? mechanism, TimeRange? interval)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        (int first, int end) = interval is { } scoped ? segment.RowsWithin(scoped) : (0, segment.RowCount);
+        SegmentColumnSlice layers = segment.Slice(SegmentColumnId.Layer);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        var inScope = new bool[segment.RowCount];
+        for (int row = first; row < end; row++)
+        {
+            inScope[row] = (layer is null || (ObservationLayer)layers.UnsignedAt(row)!.Value == layer)
+                && (mechanism is null || (Mechanism)mechanisms.UnsignedAt(row)!.Value == mechanism);
+        }
+
+        return inScope;
+    }
+
     public static ObservationCount CountObservations(
         SegmentReaderV1 segment,
         ObservationLayer? layer,

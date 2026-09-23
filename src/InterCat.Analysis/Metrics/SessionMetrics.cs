@@ -147,6 +147,24 @@ public sealed record MetricRequest
                 []);
         }
 
+        // A count of peers is a count of the processes at the other end from one process, so it needs that process:
+        // a focus, answered as one count, or a grouping by process or executable, which counts each one's peers.
+        if (Metric == Metric.ActivePeers && focuses == 0 && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        {
+            return new(
+                "ActivePeers counts the distinct processes at the other end from a process. Name a process focus, or "
+                + "group by process or executable to count each one's peers.",
+                []);
+        }
+
+        if (Metric == Metric.ActivePeers && focuses > 0 && Grouping is not null)
+        {
+            return new(
+                "ActivePeers with a process focus is one count. To rank processes by their peers, group by process or "
+                + "executable without a focus; to see the peers themselves, count observations grouped by peer.",
+                []);
+        }
+
         if (!Enum.IsDefined(EvidencePolicy))
         {
             return new("A request names an evidence policy §23 defines.", []);
@@ -418,6 +436,13 @@ public sealed record MetricResult
     /// disclosed rather than guessed into the total (P6).
     /// </summary>
     public IReadOnlyDictionary<ProcessBindingReason, long> UnresolvedCounterparts { get; init; } =
+        new Dictionary<ProcessBindingReason, long>();
+
+    /// <summary>
+    /// For a count of peers: the records it took whose other end is unresolved, or resolved at a strength the policy
+    /// does not admit, by reason. Each may add a peer the count cannot name, so the count is a lower bound beside them.
+    /// </summary>
+    public IReadOnlyDictionary<ProcessBindingReason, long> UnknownCounterparts { get; init; } =
         new Dictionary<ProcessBindingReason, long>();
 
     public long ExcludedOutsideInterval { get; init; }
@@ -699,6 +724,13 @@ public static partial class SessionMetrics
             context = context with { UnresolvedCounterparts = UnresolvedCounterparts(context, cancellationToken) };
         }
 
+        if (materialized.Metric == Metric.ActivePeers)
+        {
+            return materialized.Grouping is { } byProcess
+                ? WhatGroupingNeeds(materialized, manifest.Generation, clock) ?? GroupedPeers(context, byProcess, cancellationToken)
+                : ActivePeers(context, cancellationToken);
+        }
+
         if (materialized.Grouping is { } grouping)
         {
             return WhatGroupingNeeds(materialized, manifest.Generation, clock)
@@ -743,16 +775,17 @@ public static partial class SessionMetrics
         }
 
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
-        if (effective is Metric.ActiveChannels or Metric.ActivePeers)
+        if (effective == Metric.ActiveChannels)
         {
             return Unavailable(
                 request,
                 generation,
                 MetricUnavailableReason.NoEntityBindings,
-                $"{effective} counts distinct entity instances, and this session publishes source facts only. "
-                + "Counting distinct process ids or address and port pairs instead would establish identity from "
-                + "reusable numeric values, which R22 forbids. It needs the process, endpoint and channel instances "
-                + "an entity derivation binds, and this session has none yet.");
+                "ActiveChannels counts distinct connection incarnations, and a connection is only an instance with a "
+                + "lifetime: an endpoint pair reused by a later connection is another channel. Relations here span the "
+                + "whole capture, and counting address and port pairs instead would establish identity from reusable "
+                + "values, which R22 forbids. It needs time-scoped connection ends. ActivePeers counts processes, which "
+                + "are instances, and is available.");
         }
 
         if (effective == Metric.Errors)

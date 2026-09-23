@@ -206,6 +206,9 @@ internal sealed record MetricContributionsDocument
     public required IReadOnlyDictionary<string, long> UnknownReasons { get; init; }
     public required IReadOnlyList<MetricSideDocument> BySide { get; init; }
     public required IReadOnlyDictionary<string, long> OtherDomains { get; init; }
+
+    /// <summary>For a count of peers: the records it took whose other end is unresolved, by reason.</summary>
+    public required IReadOnlyDictionary<string, long> UnknownCounterparts { get; init; }
 }
 
 internal sealed record MetricSideDocument
@@ -603,6 +606,9 @@ internal static class MetricCommand
                     }),
                 ],
                 OtherDomains = result.OtherDomains.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+                UnknownCounterparts = result.UnknownCounterparts
+                    .OrderBy(entry => entry.Key)
+                    .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
             },
             Excluded = new()
             {
@@ -800,9 +806,12 @@ internal static class MetricCommand
             return $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {unit}/s";
         }
 
+        string unresolved = result.Request.Metric == Metric.ActivePeers && group.Unknown > 0
+            ? $" (+{ConsoleUi.Count(group.Unknown)} unresolved)"
+            : string.Empty;
         return group.Value is not { } value
-            ? "unmeasured"
-            : result.TakenSides.Count == 0 ? ConsoleUi.Count(value) : ConsoleUi.Bytes(value);
+            ? "unmeasured" + unresolved
+            : (result.TakenSides.Count == 0 ? ConsoleUi.Count(value) : ConsoleUi.Bytes(value)) + unresolved;
     }
 
     private static void Render(MetricDocument document, MetricResult result)
@@ -1021,9 +1030,22 @@ internal static class MetricCommand
                     $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit)} per {rate.IntervalTicks:N0} native ticks");
         }
 
-        return result.Unit == MeasurementUnit.Count
-            ? $"{ConsoleUi.Count(document.Value ?? 0)} {(result.Request.Metric == Metric.Observations ? "observations" : "counted")}"
-            : ConsoleUi.Bytes(document.Value);
+        if (result.Unit != MeasurementUnit.Count)
+        {
+            return ConsoleUi.Bytes(document.Value);
+        }
+
+        long count = document.Value ?? 0;
+        return result.Request.Metric switch
+        {
+            Metric.Observations => $"{ConsoleUi.Count(count)} observations",
+            Metric.ActivePeers when result.Request.Grouping is not null =>
+                $"{ConsoleUi.Count(count)} {(count == 1 ? "process has" : "processes have")} at least one resolved peer",
+            Metric.ActivePeers =>
+                (result.UnknownContributions > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "process" : "processes")} at the other end",
+            _ => $"{ConsoleUi.Count(count)} counted",
+        };
     }
 
     private static string Scope(MetricResult result)

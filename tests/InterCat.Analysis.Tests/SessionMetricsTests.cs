@@ -405,19 +405,21 @@ public sealed class SessionMetricsTests
         Assert.Contains("there is no default", noInterval.UnavailableExplanation!, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "R22: a peer or channel count is unavailable rather than counted from reusable values")]
-    public void APeerCountIsUnavailableRatherThanGuessed()
+    [Fact(DisplayName = "R22: a channel count is unavailable rather than counted from reusable values, and a peer count needs a process")]
+    public void AChannelCountIsUnavailableRatherThanGuessed()
     {
         using var session = new TemporarySession();
         Publish(session.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 10, 1_000)]);
 
-        foreach (Metric metric in new[] { Metric.ActivePeers, Metric.ActiveChannels })
-        {
-            MetricResult result = Evaluate(session.Store, AnalysisBasis.SourceObservations, metric);
-            Assert.False(result.IsAvailable);
-            Assert.Equal(MetricUnavailableReason.NoEntityBindings, result.Unavailable);
-            Assert.Contains("which R22 forbids", result.UnavailableExplanation!, StringComparison.Ordinal);
-        }
+        MetricResult channels = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.ActiveChannels);
+        Assert.False(channels.IsAvailable);
+        Assert.Equal(MetricUnavailableReason.NoEntityBindings, channels.Unavailable);
+        Assert.Contains("which R22 forbids", channels.UnavailableExplanation!, StringComparison.Ordinal);
+
+        // Peers are process instances, which are identities; but the peers of nothing mean nothing.
+        ArgumentException peers = Assert.Throws<ArgumentException>(() =>
+            Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.ActivePeers));
+        Assert.Contains("Name a process focus", peers.Message, StringComparison.Ordinal);
 
         MetricResult errors = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Errors);
         Assert.Equal(MetricUnavailableReason.NoStatusDomain, errors.Unavailable);

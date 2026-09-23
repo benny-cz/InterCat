@@ -779,7 +779,8 @@
         "R2: a metric outside its basis is rejected with the compatible alternatives named",
         "R2: a rate names an additive numerator, and nothing else carries one",
         "R2: an invalid request is refused before it is planned, not answered",
-        "R2: an owner never takes a cross-side total, and one request names one process focus"
+        "R2: an owner never takes a cross-side total, and one request names one process focus",
+        "R2: ranked by peers, each process counts its own, the rows overlap, and an unresolved-only process is unmeasured"
       ],
       "R20": [
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
@@ -813,9 +814,10 @@
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
+        "R22: a channel count is unavailable rather than counted from reusable values, and a peer count needs a process",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
-        "R22: a peer or channel count is unavailable rather than counted from reusable values",
+        "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
