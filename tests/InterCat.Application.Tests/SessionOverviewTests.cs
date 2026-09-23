@@ -12,6 +12,33 @@ public sealed class SessionOverviewTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
+    [Fact]
+    public void ChannelBoundKeepsGraphAndTimelineAvailableWithoutOmittingSilently()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 1, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 200, 2)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 1_100 },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 3)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090") with { SessionRelativeTicks = 1_200 },
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, 4)
+                .Between("127.0.0.1:9090", "127.0.0.1:50001") with { SessionRelativeTicks = 1_300 },
+        ]);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store, maximumChannels: 1);
+        WorkspaceSnapshot workspace = OverviewWorkspace.From(overview);
+        Assert.Equal(2, overview.Edges.Count);
+        Assert.Equal(4, overview.GraphEligibleRows);
+        Assert.Equal(4, overview.Timeline.Sum(bucket => bucket.ObservationCount));
+        Assert.Empty(overview.Channels);
+        Assert.Contains("scoped query", overview.ChannelProjectionProblem, StringComparison.Ordinal);
+        Assert.Equal(overview.ChannelProjectionProblem, workspace.ChannelProjectionProblem);
+        Assert.Contains(overview.Caveats, caveat => caveat == overview.ChannelProjectionProblem);
+    }
+
     [Fact(DisplayName = "R7: one leased generation yields a stable graph and exact graph-eligible timeline")]
     public void OneGenerationProjectsStableOverview()
     {
@@ -33,7 +60,27 @@ public sealed class SessionOverviewTests
         Assert.Equal(first.Nodes, workspace.Processes);
         Assert.Equal(first.Edges, workspace.Edges);
         Assert.Equal(first.Timeline, workspace.Timeline);
-        Assert.Empty(workspace.Channels);
+        Channel channel = Assert.Single(workspace.Channels);
+        Assert.Equal(first.Channels, workspace.Channels);
+        Assert.Equal(first.Edges[0].Key, channel.EdgeKey);
+        Assert.Equal(first.Edges[0].ObservationCount, channel.ObservationCount);
+        Assert.Equal(Direction.UnknownDirection, channel.Direction);
+        Assert.Null(channel.KnownBytes);
+        Assert.Equal(CoverageState.UnknownCoverage, channel.Coverage);
+        Assert.Contains(ClientEnd, channel.Name, StringComparison.Ordinal);
+        Assert.Contains(ServerEnd, channel.Name, StringComparison.Ordinal);
+        var ladder = new DetailLadder(SyntheticWorkspace.Root(workspace));
+        ProcessNode endpoint = workspace.Processes.Single(node => node.Id == first.Edges[0].SourceId);
+        LadderRow groupRow = LadderProjection.Project(workspace, ladder.Current).Rows.Single(
+            row => row.Key == endpoint.GroupKey);
+        Assert.True(ladder.TryDescend(LadderProjection.DescentFor(groupRow, ladder.Current, workspace.Extent), out _));
+        LadderRow processRow = LadderProjection.Project(workspace, ladder.Current).Rows.Single(
+            row => row.Key == endpoint.Id.ToString());
+        Assert.True(ladder.TryDescend(LadderProjection.DescentFor(processRow, ladder.Current, workspace.Extent), out _));
+        LadderRow channelRow = Assert.Single(LadderProjection.Project(workspace, ladder.Current).Rows);
+        Assert.Equal(channel.Key, channelRow.Key);
+        Assert.Equal(channel.ObservationCount, channelRow.ObservationCount);
+        Assert.Contains("direction varies by observation", channelRow.Detail, StringComparison.Ordinal);
         Assert.Empty(workspace.Operations);
         Assert.Empty(workspace.Evidence);
         Assert.Equal((3L, 0L, 1L),
@@ -55,6 +102,7 @@ public sealed class SessionOverviewTests
             Assert.Null(bucket.KnownBytes);
         });
         Assert.Equal(first.Edges, again.Edges);
+        Assert.Equal(first.Channels, again.Channels);
     }
 
     [Fact(DisplayName = "R21: an unresolved connection and a reading without session time are disclosed, not graphed")]
@@ -74,6 +122,7 @@ public sealed class SessionOverviewTests
         Assert.Equal(1, overview.RowsWithoutSessionTime);
         Assert.Equal(2, overview.UnresolvedTcpRows);
         Assert.Empty(overview.Edges);
+        Assert.Empty(overview.Channels);
         Assert.Equal(0, overview.GraphEligibleRows);
         Assert.Equal(2, overview.Nodes.Count);
         Assert.Single(overview.Timeline);
@@ -101,9 +150,11 @@ public sealed class SessionOverviewTests
         SessionOverviewBundle admitted = SessionOverviewProjector.Project(
             session.Store, EvidencePolicy.IncludeCandidates);
         Assert.Empty(conservative.Edges);
+        Assert.Empty(conservative.Channels);
         Assert.Equal(0, conservative.GraphEligibleTimeline.Sum(bucket => bucket.ObservationCount));
         Assert.Equal(1, conservative.RelationshipsNotAdmitted);
         Assert.Equal(RelationStrength.Candidate, Assert.Single(admitted.Edges).Strength);
+        Assert.Single(admitted.Channels);
         Assert.Equal(2, admitted.GraphEligibleTimeline.Sum(bucket => bucket.ObservationCount));
         Assert.NotEqual(conservative.GraphIdentity, admitted.GraphIdentity);
     }

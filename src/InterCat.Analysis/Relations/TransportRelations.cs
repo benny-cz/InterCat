@@ -19,6 +19,13 @@ public sealed record TransportRelation
     /// </summary>
     public required int Channel { get; init; }
 
+    /// <summary>
+    /// A generation-independent display key for the witnessed incarnation. It is anchored to the earliest raw fact
+    /// of either end, not the relation index's channel number (which can be renumbered by later publications).
+    /// An earlier late-arriving fact deliberately changes the key, so a stale selection is dropped, never merged.
+    /// </summary>
+    public required string StableKey { get; init; }
+
     /// <summary>The instance holding the end whose endpoint sorts first.</summary>
     public required ProcessInstance First { get; init; }
 
@@ -162,7 +169,7 @@ public sealed class TransportRelationIndex
                 long? owner = owners.SignedAt(row);
                 long reading = positions[row].Ticks;
                 ends[key].At(positions[row]).Observe(
-                    reading,
+                    positions[row],
                     owner is { } pid ? (int)pid : null,
                     processes.Bind(owner is { } bound ? (int)bound : null, reading, isLifecycleRecord: false));
             }
@@ -381,6 +388,8 @@ public sealed class TransportRelationIndex
                 {
                     Mechanism = (Mechanism)key.Protocol,
                     Channel = incarnation.Channel,
+                    StableKey = StableChannelKey(incarnation, other, processes.Instances[incarnation.Holder],
+                        processes.Instances[other.Holder]),
                     First = processes.Instances[incarnation.Holder],
                     FirstEndpoint = key.LocalEndpoint,
                     Second = processes.Instances[other.Holder],
@@ -401,6 +410,19 @@ public sealed class TransportRelationIndex
     /// <summary>The weaker of two strengths: a relation is only as strong as the weakest binding it rests on.</summary>
     private static RelationStrength Weaker(RelationStrength left, RelationStrength right) =>
         (RelationStrength)Math.Max((int)left, (int)right);
+
+    private static string StableChannelKey(
+        Incarnation first, Incarnation second, ProcessInstance firstProcess, ProcessInstance secondProcess)
+    {
+        Position near = first.FirstPosition
+            ?? throw new InvalidDataException("A paired incarnation has no first raw fact.");
+        Position far = second.FirstPosition
+            ?? throw new InvalidDataException("A paired incarnation's peer has no first raw fact.");
+        Position anchor = near.CompareTo(far) <= 0 ? near : far;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"transport:{firstProcess.Id}:{secondProcess.Id}:{anchor.Stream:x8}:{anchor.Epoch:x8}:"
+            + $"{anchor.Ordinal:x16}:{anchor.FactHigh:x16}:{anchor.FactLow:x16}");
+    }
 
     private enum Pairing
     {
@@ -586,6 +608,8 @@ public sealed class TransportRelationIndex
 
         public long First { get; private set; } = long.MaxValue;
 
+        public Position? FirstPosition { get; private set; }
+
         public long Last { get; private set; } = long.MinValue;
 
         public long Records { get; private set; }
@@ -628,11 +652,16 @@ public sealed class TransportRelationIndex
             Candidates = overlapping;
         }
 
-        public void Observe(long reading, int? owner, ProcessBinding binding)
+        public void Observe(Position position, int? owner, ProcessBinding binding)
         {
+            long reading = position.Ticks;
             Records++;
             First = Math.Min(First, reading);
             Last = Math.Max(Last, reading);
+            if (FirstPosition is not { } prior || position.CompareTo(prior) < 0)
+            {
+                FirstPosition = position;
+            }
             if (owner is { } pid)
             {
                 if (processId is { } seen && seen != pid)

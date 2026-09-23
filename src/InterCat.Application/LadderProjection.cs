@@ -241,7 +241,10 @@ public static class LadderProjection
             rows.Add(new(
                 channel.Key,
                 channel.Name,
-                string.Create(CultureInfo.InvariantCulture, $"{channel.Mechanism} · {channel.Direction}"),
+                channel.Direction == Direction.UnknownDirection
+                    ? string.Create(CultureInfo.InvariantCulture,
+                        $"{channel.Mechanism} · paired endpoints; direction varies by observation")
+                    : string.Create(CultureInfo.InvariantCulture, $"{channel.Mechanism} · {channel.Direction}"),
                 channel.ObservationCount,
                 channel.KnownBytes,
                 channel.Mechanism,

@@ -3,8 +3,8 @@ using InterCat.Domain;
 namespace InterCat.Application;
 
 /// <summary>
-/// The honest L0-L2 workspace for one published session generation. A session overview has no channel,
-/// operation or record projection yet: those rungs stay empty instead of borrowing the synthetic tour.
+/// The honest L0-L3 workspace for one published session generation. A session overview has no logical-operation
+/// or exact-record projection yet: those rungs stay empty instead of borrowing the synthetic tour.
 /// </summary>
 public static class OverviewWorkspace
 {
@@ -15,12 +15,13 @@ public static class OverviewWorkspace
     {
         ArgumentNullException.ThrowIfNull(overview);
         return new(
-            $"Live session · generation {overview.Generation:N0}",
+            $"Session · generation {overview.Generation:N0}",
             overview.Extent ?? new TimeRange(0, 1),
             overview.Groups,
             overview.Nodes,
             overview.Edges,
-            [], [], [],
-            overview.Timeline);
+            overview.Channels, [], [],
+            overview.Timeline,
+            overview.ChannelProjectionProblem);
     }
 }

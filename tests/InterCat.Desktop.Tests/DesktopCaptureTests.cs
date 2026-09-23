@@ -9,6 +9,24 @@ namespace InterCat.Desktop.Tests;
 public sealed class DesktopCaptureTests
 {
     [Fact]
+    public void BoundedChannelRungExplainsWhyItCannotShowACompleteSet()
+    {
+        const string reason = "4,097 paired channels exceed the 4,096-channel overview bound; use a scoped query.";
+        WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
+        {
+            Channels = [], Operations = [], Evidence = [], ChannelProjectionProblem = reason,
+        };
+        using var viewModel = new WorkspaceViewModel(snapshot, "session:one:generation:1");
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        Assert.True(viewModel.Descend());
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        Assert.True(viewModel.Descend());
+
+        Assert.True(viewModel.IsEmptyRung);
+        Assert.Equal(reason, viewModel.EmptyReason);
+    }
+
+    [Fact]
     public void FirstRunIsEmptyEvidenceNotTheSyntheticTour()
     {
         WorkspaceSnapshot empty = OverviewWorkspace.Empty();

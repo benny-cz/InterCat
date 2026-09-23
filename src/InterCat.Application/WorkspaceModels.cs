@@ -99,4 +99,5 @@ public sealed record WorkspaceSnapshot(
     IReadOnlyList<Channel> Channels,
     IReadOnlyList<ChannelOperation> Operations,
     IReadOnlyList<EvidenceMark> Evidence,
-    IReadOnlyList<TimelineBucket> Timeline);
+    IReadOnlyList<TimelineBucket> Timeline,
+    string? ChannelProjectionProblem = null);

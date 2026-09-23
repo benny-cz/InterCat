@@ -18,6 +18,8 @@ public sealed record SessionOverviewBundle(
     IReadOnlyList<ProcessGroup> Groups,
     IReadOnlyList<ProcessNode> Nodes,
     IReadOnlyList<CommunicationEdge> Edges,
+    IReadOnlyList<Channel> Channels,
+    string? ChannelProjectionProblem,
     IReadOnlyList<TimelineBucket> Timeline,
     IReadOnlyList<TimelineBucket> GraphEligibleTimeline,
     long ObservationRows,
@@ -32,16 +34,18 @@ public sealed record SessionOverviewBundle(
 
 /// <summary>
 /// Builds graph and timeline data from exactly one leased generation. This is the read-side bundle for IC-017, not a
-/// full ladder projection: channels, operations and record drill-down remain separate derivations. A caller must not
+/// full ladder projection: logical operations and exact-record drill-down remain separate derivations. A caller must not
 /// advertise its resolved-relationship edge count as the session's total observations or byte volume.
 /// </summary>
 public static class SessionOverviewProjector
 {
     public const int MaximumTimelineBuckets = 64;
+    public const int MaximumChannels = 4_096;
 
     public static SessionOverviewBundle Project(
         SessionStore store,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        int maximumChannels = MaximumChannels,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -49,6 +53,7 @@ public static class SessionOverviewProjector
         {
             throw new ArgumentOutOfRangeException(nameof(policy));
         }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumChannels);
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
@@ -112,6 +117,30 @@ public static class SessionOverviewProjector
                 + "omitting relationships would make the graph and its table disagree with the evidence.");
         }
 
+        string? channelProblem = admitted.Length > maximumChannels
+            ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
+                + $"{maximumChannels:N0}-channel overview bound. The graph and timeline remain available; "
+                + "the channel rung needs a scoped query before it can show the complete set."
+            : null;
+        Channel[] channels = channelProblem is not null ? [] : [.. admitted
+            .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)
+            .Select(relation => new Channel(
+                relation.StableKey,
+                $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:"
+                    + Pair(relation.First.Id, relation.Second.Id).Second,
+                $"{relation.FirstEndpoint} ↔ {relation.SecondEndpoint}",
+                Mechanism.Tcp,
+                Direction.UnknownDirection,
+                relation.Records,
+                null,
+                CoverageState.UnknownCoverage))];
+        if (channelProblem is null
+            && channels.Select(channel => channel.Key).Distinct(StringComparer.Ordinal).Count() != channels.Length)
+        {
+            throw new InvalidDataException(
+                "Two admitted TCP incarnations have the same raw-fact channel key. Refusing to merge them.");
+        }
+
         HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
         (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline,
             long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
@@ -142,7 +171,10 @@ public static class SessionOverviewProjector
                 + "were withheld by the evidence policy.",
             $"{graphRows:N0} rows belong to displayed graph edges; {graphWithoutTime:N0} of them have no usable "
                 + "session time and are absent from the graph-eligible timeline.",
-            "Byte totals, channels, operations and evidence drill-down are not in this overview bundle.",
+            "Byte totals, logical operations and exact-record drill-down are not in this overview bundle. "
+                + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
+                + "remains in the all-observations timeline, not a guessed channel.",
+            .. (channelProblem is null ? [] : new[] { channelProblem }),
         ];
         return new(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}:policy:{policy}",
@@ -152,6 +184,8 @@ public static class SessionOverviewProjector
             Array.AsReadOnly(groups),
             Array.AsReadOnly(nodes),
             Array.AsReadOnly(edges),
+            Array.AsReadOnly(channels),
+            channelProblem,
             Array.AsReadOnly(timeline),
             Array.AsReadOnly(graphTimeline),
             rows,

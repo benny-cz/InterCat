@@ -32,6 +32,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "capture" when OperatingSystem.IsWindows() => await CaptureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -126,6 +127,10 @@ static void PrintHelp()
     ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");
     ConsoleUi.Line("      names, and reports its evidence boundary, its segments, their column");
     ConsoleUi.Line("      availability, byte metrics and capture coverage. Read-only; repairs nothing.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat overview <directory> [--json]");
+    ConsoleUi.Line("      The Desktop's exact leased process graph, paired TCP channels and timeline bundle.");
+    ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

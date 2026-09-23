@@ -54,8 +54,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : "Graph shows admitted paired TCP relationships only. Timeline includes other observed rows; "
-                    + "channel, operation and record rungs are not yet projected in this viewer.";
+                : "Graph and channel rungs show admitted paired TCP only. Timeline includes other observed rows; "
+                    + "logical operations and exact records are not yet projected in this viewer.";
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -323,12 +323,28 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         + (realOverview ? " · paired TCP only" : string.Empty);
 
     /// <summary>Why this rung is empty, naming the source that would supply it. Empty when it has rows.</summary>
-    public string EmptyReason => view.EmptyReason is null ? string.Empty
-        : emptyWorkspace ? "No capture is running. Start exploring to publish a live session."
-        : realOverview && ladder.Current.Level >= DetailLevel.ProcessInstance
-            ? "This viewer has not projected channel, operation or record rows yet. "
-                + "The saved session keeps the evidence; use icat session to inspect it."
-            : view.EmptyReason;
+    public string EmptyReason
+    {
+        get
+        {
+            if (view.EmptyReason is null) return string.Empty;
+            if (emptyWorkspace) return "No capture is running. Start exploring to publish a live session.";
+            if (realOverview && ladder.Current.Level >= DetailLevel.Channel)
+            {
+                return "This viewer has not projected logical operations or exact-record rows yet. "
+                    + "The saved session keeps the evidence; use icat session to inspect it.";
+            }
+
+            if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)
+            {
+                return Snapshot.ChannelProjectionProblem
+                    ?? "No admitted paired TCP channel belongs to this process in this generation. "
+                        + "One-sided, ambiguous and other-mechanism observations may still exist in the timeline.";
+            }
+
+            return view.EmptyReason;
+        }
+    }
 
     public bool IsEmptyRung => view.EmptyReason is not null;
 

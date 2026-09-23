@@ -15,6 +15,34 @@ public sealed class RelationTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
+    [Fact]
+    public void UnrelatedEarlierChannelRenumbersIndexButNotRawFactIdentity()
+    {
+        ObservationRowV1[] original =
+        [
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 4, 200, 2).Between(ServerEnd, ClientEnd),
+        ];
+        using var first = new TemporarySession();
+        Publish(first.Store, original);
+        TransportRelation before = Assert.Single(Derive(first.Store).Relations.Relations);
+
+        using var next = new TemporarySession();
+        Publish(next.Store,
+        [
+            Transfer(5, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 3)
+                .Between("127.0.0.1:1000", "127.0.0.1:1001"),
+            Transfer(6, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, 4)
+                .Between("127.0.0.1:1001", "127.0.0.1:1000"),
+            .. original,
+        ]);
+        TransportRelation after = Derive(next.Store).Relations.Relations.Single(
+            relation => relation.FirstEndpoint == ServerEnd);
+
+        Assert.NotEqual(before.Channel, after.Channel);
+        Assert.Equal(before.StableKey, after.StableKey);
+    }
+
     [Fact(DisplayName = "R22: a connection whose two ends each have one holder relates them, and nothing else is paired")]
     public void MirroredEndsWithOneHolderEachAreRelated()
     {
@@ -448,6 +476,9 @@ public sealed class RelationTests
             wholeRelations.Relations.Select(relation => (relation.First.Id, relation.Second.Id, relation.Strength, relation.Records)),
             splitRelations.Relations.Select(relation => (relation.First.Id, relation.Second.Id, relation.Strength, relation.Records)));
         Assert.Equal(
+            wholeRelations.Relations.Select(relation => relation.StableKey),
+            splitRelations.Relations.Select(relation => relation.StableKey));
+        Assert.Equal(
             PeerIdentities(whole.Store, wholeProcesses, wholeRelations),
             PeerIdentities(split.Store, splitProcesses, splitRelations));
     }
@@ -483,6 +514,7 @@ public sealed class RelationTests
             relations.Relations.Select(relation => (relation.First.ProcessId, relation.Second.ProcessId)).Order());
         Assert.All(relations.Relations, relation => Assert.True(relation.OpenWitnessed && relation.CloseWitnessed));
         Assert.Equal([6L, 6L], relations.Relations.Select(relation => relation.Records));
+        Assert.Equal(2, relations.Relations.Select(relation => relation.StableKey).Distinct(StringComparer.Ordinal).Count());
 
         Dictionary<long, ProcessBinding> peers = PeersByReading(Assert.Single(Segments(session.Store)), relations);
         Assert.Equal((200, 100, 400, 300), (Pid(peers[20]), Pid(peers[21]), Pid(peers[110]), Pid(peers[111])));

@@ -17,6 +17,8 @@ public sealed class NavigationContinuityTests
         old.SelectedRung = old.RungRows[0];
         Assert.True(old.Descend());
         old.SelectedRung = old.RungRows[0];
+        Assert.True(old.Descend());
+        old.SelectedRung = old.RungRows[0];
         old.SelectInterval(new TimeRange(2 * WorkspaceTime.TicksPerSecond, 4 * WorkspaceTime.TicksPerSecond));
         old.ShowTables = true;
         WorkspaceNavigationMemento saved = old.CaptureNavigation();
