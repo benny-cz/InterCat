@@ -94,6 +94,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private ushort nextDictionaryId = 1;
     private bool completed;
     private bool planStaged;
+    private bool ledgerStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -147,6 +148,26 @@ public sealed class DerivedGenerationBuilder : IDisposable
         Stage($"normalizer-plan-{generation:D10}.json", StoreDependencyKind.DerivationPlan, bytes.ToArray());
         planStaged = true;
     }
+
+    /// <summary>
+    /// Retains what the capture's sources could observe and what they lost (`contracts/coverage-v1.md`). Like the
+    /// plan, it is evidence about the capture: the journal holds admitted records only, so nothing rebuilds it.
+    /// </summary>
+    public void StageCoverageLedger(CoverageLedgerV1 ledger)
+    {
+        ArgumentNullException.ThrowIfNull(ledger);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || ledgerStaged)
+        {
+            throw new InvalidOperationException("A generation stages its coverage ledger once, before publication.");
+        }
+
+        Stage(CoverageLedgerFileName(generation), StoreDependencyKind.CoverageLedger, ledger.Encode());
+        ledgerStaged = true;
+    }
+
+    /// <summary>The published name of a generation's coverage ledger.</summary>
+    public static string CoverageLedgerFileName(long generation) => $"coverage-{generation:D10}.json";
 
     /// <summary>
     /// Begins a generation. The journal is staged immediately, because §20.1's first step is making the
@@ -563,6 +584,45 @@ public static class SessionSegments
             ? reader
             : throw new InvalidDataException(
                 $"'{segmentName}' is named as a {TableOf(segmentDependency.Name)} segment and holds {reader.Table}.");
+    }
+
+    /// <summary>
+    /// The coverage ledger a generation names, or null for a legacy generation that publishes none: every coverage
+    /// such a generation is asked about is unknown (`contracts/coverage-v1.md` §1). Two ledgers are a refusal, because
+    /// a reader could not say which one describes the capture.
+    /// </summary>
+    public static CoverageLedgerV1? CoverageLedger(IOwnedDirectory directory, SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(manifest);
+        StoreDependency[] ledgers =
+        [
+            .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger),
+        ];
+        if (ledgers.Length > 1)
+        {
+            throw new InvalidDataException(
+                $"Generation {manifest.Generation} names {ledgers.Length} coverage ledgers; one capture has one.");
+        }
+
+        if (ledgers.Length == 0)
+        {
+            return null;
+        }
+
+        if (ledgers[0].LengthBytes is < 1 or > CoverageLedgerV1.MaximumBytes)
+        {
+            throw new InvalidDataException("The coverage ledger is outside its 1 MiB bound.");
+        }
+
+        byte[] bytes = new byte[checked((int)ledgers[0].LengthBytes)];
+        using (FileStream stream = directory.OpenOwnedFile(
+            ledgers[0].Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan))
+        {
+            stream.ReadExactly(bytes);
+        }
+
+        return CoverageLedgerV1.Decode(bytes);
     }
 
     /// <summary>

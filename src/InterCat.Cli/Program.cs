@@ -99,7 +99,7 @@ static void PrintHelp()
     ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");
     ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
     ConsoleUi.Line("      With --into it publishes a session: the admitted journal-v1 evidence and the");
-    ConsoleUi.Line("      observation-v1 segments derived from it, as one committed generation.");
+    ConsoleUi.Line("      observation-v1 segments and capture coverage ledger as one generation.");
     ConsoleUi.Line("      --into requires a new empty directory; --overwrite replaces only a report file.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat rederive <directory> [--check] [--rows-per-segment <n>] [--output <path>] [--json]");
@@ -110,7 +110,7 @@ static void PrintHelp()
     ConsoleUi.Line("  icat session <directory> [--rows <n>] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Opens a published session, verifies every dependency the current generation");
     ConsoleUi.Line("      names, and reports its evidence boundary, its segments, their column");
-    ConsoleUi.Line("      availability and their byte metrics. Read-only; repairs nothing.");
+    ConsoleUi.Line("      availability, byte metrics and capture coverage. Read-only; repairs nothing.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

@@ -51,8 +51,8 @@ length and digest of every file it depends on. That is what makes it possible to
 survived a power failure from a name that was renamed into place and lost its contents: on Windows there
 is no directory flush, so a rename proves nothing about the bytes behind the name.
 
-A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` or `DerivationPlan` (code 5,
-`contracts/normalizer-plan-v1.md`). An unknown kind, an unreadable
+A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index`, `DerivationPlan` (code 5,
+`contracts/normalizer-plan-v1.md`) or `CoverageLedger` (code 6, `contracts/coverage-v1.md`). An unknown kind, an unreadable
 format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
 duplicate dependency, or a dependency name that is not an owned file name are each refused — the
 manifest is not read at a guessed layout.
@@ -86,7 +86,8 @@ control file, not evidence or an orphan. It serializes independently opened writ
 threads within one store instance. A reader does not need that lock.
 
 A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
-exception: it carries exactly the current journal and retained descriptor plan, stages a replacement set
+exception: it carries exactly the current journal, retained descriptor plan and capture coverage ledger if published,
+stages a replacement set
 of segments and dictionaries, and publishes it as the next generation. Carrying the earlier segments
 would count the same capture twice. The earlier manifest and dependencies remain last-known-good;
 publication still follows the same staged-file and pointer sequence. The replacement is refused if the
@@ -156,6 +157,7 @@ sequence requires, under names that carry the generation:
 |---|---|
 | `journal-<generation:D10>.icatj` | `Journal` — the admitted evidence, written and flushed first |
 | `normalizer-plan-<generation:D10>.json` | `DerivationPlan` — the retained compiled interpretation of admitted descriptors |
+| `coverage-<generation:D10>.json` | `CoverageLedger` — delivered, omitted, undecodable and reported-loss facts about the capture, not reconstructible from its admitted journal |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | `Dictionary` |
 | `seg-<generation:D10>-<ordinal:D4>.icats` | `Segment` |
 

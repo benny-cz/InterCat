@@ -199,6 +199,61 @@ public enum BetweenDirection
 
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }
 
+/// <summary>
+/// <c>EN-OmissionReason</c> (section 23): why a delivered record was not admitted. A policy omission is not a loss: each
+/// reason is counted separately and never folded into loss or into another reason (section 20.6).
+/// </summary>
+public enum OmissionReason
+{
+    /// <summary>The record came from a provider this capture did not request.</summary>
+    UnrequestedProvider = 1,
+
+    /// <summary>The descriptor is not in the profile's allowlist.</summary>
+    DescriptorNotAdmitted = 2,
+
+    /// <summary>The descriptor is explicitly denied, for example a payload-producing debug event (P28).</summary>
+    DescriptorDenied = 3,
+}
+
+/// <summary>
+/// <c>EN-UndecodableReason</c> (section 23): why a record of an admitted descriptor could not be read. A guessed layout
+/// is never used instead (section 18.3); the record is the decode layer's loss, attributed to its descriptor.
+/// </summary>
+public enum UndecodableReason
+{
+    /// <summary>The body is shorter than the admitted slots require.</summary>
+    BodyShorterThanSchema = 1,
+
+    /// <summary>The descriptor arrived at a version the saved schema does not cover.</summary>
+    UnknownDescriptorVersion = 2,
+
+    /// <summary>Reading the body raised an error inside the bounded admission read.</summary>
+    AdmissionReadFailed = 3,
+
+    /// <summary>The record arrived with a pointer width the compiled offsets were not built for.</summary>
+    PointerWidthMismatch = 4,
+}
+
+/// <summary>
+/// <c>EN-LossLayer</c> (section 23): where evidence was lost before it could be attributed to a descriptor (section 13.3).
+/// A loss states its layer because each layer bounds a different thing; an undecodable record is the decode layer's
+/// loss and is always attributed to its descriptor instead.
+/// </summary>
+public enum LossLayer
+{
+    /// <summary>Events the recording session reported lost. For an imported file, the file's own lost-event count.</summary>
+    SourceSession = 1,
+
+    /// <summary>Buffers the session's consumer reported lost. Each held an unknown number of records.</summary>
+    ConsumerBuffers = 2,
+
+    /// <summary>Records InterCat's own bounded callback queue dropped because it was full (R8).</summary>
+    CallbackQueue = 3,
+
+    /// <summary>Admitted records the writer could not persist.</summary>
+    Storage = 4,
+}
+
 /// <summary>Stable names of the capture intents described by section 9.4.</summary>
 public enum CaptureProfileKind
 {

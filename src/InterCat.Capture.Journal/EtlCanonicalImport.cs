@@ -20,7 +20,8 @@ public sealed record EtlImportResult(
     long OmittedRecords,
     long UndecodableRecords,
     long SourceEventsLost,
-    double ElapsedMilliseconds)
+    double ElapsedMilliseconds,
+    CoverageLedgerV1 Coverage)
 {
     /// <summary>
     /// The share of delivered records this import carries. A source event the ETL itself lost was never
@@ -173,11 +174,17 @@ public static class EtlCanonicalImport
                 captureId,
                 generation,
                 new ObservationNormalizerV1(clock),
+                new CoverageTally(admissionPlan),
                 cancellationToken);
             long started = Stopwatch.GetTimestamp();
             EtlAdmissionReplayResult replay = EtlAdmissionReplay.Replay(path, admissionPlan, sink, cancellationToken);
             sink.Rethrow();
+
+            // What the file's sources delivered and lost is kept beside the evidence: the journal holds admitted
+            // records only, and a reopened session must still say what it could not have seen (R21).
+            CoverageLedgerV1 coverage = sink.Coverage.ToLedger(replay.SourceEventsLost);
             using CanonicalImportIndex index = builder.Complete(cancellationToken);
+            generation?.StageCoverageLedger(coverage);
             DerivedGenerationResult? published = generation?.Complete(target!.CommittedUtc, cancellationToken);
 
             return new(
@@ -191,7 +198,8 @@ public static class EtlCanonicalImport
                     sink.Omitted,
                     sink.Undecodable,
                     replay.SourceEventsLost,
-                    Stopwatch.GetElapsedTime(started).TotalMilliseconds),
+                    Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                    coverage),
                 published);
         }
         finally
@@ -319,10 +327,13 @@ public static class EtlCanonicalImport
         CaptureId captureId,
         DerivedGenerationBuilder? generation,
         ObservationNormalizerV1 normalizer,
+        CoverageTally coverage,
         CancellationToken cancellationToken) : IAdmittedEventSink
     {
         private Exception? failure;
         private ulong journalIndex;
+
+        public CoverageTally Coverage => coverage;
 
         public long Observed { get; private set; }
 
@@ -332,7 +343,11 @@ public static class EtlCanonicalImport
 
         public long Undecodable { get; private set; }
 
-        public void OnObserved() => Observed++;
+        public void OnObserved(in DeliveredRecord delivered)
+        {
+            Observed++;
+            coverage.Delivered(in delivered);
+        }
 
         public bool Admit(in AdmittedEvent admitted)
         {
@@ -344,6 +359,7 @@ public static class EtlCanonicalImport
             try
             {
                 AdmittedEventPlan plan = plans.Resolve(in admitted);
+                coverage.Admitted(plan);
                 RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, plan, captureId);
                 if (generation is null)
                 {
@@ -380,9 +396,17 @@ public static class EtlCanonicalImport
             }
         }
 
-        public void OnOmitted(OmissionReason reason) => Omitted++;
+        public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered)
+        {
+            Omitted++;
+            coverage.Omitted(reason, in delivered);
+        }
 
-        public void OnUndecodable(UndecodableReason reason) => Undecodable++;
+        public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered)
+        {
+            Undecodable++;
+            coverage.Undecodable(reason, in delivered);
+        }
 
         public void Rethrow()
         {
@@ -390,6 +414,167 @@ public static class EtlCanonicalImport
             {
                 throw failure;
             }
+        }
+    }
+
+    /// <summary>
+    /// What each descriptor delivered during one replay and what became of it, for the coverage ledger. A provider the
+    /// plan did not request is one entry, because every record of it met one policy; that keeps the ledger bounded by
+    /// the plan's descriptors and the providers a file happens to hold (`contracts/coverage-v1.md` §3).
+    /// </summary>
+    private sealed class CoverageTally
+    {
+        private readonly OwnedSessionPlan plan;
+        private readonly HashSet<Guid> requested;
+        private readonly Dictionary<(Guid Provider, int? EventId, int? Version), Entry> entries = [];
+
+        // Past the ledger's bound, records are counted here and the ledger is refused once the replay has ended:
+        // throwing through the trace callback would leave the source half-stopped.
+        private readonly Entry overflow = new();
+        private bool overflowed;
+        private long? first;
+        private long? last;
+
+        public CoverageTally(OwnedSessionPlan plan)
+        {
+            this.plan = plan;
+
+            // The providers admission knows, exactly as the admission table does: any other provider's records are
+            // omitted as unrequested before a descriptor is looked at.
+            requested = [.. plan.Sources.Select(source => source.ProviderGuid)];
+        }
+
+        public void Delivered(in DeliveredRecord record)
+        {
+            EntryFor(record.ProviderId, record.EventId, record.Version).Delivered++;
+            first = first is { } earliest && earliest <= record.NativeTicks ? earliest : record.NativeTicks;
+            last = last is { } latest && latest >= record.NativeTicks ? latest : record.NativeTicks;
+        }
+
+        public void Admitted(AdmittedEventPlan descriptor) =>
+            EntryFor(descriptor.ProviderGuid, descriptor.EventId, descriptor.Version).Admitted++;
+
+        public void Omitted(OmissionReason reason, in DeliveredRecord record)
+        {
+            Entry entry = EntryFor(record.ProviderId, record.EventId, record.Version);
+            if (reason != OmissionReason.UnrequestedProvider && !requested.Contains(record.ProviderId))
+            {
+                // A denied event of a provider admission does not know is its own descriptor, not the provider's
+                // unrequested remainder: move its delivery there so each entry keeps one policy.
+                entry.Delivered--;
+                entry = EntryFor(record.ProviderId, record.EventId, record.Version, wholeProvider: false);
+                entry.Delivered++;
+            }
+
+            entry.Omitted++;
+            entry.Omission = reason;
+        }
+
+        public void Undecodable(UndecodableReason reason, in DeliveredRecord record)
+        {
+            Entry entry = EntryFor(record.ProviderId, record.EventId, record.Version);
+            entry.Undecodable[reason] = entry.Undecodable.GetValueOrDefault(reason) + 1;
+        }
+
+        public CoverageLedgerV1 ToLedger(long sourceEventsLost)
+        {
+            if (overflowed)
+            {
+                throw new InvalidDataException(
+                    $"The file delivers more than {CoverageLedgerV1.MaximumDescriptors} distinct descriptors and "
+                    + "providers, which is more than a coverage ledger records. It is refused rather than published "
+                    + "with coverage that does not add up.");
+            }
+
+            Dictionary<Guid, string> names = plan.Providers.ToDictionary(
+                provider => provider.ProviderGuid,
+                provider => provider.ProviderName);
+            CoverageLedgerV1 ledger = new()
+            {
+                Contract = CoverageLedgerV1.ContractName,
+                Epochs =
+                [
+                    new()
+                    {
+                        Epoch = 1,
+                        Acquisition = CoverageAcquisition.EtlImport,
+                        FirstDeliveredNativeTicks = first,
+                        LastDeliveredNativeTicks = last,
+                        Collected =
+                        [
+                            .. plan.Sources.SelectMany(source => source.Events)
+                                .OrderBy(descriptor => descriptor.ProviderGuid)
+                                .ThenBy(descriptor => descriptor.EventId)
+                                .ThenBy(descriptor => descriptor.Version)
+                                .Select(descriptor => new CoverageCollectedV1
+                                {
+                                    ProviderId = descriptor.ProviderGuid,
+                                    ProviderName = names.GetValueOrDefault(descriptor.ProviderGuid, descriptor.ProviderGuid.ToString("D")),
+                                    EventId = descriptor.EventId,
+                                    Version = descriptor.Version,
+                                    Mechanism = descriptor.Mechanism,
+                                }),
+                        ],
+                        Deliveries =
+                        [
+                            .. entries
+                                .Where(entry => entry.Value.Delivered > 0)
+                                .OrderBy(entry => entry.Key.Provider)
+                                .ThenBy(entry => entry.Key.EventId ?? -1)
+                                .ThenBy(entry => entry.Key.Version ?? -1)
+                                .Select(entry => new CoverageDeliveryV1
+                                {
+                                    ProviderId = entry.Key.Provider,
+                                    EventId = entry.Key.EventId,
+                                    Version = entry.Key.Version,
+                                    Delivered = entry.Value.Delivered,
+                                    Admitted = entry.Value.Admitted,
+                                    Omission = entry.Value.Omitted > 0 ? entry.Value.Omission : null,
+                                    Omitted = entry.Value.Omitted,
+                                    Undecodable = entry.Value.Undecodable.Count > 0 ? entry.Value.Undecodable : null,
+                                }),
+                        ],
+
+                        // A reported zero is a fact; an absent loss entry would say nothing (`coverage-v1` §3).
+                        Losses = [new() { Layer = LossLayer.SourceSession, Lost = sourceEventsLost }],
+                    },
+                ],
+            };
+            ledger.Validate();
+            return ledger;
+        }
+
+        private Entry EntryFor(Guid provider, int eventId, int version, bool? wholeProvider = null)
+        {
+            (Guid, int?, int?) key = wholeProvider ?? !requested.Contains(provider)
+                ? (provider, null, null)
+                : (provider, eventId, version);
+            if (!entries.TryGetValue(key, out Entry? entry))
+            {
+                if (entries.Count >= CoverageLedgerV1.MaximumDescriptors)
+                {
+                    overflowed = true;
+                    return overflow;
+                }
+
+                entry = new();
+                entries[key] = entry;
+            }
+
+            return entry;
+        }
+
+        private sealed class Entry
+        {
+            public long Delivered { get; set; }
+
+            public long Admitted { get; set; }
+
+            public long Omitted { get; set; }
+
+            public OmissionReason? Omission { get; set; }
+
+            public Dictionary<UndecodableReason, long> Undecodable { get; } = [];
         }
     }
 }

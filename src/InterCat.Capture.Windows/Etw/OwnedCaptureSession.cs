@@ -537,13 +537,13 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
 
     private sealed class QueueSink(OwnedCaptureSession owner) : IAdmittedEventSink
     {
-        public void OnObserved() => owner.ledger.RecordObserved();
+        public void OnObserved(in DeliveredRecord delivered) => owner.ledger.RecordObserved();
 
         public bool Admit(in AdmittedEvent admitted) => owner.Enqueue(admitted);
 
-        public void OnOmitted(OmissionReason reason) => owner.ledger.RecordOmission(reason);
+        public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered) => owner.ledger.RecordOmission(reason);
 
-        public void OnUndecodable(UndecodableReason reason) => owner.ledger.RecordUndecodable(reason);
+        public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered) => owner.ledger.RecordUndecodable(reason);
 
         public void OnCallbackCompleted(in CallbackCost cost) => owner.stages.RecordCallback(in cost);
     }

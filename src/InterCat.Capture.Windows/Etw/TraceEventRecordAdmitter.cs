@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using InterCat.Domain;
 using Microsoft.Diagnostics.Tracing;
 
 namespace InterCat.Capture.Windows;
@@ -55,13 +56,15 @@ internal sealed class TraceEventRecordAdmitter
 
     private void AdmitCore(TraceEvent data, long callbackStarted)
     {
-        sink.OnObserved();
-
         Guid provider = data.ProviderGuid;
         int eventId = (int)data.ID;
+#pragma warning disable CS0618 // I8 requires the original clock reading; relative milliseconds cannot replace it.
+        var delivered = new DeliveredRecord(provider, eventId, data.Version, data.TimeStampQPC);
+#pragma warning restore CS0618
+        sink.OnObserved(in delivered);
         if (denied.Contains(new(provider, eventId)))
         {
-            sink.OnOmitted(OmissionReason.DescriptorDenied);
+            sink.OnOmitted(OmissionReason.DescriptorDenied, in delivered);
             ReportRejectedCallback(callbackStarted);
             return;
         }
@@ -72,13 +75,13 @@ internal sealed class TraceEventRecordAdmitter
             switch (resolution.Outcome)
             {
                 case DescriptorAdmissionOutcome.UnrequestedProvider:
-                    sink.OnOmitted(OmissionReason.UnrequestedProvider);
+                    sink.OnOmitted(OmissionReason.UnrequestedProvider, in delivered);
                     break;
                 case DescriptorAdmissionOutcome.DescriptorNotAdmitted:
-                    sink.OnOmitted(OmissionReason.DescriptorNotAdmitted);
+                    sink.OnOmitted(OmissionReason.DescriptorNotAdmitted, in delivered);
                     break;
                 case DescriptorAdmissionOutcome.UnknownDescriptorVersion:
-                    sink.OnUndecodable(UndecodableReason.UnknownDescriptorVersion);
+                    sink.OnUndecodable(UndecodableReason.UnknownDescriptorVersion, in delivered);
                     break;
                 default:
                     throw new InvalidOperationException($"Unexpected descriptor outcome {resolution.Outcome}.");
@@ -93,14 +96,14 @@ internal sealed class TraceEventRecordAdmitter
 
         if (data.EventDataLength < descriptorPlan.MinimumBodyLength)
         {
-            sink.OnUndecodable(UndecodableReason.BodyShorterThanSchema);
+            sink.OnUndecodable(UndecodableReason.BodyShorterThanSchema, in delivered);
             ReportRejectedCallback(callbackStarted);
             return;
         }
 
         if (data.PointerSize != descriptorPlan.PointerSize)
         {
-            sink.OnUndecodable(UndecodableReason.PointerWidthMismatch);
+            sink.OnUndecodable(UndecodableReason.PointerWidthMismatch, in delivered);
             ReportRejectedCallback(callbackStarted);
             return;
         }
@@ -110,9 +113,7 @@ internal sealed class TraceEventRecordAdmitter
         admitted.EventId = eventId;
         admitted.Version = data.Version;
         admitted.Opcode = (int)data.Opcode;
-#pragma warning disable CS0618 // I8 requires the original clock reading; relative milliseconds cannot replace it.
-        admitted.TimestampQpc = data.TimeStampQPC;
-#pragma warning restore CS0618
+        admitted.TimestampQpc = delivered.NativeTicks;
         admitted.TimestampUtcTicks = data.TimeStamp.ToUniversalTime().Ticks;
         admitted.ActivityId = data.ActivityID;
         admitted.RelatedActivityId = data.RelatedActivityID;
@@ -124,7 +125,7 @@ internal sealed class TraceEventRecordAdmitter
         IntPtr body = data.DataStart;
         if (body == IntPtr.Zero)
         {
-            sink.OnUndecodable(UndecodableReason.AdmissionReadFailed);
+            sink.OnUndecodable(UndecodableReason.AdmissionReadFailed, in delivered);
             ReportRejectedCallback(callbackStarted);
             return;
         }
@@ -151,7 +152,7 @@ internal sealed class TraceEventRecordAdmitter
                 {
                     // A SID that claims more sub-authorities than a SID has, or runs past the record, is a record whose
                     // shape does not match its schema. It is undecodable rather than read at a guessed offset.
-                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed);
+                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed, in delivered);
                     ReportRejectedCallback(callbackStarted);
                     return;
                 }
@@ -181,7 +182,7 @@ internal sealed class TraceEventRecordAdmitter
                     admitted.SetSlot(index, Marshal.ReadInt64(body, slot.Offset));
                     break;
                 default:
-                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed);
+                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed, in delivered);
                     ReportRejectedCallback(callbackStarted);
                     return;
             }

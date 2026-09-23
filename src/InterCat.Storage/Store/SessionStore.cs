@@ -436,10 +436,12 @@ public sealed class SessionStore
                         + "boundary; it cannot silently switch evidence while replacing derived files.");
                 }
 
+                // The plan and the coverage ledger are evidence about the capture, not derivations of its journal,
+                // so a replacement derivation carries them unchanged.
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
-                        dependency.Kind == StoreDependencyKind.DerivationPlan
+                        dependency.Kind is StoreDependencyKind.DerivationPlan or StoreDependencyKind.CoverageLedger
                         || (dependency.Kind == StoreDependencyKind.Journal
                             && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))),
                 ];
@@ -672,6 +674,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "A derivation plan interprets the retained journal and is not a disposable derived index. "
                         + "It remains with the admitted evidence so the journal can be re-derived later.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.CoverageLedger)
+                {
+                    throw new ArgumentException(
+                        "A coverage ledger states what the capture could observe and what it lost. No journal holds "
+                        + "those facts, so it is not a rebuildable index and retention cannot release it (R21).",
                         nameof(names));
                 }
 

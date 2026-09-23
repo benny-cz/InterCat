@@ -90,7 +90,7 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
                     return;
                 }
 
-                sink.OnObserved();
+                sink.OnObserved(new DeliveredRecord(Guid.Empty, scripted.EventId, scripted.Version, scripted.TimestampQpc));
                 _ = sink.Admit(scripted);
             }
 

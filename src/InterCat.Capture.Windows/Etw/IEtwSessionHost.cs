@@ -1,4 +1,13 @@
+using InterCat.Domain;
+
 namespace InterCat.Capture.Windows;
+
+/// <summary>
+/// One delivered record's descriptor and native reading, as the callback saw it before any admission decision. A sink
+/// that keeps a coverage ledger attributes every outcome to it (`contracts/coverage-v1.md` §3); the reading is the
+/// record's own clock value, never a relative time (I8).
+/// </summary>
+public readonly record struct DeliveredRecord(Guid ProviderId, int EventId, int Version, long NativeTicks);
 
 /// <summary>A capture attempt failed for a stated, non-retryable reason.</summary>
 public sealed class EtwSessionException : Exception
@@ -26,14 +35,16 @@ public sealed class EtwSessionException : Exception
 public interface IAdmittedEventSink
 {
     /// <summary>Called for every delivered record, before any admission decision.</summary>
-    void OnObserved();
+    void OnObserved(in DeliveredRecord delivered);
 
     /// <summary>Takes ownership of an admitted record. Returns false when the bounded queue is full.</summary>
     bool Admit(in AdmittedEvent admitted);
 
-    void OnOmitted(OmissionReason reason);
+    /// <summary>The record was delivered and the policy did not admit it. An omission is not a loss (section 20.6).</summary>
+    void OnOmitted(OmissionReason reason, in DeliveredRecord delivered);
 
-    void OnUndecodable(UndecodableReason reason);
+    /// <summary>The record could not be decoded, including a delivered version outside the admitted schema (section 18.3).</summary>
+    void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered);
 
     /// <summary>
     /// Reports what one completed callback cost and what it copied. The default does nothing, so a sink

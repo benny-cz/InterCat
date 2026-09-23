@@ -1,33 +1,6 @@
+using InterCat.Domain;
+
 namespace InterCat.Capture.Windows;
-
-/// <summary>Why a record was not admitted. Each reason is counted separately and never folded (section 20.6).</summary>
-public enum OmissionReason
-{
-    /// <summary>The record came from a provider this capture did not request.</summary>
-    UnrequestedProvider = 1,
-
-    /// <summary>The descriptor is not in the profile's allowlist.</summary>
-    DescriptorNotAdmitted = 2,
-
-    /// <summary>The descriptor is explicitly denied, for example a payload-producing debug event (P28).</summary>
-    DescriptorDenied = 3,
-}
-
-/// <summary>Why an admitted descriptor could not be read. A guessed layout is never used instead (section 18.3).</summary>
-public enum UndecodableReason
-{
-    /// <summary>The body is shorter than the admitted slots require.</summary>
-    BodyShorterThanSchema = 1,
-
-    /// <summary>The descriptor arrived at a version the saved schema does not cover.</summary>
-    UnknownDescriptorVersion = 2,
-
-    /// <summary>Reading the body raised an error inside the bounded admission read.</summary>
-    AdmissionReadFailed = 3,
-
-    /// <summary>The record arrived with a pointer width the compiled offsets were not built for.</summary>
-    PointerWidthMismatch = 4,
-}
 
 /// <summary>An immutable reading of the health ledger (section 20.6).</summary>
 public sealed record CaptureHealthSnapshot

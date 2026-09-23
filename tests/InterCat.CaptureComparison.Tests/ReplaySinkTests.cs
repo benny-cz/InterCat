@@ -10,9 +10,9 @@ public sealed class ReplaySinkTests
     public void ReplaySinkCountsBudgetDrops()
     {
         var sink = new ReplaySink(recordBudget: 1);
-        sink.OnObserved();
+        sink.OnObserved(new DeliveredRecord(Guid.Empty, 0, 0, 0));
         Assert.True(sink.Admit(new AdmittedEvent { RecordOrdinal = 1 }));
-        sink.OnObserved();
+        sink.OnObserved(new DeliveredRecord(Guid.Empty, 0, 0, 0));
         Assert.False(sink.Admit(new AdmittedEvent { RecordOrdinal = 2 }));
 
         CaptureHealthSnapshot health = sink.Snapshot(providerLoss: 3, consumerLoss: 0);
@@ -27,7 +27,7 @@ public sealed class ReplaySinkTests
     public void ReplaySinkKeepsUnmeasuredStageTotalsNull()
     {
         var sink = new ReplaySink(recordBudget: 4);
-        sink.OnObserved();
+        sink.OnObserved(new DeliveredRecord(Guid.Empty, 0, 0, 0));
         Assert.True(sink.Admit(new AdmittedEvent { RecordOrdinal = 1 }));
         sink.OnCallbackCompleted(new(100, ExtendedDataAvailability.RecordCarriedNone, 0, 0));
 

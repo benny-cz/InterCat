@@ -1,4 +1,5 @@
 using InterCat.Capture.Windows;
+using InterCat.Domain;
 
 namespace InterCat.CaptureComparison;
 
@@ -12,7 +13,7 @@ internal sealed class CountingSink : IAdmittedEventSink
 
     public long Admitted { get; private set; }
 
-    public void OnObserved() => Observed++;
+    public void OnObserved(in DeliveredRecord delivered) => Observed++;
 
     public bool Admit(in AdmittedEvent admitted)
     {
@@ -20,11 +21,11 @@ internal sealed class CountingSink : IAdmittedEventSink
         return true;
     }
 
-    public void OnOmitted(OmissionReason reason)
+    public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered)
     {
     }
 
-    public void OnUndecodable(UndecodableReason reason)
+    public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered)
     {
     }
 }
@@ -40,7 +41,7 @@ internal sealed class ReplaySink(int recordBudget) : IAdmittedEventSink
 
     public List<AdmittedEvent> Records { get; } = new(Math.Min(recordBudget, 16_384));
 
-    public void OnObserved() => ledger.RecordObserved();
+    public void OnObserved(in DeliveredRecord delivered) => ledger.RecordObserved();
 
     public bool Admit(in AdmittedEvent admitted)
     {
@@ -56,9 +57,9 @@ internal sealed class ReplaySink(int recordBudget) : IAdmittedEventSink
         return true;
     }
 
-    public void OnOmitted(OmissionReason reason) => ledger.RecordOmission(reason);
+    public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered) => ledger.RecordOmission(reason);
 
-    public void OnUndecodable(UndecodableReason reason) => ledger.RecordUndecodable(reason);
+    public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered) => ledger.RecordUndecodable(reason);
 
     public void OnCallbackCompleted(in CallbackCost cost) => stages.RecordCallback(in cost);
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Capture.Journal;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -18,7 +19,27 @@ internal sealed record SessionDocument
     public required IReadOnlyList<SessionSegmentDocument> Segments { get; init; }
     public required IReadOnlyList<SessionFieldSegmentDocument> FieldSegments { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
+    public required SessionLedgerDocument? CoverageLedger { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
+}
+
+/// <summary>
+/// What the capture could observe (`coverage-v1`): each mechanism's state with the fact that decided it, and the
+/// ledger's own facts. Absent from a legacy generation's ledger means coverage is unknown, never that it was complete.
+/// </summary>
+internal sealed record SessionLedgerDocument
+{
+    public required bool Published { get; init; }
+    public required string Rule { get; init; }
+    public required IReadOnlyList<SessionMechanismCoverageDocument> Mechanisms { get; init; }
+    public required CoverageLedgerV1? Ledger { get; init; }
+}
+
+internal sealed record SessionMechanismCoverageDocument
+{
+    public required string Mechanism { get; init; }
+    public required string State { get; init; }
+    public required string Reason { get; init; }
 }
 
 internal sealed record SessionRederivationDocument
@@ -219,6 +240,7 @@ internal static class SessionCommand
         var segments = new List<SessionSegmentDocument>();
         var fieldSegments = new List<SessionFieldSegmentDocument>();
         SessionCoverageDocument? coverage = null;
+        SessionLedgerDocument? ledger = null;
 
         if (manifest is null)
         {
@@ -278,6 +300,29 @@ internal static class SessionCommand
                 Mechanisms = [.. mechanisms],
                 Layers = [.. layers],
             };
+
+            CoverageLedgerV1? published = SessionSegments.CoverageLedger(store.Root, manifest);
+            ledger = new()
+            {
+                Published = published is not null,
+                Rule = SessionCoverage.Rule,
+                Mechanisms =
+                [
+                    .. SessionCoverage.ByMechanism(published).Select(entry => new SessionMechanismCoverageDocument
+                    {
+                        Mechanism = entry.Mechanism.ToString(),
+                        State = entry.State.ToString(),
+                        Reason = entry.Reason,
+                    }),
+                ],
+                Ledger = published,
+            };
+            if (published is null)
+            {
+                notes.Add(
+                    "This generation publishes no coverage ledger, so coverage is unknown: a mechanism with no records "
+                    + "may have been quiet or never collected, and nothing says whether the source lost events (R21).");
+            }
 
             notes.Add(
                 "The interval above is in the source clock's own native ticks. It is not a wall-clock range, "
@@ -373,6 +418,7 @@ internal static class SessionCommand
             Segments = segments,
             FieldSegments = fieldSegments,
             Coverage = coverage,
+            CoverageLedger = ledger,
             Notes = notes,
         };
     }
@@ -508,6 +554,11 @@ internal static class SessionCommand
             ConsoleUi.Field("Layers", coverage.Layers.Count == 0 ? "none" : string.Join(", ", coverage.Layers));
         }
 
+        if (document.CoverageLedger is { } ledger)
+        {
+            RenderCoverage(ledger);
+        }
+
         if (document.FieldSegments.Count > 0)
         {
             ConsoleUi.Heading("Source correlation and object fields");
@@ -577,6 +628,99 @@ internal static class SessionCommand
 
         RenderRecovery(document);
         RenderNotes(document);
+    }
+
+    /// <summary>
+    /// What the capture could observe: collected mechanisms by state, the rest named as not collected, and what the
+    /// policy chose not to admit, which is not a loss (`coverage-v1` §3, R21).
+    /// </summary>
+    private static void RenderCoverage(SessionLedgerDocument ledger)
+    {
+        ConsoleUi.Heading("What the capture could observe");
+        if (ledger.Ledger is not { } facts)
+        {
+            ConsoleUi.Field("Coverage", "unknown: this generation publishes no coverage ledger");
+            return;
+        }
+
+        foreach (CoverageEpochV1 epoch in facts.Epochs)
+        {
+            ConsoleUi.Field(
+                facts.Epochs.Count == 1 ? "Epoch" : $"Epoch {epoch.Epoch}",
+                epoch.FirstDeliveredNativeTicks is { } first
+                    ? $"{Words(epoch.Acquisition.ToString())}, delivered readings [{first:N0}, {epoch.LastDeliveredNativeTicks:N0}] source ticks"
+                    : $"{Words(epoch.Acquisition.ToString())}, nothing delivered");
+        }
+
+        List<SessionMechanismCoverageDocument> collected =
+        [
+            .. ledger.Mechanisms.Where(entry => entry.State != nameof(CoverageState.NotCollected)),
+        ];
+        List<string> notCollected =
+        [
+            .. ledger.Mechanisms.Where(entry => entry.State == nameof(CoverageState.NotCollected)).Select(entry => entry.Mechanism),
+        ];
+        ConsoleUi.Table(["Mechanism", "Coverage", "Why"], [.. collected.Select(entry => new[] { entry.Mechanism, Words(entry.State), entry.Reason })]);
+        if (notCollected.Count > 0)
+        {
+            ConsoleUi.Line(
+                $"  Not collected, so an absence of their records says nothing about their activity: {string.Join(", ", notCollected)}.");
+        }
+
+        Dictionary<Guid, string> names = facts.Epochs
+            .SelectMany(epoch => epoch.Collected)
+            .GroupBy(descriptor => descriptor.ProviderId)
+            .ToDictionary(group => group.Key, group => group.First().ProviderName);
+        foreach (CoverageEpochV1 epoch in facts.Epochs)
+        {
+            List<CoverageDeliveryV1> omitted = [.. epoch.Deliveries.Where(delivery => delivery.Omitted > 0)];
+            if (omitted.Count > 0)
+            {
+                ConsoleUi.Line();
+                ConsoleUi.Line("  Delivered and not admitted by the policy - not lost, and a wider policy could admit them:");
+                ConsoleUi.Table(
+                    ["Provider", "Event", "Version", "Records", "Why"],
+                    [
+                        .. omitted.Select(delivery => new[]
+                        {
+                            delivery.ProviderId == Guid.Empty
+                                ? "Unidentified ETL provider"
+                                : names.GetValueOrDefault(delivery.ProviderId, delivery.ProviderId.ToString("D")),
+                            delivery.EventId?.ToString(CultureInfo.InvariantCulture) ?? "any",
+                            delivery.Version?.ToString(CultureInfo.InvariantCulture) ?? "any",
+                            ConsoleUi.Count(delivery.Omitted),
+                            Words(delivery.Omission!.Value.ToString()),
+                        }),
+                    ]);
+            }
+
+            long undecodable = epoch.Deliveries.Sum(delivery => delivery.Undecodable?.Values.Sum() ?? 0);
+            string losses = string.Join(
+                "; ",
+                epoch.Losses.Select(loss => loss.Layer == LossLayer.ConsumerBuffers
+                    ? $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} buffers"
+                    : $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} records"));
+            ConsoleUi.Field("Reported lost", losses.Length == 0 ? "nothing reported" : losses);
+            ConsoleUi.Field("Undecodable", ConsoleUi.Count(undecodable));
+        }
+    }
+
+    /// <summary>Splits a PascalCase name into lower-case words, e.g. "etl import".</summary>
+    private static string Words(string identifier)
+    {
+        var builder = new System.Text.StringBuilder(identifier.Length + 8);
+        for (int index = 0; index < identifier.Length; index++)
+        {
+            char character = identifier[index];
+            if (index > 0 && char.IsUpper(character) && !char.IsUpper(identifier[index - 1]))
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(index == 0 ? char.ToUpperInvariant(character) : char.ToLowerInvariant(character));
+        }
+
+        return builder.ToString();
     }
 
     private static void RenderRows(SegmentReaderV1 reader, int rows)

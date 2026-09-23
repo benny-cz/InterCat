@@ -542,6 +542,7 @@
         "I18: released evidence goes once the last lease on it is released",
         "I18: retention cannot remove evidence a live lease holds",
         "I18: retention in a second store cannot remove another process's leased evidence",
+        "I18: a published coverage ledger survives reopen and cannot be released as a derived index",
         "I18: stale retention cannot release files from a newer generation"
       ],
       "I19": [
@@ -802,6 +803,17 @@
       ],
       "R21": [
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
+        "R21: a coverage ledger round-trips every outcome and refuses unknown members",
+        "R21: coverage outcomes and descriptor bounds refuse overflow rather than wrapping",
+        "R21: an absent source-loss counter is never interpreted as a reported zero",
+        "R21: an unidentified ETL provider is counted only as a whole-provider policy omission",
+        "R21: a legacy generation cannot turn silence into a covered zero",
+        "R21: an import distinguishes delivered, quiet, and uncollected mechanisms",
+        "R21: source loss and undecodable records make coverage partial; policy omissions do not",
+        "R21: live quiet enablement is covered, unlike a quiet imported file",
+        "R21: an unknown descriptor version cannot silently preserve covered mechanisms",
+        "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
+        "R21: an interval ending at maximum ticks is evaluated without overflow",
         "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",

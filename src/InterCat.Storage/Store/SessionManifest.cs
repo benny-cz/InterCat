@@ -23,6 +23,12 @@ public enum StoreDependencyKind
 
     /// <summary>The compiled descriptor interpretation retained with admitted evidence for re-derivation.</summary>
     DerivationPlan = 5,
+
+    /// <summary>
+    /// What the capture's sources could observe and what they lost (`contracts/coverage-v1.md`). Evidence about the
+    /// capture, kept with it: no journal holds these facts, so nothing can rebuild them.
+    /// </summary>
+    CoverageLedger = 6,
 }
 
 /// <summary>
