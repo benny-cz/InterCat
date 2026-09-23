@@ -26,6 +26,7 @@ public enum BrokerRequestKind
     Stop = 2,
     ExpiredLeaseStop = 3,
     RecoveryStop = 4,
+    AutonomousStop = 5,
 }
 
 /// <summary>Stop progress is never collapsed into one optimistic success flag.</summary>
@@ -168,6 +169,15 @@ public interface IBrokerCaptureRuntime
     Task<BrokerRuntimeStopOutcome> StopAsync(
         BrokerCaptureOwnership ownership,
         CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A read-only signal that the runtime has already ended acquisition by a duration, journal or disk limit.
+/// The coordinator must write a stop intent before taking the completed result from the runtime.
+/// </summary>
+public interface IBrokerCaptureCompletionProbe
+{
+    ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken);
 }
 
 /// <summary>Durable ownership state. Degradation stays orthogonal to lifecycle.</summary>

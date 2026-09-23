@@ -289,6 +289,17 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                     "The capture is unavailable to this authenticated owner.");
             }
 
+            ownership = await ReconcileIfCompletedAsync(ownership, cancellationToken).ConfigureAwait(false);
+            if (ownership.State is not (CaptureLifecycle.Starting or CaptureLifecycle.Recording))
+            {
+                return new(
+                    BrokerOperationCode.CaptureUnavailable,
+                    captureId,
+                    ownership.State,
+                    null,
+                    ownership.FailureReason ?? "The capture has already stopped; its owner lease cannot be renewed.");
+            }
+
             DateTimeOffset now = clock.GetUtcNow();
             if (ownership.LeaseExpiresAtUtc <= now)
             {
@@ -350,7 +361,51 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             BrokerCaptureOwnership? ownership = await store
                 .FindCaptureAsync(captureId, cancellationToken)
                 .ConfigureAwait(false);
-            return ownership is not null && ownership.Owner.Matches(client.Owner) ? ownership : null;
+            return ownership is not null && ownership.Owner.Matches(client.Owner)
+                ? await ReconcileIfCompletedAsync(ownership, cancellationToken).ConfigureAwait(false)
+                : null;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Persists completed duration/journal/disk stops even when no client asks for status. A host calls this
+    /// periodically; status and lease renewal also reconcile their capture before answering.
+    /// </summary>
+    public async Task<IReadOnlyList<BrokerStopOutcome>> ReconcileCompletedCapturesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (runtime is not IBrokerCaptureCompletionProbe probe)
+        {
+            return [];
+        }
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var outcomes = new List<BrokerStopOutcome>();
+            foreach (BrokerCaptureOwnership ownership in snapshot.Captures
+                .Where(capture => capture.State == CaptureLifecycle.Recording))
+            {
+                if (await probe.HasCompletedAsync(ownership.CaptureId, cancellationToken).ConfigureAwait(false))
+                {
+                    outcomes.Add(await StopOwnedAsync(
+                            ownership.CaptureId,
+                            Guid.NewGuid(),
+                            BrokerRequestKind.AutonomousStop,
+                            ownership.Owner,
+                            verifyOwner: false,
+                            CancellationToken.None)
+                        .ConfigureAwait(false));
+                }
+            }
+
+            return outcomes;
         }
         finally
         {
@@ -687,6 +742,41 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             // The durable start intent remains for recovery. Never replace the persistence failure with
             // an exception from best-effort compensation.
         }
+    }
+
+    private async Task<BrokerCaptureOwnership> ReconcileIfCompletedAsync(
+        BrokerCaptureOwnership ownership,
+        CancellationToken cancellationToken)
+    {
+        if (ownership.State != CaptureLifecycle.Recording
+            || runtime is not IBrokerCaptureCompletionProbe probe
+            || !await probe.HasCompletedAsync(ownership.CaptureId, cancellationToken).ConfigureAwait(false))
+        {
+            return ownership;
+        }
+
+        BrokerStopOutcome outcome = await StopOwnedAsync(
+                ownership.CaptureId,
+                Guid.NewGuid(),
+                BrokerRequestKind.AutonomousStop,
+                ownership.Owner,
+                verifyOwner: false,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        BrokerCaptureOwnership? persisted = await store.FindCaptureAsync(
+                ownership.CaptureId, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (outcome.Code == BrokerOperationCode.PersistenceFailure)
+        {
+            return (persisted ?? ownership) with
+            {
+                State = CaptureLifecycle.Stopping,
+                FailureReason = outcome.FailureReason,
+            };
+        }
+
+        return persisted ?? throw new InvalidDataException(
+            "The capture ownership record disappeared during autonomous stop reconciliation.");
     }
 
     private async Task<BrokerRuntimeStopOutcome> StopForRecoveryAsync(BrokerCaptureOwnership ownership)

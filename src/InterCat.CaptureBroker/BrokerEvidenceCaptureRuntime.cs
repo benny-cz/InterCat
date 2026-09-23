@@ -12,7 +12,7 @@ namespace InterCat.CaptureBroker;
 /// sequence before this runtime can serve users.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IAsyncDisposable
+public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe, IAsyncDisposable
 {
     private readonly WindowsBrokerRoot root;
     private readonly IEtwSessionHost host;
@@ -29,6 +29,21 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IAsync
         this.root = root ?? throw new ArgumentNullException(nameof(root));
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.reclaimer = reclaimer ?? throw new ArgumentNullException(nameof(reclaimer));
+    }
+
+    public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return active.TryGetValue(captureId, out ActiveCapture? capture)
+                && capture.Run?.IsCompleted == true;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async Task<BrokerRuntimeStartOutcome> StartAsync(

@@ -12,6 +12,65 @@ public sealed class FileBrokerLifecycleStoreTests
 {
     private static readonly DateTimeOffset StartTime = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
+    [Fact(DisplayName = "R16: status durably reconciles an autonomous stop before showing its lifecycle")]
+    public async Task StatusReconcilesAutonomousCompletionDurably()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var clock = new ManualTimeProvider(StartTime);
+        var registry = new PreparedPlanRegistry(clock);
+        PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
+        var runtime = new BrokerFakeRuntime();
+        CaptureId captureId;
+        using (var store = new FileBrokerLifecycleStore(temporary.Root))
+        using (var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime, clock))
+        {
+            BrokerStartOutcome start = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+            captureId = start.CaptureId!.Value;
+            runtime.CompletedCaptures.Add(captureId);
+
+            Assert.Null(await coordinator.GetStatusAsync(captureId, OwnerB));
+            Assert.Equal(0, runtime.StopCount);
+            BrokerCaptureOwnership status = (await coordinator.GetStatusAsync(captureId, OwnerA))!;
+            Assert.Equal(CaptureLifecycle.Closed, status.State);
+            Assert.True(status.StopMilestones.FullyFinalized);
+            Assert.Equal(1, runtime.StopCount);
+            BrokerStoredRequest request = Assert.Single(
+                (await store.ReadSnapshotAsync(CancellationToken.None)).Requests,
+                item => item.Kind == BrokerRequestKind.AutonomousStop);
+            Assert.True(request.Completed);
+            Assert.Equal(BrokerOperationCode.Stopped, request.StopOutcome!.Code);
+        }
+
+        using var reopened = new FileBrokerLifecycleStore(temporary.Root);
+        using var recovery = new BrokerLifecycleCoordinator(
+            new PreparedPlanRegistry(clock), reopened, new BrokerFakeRuntime(), clock);
+        Assert.Equal(CaptureLifecycle.Closed, (await recovery.GetStatusAsync(captureId, OwnerA))!.State);
+        Assert.Empty((await recovery.RecoverAsync()).Items);
+    }
+
+    [Fact(DisplayName = "R16: autonomous-stop sweep persists a completed capture without a client request")]
+    public async Task SweepPersistsAutonomousCompletion()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var clock = new ManualTimeProvider(StartTime);
+        var registry = new PreparedPlanRegistry(clock);
+        PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
+        var runtime = new BrokerFakeRuntime();
+        using var store = new FileBrokerLifecycleStore(temporary.Root);
+        using var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime, clock);
+        BrokerStartOutcome start = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+        runtime.CompletedCaptures.Add(start.CaptureId!.Value);
+
+        BrokerStopOutcome completed = Assert.Single(await coordinator.ReconcileCompletedCapturesAsync());
+
+        Assert.Equal(BrokerOperationCode.Stopped, completed.Code);
+        Assert.True(completed.Milestones.FullyFinalized);
+        Assert.Empty(await coordinator.ReconcileCompletedCapturesAsync());
+        BrokerLeaseOutcome renewal = await coordinator.RenewOwnerLeaseAsync(start.CaptureId.Value, OwnerA);
+        Assert.Equal(BrokerOperationCode.CaptureUnavailable, renewal.Code);
+        Assert.Equal(CaptureLifecycle.Closed, renewal.State);
+    }
+
     [Fact]
     public async Task CompletedStartSurvivesReopenAndDuplicateDoesNotRunAgain()
     {

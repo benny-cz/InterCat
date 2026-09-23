@@ -94,6 +94,32 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.Empty(host.Active);
     }
 
+    [Fact(DisplayName = "R16: real evidence runtime duration stop becomes durable lifecycle status")]
+    public async Task DurationStopIsPersistedThroughCoordinator()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedHost();
+        await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
+        using var store = new FileBrokerLifecycleStore(temporary.Root);
+        var registry = new PreparedPlanRegistry();
+        PreparedPlanGrant grant = registry.Issue(SmallPlan(seconds: 1), OwnerA);
+        using var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime);
+        BrokerStartOutcome started = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+        Assert.Equal(BrokerOperationCode.Started, started.Code);
+
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        BrokerCaptureOwnership status = (await coordinator.GetStatusAsync(started.CaptureId!.Value, OwnerA))!;
+
+        Assert.Equal(CaptureLifecycle.Closed, status.State);
+        Assert.True(status.StopMilestones.FullyFinalized);
+        Assert.Contains("maximum capture duration", status.FailureReason, StringComparison.Ordinal);
+        Assert.Empty(host.Active);
+        BrokerStoredRequest request = Assert.Single(
+            (await store.ReadSnapshotAsync(CancellationToken.None)).Requests,
+            item => item.Kind == BrokerRequestKind.AutonomousStop);
+        Assert.True(request.Completed);
+    }
+
     private static PreparedCapturePlan SmallPlan(int seconds = 30) => BrokerPrepareCompiler.Prepare(
         CompileFocused(),
         new(seconds, 1_048_576, 16_777_216),

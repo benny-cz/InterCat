@@ -122,15 +122,22 @@ internal sealed class ManualTimeProvider(DateTimeOffset value) : TimeProvider
     public void Advance(TimeSpan duration) => value = value.Add(duration);
 }
 
-internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime
+internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe
 {
     public BrokerRuntimeStartOutcome StartOutcome { get; init; } = new(true);
     public BrokerRuntimeStopOutcome StopOutcome { get; init; } = new(new(true, true, true, true, true));
     public Func<CaptureId, Task>? BeforeStart { get; set; }
     public Queue<BrokerRuntimeStopOutcome> StopOutcomes { get; } = [];
+    public HashSet<CaptureId> CompletedCaptures { get; } = [];
     public List<BrokerSessionOwnership> StoppedSessions { get; } = [];
     public int StartCount { get; private set; }
     public int StopCount { get; private set; }
+
+    public ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(CompletedCaptures.Contains(captureId));
+    }
 
     public async Task<BrokerRuntimeStartOutcome> StartAsync(
         BrokerCaptureOwnership ownership,
@@ -164,6 +171,7 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime
 
         cancellationToken.ThrowIfCancellationRequested();
         StopCount++;
+        CompletedCaptures.Remove(ownership.CaptureId);
         StoppedSessions.Add(ownership.Session);
         return Task.FromResult(StopOutcomes.Count > 0 ? StopOutcomes.Dequeue() : StopOutcome);
     }
