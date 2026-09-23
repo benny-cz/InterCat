@@ -15,13 +15,13 @@ public sealed class BrokerHostTests
     private static readonly BrokerCaptureQuota SmallQuota = new(30, 1_048_576, 16_777_216);
 
     [Fact]
-    public void LaunchOptionsParseACompleteOptedInServeRequest()
+    public void LaunchOptionsParseACompleteServeRequest()
     {
         Guid instance = Guid.NewGuid();
         BrokerLaunchOptions? options = BrokerLaunchOptions.Parse(
             [
                 "serve", "--owner-sid", "s-1-5-21-1000", "--owner-logon-session", "0x3E7AB",
-                "--instance", instance.ToString(), BrokerLaunchOptions.UnqualifiedOptIn, "--idle-exit-seconds", "60",
+                "--instance", instance.ToString(), "--idle-exit-seconds", "60",
             ],
             out BrokerLaunchParseError? error);
 
@@ -35,23 +35,23 @@ public sealed class BrokerHostTests
     [Theory]
     [InlineData(BrokerLaunchParseErrorKind.NotServe)]
     [InlineData(BrokerLaunchParseErrorKind.NotServe, "--owner-sid", "S-1-5-21-1")]
-    [InlineData(BrokerLaunchParseErrorKind.NotOptedIn, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10")]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "0", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", BrokerLaunchOptions.UnqualifiedOptIn)]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "not-a-sid", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", BrokerLaunchOptions.UnqualifiedOptIn)]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "00000000-0000-0000-0000-000000000000", BrokerLaunchOptions.UnqualifiedOptIn)]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", BrokerLaunchOptions.UnqualifiedOptIn)]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", "--enable-unqualified-live-capture")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "0", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "not-a-sid", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "00000000-0000-0000-0000-000000000000")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7")]
     [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-sid", "S-1-5-21-2", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10")]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", BrokerLaunchOptions.UnqualifiedOptIn)]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", "--idle-exit-seconds", "9", BrokerLaunchOptions.UnqualifiedOptIn)]
-    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", "--root", "C:\\x", BrokerLaunchOptions.UnqualifiedOptIn)]
-    public void LaunchOptionsRefuseAnythingButACompleteOptedInServe(BrokerLaunchParseErrorKind expected, params string[] args)
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", "--idle-exit-seconds", "9")]
+    [InlineData(BrokerLaunchParseErrorKind.Invalid, "serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", "8b1f4c2e-2f7e-4a55-9d7e-3b8c1d7e9a10", "--root", "C:\\x")]
+    public void LaunchOptionsRefuseAnythingButACompleteServe(BrokerLaunchParseErrorKind expected, params string[] args)
     {
         Assert.Null(BrokerLaunchOptions.Parse(args, out BrokerLaunchParseError? error));
         Assert.Equal(expected, Assert.IsType<BrokerLaunchParseError>(error).Kind);
     }
 
     [Fact]
-    public async Task ProcessWithoutAnOptedInServeFailsClosedBeforeCreatingAnything()
+    public async Task ProcessWithoutAServeCommandFailsClosedBeforeCreatingAnything()
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
@@ -59,15 +59,6 @@ public sealed class BrokerHostTests
         int bare = await BrokerProcess.RunAsync([], stdout, stderr, CancellationToken.None);
         Assert.Equal((int)InterCatExitCode.PermissionOrCapabilityFailure, bare);
         Assert.Contains("not run directly", stderr.ToString(), StringComparison.Ordinal);
-
-        stderr.GetStringBuilder().Clear();
-        int notOptedIn = await BrokerProcess.RunAsync(
-            ["serve", "--owner-sid", "S-1-5-21-1", "--owner-logon-session", "7", "--instance", Guid.NewGuid().ToString()],
-            stdout,
-            stderr,
-            CancellationToken.None);
-        Assert.Equal((int)InterCatExitCode.PermissionOrCapabilityFailure, notOptedIn);
-        Assert.Contains(BrokerLaunchOptions.UnqualifiedOptIn, stderr.ToString(), StringComparison.Ordinal);
 
         int malformed = await BrokerProcess.RunAsync(["serve", "--bogus"], stdout, stderr, CancellationToken.None);
         Assert.Equal((int)InterCatExitCode.InvalidInvocation, malformed);

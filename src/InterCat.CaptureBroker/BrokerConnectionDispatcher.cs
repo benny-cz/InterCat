@@ -70,6 +70,7 @@ public sealed class BrokerConnectionDispatcher
             try
             {
                 request = BrokerWireRequestCodec.Decode(frame);
+                BrokerPrepareRequestPolicy.Validate(request);
             }
             catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
             {

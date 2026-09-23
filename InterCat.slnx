@@ -8,6 +8,7 @@
     <Project Path="src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
     <Project Path="src/InterCat.Capture.Recording/InterCat.Capture.Recording.csproj" />
     <Project Path="src/InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
+    <Project Path="src/InterCat.CaptureBroker.Protocol/InterCat.CaptureBroker.Protocol.csproj" />
     <Project Path="src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />
     <Project Path="src/InterCat.Desktop/InterCat.Desktop.csproj" />
     <Project Path="src/InterCat.Cli/InterCat.Cli.csproj" />

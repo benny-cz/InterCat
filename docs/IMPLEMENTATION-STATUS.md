@@ -1,12 +1,40 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 83
+Plan revision: 84
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: broker capture impact at the compiled live cadence
+## Latest slice: protocol library, client launcher, opt-in removed
+
+Protocol v1 moved into a new `InterCat.CaptureBroker.Protocol` library that references only Domain. It holds the frame,
+field, request and response codecs, the shared stop, operation, refusal and grant types, token identity, the pipe
+client, and a new `WindowsBrokerLauncher`, so the viewer can speak to the broker without the privileged runtime or
+TraceEvent. `ContentCaptureRequest`, its retention and inspection modes, and `ProviderProcessScope` moved to Domain.
+The codec now checks structure only. The broker applies its installed catalog to every decoded Prepare
+(`BrokerPrepareRequestPolicy`) before anything else runs, with the same `InvalidRequest` refusal. The dependency map
+records the new project.
+
+`WindowsBrokerLauncher.LaunchAsync` starts the broker with ShellExecute `runas` and the caller's own SID,
+logon-session LUID and a fresh instance GUID. It keeps the process handle, waits for the pipe while watching for an early
+exit, and connects only when the pipe server is that process. Each failure is a designed state with its own sentence:
+not installed, elevation declined (nothing started), launch failed, exited (documented codes 2/3/4), not listening, or
+impostor. With a real client path in place and the gates of revisions 79-83 met, `serve` no longer requires the opt-in.
+
+Tests: the broker parses exactly the arguments the launcher builds, including a 40-bit LUID and the idle period; a
+missing broker is reported without prompting; each documented exit code has its own explanation; a catalog-invalid
+Prepare over the wire is refused before compiling; and the codec still refuses structural errors. All 765 tests pass
+in Debug and Release. Real-ETW qualification adds a `launcher` scenario: the real ShellExecute path starts the broker,
+passes the server-PID check, finalizes a capture (616 records in 2 chunks), and the broker idle-exits with code 0 on its
+own. Evidence: `bench/results/broker-qualification-20260923T205911Z`.
+
+Next: `icat capture` over the broker for an ordinary-integrity CLI. It launches the broker, shows the effective summary
+before start, starts a `Live` capture, follows it into a user session directory (ADR-027 follower), stops at the
+duration or on Ctrl+C, and reports what was kept. After that come the Desktop's one-action start and its permission
+states (§3.1).
+
+## Previous slice: broker capture impact at the compiled live cadence
 
 `InterCat.BrokerQualification impact --output <dir> [--triplets N]` (elevated) keeps one broker child running. It
 drives the seeded TCP workload (4 × 768 messages, about 13 s) under three variants: no capture, a broker `OnStop`

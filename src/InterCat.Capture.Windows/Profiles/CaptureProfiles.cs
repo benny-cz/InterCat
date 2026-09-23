@@ -169,14 +169,6 @@ public sealed record OriginalEvidenceDecision(
     string StorageBoundary,
     string Warning);
 
-public enum ProviderProcessScope
-{
-    WholeMachineRequested = 1,
-    ProcessFiltered = 2,
-    WholeMachineRequiredContext = 3,
-    WholeMachineFilterUnavailable = 4,
-}
-
 public sealed record ProviderScopeDecision(
     string SourceId,
     ProviderProcessScope ProcessScope,

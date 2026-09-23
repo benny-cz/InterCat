@@ -1,4 +1,3 @@
-using InterCat.Capture.Windows;
 using InterCat.Domain;
 
 namespace InterCat.CaptureBroker;
@@ -117,19 +116,6 @@ public sealed record BrokerPrepareCaptureRequest(
     BrokerJournalPublication Publication = BrokerJournalPublication.OnStop) : BrokerWireRequest
 {
     public override BrokerMessageType MessageType => BrokerMessageType.PrepareCapture;
-
-    public CaptureProfileRequest ToProfileRequest()
-    {
-        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find(ProfileId)
-            ?? throw new InvalidOperationException($"Profile '{ProfileId}' is not in the local catalog.");
-        return new(
-            profile.Kind,
-            RequestOriginalDiagnosticEtl,
-            FocusedMechanism,
-            FocusedProcessIds,
-            AllowBroaderCapture,
-            Content);
-    }
 }
 
 public sealed record BrokerStartCaptureRequest(string PreparedToken, Guid RequestId) : BrokerWireRequest
@@ -384,14 +370,17 @@ public static class BrokerWireRequestCodec
         }
     }
 
+    /// <summary>
+    /// Structure only: bounds, enumerations and value shapes any peer can check. Which profiles exist and what each
+    /// admits is the broker's installed catalog, checked by <c>BrokerPrepareRequestPolicy</c> after decoding.
+    /// </summary>
     private static void ValidatePrepare(BrokerPrepareCaptureRequest request)
     {
         ArgumentNullException.ThrowIfNull(request.Quota);
         ArgumentNullException.ThrowIfNull(request.FocusedProcessIds);
-        CaptureProfileDescriptor? profile = string.IsNullOrWhiteSpace(request.ProfileId)
-            ? null
-            : CaptureProfileCatalog.Find(request.ProfileId);
-        if (profile is null || !string.Equals(profile.Id, request.ProfileId, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(request.ProfileId)
+            || request.ProfileId.Length > 64
+            || request.ProfileId.Any(character => !char.IsAsciiLetterLower(character) && !char.IsAsciiDigit(character) && character != '-'))
         {
             throw new InvalidDataException("PrepareCapture requires a canonical catalog profile ID.");
         }
@@ -419,42 +408,11 @@ public static class BrokerWireRequestCodec
         {
             throw new InvalidDataException("Focused process IDs must be positive, unique, and limited to 64.");
         }
-
-        if (profile.Kind == CaptureProfileKind.FocusedTransport)
-        {
-            if (request.FocusedMechanism != Mechanism.Tcp
-                || (request.AllowBroaderCapture && request.FocusedProcessIds.Count == 0)
-                || request.Content is not null)
-            {
-                throw new InvalidDataException(
-                    "Focused transport requires TCP, uses broader-capture consent only with selected PIDs, and cannot carry a Content request.");
-            }
-        }
-        else if (request.FocusedMechanism is not null
-            || request.FocusedProcessIds.Count > 0
-            || request.AllowBroaderCapture)
-        {
-            throw new InvalidDataException(
-                "Mechanism, process focus and broader-capture consent apply only to Focused transport.");
-        }
-
-        if (profile.Kind == CaptureProfileKind.Content)
-        {
-            string? contentProblem = ContentCapturePolicyCompiler.Validate(request.Content);
-            if (contentProblem is not null)
-            {
-                throw new InvalidDataException(contentProblem);
-            }
-        }
-        else if (request.Content is not null)
-        {
-            throw new InvalidDataException("Content scope and limits apply only to the Content profile.");
-        }
     }
 
     private static void ValidateStart(BrokerStartCaptureRequest request)
     {
-        if (!PreparedPlanRegistry.TryFingerprint(request.PreparedToken, out _))
+        if (!PreparedPlanTokenFormat.IsWellFormed(request.PreparedToken))
         {
             throw new InvalidDataException("StartCapture requires a well-formed prepared-plan token.");
         }

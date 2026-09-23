@@ -53,8 +53,7 @@ internal static partial class Qualification
     {
         string parent = Option(args, "--parent") ?? throw new ArgumentException("--parent is required.");
         BrokerLaunchOptions options = BrokerLaunchOptions.Parse(
-                ["serve", .. args.Skip(1).Where((_, index) => !IsParentArgument(args.Skip(1).ToArray(), index)),
-                    BrokerLaunchOptions.UnqualifiedOptIn],
+                ["serve", .. args.Skip(1).Where((_, index) => !IsParentArgument(args.Skip(1).ToArray(), index))],
                 out BrokerLaunchParseError? error)
             ?? throw new ArgumentException(error!.Message);
         BrokerProcessDependencies production = BrokerProcessDependencies.Production(options.Owner);
@@ -121,6 +120,7 @@ internal static partial class Qualification
         {
             report.CleanStop = await CleanStopAsync(parent, self, trafficSeconds, etw, cancellationToken);
             report.KilledBroker = await KilledBrokerAsync(parent, self, trafficSeconds, etw, cancellationToken);
+            report.Launcher = await LauncherAsync(parent, self, etw, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -133,7 +133,8 @@ internal static partial class Qualification
             report.Passed = report.Failure is null
                 && report.LeakedSessions.Count == 0
                 && report.CleanStop?.Passed == true
-                && report.KilledBroker?.Passed == true;
+                && report.KilledBroker?.Passed == true
+                && report.Launcher?.Passed == true;
             await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json), CancellationToken.None);
         }
 
@@ -226,6 +227,53 @@ internal static partial class Qualification
             && result.FailureReason?.StartsWith("Interrupted:", StringComparison.Ordinal) == true
             && result.BrokerExitCode == 1
             && result.Evidence is { Finalized: false, JournaledRecords: > 0, StagingFilesLeft: 0 };
+        return result;
+    }
+
+    /// <summary>
+    /// The production client path: <see cref="WindowsBrokerLauncher"/> starts the broker through ShellExecute
+    /// <c>runas</c> (no prompt from an elevated caller), passes the caller's own token identity, and connects only after
+    /// the pipe server proves to be the process it launched.
+    /// </summary>
+    private static async Task<ScenarioResult> LauncherAsync(
+        string parent,
+        BrokerClientIdentity self,
+        TraceEventSessionHost etw,
+        CancellationToken cancellationToken)
+    {
+        var result = new ScenarioResult { Name = "launcher" };
+        var target = new BrokerLaunchTarget(Environment.ProcessPath!, ["serve-child", "--parent", parent]);
+        var stopwatch = Stopwatch.StartNew();
+        int brokerProcessId;
+        CaptureId captureId;
+        await using (BrokerConnection connection = await WindowsBrokerLauncher.LaunchAsync(
+            target, idleExit: TimeSpan.FromSeconds(10), cancellationToken: cancellationToken))
+        {
+            result.LaunchToListeningMilliseconds = stopwatch.ElapsedMilliseconds;
+            brokerProcessId = connection.BrokerProcessId;
+            captureId = await StartAsync(connection.Client, result, cancellationToken);
+            result.OwnedSessionsWhileRecording = InterCatSessions(etw).Count;
+            result.TrafficBytes = await LoopbackTrafficAsync(connection.Client, captureId, 2, cancellationToken);
+            var stopped = Expect<BrokerStopCaptureResponse>(await connection.Client.SendAsync(
+                new BrokerStopCaptureRequest(captureId, Guid.NewGuid()), cancellationToken));
+            result.FinalState = stopped.State.ToString();
+            result.FinalMilestones = stopped.Milestones;
+            result.FailureReason = stopped.FailureReason;
+        }
+
+        // The launched broker exits on its own once idle; the client never kills it.
+        using (Process broker = Process.GetProcessById(brokerProcessId))
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(60));
+            await broker.WaitForExitAsync(timeout.Token);
+            result.BrokerExitCode = broker.ExitCode;
+        }
+
+        result.Evidence = ReadEvidence(parent, self, captureId);
+        result.Passed = result.FinalMilestones?.FullyFinalized == true
+            && result.BrokerExitCode == 0
+            && result.Evidence is { Finalized: true, JournaledRecords: > 0, StagingFilesLeft: 0 };
         return result;
     }
 
@@ -499,6 +547,7 @@ internal sealed class QualificationReport
     public bool Passed { get; set; }
     public ScenarioResult? CleanStop { get; set; }
     public ScenarioResult? KilledBroker { get; set; }
+    public ScenarioResult? Launcher { get; set; }
     public IReadOnlyList<string> LeakedSessions { get; set; } = [];
     public string? Failure { get; set; }
     public required IReadOnlyList<string> Notes { get; init; }

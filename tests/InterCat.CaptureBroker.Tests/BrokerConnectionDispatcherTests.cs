@@ -255,6 +255,25 @@ public sealed class BrokerConnectionDispatcherTests
     }
 
     [Fact]
+    public async Task APrepareOutsideTheInstalledCatalogIsRefusedBeforeCompiling()
+    {
+        var source = new FakePlanSource();
+        using var preparation = new BrokerPreparationCoordinator(source, new(), Runtime);
+        using var lifecycle = new BrokerLifecycleCoordinator(new(), new InMemoryBrokerLifecycleStore(), new BrokerFakeRuntime());
+        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle);
+        await CompleteHello(dispatcher);
+
+        var unknown = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
+            "not-installed", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
+        var misfocused = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
+            "explore", Mechanism.Tcp, [84], true, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
+
+        Assert.Equal(BrokerErrorCode.InvalidRequest, unknown.Code);
+        Assert.Equal(BrokerErrorCode.InvalidRequest, misfocused.Code);
+        Assert.Null(source.LastPreparedDigest);
+    }
+
+    [Fact]
     public async Task UnexpectedServiceFailureDoesNotLeakExceptionText()
     {
         var source = new FakePlanSource { ThrowOnProbe = true };

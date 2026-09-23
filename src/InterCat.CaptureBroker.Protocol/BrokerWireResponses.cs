@@ -1,5 +1,4 @@
 using System.Text;
-using InterCat.Capture.Windows;
 using InterCat.Domain;
 
 namespace InterCat.CaptureBroker;
@@ -643,7 +642,7 @@ public static class BrokerWireResponseCodec
 
         if (value.Grant is not null)
         {
-            if (!PreparedPlanRegistry.TryFingerprint(value.Grant.Token, out _)
+            if (!PreparedPlanTokenFormat.IsWellFormed(value.Grant.Token)
                 || value.Grant.ExpiresAtUtc <= value.Grant.IssuedAtUtc)
             {
                 throw new InvalidDataException("The prepared-plan grant is invalid.");

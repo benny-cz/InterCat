@@ -4,54 +4,6 @@ using InterCat.Domain;
 
 namespace InterCat.CaptureBroker;
 
-/// <summary>OS-authenticated identity supplied by the future local-pipe authentication layer.</summary>
-public sealed record BrokerClientIdentity(
-    string UserSid,
-    ulong LogonSessionId,
-    int IntegrityLevel,
-    bool IsElevated)
-{
-    public BrokerOwnerIdentity Owner => new(UserSid.ToUpperInvariant(), LogonSessionId);
-
-    public string? Validate()
-    {
-        if (string.IsNullOrWhiteSpace(UserSid)
-            || UserSid.Length > 184
-            || UserSid.Any(char.IsControl)
-            || !UserSid.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase))
-        {
-            return "The authenticated user SID is invalid.";
-        }
-
-        if (LogonSessionId == 0)
-        {
-            return "The authenticated logon-session identifier is invalid.";
-        }
-
-        if (IntegrityLevel <= 0)
-        {
-            return "The authenticated integrity level is invalid.";
-        }
-
-        return null;
-    }
-}
-
-/// <summary>Stable owner binding. A client PID is intentionally absent because it is not authentication.</summary>
-public readonly record struct BrokerOwnerIdentity(string UserSid, ulong LogonSessionId)
-{
-    public bool Matches(BrokerOwnerIdentity other) =>
-        LogonSessionId == other.LogonSessionId
-        && string.Equals(UserSid, other.UserSid, StringComparison.OrdinalIgnoreCase);
-}
-
-/// <summary>The only time the raw prepared token is returned. Logs and durable records use its hash.</summary>
-public sealed record PreparedPlanGrant(
-    string Token,
-    string PlanDigest,
-    DateTimeOffset IssuedAtUtc,
-    DateTimeOffset ExpiresAtUtc);
-
 internal enum PreparedPlanResolutionCode
 {
     Available = 1,
@@ -173,8 +125,7 @@ public sealed class PreparedPlanRegistry
     internal static bool TryFingerprint(string? token, out string fingerprint)
     {
         fingerprint = string.Empty;
-        if (token is null || token.Length != 43 || token.Any(character =>
-            !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_')))
+        if (!PreparedPlanTokenFormat.IsWellFormed(token))
         {
             return false;
         }

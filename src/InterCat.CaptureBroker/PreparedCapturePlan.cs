@@ -27,22 +27,6 @@ public sealed record BrokerRuntimeIdentity(
     }
 }
 
-public enum BrokerPrepareRefusalCode
-{
-    InvalidRuntimeIdentity = 1,
-    PlanNotStartable = 2,
-    UnsupportedBuild = 3,
-    RuntimeBuildMismatch = 4,
-    RuntimeArchitectureMismatch = 5,
-    RuntimeAdapterMismatch = 6,
-    EffectivePlanMismatch = 7,
-    UnsupportedAdmissionPolicy = 8,
-    UnsupportedContentCapture = 9,
-    UnsupportedOriginalEvidence = 10,
-    InvalidCapturePlan = 11,
-    InvalidOperationalLimits = 12,
-}
-
 public sealed record BrokerPrepareRefusal(BrokerPrepareRefusalCode Code, string Message);
 
 /// <summary>A typed prepare outcome. A refusal never produces a partly usable plan.</summary>

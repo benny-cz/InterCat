@@ -276,8 +276,9 @@ public sealed class BrokerWireProtocolTests
     }
 
     [Fact]
-    public void InvalidPrepareCombinationsAreRejectedBeforeEncoding()
+    public void InvalidPrepareCombinationsAreRefusedByTheBrokerCatalogPolicy()
     {
+        // Structurally valid, so any peer can encode it; only the broker's catalog knows Explore takes no TCP focus.
         var invalid = new BrokerPrepareCaptureRequest(
             "explore",
             Mechanism.Tcp,
@@ -287,9 +288,30 @@ public sealed class BrokerWireProtocolTests
             ValidQuota(),
             BrokerRetentionPolicy.StopAtLimit,
             null);
+        BrokerWireRequest decoded = BrokerWireRequestCodec.Decode(BrokerWireRequestCodec.Encode(invalid, Guid.NewGuid()));
 
-        Assert.Throws<InvalidDataException>(() =>
-            BrokerWireRequestCodec.Encode(invalid, Guid.NewGuid()));
+        Assert.Throws<InvalidDataException>(() => BrokerPrepareRequestPolicy.Validate(decoded));
+        Assert.Throws<InvalidDataException>(() => BrokerPrepareRequestPolicy.Validate(invalid with { ProfileId = "not-installed" }));
+    }
+
+    [Fact]
+    public void StructurallyInvalidPrepareRequestsAreRejectedBeforeEncoding()
+    {
+        var valid = new BrokerPrepareCaptureRequest(
+            "explore",
+            null,
+            [],
+            false,
+            false,
+            ValidQuota(),
+            BrokerRetentionPolicy.StopAtLimit,
+            null);
+
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(valid with { ProfileId = "Explore Profile" }, Guid.NewGuid()));
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(valid with { FocusedProcessIds = [0] }, Guid.NewGuid()));
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(valid with { FocusedProcessIds = [7, 7] }, Guid.NewGuid()));
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(valid with { Publication = (BrokerJournalPublication)9 }, Guid.NewGuid()));
+        BrokerPrepareRequestPolicy.Validate(valid);
     }
 
     private static BrokerCaptureQuota ValidQuota() => new(

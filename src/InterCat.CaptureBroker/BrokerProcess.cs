@@ -59,13 +59,7 @@ public static class BrokerProcess
                     await stderr.WriteLineAsync(
                         "The InterCat capture broker is started by InterCat when you begin a live capture; it is not run directly.")
                         .ConfigureAwait(false);
-                    await stderr.WriteLineAsync(
-                        $"Live capture is not yet qualified, so it also requires {BrokerLaunchOptions.UnqualifiedOptIn}.")
-                        .ConfigureAwait(false);
                     await stderr.WriteLineAsync(BrokerLaunchOptions.Usage).ConfigureAwait(false);
-                    return (int)InterCatExitCode.PermissionOrCapabilityFailure;
-                case BrokerLaunchParseErrorKind.NotOptedIn:
-                    await stderr.WriteLineAsync(error.Message).ConfigureAwait(false);
                     return (int)InterCatExitCode.PermissionOrCapabilityFailure;
                 default:
                     await stderr.WriteLineAsync(error.Message).ConfigureAwait(false);

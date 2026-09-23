@@ -1,0 +1,146 @@
+{
+  "Schema": "intercat.broker-qualification.v1",
+  "StartedUtc": "2026-09-23T20:59:11.4586384+00:00",
+  "FinishedUtc": "2026-09-23T20:59:56.5122404+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "BrokerVersion": "1.0.0\u002B91dbed4c91051de4036c4bfb39d9c58e87bb5a28",
+  "Passed": true,
+  "CleanStop": {
+    "Name": "clean-stop",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 138,
+    "RestartToListeningMilliseconds": null,
+    "PrepareMilliseconds": 232,
+    "StartMilliseconds": 254,
+    "StopMilliseconds": 971,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 151552,
+    "OwnedSessionsWhileRecording": 1,
+    "OrphanedSessionsAfterKill": [],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": true,
+      "JournalFinalized": true,
+      "AnalysisFinalized": true,
+      "FullyFinalized": true
+    },
+    "FailureReason": null,
+    "BrokerExitCode": 0,
+    "Evidence": {
+      "Generation": 3,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 3,
+      "JournaledRecords": 712,
+      "JournalBytes": 206146,
+      "Finalized": true
+    },
+    "Diagnostics": [
+      "2026-09-23T20:59:11.6009523\u002B00:00 Recovered: Recovery found nothing a previous broker left running.",
+      "2026-09-23T20:59:11.6056975\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.5f058c3b159f43dcb343335b1ba6af41.",
+      "2026-09-23T20:59:11.6123661\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 71688.",
+      "2026-09-23T20:59:17.1588210\u002B00:00 ClientEnded: Client disconnected.",
+      "2026-09-23T20:59:27.2530322\u002B00:00 Exiting: No client or active capture for 10 s; exiting."
+    ]
+  },
+  "KilledBroker": {
+    "Name": "killed-broker-restart",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 213,
+    "RestartToListeningMilliseconds": 325,
+    "PrepareMilliseconds": 209,
+    "StartMilliseconds": 195,
+    "StopMilliseconds": null,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 151552,
+    "OwnedSessionsWhileRecording": null,
+    "OrphanedSessionsAfterKill": [
+      "InterCat-b-fdb6c873e7824b8e-06b1725796474a30996433b0a28b4ed0"
+    ],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": false,
+      "JournalFinalized": false,
+      "AnalysisFinalized": true,
+      "FullyFinalized": false
+    },
+    "FailureReason": "Interrupted: the broker recording this capture ended before finalizing it. The published prefix is kept: 1 journal chunk(s), 170,321 bytes, generation 1; records after the last publication were lost. Released 2 abandoned staging file(s). The previous process did not durably prove callback drain and no verified finalization marker does so. No capture-finalization marker (or legacy final coverage ledger) is committed.",
+    "BrokerExitCode": 1,
+    "Evidence": {
+      "Generation": 1,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 1,
+      "JournaledRecords": 576,
+      "JournalBytes": 170321,
+      "Finalized": false
+    },
+    "Diagnostics": [
+      "2026-09-23T20:59:27.6042035\u002B00:00 Recovered: Recovery found nothing a previous broker left running.",
+      "2026-09-23T20:59:27.6090624\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.baa9172c007b4bfc8d61ca3adbafc4c5.",
+      "2026-09-23T20:59:27.6156410\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 71688.",
+      "2026-09-23T20:59:32.4551424\u002B00:00 Recovered: Recovery stopped or retried 1 capture(s): fdb6c873e7824b8eabd7491e1ccf1d19 RestartedActiveCaptureStopRequested -\u003E Closed",
+      "2026-09-23T20:59:32.4587955\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.95037423e0444c51aac4e866ac56a666.",
+      "2026-09-23T20:59:32.4650166\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 71688.",
+      "2026-09-23T20:59:32.4877883\u002B00:00 ClientEnded: Client disconnected.",
+      "2026-09-23T20:59:42.5966060\u002B00:00 Exiting: No client or active capture for 10 s; exiting."
+    ]
+  },
+  "Launcher": {
+    "Name": "launcher",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 316,
+    "RestartToListeningMilliseconds": null,
+    "PrepareMilliseconds": 209,
+    "StartMilliseconds": 195,
+    "StopMilliseconds": null,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 77824,
+    "OwnedSessionsWhileRecording": 1,
+    "OrphanedSessionsAfterKill": [],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": true,
+      "JournalFinalized": true,
+      "AnalysisFinalized": true,
+      "FullyFinalized": true
+    },
+    "FailureReason": null,
+    "BrokerExitCode": 0,
+    "Evidence": {
+      "Generation": 2,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 2,
+      "JournaledRecords": 616,
+      "JournalBytes": 181514,
+      "Finalized": true
+    },
+    "Diagnostics": []
+  },
+  "LeakedSessions": [],
+  "Failure": null,
+  "Notes": [
+    "The broker child runs the production composition (real TraceEventSessionHost ETW, TDH plan source, file ownership log, evidence runtime, authenticated pipe) over a qualification root. Its only declared deviation from production is the root\u0027s parent directory.",
+    "The client is this elevated harness, so the pipe owner is an elevated token; the ordinary-integrity client path is covered by the pipe fixtures, not by this run."
+  ]
+}

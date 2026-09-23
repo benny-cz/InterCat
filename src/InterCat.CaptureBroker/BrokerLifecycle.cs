@@ -2,24 +2,6 @@ using InterCat.Domain;
 
 namespace InterCat.CaptureBroker;
 
-public enum BrokerOperationCode
-{
-    Started = 1,
-    StartFailed = 2,
-    PreparedTokenRejected = 3,
-    PreparedPlanAlreadyUsed = 4,
-    RequestConflict = 5,
-    OperationPending = 6,
-    CaptureUnavailable = 7,
-    LeaseRenewed = 8,
-    LeaseExpired = 9,
-    Stopped = 10,
-    AlreadyStopped = 11,
-    StopPartial = 12,
-    PersistenceFailure = 13,
-    InvalidRequest = 14,
-}
-
 public enum BrokerRequestKind
 {
     Start = 1,
@@ -30,20 +12,6 @@ public enum BrokerRequestKind
 
     /// <summary>The broker host is exiting and stops what it still records rather than leaving an orphan.</summary>
     HostShutdownStop = 6,
-}
-
-/// <summary>Stop progress is never collapsed into one optimistic success flag.</summary>
-public sealed record BrokerStopMilestones(
-    bool Requested,
-    bool ProvidersStopped,
-    bool CallbacksDrained,
-    bool JournalFinalized,
-    bool AnalysisFinalized)
-{
-    public static BrokerStopMilestones None { get; } = new(false, false, false, false, false);
-
-    public bool FullyFinalized =>
-        Requested && ProvidersStopped && CallbacksDrained && JournalFinalized && AnalysisFinalized;
 }
 
 public sealed record BrokerStartOutcome(

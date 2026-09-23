@@ -14,19 +14,13 @@ public sealed record BrokerLaunchOptions(
 {
     public const string ServeCommand = "serve";
 
-    /// <summary>
-    /// Live capture is not yet qualified (no elevated crash/restart and capture-impact run at the compiled cadence).
-    /// Until it is, serving requires this flag so no shipped client can start the broker by accident.
-    /// </summary>
-    public const string UnqualifiedOptIn = "--enable-unqualified-live-capture";
-
     public static readonly TimeSpan MinimumIdleExit = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan MaximumIdleExit = TimeSpan.FromHours(24);
 
     public static string Usage =>
         $"""
         Usage: InterCat.CaptureBroker {ServeCommand} --owner-sid <SID> --owner-logon-session <LUID>
-                 --instance <GUID> {UnqualifiedOptIn} [--idle-exit-seconds <10-86400>]
+                 --instance <GUID> [--idle-exit-seconds <10-86400>]
 
           --owner-sid            The capturing user's SID; only this user may connect.
           --owner-logon-session  That user's logon-session LUID (decimal or 0x hex) as the client's own token reports it.
@@ -46,16 +40,9 @@ public sealed record BrokerLaunchOptions(
         }
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        bool optedIn = false;
         for (int index = 1; index < args.Count; index++)
         {
             string name = args[index];
-            if (string.Equals(name, UnqualifiedOptIn, StringComparison.Ordinal))
-            {
-                optedIn = true;
-                continue;
-            }
-
             if (name is not ("--owner-sid" or "--owner-logon-session" or "--instance" or "--idle-exit-seconds"))
             {
                 error = new(BrokerLaunchParseErrorKind.Invalid, $"Unknown argument '{name}'.");
@@ -117,15 +104,6 @@ public sealed record BrokerLaunchOptions(
             idle = TimeSpan.FromSeconds(seconds);
         }
 
-        // Checked last so a malformed invocation is reported as such rather than as a missing opt-in.
-        if (!optedIn)
-        {
-            error = new(
-                BrokerLaunchParseErrorKind.NotOptedIn,
-                $"Live capture is not yet qualified; serving requires {UnqualifiedOptIn}.");
-            return null;
-        }
-
         return new(new(sid.ToUpperInvariant(), logonSession), instanceId, idle);
     }
 
@@ -142,9 +120,6 @@ public enum BrokerLaunchParseErrorKind
 
     /// <summary>A serve command that is malformed.</summary>
     Invalid = 2,
-
-    /// <summary>A well-formed serve command without the explicit unqualified-capture opt-in.</summary>
-    NotOptedIn = 3,
 }
 
 public sealed record BrokerLaunchParseError(BrokerLaunchParseErrorKind Kind, string Message);

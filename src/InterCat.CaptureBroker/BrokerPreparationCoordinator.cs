@@ -105,7 +105,7 @@ public sealed class BrokerPreparationCoordinator : IDisposable
         try
         {
             EffectiveCapturePlan effective = await source
-                .CompileAsync(request.ToProfileRequest(), cancellationToken)
+                .CompileAsync(BrokerPrepareRequestPolicy.ToProfileRequest(request), cancellationToken)
                 .ConfigureAwait(false);
             BrokerEffectiveCaptureSummary summary = ToSummary(
                 effective, request.Quota, request.Retention, request.Publication);

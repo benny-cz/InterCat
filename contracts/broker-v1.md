@@ -1,10 +1,10 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery and compaction, bounded dispatch, the OS-authenticated pipe boundary, the broker-owned filesystem root and the composed host implemented; serving requires an explicit unqualified-capture opt-in**.
+Status: **prepare, ownership/recovery and compaction, bounded dispatch, the OS-authenticated pipe boundary, the broker-owned filesystem root, the composed host and the client launcher implemented and qualified with real ETW**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
-executable serves only when launched with `serve` and `--enable-unqualified-live-capture` (section 5.5). Nothing in this
+executable serves only when launched with `serve` (section 5.5), normally by `WindowsBrokerLauncher`. Nothing in this
 document makes the prepared-plan digest an authorization credential.
 
 ## 1. Trust boundary
@@ -315,7 +315,7 @@ still reads the evidence and is refused every write.
 
 ```text
 InterCat.CaptureBroker serve --owner-sid <SID> --owner-logon-session <LUID> --instance <GUID>
-                             --enable-unqualified-live-capture [--idle-exit-seconds <10-86400>]
+                             [--idle-exit-seconds <10-86400>]
 ```
 
 The launching client supplies its own SID, its own token's logon-session LUID and a fresh instance GUID.
@@ -340,13 +340,30 @@ stops every active capture with a durable `HostShutdownStop` request (kind 6) be
 | 0 | Served and exited idle or on request; every capture it touched is closed |
 | 1 | Exited normally, but recovery or shutdown left a capture partially stopped |
 | 2 | Malformed `serve` invocation |
-| 3 | Not `serve`, not opted in, root refused (not elevated, untrusted owner) or pipe name already taken |
+| 3 | Not `serve`, root refused (not elevated, untrusted owner) or pipe name already taken |
 | 4 | Ownership log unreadable; left untouched |
 
 **Client obligation** (`WindowsBrokerPipeClient`): first-instance creation protects the broker from joining a
 squatter's pipe, not the client from connecting to one, and an elevated process's command line is
 readable at ordinary integrity. The client launches the broker keeping its process handle and, after
 connecting, requires `GetNamedPipeServerProcessId` to equal that process before sending Hello.
+
+### 5.6 Client library and launcher
+
+Protocol v1 lives in `InterCat.CaptureBroker.Protocol`, which references only Domain: the frame, field,
+request and response codecs, the shared stop/operation/refusal/grant types, token identity,
+`WindowsBrokerPipeClient` and `WindowsBrokerLauncher`. The codec checks structure only (bounds, enums,
+value shapes). The broker applies its installed catalog to a decoded Prepare (`BrokerPrepareRequestPolicy`)
+before anything else runs and refuses a mismatch with `InvalidRequest`, exactly as a codec refusal.
+
+`WindowsBrokerLauncher.LaunchAsync` resolves the broker beside the client, starts it with ShellExecute
+`runas` (hidden window) and the caller's own token SID, logon-session LUID (hex) and a fresh instance GUID,
+and keeps the process handle. It polls for the pipe in 250 ms attempts for up to 30 s. If the process
+exits first, its exit code maps to the sentence in the table above. It connects only when
+`GetNamedPipeServerProcessId` names that process. Failures are `BrokerLaunchException`s with a
+`BrokerLaunchFailure`: `BrokerNotInstalled`, `ElevationDeclined` (UAC cancelled; nothing started),
+`LaunchFailed`, `BrokerExited`, `NotListening`, `ServerNotTheBroker`. Disposing the connection closes
+the pipe only; it never stops a capture.
 
 ## 6. Threat model and current non-capabilities
 
@@ -369,9 +386,8 @@ before the pipe exists, and the interrupted capture closes with its published pr
 staging released. Capture impact at the compiled live cadence is measured
 (`bench/results/broker-impact-*`): zero throughput regression, the broker's own CPU about 0.3
 core-seconds more per 13 s under `Live` than `OnStop`, and machine-level impact within the 5 pp target
-but not decision-grade on the noisy development host. Serving still requires
-`--enable-unqualified-live-capture`; the flag is removed together with the first client that launches
-the broker.
+but not decision-grade on the noisy development host. The unqualified-capture opt-in
+that guarded serving until then is removed (plan revision 84).
 
 An interrupted capture (its recording process gone, its ETW session proven stopped) is closed rather
 than retried: the runtime returns a terminal outcome after releasing staging whose ownership marker
