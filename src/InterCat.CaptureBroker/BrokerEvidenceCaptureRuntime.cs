@@ -278,18 +278,151 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
 
     private BrokerRuntimeStopOutcome ReclaimAfterRestart(BrokerCaptureOwnership ownership)
     {
+        bool providerStopped = ownership.StopMilestones.ProvidersStopped;
+        string? providerProblem = null;
+        if (!providerStopped)
+        {
+            try
+            {
+                _ = reclaimer.StopPreviouslyOwnedSession(
+                    ownership.Session.SessionName, ownership.Session.OwnershipToken);
+                providerStopped = true;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                providerProblem = $"The owned ETW session could not be confirmed stopped: {exception.Message}";
+            }
+        }
+
+        bool publishedCallbacksDrained = false;
+        string? journalProblem = null;
+        bool alreadyProven = ownership.StopMilestones is { JournalFinalized: true, CallbacksDrained: true };
+        bool verifiedFinalPublication = !alreadyProven && TryVerifyFinalPublication(
+            ownership, out publishedCallbacksDrained, out journalProblem);
+        bool journalFinalized = ownership.StopMilestones.JournalFinalized || verifiedFinalPublication;
+
+        // A callback drain already committed before the crash remains evidence. A new finalization marker may also
+        // prove it, because LiveRecorder stages that marker only after the owned session stop has returned.
+        bool callbacksDrained = ownership.StopMilestones.CallbacksDrained
+            || (verifiedFinalPublication && publishedCallbacksDrained);
+        BrokerStopMilestones milestones = new(
+            Requested: true,
+            ProvidersStopped: providerStopped,
+            CallbacksDrained: callbacksDrained,
+            JournalFinalized: journalFinalized,
+            AnalysisFinalized: true);
+        if (milestones.FullyFinalized)
+        {
+            return new(milestones);
+        }
+
+        var problems = new List<string>(3);
+        if (!providerStopped)
+        {
+            problems.Add(providerProblem ?? "The owned ETW session is not proven stopped.");
+        }
+
+        if (!callbacksDrained)
+        {
+            problems.Add(
+                "The previous process did not durably prove callback drain and no verified finalization marker does so.");
+        }
+
+        if (!journalFinalized)
+        {
+            problems.Add(journalProblem ?? "Final journal publication is not proven.");
+        }
+
+        return new(milestones, string.Join(" ", problems));
+    }
+
+    /// <summary>
+    /// Verifies a final publication from the protected capture store. A complete journal by itself is insufficient:
+    /// every live chunk is complete. New recordings publish capture-finalization-v1 only with their last chunk; a
+    /// coverage ledger is accepted as the legacy last-chunk marker because older LiveRecorder builds published it only
+    /// on the final generation. The boundary journal is replayed through its terminal before the milestone is promoted.
+    /// </summary>
+    private bool TryVerifyFinalPublication(
+        BrokerCaptureOwnership ownership,
+        out bool callbacksDrained,
+        out string? problem)
+    {
+        callbacksDrained = false;
         try
         {
-            _ = reclaimer.StopPreviouslyOwnedSession(
-                ownership.Session.SessionName, ownership.Session.OwnershipToken);
-            // The old process's callback drain and journal terminal cannot be inferred from ETW's absence.
-            return new(new(true, true, false, false, true),
-                "The owned ETW session is stopped, but the previous process did not prove callback drain or journal finalization.");
+            using WindowsBrokerRoot captureRoot = root.OpenExistingCaptureDirectory(ownership.CaptureId);
+            SessionStore store = SessionStore.Open(captureRoot, ownership.CaptureId.Value, ownership.PlanDigest);
+            SessionManifestV1 manifest = store.Current
+                ?? throw new InvalidDataException("The capture store has no committed generation.");
+            if (!string.Equals(manifest.SourceIdentity, ownership.PlanDigest, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "The committed generation does not name the prepared-plan digest in durable ownership.");
+            }
+
+            CaptureFinalizationV1? finalization = CaptureFinalizationV1.Read(captureRoot, manifest);
+            bool legacyCoverageFinal = false;
+            if (finalization is not null)
+            {
+                if (finalization.CaptureId != ownership.CaptureId.Value)
+                {
+                    throw new InvalidDataException(
+                        "The capture finalization marker belongs to a different capture.");
+                }
+
+                callbacksDrained = finalization.CallbacksDrained;
+            }
+            else if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger))
+            {
+                _ = SessionSegments.CoverageLedger(captureRoot, manifest)
+                    ?? throw new InvalidDataException("The legacy final generation names no readable coverage ledger.");
+                legacyCoverageFinal = true;
+            }
+            else
+            {
+                problem = "No capture-finalization marker (or legacy final coverage ledger) is committed.";
+                return false;
+            }
+
+            CommittedBoundary boundary = manifest.Boundary;
+            StoreDependency journal = manifest.Dependencies.SingleOrDefault(dependency =>
+                    dependency.Kind == StoreDependencyKind.Journal
+                    && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidDataException("The committed boundary journal is not a manifest dependency.");
+            if (journal.LengthBytes != boundary.CommittedBytes
+                || !string.Equals(journal.Digest, boundary.Digest, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("The committed boundary does not match its journal dependency.");
+            }
+
+            using FileStream stream = captureRoot.OpenOwnedFile(
+                journal.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+            (CaptureId journalCapture, _) = JournalV1Reader.ReadSourceClock(stream);
+            if (journalCapture != ownership.CaptureId)
+            {
+                throw new InvalidDataException("The committed final journal belongs to a different capture.");
+            }
+
+            long records = JournalV1Reader.ReplayBatches(stream, static (_, _, _, _) => { }, CancellationToken.None);
+            if (records != boundary.CommittedRecords)
+            {
+                throw new InvalidDataException(
+                    $"The committed boundary states {boundary.CommittedRecords} records but its journal replays {records}.");
+            }
+
+            problem = legacyCoverageFinal
+                ? "Final publication was proven by the legacy final coverage ledger."
+                : null;
+            return true;
         }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or InvalidDataException
+            or ArgumentException
+            or InvalidOperationException)
         {
-            return new(new(true, false, false, false, true),
-                $"The owned ETW session could not be confirmed stopped: {exception.Message}");
+            problem = $"Final journal publication could not be verified: {exception.Message}";
+            return false;
         }
     }
 

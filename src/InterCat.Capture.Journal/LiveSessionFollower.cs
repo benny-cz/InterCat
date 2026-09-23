@@ -23,8 +23,8 @@ public sealed record FollowStep
     public required long DerivedRecords { get; init; }
 
     /// <summary>
-    /// Whether the capture has stopped and every chunk is mirrored: the evidence session published its coverage
-    /// ledger, and the derived session now carries it.
+    /// Whether the capture has stopped and every chunk is mirrored. New evidence sessions prove this with a
+    /// capture-finalization marker; a coverage ledger is copied when available and remains a legacy finality signal.
     /// </summary>
     public required bool Finished { get; init; }
 
@@ -37,10 +37,10 @@ public sealed record FollowStep
 
 /// <summary>
 /// Follows a privileged recorder's evidence session from an ordinary process (§9, ADR-027). The recorder publishes
-/// admitted evidence only - journal chunks, the normalizer plan, the coverage ledger - and nothing privileged derives,
+/// admitted evidence only - journal chunks, the normalizer plan, finalization marker and optional coverage ledger - and nothing privileged derives,
 /// queries or compacts. The follower mirrors each committed chunk byte for byte into a session of its own, checked
 /// against the evidence manifest's digest, derives its rows there exactly as a recording that derives in-process would,
-/// and copies the plan with the first chunk and the ledger with the last. The derived session is an ordinary session:
+/// and copies the plan with the first chunk and finality evidence with the last. The derived session is an ordinary session:
 /// every command reads, re-derives, retains and compacts it.
 /// </summary>
 /// <remarks>
@@ -118,7 +118,7 @@ public sealed class LiveSessionFollower
         StoreDependency[] sourceChunks = Chunks(source);
         StoreDependency[] mirrored = derived.Current is { } current ? Chunks(current) : [];
         RequireMirrorOf(sourceChunks, mirrored);
-        bool finished = HasLedger(derived.Current);
+        bool finished = IsFinished(derived.Current);
         int chunks = 0;
         long records = 0;
         int compactions = 0;
@@ -126,8 +126,9 @@ public sealed class LiveSessionFollower
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The ledger comes with the evidence session's last chunk, so mirroring that chunk finishes the follow.
-            bool last = index == sourceChunks.Length - 1 && HasLedger(source);
+            // Finality evidence comes only with the capture's last chunk, so mirroring that chunk finishes the follow.
+            // A coverage ledger is accepted as the legacy proof for sessions written before capture-finalization-v1.
+            bool last = index == sourceChunks.Length - 1 && IsFinished(source);
             (DerivedGenerationResult published, long chunkRecords) = Mirror(
                 source,
                 sourceChunks[index],
@@ -312,8 +313,19 @@ public sealed class LiveSessionFollower
 
         if (last)
         {
-            builder.StageCoverageLedger(Read(evidence, source.Dependencies.Single(dependency =>
-                dependency.Kind == StoreDependencyKind.CoverageLedger)));
+            StoreDependency? ledger = source.Dependencies.SingleOrDefault(dependency =>
+                dependency.Kind == StoreDependencyKind.CoverageLedger);
+            if (ledger is not null)
+            {
+                builder.StageCoverageLedger(Read(evidence, ledger));
+            }
+
+            StoreDependency? finalization = source.Dependencies.SingleOrDefault(dependency =>
+                dependency.Kind == StoreDependencyKind.CaptureFinalization);
+            if (finalization is not null)
+            {
+                builder.StageCaptureFinalization(Read(evidence, finalization));
+            }
         }
 
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);
@@ -430,6 +442,12 @@ public sealed class LiveSessionFollower
             .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
             .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
     ];
+
+    private static bool IsFinished(SessionManifestV1? manifest) =>
+        HasFinalization(manifest) || HasLedger(manifest);
+
+    private static bool HasFinalization(SessionManifestV1? manifest) =>
+        manifest?.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization) == true;
 
     private static bool HasLedger(SessionManifestV1? manifest) =>
         manifest?.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger) == true;

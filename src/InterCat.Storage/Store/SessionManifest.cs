@@ -29,6 +29,12 @@ public enum StoreDependencyKind
     /// capture, kept with it: no journal holds these facts, so nothing can rebuild them.
     /// </summary>
     CoverageLedger = 6,
+
+    /// <summary>
+    /// Durable evidence that a live capture reached its final publication. A complete journal proves only one
+    /// committed chunk; this companion distinguishes the capture's final chunk from an intermediate live chunk.
+    /// </summary>
+    CaptureFinalization = 7,
 }
 
 /// <summary>

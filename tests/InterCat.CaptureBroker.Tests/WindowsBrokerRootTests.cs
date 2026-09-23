@@ -33,6 +33,22 @@ public sealed class WindowsBrokerRootTests
         Assert.Throws<InvalidOperationException>(() => first.OpenCaptureDirectory(CaptureId.New()));
     }
 
+    [Fact(DisplayName = "R16: recovery opening an absent capture directory never creates evidence")]
+    public void ExistingCaptureOpenDoesNotCreateMissingDirectory()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        CaptureId captureId = CaptureId.New();
+        string path = Path.Combine(temporary.Root.Path, $"capture-{captureId.Value:N}");
+
+        Assert.ThrowsAny<IOException>(() =>
+        {
+            using WindowsBrokerRoot opened = temporary.Root.OpenExistingCaptureDirectory(captureId);
+        });
+
+        Assert.False(Directory.Exists(path));
+        Assert.Empty(Directory.GetFileSystemEntries(temporary.Root.Path));
+    }
+
     [Fact(DisplayName = "R16: ordinary-integrity viewer can read capture evidence but cannot modify it")]
     public void OrdinaryIntegrityViewerCannotWriteCaptureDirectory()
     {

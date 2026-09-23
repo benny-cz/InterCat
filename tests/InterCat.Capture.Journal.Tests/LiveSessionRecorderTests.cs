@@ -121,8 +121,13 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(result.Publications + 1, manifest.Generation);
         Assert.Equal(4, SessionSegments.Open(reopened.Root, manifest, Assert.Single(SessionSegments.Names(manifest))).RowCount);
 
-        // The ledger describes the whole capture, so there is one, published with the last chunk.
+        // The ledger describes the whole capture, so there is one, published with the last chunk. Finality itself is
+        // a separate marker so a capture whose loss counters are unreadable is still restart-verifiable.
         Assert.Single(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
+        CaptureFinalizationV1 finalization = Assert.IsType<CaptureFinalizationV1>(
+            CaptureFinalizationV1.Read(reopened.Root, manifest));
+        Assert.True(finalization.ProvidersStopped);
+        Assert.True(finalization.CallbacksDrained);
         Assert.Equal(4, SessionSegments.CoverageLedger(reopened.Root, manifest)!.Epochs[0].Deliveries.Sum(delivery => delivery.Admitted));
 
         // A journal-prefix release gives up whole chunks, so a boundary inside the first releases nothing.
@@ -343,7 +348,7 @@ public sealed class LiveSessionRecorderTests
         Assert.True(step.Finished);
         Assert.Equal((sourceChunks.Length, 4L, sourceChunks.Length, sourceChunks.Length), (step.MirroredChunks, step.DerivedRecords, step.DerivedChunks, step.EvidenceChunks));
 
-        // Byte for byte: every chunk, the plan and the ledger are the evidence session's own.
+        // Byte for byte: every chunk, the plan, optional ledger and finalization marker are the evidence session's own.
         SessionManifestV1 mirror = derived.Current!;
         Assert.Equal(sourceChunks.Select(Measured), ChunksOf(mirror).Select(Measured));
         Assert.Equal(
@@ -352,6 +357,9 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(
             Measured(source.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger)),
             Measured(mirror.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger)));
+        Assert.Equal(
+            Measured(source.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization)),
+            Measured(mirror.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization)));
 
         // Its rows are the rows a recording that derives in-process publishes, compacted when the capture stopped.
         (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) rows = RowsOf(derived, mirror);
@@ -364,6 +372,33 @@ public sealed class LiveSessionRecorderTests
 
         // Following a finished capture again mirrors nothing.
         Assert.Equal((0, true), (follower.CatchUp().MirroredChunks, follower.CatchUp().Finished));
+    }
+
+    [Fact(DisplayName = "R16: a follower finishes from finalization evidence even when coverage is unknown")]
+    public async Task AFollowerFinishesWithoutCoverageLedger()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        _ = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2], failLossRead: true);
+
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        SessionManifestV1 source = evidence.Current!;
+        Assert.DoesNotContain(
+            source.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
+        Assert.Single(
+            source.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization);
+
+        SessionStore derived = SessionStore.Open(
+            LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        FollowStep step = LiveSessionFollower.Open(evidence, derived).CatchUp();
+
+        Assert.True(step.Finished);
+        Assert.Equal(2, step.DerivedRecords);
+        SessionManifestV1 mirror = Assert.IsType<SessionManifestV1>(derived.Current);
+        Assert.DoesNotContain(
+            mirror.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
+        Assert.Single(
+            mirror.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization);
     }
 
     [Fact(DisplayName = "R16: a follower resumes where its session ends, and refuses what it does not mirror")]
@@ -409,10 +444,13 @@ public sealed class LiveSessionRecorderTests
     }
 
     /// <summary>Records bursts of records 400 ms apart as evidence only, publishing every 100 ms.</summary>
-    private static async Task<LiveRecordingResult> RecordEvidence(string directory, int[] ordinals)
+    private static async Task<LiveRecordingResult> RecordEvidence(
+        string directory,
+        int[] ordinals,
+        bool failLossRead = false)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
-        var host = new ScriptedHost();
+        var host = new ScriptedHost { FailLossRead = failLossRead };
         long now = Stopwatch.GetTimestamp();
         for (int index = 0; index < ordinals.Length; index++)
         {
@@ -637,6 +675,10 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(result.Generation);
         Assert.Null(result.Coverage);
         Assert.Null(SessionSegments.CoverageLedger(store.Root, store.Current!));
+        CaptureFinalizationV1 finalization = Assert.IsType<CaptureFinalizationV1>(
+            CaptureFinalizationV1.Read(store.Root, store.Current!));
+        Assert.True(finalization.ProvidersStopped);
+        Assert.True(finalization.CallbacksDrained);
     }
 
     [Fact(DisplayName = "R21: a record the full queue dropped is callback-queue loss, not a delivery of its descriptor")]
@@ -698,13 +740,14 @@ public sealed class LiveSessionRecorderTests
         return (rows, fields);
     }
 
-    /// <summary>The dependencies a replacement derivation must carry unchanged: journals, the plan and the ledger.</summary>
+    /// <summary>The evidence companions a replacement derivation must carry unchanged.</summary>
     private static StoreDependency[] EvidenceOf(SessionManifestV1 manifest) =>
     [
         .. manifest.Dependencies
             .Where(dependency => dependency.Kind is StoreDependencyKind.Journal
                 or StoreDependencyKind.DerivationPlan
-                or StoreDependencyKind.CoverageLedger)
+                or StoreDependencyKind.CoverageLedger
+                or StoreDependencyKind.CaptureFinalization)
             .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
     ];
 

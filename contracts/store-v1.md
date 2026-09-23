@@ -52,7 +52,8 @@ survived a power failure from a name that was renamed into place and lost its co
 is no directory flush, so a rename proves nothing about the bytes behind the name.
 
 A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index`, `DerivationPlan` (code 5,
-`contracts/normalizer-plan-v1.md`) or `CoverageLedger` (code 6, `contracts/coverage-v1.md`). An unknown kind, an unreadable
+`contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`) or
+`CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`). An unknown kind, an unreadable
 format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
 duplicate dependency, or a dependency name that is not an owned file name are each refused — the
 manifest is not read at a guessed layout.
@@ -98,9 +99,9 @@ control file, not evidence or an orphan. It serializes independently opened writ
 threads within one store instance. A reader does not need that lock.
 
 A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
-exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan and the
-capture coverage ledger if published, stages a replacement set of segments and dictionaries, and publishes it as the
-next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
+exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan, the
+capture coverage ledger if published, and the capture-finalization marker if present; it stages a replacement set of
+segments and dictionaries and publishes it as the next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
 dependencies remain last-known-good; publication still follows the same staged-file and pointer sequence. The
 replacement is refused if the source generation changed during replay. The replay itself refuses two cases:
 
@@ -175,6 +176,7 @@ sequence requires, under names that carry the generation:
 | `journal-<generation:D10>.icatj` | `Journal` — the admitted evidence, written and flushed first |
 | `normalizer-plan-<generation:D10>.json` | `DerivationPlan` — the retained compiled interpretation of admitted descriptors |
 | `coverage-<generation:D10>.json` | `CoverageLedger` — delivered, omitted, undecodable and reported-loss facts about the capture, not reconstructible from its admitted journal |
+| `capture-finalization-<generation:D10>.json` | `CaptureFinalization` — last-publication and stop-milestone evidence, present only after a live capture stops |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | `Dictionary` |
 | `seg-<generation:D10>-<ordinal:D4>.icats` | `Segment` |
 
@@ -188,7 +190,7 @@ generation can never reference evidence that was not durable when it was derived
 
 `icat rederive <directory>` replays the published journal up to that boundary with its retained
 `normalizer-plan-v1` dependency and replaces the derived segments and dictionaries in a new generation that carries
-every journal, the plan and the coverage ledger unchanged. A live recording's journal is a sequence of chunks, replayed
+every journal, the plan, the coverage ledger when present and the capture-finalization marker unchanged. A live recording's journal is a sequence of chunks, replayed
 in name order, which is the order they were recorded (ADR-023). The replay validates each chunk's length, digest,
 source clock, schema/policy table, every record and terminal frame. It checks that every chunk names one capture and
 one clock, and that within each stream and epoch every chunk's ordinals pass those of the chunks before it, so no
@@ -203,17 +205,19 @@ interval it publishes as it records: each publication completes a **journal chun
 new chunk with the segments derived from it. The normalizer plan is published with the first generation and carried
 after it. The committed boundary names the newest chunk; record ordinals continue from one chunk to the next, and a
 row's journal index counts its record across the capture's chunks in order, so a row derived while recording and the
-same row re-derived agree. The coverage ledger is published with the last generation, when the capture stops. A
-recording interrupted between publications leaves the chunks already published and staging files for the rest.
+same row re-derived agree. The coverage ledger, when its loss counters are readable, is published with the last
+generation. Independently, `capture-finalization-v1` is always staged for a started capture's last generation after
+the owned session stop returns; it is what lets restart recovery distinguish that last chunk from a complete
+intermediate chunk. A recording interrupted between publications leaves the chunks already published and staging files for the rest.
 Journal-prefix retention releases a recording's oldest chunks whole (§8).
 
-A privileged recording can publish an **evidence session** instead (ADR-027). It holds the same journal chunks, plan
-and ledger, with no rows and no segments, so nothing privileged derives, reads back or compacts. An ordinary process
+A privileged recording can publish an **evidence session** instead (ADR-027). It holds the same journal chunks, plan,
+finalization marker and optional ledger, with no rows and no segments, so nothing privileged derives, reads back or compacts. An ordinary process
 follows it into a session directory of its own:
 
 - each committed chunk is copied byte for byte, its length and digest checked against the evidence manifest;
 - its rows are derived there, with the capture-wide journal index an in-process recording uses;
-- the plan comes with the first chunk and the ledger with the last.
+- the plan comes with the first chunk; the finalization marker and any coverage ledger come with the last.
 
 The derived session takes the evidence session's identity and is an ordinary session. A follower resumes from what the
 derived session holds. It refuses evidence whose chunks are not the ones it mirrored, a session that already has its
@@ -331,8 +335,8 @@ A compaction (§20.1, ADR-026) coalesces a session's small publications into bou
 - **Every row moves unchanged**, with its locator, journal index and values, so every observation keeps its identity.
 
 The generation releases the replaced files with a `DerivedFiles` retention record whose reason says their rows were
-coalesced and kept. It carries the journals, the plan, the ledger and the boundary unchanged; only segments and
-dictionaries can be replaced. A file a reader's lease holds stays until that reader lets go.
+coalesced and kept. It carries the journals, the plan, any coverage ledger, the capture-finalization marker and the
+boundary unchanged; only segments and dictionaries can be replaced. A file a reader's lease holds stays until that reader lets go.
 
 A live recording compacts itself. When 64 small publications have accumulated, the writer coalesces the oldest run
 between chunks, at most one segment's worth of rows. When the capture stops, every run left is coalesced.

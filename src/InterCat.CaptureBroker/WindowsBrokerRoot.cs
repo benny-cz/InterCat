@@ -214,7 +214,17 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
     /// a capture directory is never repaired in place because it may contain untrusted evidence.
     /// Hold the returned directory open for the lifetime of its session and dispose it afterwards.
     /// </summary>
-    public WindowsBrokerRoot OpenCaptureDirectory(CaptureId captureId)
+    public WindowsBrokerRoot OpenCaptureDirectory(CaptureId captureId) =>
+        OpenCaptureDirectoryCore(captureId, createIfMissing: true);
+
+    /// <summary>
+    /// Reopens an existing capture directory for recovery without creating one when it is absent. Recovery must not
+    /// manufacture an empty evidence root and then reason from the fact that it opened successfully.
+    /// </summary>
+    public WindowsBrokerRoot OpenExistingCaptureDirectory(CaptureId captureId) =>
+        OpenCaptureDirectoryCore(captureId, createIfMissing: false);
+
+    private WindowsBrokerRoot OpenCaptureDirectoryCore(CaptureId captureId, bool createIfMissing)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (isCaptureDirectory)
@@ -230,7 +240,7 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
         string name = $"capture-{captureId.Value:N}";
         string path = System.IO.Path.Combine(Path, name);
         string sddl = policy.BuildSecurityDescriptorSddl(capturingUserSid);
-        bool created = CreateRootDirectory(path, sddl);
+        bool created = createIfMissing && CreateRootDirectory(path, sddl);
         SafeFileHandle directory = OpenDirectory(
             path,
             FileGenericRead | FileTraverse | ReadControl,

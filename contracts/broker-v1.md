@@ -192,8 +192,9 @@ field is refused. No runtime/domain object graph is deserialized.
 
 Typed request codecs exist for Hello, GetCapabilities, PrepareCapture, StartCapture, GetStatus,
 StopCapture and RenewOwnerLease. Prepare accepts only a canonical profile ID, typed Focused/Content
-settings, stop-at-limit retention, a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and a
-smaller 16-MiB-to-1-TiB free-space reserve. Focused and Content groups are mutually exclusive and
+settings, stop-at-limit retention, a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and an
+independent 16-MiB-to-1-TiB free-space reserve. The reserve may exceed the journal limit because the two bounds
+protect different resources. Focused and Content groups are mutually exclusive and
 Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
 dispatch.
 

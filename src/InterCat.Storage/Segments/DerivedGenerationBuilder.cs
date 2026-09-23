@@ -98,6 +98,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool completed;
     private bool planStaged;
     private bool ledgerStaged;
+    private bool finalizationStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -197,6 +198,44 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
     /// <summary>The published name of a generation's coverage ledger.</summary>
     public static string CoverageLedgerFileName(long generation) => $"coverage-{generation:D10}.json";
+
+    /// <summary>
+    /// Stages durable evidence that this is the capture's final publication. Callers may do this only after the
+    /// capture session has stopped; an intermediate live publication deliberately has no such dependency.
+    /// </summary>
+    public void StageCaptureFinalization(CaptureFinalizationV1 finalization)
+    {
+        ArgumentNullException.ThrowIfNull(finalization);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || finalizationStaged)
+        {
+            throw new InvalidOperationException(
+                "A generation stages its capture finalization marker once, before publication.");
+        }
+
+        if (finalization.CaptureId != identity.CaptureId.Value)
+        {
+            throw new ArgumentException(
+                "A capture finalization marker must name the capture this generation belongs to.",
+                nameof(finalization));
+        }
+
+        Stage(CaptureFinalizationFileName(generation), StoreDependencyKind.CaptureFinalization, finalization.Encode());
+        finalizationStaged = true;
+    }
+
+    /// <summary>
+    /// Retains an already-published finalization marker while mirroring evidence. The marker is decoded first and
+    /// still has to name this generation's capture.
+    /// </summary>
+    public void StageCaptureFinalization(ReadOnlySpan<byte> bytes)
+    {
+        CaptureFinalizationV1 finalization = CaptureFinalizationV1.Decode(bytes);
+        StageCaptureFinalization(finalization);
+    }
+
+    /// <summary>The published name of a generation's capture finalization marker.</summary>
+    public static string CaptureFinalizationFileName(long generation) => $"capture-finalization-{generation:D10}.json";
 
     /// <summary>
     /// Begins a generation. The journal is staged immediately, because §20.1's first step is making the

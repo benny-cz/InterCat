@@ -469,6 +469,53 @@ public sealed class EvidenceRetentionTests
         Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
     }
 
+    [Fact(DisplayName = "R16: a chunk release keeps the capture-finalization marker the last chunk published")]
+    public void AChunkReleaseKeepsTheFinalizationMarker()
+    {
+        using var session = new TemporarySession();
+        CaptureFinalizationV1 marker = new()
+        {
+            Contract = CaptureFinalizationV1.ContractName,
+            CaptureId = Capture.Value,
+            FinalizedUtc = Committed,
+            ProvidersStopped = true,
+            CallbacksDrained = true,
+        };
+        DerivedGenerationResult first = Publish(session.Store, 4, batchCapacity: 2);
+        Assert.Null(CaptureFinalizationV1.Read(session.Store.Root, session.Store.Current!));
+        _ = Publish(session.Store, 5, batchCapacity: 2, builder =>
+        {
+            builder.StageCaptureFinalization(marker);
+            Assert.Throws<InvalidOperationException>(() => builder.StageCaptureFinalization(marker));
+        });
+
+        RetentionOutcome outcome = JournalRetention.Release(session.Store, 4, "the first chunk aged out", Committed, Committed);
+
+        Assert.Equal([first.JournalName], outcome.RemovedFiles);
+        Assert.Equal(marker, CaptureFinalizationV1.Read(session.Store.Root, outcome.Manifest));
+        SessionStore reopened = session.Reopen();
+        Assert.Equal(marker, CaptureFinalizationV1.Read(reopened.Root, reopened.Current!));
+    }
+
+    [Fact(DisplayName = "R16: a generation refuses a finalization marker naming another capture")]
+    public void FinalizationForAnotherCaptureIsRefused()
+    {
+        using var session = new TemporarySession();
+        CaptureFinalizationV1 foreign = new()
+        {
+            Contract = CaptureFinalizationV1.ContractName,
+            CaptureId = Guid.NewGuid(),
+            FinalizedUtc = Committed,
+            ProvidersStopped = true,
+            CallbacksDrained = true,
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            Publish(session.Store, 1, beforeComplete: builder => builder.StageCaptureFinalization(foreign)));
+        Assert.Throws<ArgumentException>(() =>
+            Publish(session.Store, 1, beforeComplete: builder => builder.StageCaptureFinalization(foreign.Encode())));
+    }
+
     [Fact(DisplayName = "I15: a chunk release gives up only the oldest chunks and never all of the evidence")]
     public void AChunkReleaseKeepsTheRecordingWhole()
     {
@@ -560,7 +607,11 @@ public sealed class EvidenceRetentionTests
     /// Publishes a generation with one admitted record and one derived row per record, so a journal release
     /// has real batches to release and the retained file has real records to keep.
     /// </summary>
-    private static DerivedGenerationResult Publish(SessionStore store, int records, int batchCapacity = 4_096)
+    private static DerivedGenerationResult Publish(
+        SessionStore store,
+        int records,
+        int batchCapacity = 4_096,
+        Action<DerivedGenerationBuilder>? beforeComplete = null)
     {
         using DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(
             store,
@@ -582,6 +633,7 @@ public sealed class EvidenceRetentionTests
             }
         }
 
+        beforeComplete?.Invoke(builder);
         return builder.Complete(Committed);
     }
 

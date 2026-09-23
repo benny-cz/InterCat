@@ -210,7 +210,7 @@ public static class LiveRecorder
             ]);
         }
 
-        DerivedGenerationResult published = chunks.PublishLast(ledger);
+        DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained);
         return new()
         {
             Start = start,
@@ -321,14 +321,26 @@ public static class LiveRecorder
         /// Publishes the last chunk, with the capture's coverage ledger when it could be measured; the derivation then acts
         /// on it as the capture's last publication.
         /// </summary>
-        public DerivedGenerationResult PublishLast(CoverageLedgerV1? ledger)
+        public DerivedGenerationResult PublishLast(
+            CoverageLedgerV1? ledger,
+            bool providersStopped,
+            bool callbacksDrained)
         {
             if (ledger is not null)
             {
                 builder.StageCoverageLedger(ledger);
             }
 
-            DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
+            DateTimeOffset finalizedUtc = DateTimeOffset.UtcNow;
+            builder.StageCaptureFinalization(new CaptureFinalizationV1
+            {
+                Contract = CaptureFinalizationV1.ContractName,
+                CaptureId = plan.Identity.CaptureId.Value,
+                FinalizedUtc = finalizedUtc,
+                ProvidersStopped = providersStopped,
+                CallbacksDrained = callbacksDrained,
+            });
+            DerivedGenerationResult published = builder.Complete(finalizedUtc, CancellationToken.None);
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);
             Publications++;
             return derivation?.Published(published, last: true) ?? published;

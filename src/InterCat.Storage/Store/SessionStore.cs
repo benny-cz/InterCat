@@ -479,14 +479,15 @@ public sealed class SessionStore
                         + "boundary; it cannot silently switch evidence while replacing derived files.");
                 }
 
-                // The admitted evidence - every journal chunk - and the plan and coverage ledger that describe the
-                // capture are not derivations of it, so a replacement derivation carries them all unchanged. Carrying
+                // The admitted evidence - every journal chunk - and the plan, optional coverage ledger and finalization
+                // marker that describe the capture are not derivations of it, so replacement carries them unchanged. Carrying
                 // every journal means no chunk's evidence is ever dropped by replacing the rows derived from it.
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
                         dependency.Kind is StoreDependencyKind.DerivationPlan
                             or StoreDependencyKind.CoverageLedger
+                            or StoreDependencyKind.CaptureFinalization
                             or StoreDependencyKind.Journal),
                 ];
                 if (!carried.Any(dependency => dependency.Kind == StoreDependencyKind.Journal
@@ -725,6 +726,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "A coverage ledger states what the capture could observe and what it lost. No journal holds "
                         + "those facts, so it is not a rebuildable index and retention cannot release it (R21).",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.CaptureFinalization)
+                {
+                    throw new ArgumentException(
+                        "A capture finalization marker is durable evidence that the recording reached its last "
+                        + "publication. It is not a rebuildable derived index and retention cannot release it.",
                         nameof(names));
                 }
 

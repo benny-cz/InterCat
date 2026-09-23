@@ -322,6 +322,68 @@ public sealed class BrokerLifecycleCoordinatorTests
     }
 
     [Fact]
+    public async Task StopCompletionPersistenceFailureRetriesWithoutStoppingRuntimeTwice()
+    {
+        var clock = new ManualTimeProvider(StartTime);
+        var runtime = new BrokerFakeRuntime();
+        var store = new FaultingStore();
+        var registry = new PreparedPlanRegistry(clock);
+        PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
+        using var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime, clock);
+        BrokerStartOutcome start = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+        store.FailStopCompletionCount = 1;
+
+        BrokerStopOutcome first = await coordinator.StopAsync(start.CaptureId!.Value, Guid.NewGuid(), OwnerA);
+
+        Assert.Equal(BrokerOperationCode.PersistenceFailure, first.Code);
+        Assert.True(first.Milestones.FullyFinalized);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(CaptureLifecycle.Stopping,
+            (await store.FindCaptureAsync(start.CaptureId.Value, CancellationToken.None))!.State);
+
+        BrokerStopOutcome retried = Assert.Single(await coordinator.RetryPendingStopCompletionsAsync());
+
+        Assert.Equal(BrokerOperationCode.Stopped, retried.Code);
+        Assert.True(retried.Milestones.FullyFinalized);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(CaptureLifecycle.Closed,
+            (await store.FindCaptureAsync(start.CaptureId.Value, CancellationToken.None))!.State);
+        Assert.Empty(await coordinator.RetryPendingStopCompletionsAsync());
+    }
+
+    [Fact]
+    public async Task QueuedStopCompletionIsReusedByNewStopRequestsAndStatus()
+    {
+        var clock = new ManualTimeProvider(StartTime);
+        var runtime = new BrokerFakeRuntime();
+        var store = new FaultingStore();
+        var registry = new PreparedPlanRegistry(clock);
+        PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
+        using var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime, clock);
+        BrokerStartOutcome start = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+        CaptureId captureId = start.CaptureId!.Value;
+        store.FailStopCompletionCount = 2;
+
+        Assert.Equal(BrokerOperationCode.PersistenceFailure,
+            (await coordinator.StopAsync(captureId, Guid.NewGuid(), OwnerA)).Code);
+
+        // A fresh request ID while the store is still failing reports the failure without stopping the runtime again.
+        BrokerStopOutcome stillFailing = await coordinator.StopAsync(captureId, Guid.NewGuid(), OwnerA);
+        Assert.Equal(BrokerOperationCode.PersistenceFailure, stillFailing.Code);
+        Assert.Equal(1, runtime.StopCount);
+
+        // Status retries the queued completion and then reports the durable closed capture.
+        BrokerCaptureOwnership? status = await coordinator.GetStatusAsync(captureId, OwnerA);
+        Assert.Equal(CaptureLifecycle.Closed, status!.State);
+        Assert.True(status.StopMilestones.FullyFinalized);
+
+        BrokerStopOutcome later = await coordinator.StopAsync(captureId, Guid.NewGuid(), OwnerA);
+        Assert.Equal(BrokerOperationCode.AlreadyStopped, later.Code);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Empty(await coordinator.RetryPendingStopCompletionsAsync());
+    }
+
+    [Fact]
     public async Task CompletionPersistenceFailureTriggersCompensatingStopAndNoSuccess()
     {
         var clock = new ManualTimeProvider(StartTime);
@@ -342,6 +404,7 @@ public sealed class BrokerLifecycleCoordinatorTests
     {
         public bool FailStartIntent { get; init; }
         public bool FailStartCompletion { get; init; }
+        public int FailStopCompletionCount { get; set; }
 
         public override ValueTask SaveStartIntentAsync(
             BrokerCaptureOwnership ownership,
@@ -358,5 +421,19 @@ public sealed class BrokerLifecycleCoordinatorTests
             FailStartCompletion
                 ? ValueTask.FromException(new IOException("fixture completion failure"))
                 : base.SaveStartCompletionAsync(ownership, request, cancellationToken);
+
+        public override ValueTask SaveStopCompletionAsync(
+            BrokerCaptureOwnership ownership,
+            BrokerStoredRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (FailStopCompletionCount > 0)
+            {
+                FailStopCompletionCount--;
+                return ValueTask.FromException(new IOException("fixture stop completion failure"));
+            }
+
+            return base.SaveStopCompletionAsync(ownership, request, cancellationToken);
+        }
     }
 }

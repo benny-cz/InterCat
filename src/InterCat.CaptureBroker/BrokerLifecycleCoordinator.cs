@@ -19,6 +19,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
     private readonly TimeProvider clock;
     private readonly TimeSpan leaseDuration;
     private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly Dictionary<CaptureId, PendingStopCompletion> pendingStopCompletions = [];
     private bool disposed;
 
     public BrokerLifecycleCoordinator(
@@ -277,9 +278,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             BrokerCaptureOwnership? ownership = await store
                 .FindCaptureAsync(captureId, cancellationToken)
                 .ConfigureAwait(false);
-            if (ownership is null
-                || !ownership.Owner.Matches(client.Owner)
-                || ownership.State is not (CaptureLifecycle.Starting or CaptureLifecycle.Recording))
+            if (ownership is null || !ownership.Owner.Matches(client.Owner))
             {
                 return new(
                     BrokerOperationCode.CaptureUnavailable,
@@ -287,6 +286,24 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                     ownership?.State ?? CaptureLifecycle.Idle,
                     null,
                     "The capture is unavailable to this authenticated owner.");
+            }
+
+            if (pendingStopCompletions.ContainsKey(captureId))
+            {
+                _ = await RetryPendingStopCompletionAsync(captureId).ConfigureAwait(false);
+                ownership = await store.FindCaptureAsync(captureId, CancellationToken.None).ConfigureAwait(false)
+                    ?? throw new InvalidDataException(
+                        "The capture ownership record disappeared while retrying a stop completion.");
+            }
+
+            if (ownership.State is not (CaptureLifecycle.Starting or CaptureLifecycle.Recording))
+            {
+                return new(
+                    BrokerOperationCode.CaptureUnavailable,
+                    captureId,
+                    ownership.State,
+                    null,
+                    ownership.FailureReason ?? "The capture is no longer recording; its owner lease cannot be renewed.");
             }
 
             ownership = await ReconcileIfCompletedAsync(ownership, cancellationToken).ConfigureAwait(false);
@@ -361,9 +378,20 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             BrokerCaptureOwnership? ownership = await store
                 .FindCaptureAsync(captureId, cancellationToken)
                 .ConfigureAwait(false);
-            return ownership is not null && ownership.Owner.Matches(client.Owner)
-                ? await ReconcileIfCompletedAsync(ownership, cancellationToken).ConfigureAwait(false)
-                : null;
+            if (ownership is null || !ownership.Owner.Matches(client.Owner))
+            {
+                return null;
+            }
+
+            if (pendingStopCompletions.ContainsKey(captureId))
+            {
+                _ = await RetryPendingStopCompletionAsync(captureId).ConfigureAwait(false);
+                ownership = await store.FindCaptureAsync(captureId, CancellationToken.None).ConfigureAwait(false)
+                    ?? throw new InvalidDataException(
+                        "The capture ownership record disappeared while retrying a stop completion.");
+            }
+
+            return await ReconcileIfCompletedAsync(ownership, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -379,16 +407,17 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        if (runtime is not IBrokerCaptureCompletionProbe probe)
-        {
-            return [];
-        }
-
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
             var outcomes = new List<BrokerStopOutcome>();
+            outcomes.AddRange(await RetryPendingStopCompletionsCoreAsync().ConfigureAwait(false));
+            if (runtime is not IBrokerCaptureCompletionProbe probe)
+            {
+                return outcomes;
+            }
+
+            BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
             foreach (BrokerCaptureOwnership ownership in snapshot.Captures
                 .Where(capture => capture.State == CaptureLifecycle.Recording))
             {
@@ -406,6 +435,25 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             }
 
             return outcomes;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Retries stop completions whose runtime result is already known but whose durable completion write failed.
+    /// The runtime is not invoked again: doing so could discard already-proven finalization milestones.
+    /// </summary>
+    public async Task<IReadOnlyList<BrokerStopOutcome>> RetryPendingStopCompletionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await RetryPendingStopCompletionsCoreAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -631,6 +679,22 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                 "The capture is unavailable to this authenticated owner.");
         }
 
+        // The runtime already returned for this capture; only its durable completion is outstanding. Stopping the
+        // runtime again could replace proven milestones with the weaker evidence of a second stop, so a new stop
+        // request first completes the queued result and otherwise reports the persistence failure again.
+        if (pendingStopCompletions.ContainsKey(captureId))
+        {
+            BrokerStopOutcome retried = await RetryPendingStopCompletionAsync(captureId).ConfigureAwait(false);
+            if (retried.Code == BrokerOperationCode.PersistenceFailure)
+            {
+                return retried;
+            }
+
+            ownership = await store.FindCaptureAsync(captureId, CancellationToken.None).ConfigureAwait(false)
+                ?? throw new InvalidDataException(
+                    "The capture ownership record disappeared while retrying a stop completion.");
+        }
+
         BrokerStopMilestones requested = ownership.StopMilestones with { Requested = true };
         var intent = new BrokerStoredRequest
         {
@@ -720,15 +784,69 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            pendingStopCompletions[captureId] = new(completedOwnership, completedRequest);
             return new(
                 BrokerOperationCode.PersistenceFailure,
                 captureId,
                 stopping.State,
-                stopping.StopMilestones,
-                BoundReason($"The stop result could not be persisted: {exception.Message}"));
+                runtimeOutcome.Milestones,
+                BoundReason($"The stop result could not be persisted and is queued for retry: {exception.Message}"));
         }
 
+        pendingStopCompletions.Remove(captureId);
         return outcome;
+    }
+
+    private async Task<IReadOnlyList<BrokerStopOutcome>> RetryPendingStopCompletionsCoreAsync()
+    {
+        if (pendingStopCompletions.Count == 0)
+        {
+            return [];
+        }
+
+        var outcomes = new List<BrokerStopOutcome>(pendingStopCompletions.Count);
+        foreach (CaptureId captureId in pendingStopCompletions.Keys.ToArray())
+        {
+            outcomes.Add(await RetryPendingStopCompletionAsync(captureId).ConfigureAwait(false));
+        }
+
+        return outcomes;
+    }
+
+    private async Task<BrokerStopOutcome> RetryPendingStopCompletionAsync(CaptureId captureId)
+    {
+        if (!pendingStopCompletions.TryGetValue(captureId, out PendingStopCompletion? pending))
+        {
+            BrokerCaptureOwnership? current = await store.FindCaptureAsync(
+                    captureId, CancellationToken.None)
+                .ConfigureAwait(false);
+            return new(
+                current?.State == CaptureLifecycle.Closed
+                    ? BrokerOperationCode.AlreadyStopped
+                    : BrokerOperationCode.CaptureUnavailable,
+                captureId,
+                current?.State ?? CaptureLifecycle.Idle,
+                current?.StopMilestones ?? BrokerStopMilestones.None,
+                null);
+        }
+
+        try
+        {
+            await store.SaveStopCompletionAsync(
+                    pending.Ownership, pending.Request, CancellationToken.None)
+                .ConfigureAwait(false);
+            pendingStopCompletions.Remove(captureId);
+            return pending.Request.StopOutcome!;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(
+                BrokerOperationCode.PersistenceFailure,
+                captureId,
+                CaptureLifecycle.Stopping,
+                pending.Ownership.StopMilestones,
+                BoundReason($"The queued stop result still could not be persisted: {exception.Message}"));
+        }
     }
 
     private async Task TryCompensatingStopAsync(BrokerCaptureOwnership ownership)
@@ -836,6 +954,10 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             .ToArray());
         return sanitized.Length <= 512 ? sanitized : sanitized[..512];
     }
+
+    private sealed record PendingStopCompletion(
+        BrokerCaptureOwnership Ownership,
+        BrokerStoredRequest Request);
 
     public void Dispose()
     {
