@@ -95,6 +95,28 @@ public sealed class CaptureFinalizationTests
         Assert.Contains("changed after generation", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R16: the publication metadata bound covers a real manifest and pointers with long names")]
+    public void PublicationMetadataBoundCoversRealMetadata()
+    {
+        using var directory = new TemporaryStoreDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "finalization-test");
+        (string, byte[])[] markers =
+        [
+            .. Enumerable.Range(0, 40).Select(index => (
+                $"capture-finalization-{index:D4}-".PadRight(OwnedFileName.MaximumLength - 5, 'x') + ".json",
+                Example().Encode())),
+        ];
+        _ = CommitWithMarkers(store, markers);
+        SessionManifestV1 manifest = store.Current!;
+        HashSet<string> dependencies = [.. manifest.Dependencies.Select(dependency => dependency.Name)];
+
+        long metadata = Directory.EnumerateFiles(directory.Path)
+            .Where(file => !dependencies.Contains(Path.GetFileName(file)))
+            .Sum(file => new FileInfo(file).Length);
+
+        Assert.InRange(metadata, 1, SessionStore.PublicationMetadataBound(manifest.Dependencies.Count));
+    }
+
     private static CaptureFinalizationV1 Example() => new()
     {
         Contract = CaptureFinalizationV1.ContractName,

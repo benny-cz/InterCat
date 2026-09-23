@@ -8,7 +8,7 @@ namespace InterCat.CaptureBroker;
 
 /// <summary>
 /// Privileged, evidence-only capture runtime. It never derives rows or adopts an existing evidence directory.
-/// The executable is still disabled: its host must persist autonomous quota stops and prove the full pipe/restart
+/// The executable is still disabled: its host must run the completion/lease maintenance loop and prove the full pipe/restart
 /// sequence before this runtime can serve users.
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -17,6 +17,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     private readonly WindowsBrokerRoot root;
     private readonly IEtwSessionHost host;
     private readonly IEtwSessionReclaimer reclaimer;
+    private readonly Func<string, VolumeSpace> volumeProbe;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<CaptureId, ActiveCapture> active = [];
     private bool disposed;
@@ -24,11 +25,13 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     public BrokerEvidenceCaptureRuntime(
         WindowsBrokerRoot root,
         IEtwSessionHost host,
-        IEtwSessionReclaimer reclaimer)
+        IEtwSessionReclaimer reclaimer,
+        Func<string, VolumeSpace>? volumeProbe = null)
     {
         this.root = root ?? throw new ArgumentNullException(nameof(root));
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.reclaimer = reclaimer ?? throw new ArgumentNullException(nameof(reclaimer));
+        this.volumeProbe = volumeProbe ?? WindowsVolumeSpace.Probe;
     }
 
     public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
@@ -71,7 +74,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                 return new(false, "This capture is already running in the broker.");
             }
 
-            if (!HasFreeReserve(root.Path, plan.Quota.MinimumFreeDiskBytes, out string? diskProblem))
+            if (!HasStartHeadroom(root.Path, plan.Quota.MinimumFreeDiskBytes, out string? diskProblem))
             {
                 return new(false, diskProblem);
             }
@@ -120,6 +123,8 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     derive: null,
                     onReady: _ => capture.Ready.TrySetResult(),
                     maximumJournalBytes: plan.Quota.MaximumJournalBytes,
+                    diskFloor: new LiveDiskFloor(
+                        plan.Quota.MinimumFreeDiskBytes, () => volumeProbe(captureRoot.Path)),
                     cancellationToken: capture.Stop.Token);
 
                 Task first = await Task.WhenAny(capture.Ready.Task, capture.Run).ConfigureAwait(false);
@@ -207,6 +212,8 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     ? "The journal finalized, but the ETW delivery pump did not confirm callback drain."
                     : result.JournalQuotaReached
                         ? "The configured journal byte limit was reached; the admitted prefix was finalized."
+                        : result.DiskReserveReached
+                            ? $"{result.DiskReserveReason} The admitted prefix was finalized."
                         : capture.LimitReason ?? (!capture.UserStopRequested
                             ? "The configured maximum capture duration elapsed; evidence was finalized."
                             : null);
@@ -426,34 +433,61 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
         }
     }
 
-    private static async Task MonitorFreeDiskAsync(ActiveCapture capture, long minimumFreeBytes, CancellationToken token)
+    /// <summary>
+    /// Observes the volume while recording is idle. The recorder enforces the floor at every append; this notices
+    /// another program consuming the volume while InterCat writes nothing, and ends the capture while there is still
+    /// room to finish it.
+    /// </summary>
+    private async Task MonitorFreeDiskAsync(ActiveCapture capture, long minimumFreeBytes, CancellationToken token)
     {
         while (true)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), token).ConfigureAwait(false);
-            if (!HasFreeReserve(capture.Root.Path, minimumFreeBytes, out string? problem))
+            try
             {
-                capture.LimitReason = problem;
+                long available = volumeProbe(capture.Root.Path).AvailableBytes;
+                if (available < minimumFreeBytes)
+                {
+                    capture.LimitReason =
+                        $"Free space on the evidence volume ({LiveDiskFloor.Describe(available)}) fell below the "
+                        + $"configured {LiveDiskFloor.Describe(minimumFreeBytes)} reserve while the capture was idle, "
+                        + "so recording stopped and the admitted prefix was finalized.";
+                    return;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                capture.LimitReason =
+                    $"Free space on the evidence volume could not be verified ({exception.Message}), so recording "
+                    + "stopped and the admitted prefix was finalized.";
                 return;
             }
         }
     }
 
-    private static bool HasFreeReserve(string path, long minimumFreeBytes, out string? problem)
+    /// <summary>
+    /// Refuses a start that could not finish: the volume must hold the configured reserve plus the bounded headroom a
+    /// stopped recording needs to publish its last generation.
+    /// </summary>
+    private bool HasStartHeadroom(string path, long minimumFreeBytes, out string? problem)
     {
         try
         {
-            string volume = Path.GetPathRoot(path)
-                ?? throw new IOException("The broker root has no volume.");
-            long free = new DriveInfo(volume).AvailableFreeSpace;
-            problem = free < minimumFreeBytes
-                ? $"Available disk space ({free} bytes) is below the configured {minimumFreeBytes}-byte reserve."
+            VolumeSpace space = volumeProbe(path);
+            long headroom = LiveDiskFloor.FinalizationHeadroom(dependenciesAfterFinal: 4, space.AllocationUnitBytes);
+            long needed = checked(minimumFreeBytes + headroom);
+            problem = space.AvailableBytes < needed
+                ? $"The evidence volume has {LiveDiskFloor.Describe(space.AvailableBytes)} free; starting needs at least "
+                    + $"{LiveDiskFloor.Describe(needed)} (the {LiveDiskFloor.Describe(minimumFreeBytes)} reserve plus "
+                    + $"{LiveDiskFloor.Describe(headroom)} to finish the recording). Free space on that volume or "
+                    + "lower the reserve."
                 : null;
             return problem is null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException
+            or OverflowException)
         {
-            problem = $"Available disk space could not be verified: {exception.Message}";
+            problem = $"Free space on the evidence volume could not be verified: {exception.Message}";
             return false;
         }
     }

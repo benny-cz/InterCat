@@ -219,6 +219,19 @@ public sealed class SessionStore
     /// <summary>How many files one generation may publish at once.</summary>
     public const int MaximumStagedFiles = 4_096;
 
+    /// <summary>
+    /// An upper bound on the metadata one publication writes besides its staged files: the generation's manifest
+    /// (a fixed part plus one entry per dependency, whose name is at most <see cref="OwnedFileName.MaximumLength"/>
+    /// characters) and the replaced current and last-known-good pointers. It excludes a retention record, which a
+    /// live recording never publishes, and allocation-unit rounding, which depends on the volume. A free-space
+    /// admission check reserves this so a stopped capture can still publish its last generation.
+    /// </summary>
+    public static long PublicationMetadataBound(int dependencies)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(dependencies);
+        return checked(32_768 + (long)dependencies * 512);
+    }
+
     private readonly IOwnedDirectory directory;
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, EvidenceLease> leases = [];

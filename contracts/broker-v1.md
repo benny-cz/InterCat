@@ -194,7 +194,11 @@ Typed request codecs exist for Hello, GetCapabilities, PrepareCapture, StartCapt
 StopCapture and RenewOwnerLease. Prepare accepts only a canonical profile ID, typed Focused/Content
 settings, stop-at-limit retention, a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and an
 independent 16-MiB-to-1-TiB free-space reserve. The reserve may exceed the journal limit because the two bounds
-protect different resources. Focused and Content groups are mutually exclusive and
+protect different resources. The reserve is a floor for InterCat's own writes, not an exclusive volume reservation:
+Start is refused unless the evidence volume holds the reserve plus bounded finalization headroom, every journal append
+is admitted only if the volume would keep both after it, and a stopped capture may spend that headroom - never the
+reserve - to publish its last generation. A failed or impossible free-space reading stops acquisition. The stop
+reason says which bound ended the capture. Focused and Content groups are mutually exclusive and
 Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
 dispatch.
 

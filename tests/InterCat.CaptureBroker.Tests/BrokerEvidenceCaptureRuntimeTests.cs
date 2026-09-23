@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -137,6 +138,52 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
         Assert.Empty(host.Reclaimed);
         Assert.False(Directory.Exists(Path.Combine(temporary.Root.Path, $"capture-{ownership.CaptureId.Value:N}")));
+    }
+
+    [Fact(DisplayName = "R16: a start that could not finish above the free-disk reserve is refused with what to do")]
+    public async Task StartRefusesWithoutRoomToFinish()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedHost();
+        PreparedCapturePlan plan = SmallPlan();
+        long reserve = plan.Quota.MinimumFreeDiskBytes;
+        await using var runtime = new BrokerEvidenceCaptureRuntime(
+            temporary.Root, host, host, _ => new VolumeSpace(reserve + 1, 4_096));
+        BrokerCaptureOwnership ownership = Ownership(plan);
+
+        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, CancellationToken.None);
+
+        Assert.False(outcome.Started);
+        Assert.Contains("to finish the recording", outcome.FailureReason, StringComparison.Ordinal);
+        Assert.Contains("Free space on that volume or lower the reserve", outcome.FailureReason, StringComparison.Ordinal);
+        Assert.Empty(host.Created);
+        Assert.False(Directory.Exists(Path.Combine(temporary.Root.Path, $"capture-{ownership.CaptureId.Value:N}")));
+    }
+
+    [Fact(DisplayName = "R16: free space lost while a capture is idle ends it with a reason and finalized evidence")]
+    public async Task IdleFreeSpaceLossStopsCapture()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedHost();
+        PreparedCapturePlan plan = SmallPlan();
+        long free = 1L << 40;
+        await using var runtime = new BrokerEvidenceCaptureRuntime(
+            temporary.Root, host, host, _ => new VolumeSpace(Interlocked.Read(ref free), 4_096));
+        BrokerCaptureOwnership ownership = Ownership(plan);
+        Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+
+        // Another program fills the volume; InterCat is writing nothing, so only the idle monitor can notice.
+        Interlocked.Exchange(ref free, plan.Quota.MinimumFreeDiskBytes - 1);
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (!await runtime.HasCompletedAsync(ownership.CaptureId, CancellationToken.None))
+        {
+            Assert.True(DateTimeOffset.UtcNow < deadline, "the idle monitor did not end the capture");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);
+        Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
+        Assert.Contains("fell below the configured", stopped.FailureReason, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R16: a new capture never adopts a pre-existing evidence directory")]

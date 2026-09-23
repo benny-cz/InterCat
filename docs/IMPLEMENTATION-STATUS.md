@@ -1,12 +1,43 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 76
+Plan revision: 77
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: restart-verifiable final publication
+## Latest slice: free-disk reserve enforced at the write boundary
+
+`MinimumFreeDiskBytes` is now enforced where InterCat writes, not only observed once a second. `LiveDiskFloor` turns
+each free-space probe into a ceiling on the current chunk's projected complete length: bytes already written, plus the
+space the broker identity may allocate (GetDiskFreeSpaceEx, quota-aware), minus the floor, minus finalization headroom.
+The headroom is computed from bounded encodings - coverage ledger and finalization marker maxima, a manifest/pointer
+bound per dependency, one allocation unit per file the last publication creates, and the staging stream buffer - while
+the unwritten journal tail is already in the projection. A refusal re-probes once, a reading older than 250 ms is
+refreshed before the next append, and a failed or impossible reading stops acquisition instead of assuming space.
+Rollover must also fit its metadata and the next chunk's header. The admitted prefix is always finalized, and the loss
+is counted as storage loss in the coverage ledger.
+
+The broker probes the volume with the real cluster size, refuses Start with the actual numbers and an action ("free
+space on that volume or lower the reserve") when the floor plus headroom does not fit, keeps the one-second monitor only
+for an idle capture whose volume another program fills, and reports which bound ended a capture. The recorder writer
+previously spun when a publication was due but refused (a latent issue for the quota path too); it now waits for records
+whenever rollover is impossible.
+
+Tests use a simulated volume whose free space shrinks by every cluster-rounded file InterCat writes. They prove that
+single-chunk and rolling captures stop above the floor with the final publication included, that probe failure and
+impossible readings stop and finalize, that ample space imposes nothing, that a floor refuses in-process derivation,
+that the metadata bound covers a real manifest with maximum-length names, that Start is refused without creating ETW or
+evidence directories, and that idle free-space loss ends a broker capture with a reason. All 726 tests pass in Debug
+and Release.
+
+Plan revision 77 records this and corrects §20.3, which claimed the journal-publication policy was already frozen in
+the prepared digest; it is not. The broker executable remains disabled. Next: freeze and benchmark the prepared
+live-publication cadence (effective summary + digest), wire the host maintenance loop (autonomous completion, queued
+stop-completion retry, lease expiry) and then exercise authenticated pipe + protected root + crash/restart recovery with
+real elevated ETW.
+
+## Previous slice: restart-verifiable final publication
 
 A committed journal chunk is no longer treated as proof that a capture ended. Live publication deliberately produces
 complete intermediate chunks, so restart recovery now requires explicit last-publication evidence. A new bounded

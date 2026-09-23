@@ -633,6 +633,165 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(result.Coverage);
     }
 
+    [Fact(DisplayName = "R16: a free-disk floor ends acquisition before InterCat's writes cross the reserve, and still finalizes")]
+    public async Task DiskFloorStopsBeforeTheReserveAndFinalizes()
+    {
+        using var directory = new TemporaryDirectory();
+        var volume = new SimulatedVolume(directory.Path, budgetBytes: 256 * 1024);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "disk-floor-test");
+        ScriptedHost host = ManyRecords(10_000, pauseEvery: 0);
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), host, store,
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            DateTimeOffset.UtcNow,
+            diskFloor: volume.Floor);
+
+        Assert.True(result.DiskReserveReached);
+        Assert.False(result.JournalQuotaReached);
+        Assert.Contains("reached the configured 16 MiB reserve", result.DiskReserveReason, StringComparison.Ordinal);
+        Assert.InRange(result.JournaledRecords, 1, 9_999);
+
+        // Everything InterCat wrote, the final publication included, left the volume at or above the floor.
+        Assert.InRange(volume.Available, SimulatedVolume.FloorBytes, long.MaxValue);
+        SessionManifestV1 manifest = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!;
+        Assert.NotNull(CaptureFinalizationV1.Read(store.Root, manifest));
+        CoverageLedgerV1 ledger = Assert.IsType<CoverageLedgerV1>(result.Coverage);
+        Assert.Equal(
+            10_000 - result.JournaledRecords,
+            Assert.Single(ledger.Epochs).Losses.Single(loss => loss.Layer == LossLayer.Storage).Lost);
+    }
+
+    [Fact(DisplayName = "R16: live chunk rollover under a free-disk floor never publishes past the reserve")]
+    public async Task DiskFloorBoundsLiveRollover()
+    {
+        using var directory = new TemporaryDirectory();
+        var volume = new SimulatedVolume(directory.Path, budgetBytes: 512 * 1024);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "disk-rollover-test");
+        ScriptedHost host = ManyRecords(10_000, pauseEvery: 500);
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), host, store,
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(10),
+            diskFloor: volume.Floor);
+
+        Assert.True(result.DiskReserveReached);
+        Assert.True(result.Publications >= 2, $"only {result.Publications} publication(s)");
+        Assert.InRange(volume.Available, SimulatedVolume.FloorBytes, long.MaxValue);
+        Assert.NotNull(CaptureFinalizationV1.Read(store.Root, store.Current!));
+    }
+
+    [Fact(DisplayName = "R16: free space that cannot be verified ends acquisition rather than being assumed")]
+    public async Task UnverifiableFreeSpaceStopsAndFinalizes()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "disk-probe-test");
+        var floor = new LiveDiskFloor(SimulatedVolume.FloorBytes, () => throw new IOException("the volume went away"));
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), ManyRecords(100, pauseEvery: 0), store,
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            DateTimeOffset.UtcNow,
+            diskFloor: floor);
+
+        Assert.True(result.DiskReserveReached);
+        Assert.Contains("could not be verified (the volume went away)", result.DiskReserveReason, StringComparison.Ordinal);
+        Assert.Equal(0, result.JournaledRecords);
+        Assert.NotNull(CaptureFinalizationV1.Read(store.Root, store.Current!));
+
+        // An impossible reading is not a reading.
+        var impossible = new LiveDiskFloor(SimulatedVolume.FloorBytes, () => new VolumeSpace(long.MaxValue, 3));
+        using var other = new TemporaryDirectory();
+        LiveCaptureResult refused = await LiveRecorder.RecordAsync(
+            Plan(), ManyRecords(10, pauseEvery: 0),
+            SessionStore.Open(LocalOwnedDirectory.Open(other.Path), Guid.NewGuid(), "disk-probe-test"),
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            DateTimeOffset.UtcNow,
+            diskFloor: impossible);
+        Assert.True(refused.DiskReserveReached);
+        Assert.Contains("impossible reading", refused.DiskReserveReason, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R16: ample free space leaves a floored recording unlimited, and a floor refuses in-process derivation")]
+    public async Task AmpleSpaceAndDerivationRefusal()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "disk-ample-test");
+        var floor = new LiveDiskFloor(SimulatedVolume.FloorBytes, () => new VolumeSpace(1L << 40, 4_096));
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), ManyRecords(1_000, pauseEvery: 0), store,
+            async token =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), token);
+            },
+            DateTimeOffset.UtcNow,
+            diskFloor: floor);
+
+        Assert.False(result.DiskReserveReached);
+        Assert.Null(result.DiskReserveReason);
+        Assert.Equal(1_000, result.JournaledRecords);
+
+        using var derived = new TemporaryDirectory();
+        await Assert.ThrowsAsync<ArgumentException>(() => LiveRecorder.RecordAsync(
+            Plan(), new ScriptedHost(),
+            SessionStore.Open(LocalOwnedDirectory.Open(derived.Path), Guid.NewGuid(), "disk-derive-test"),
+            token => Task.CompletedTask,
+            DateTimeOffset.UtcNow,
+            derive: _ => throw new InvalidOperationException("never created"),
+            diskFloor: floor));
+    }
+
+    private static ScriptedHost ManyRecords(int count, int pauseEvery)
+    {
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < count; index++)
+        {
+            if (pauseEvery > 0 && index > 0 && index % pauseEvery == 0)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(30));
+            }
+
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        return host;
+    }
+
+    /// <summary>
+    /// A volume whose free space is a fixed amount less everything in the session directory, each file rounded up to
+    /// a 4 KiB cluster. It starts with the floor, the finalization headroom and <c>budgetBytes</c> to spare.
+    /// </summary>
+    private sealed class SimulatedVolume
+    {
+        public const long FloorBytes = 16 * 1024 * 1024;
+        private const long Cluster = 4_096;
+        private readonly string path;
+        private readonly long capacity;
+
+        public SimulatedVolume(string path, long budgetBytes)
+        {
+            this.path = path;
+            capacity = FloorBytes + LiveDiskFloor.FinalizationHeadroom(8, Cluster) + budgetBytes;
+            Floor = new LiveDiskFloor(FloorBytes, () => new VolumeSpace(Available, Cluster), TimeSpan.FromMilliseconds(1));
+        }
+
+        public LiveDiskFloor Floor { get; }
+
+        public long Available => capacity - Directory.EnumerateFiles(path)
+            .Sum(file => (new FileInfo(file).Length + Cluster - 1) / Cluster * Cluster);
+    }
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {

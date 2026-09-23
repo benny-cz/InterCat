@@ -52,6 +52,22 @@ public sealed class JournalV1Writer : IDisposable
 
     public long RecordsWritten { get; private set; }
 
+    /// <summary>
+    /// Bytes already handed to the journal's stream. What <see cref="ProjectedCompleteLength"/> adds beyond this - the
+    /// pending batch and the terminal - is not yet written anywhere, so a free-space admission check counts it as future
+    /// growth. The stream's own write buffer may still hold part of this length; callers bound that separately.
+    /// </summary>
+    public long WrittenLength
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return stream.CanSeek
+                ? stream.Position
+                : throw new NotSupportedException("A written length needs a seekable journal stage.");
+        }
+    }
+
     /// <summary>Exact final file length if Complete were called now, including pending batch and terminal.</summary>
     public long ProjectedCompleteLength
     {

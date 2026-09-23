@@ -49,6 +49,15 @@ public sealed record LiveCaptureResult
     public bool JournalQuotaReached { get; init; }
 
     /// <summary>
+    /// True when the free-disk floor ended acquisition, or free space could not be verified; unjournaled admissions are
+    /// storage loss. <see cref="DiskReserveReason"/> says which, in words a person can act on.
+    /// </summary>
+    public bool DiskReserveReached { get; init; }
+
+    /// <summary>Why the free-disk floor ended acquisition; null when it did not.</summary>
+    public string? DiskReserveReason { get; init; }
+
+    /// <summary>
     /// What the capture's sources could observe and what they lost (`coverage-v1`); null when a loss counter could not
     /// be read, so the session's coverage is unknown.
     /// </summary>
@@ -90,6 +99,7 @@ public static class LiveRecorder
         Func<SourceClockDescriptor, ILiveRecordingDerivation>? derive = null,
         Action<CaptureStartResult>? onReady = null,
         long? maximumJournalBytes = null,
+        LiveDiskFloor? diskFloor = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -110,6 +120,13 @@ public static class LiveRecorder
         {
             throw new ArgumentException(
                 "A byte-bounded live recorder is evidence-only: derived rows cannot precede a refused journal append.",
+                nameof(derive));
+        }
+
+        if (diskFloor is not null && derive is not null)
+        {
+            throw new ArgumentException(
+                "A disk-floored live recorder is evidence-only: derived rows cannot precede a refused journal append.",
                 nameof(derive));
         }
 
@@ -144,6 +161,7 @@ public static class LiveRecorder
             publishEvery,
             derive?.Invoke(clock.Descriptor),
             maximumJournalBytes,
+            diskFloor,
             quotaStop.Cancel);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
@@ -219,6 +237,8 @@ public static class LiveRecorder
             Publications = chunks.Publications,
             JournaledRecords = journaled,
             JournalQuotaReached = chunks.JournalQuotaReached,
+            DiskReserveReached = chunks.DiskReserveReached,
+            DiskReserveReason = chunks.DiskReserveReason,
             Coverage = ledger,
         };
     }
@@ -250,7 +270,8 @@ public static class LiveRecorder
         private readonly TimeSpan? publishEvery;
         private readonly ILiveRecordingDerivation? derivation;
         private readonly long? maximumJournalBytes;
-        private readonly Action onJournalQuotaReached;
+        private readonly LiveDiskFloor? diskFloor;
+        private readonly Action onAcquisitionLimit;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
@@ -259,6 +280,13 @@ public static class LiveRecorder
         private bool rolloverBlocked;
         private ulong recordsInChunk;
         private long journaled;
+
+        // The largest projected length the current chunk may reach while the volume keeps the floor plus the headroom
+        // to finish, as of the last probe. Bytes already written to the chunk were on the volume when it was probed.
+        private long diskCeiling = long.MaxValue;
+        private long allocationUnitBytes = 4_096;
+        private long nextProbeTimestamp;
+        private VolumeSpace lastObservation;
 
         public ChunkWriter(
             OwnedCaptureSession session,
@@ -270,7 +298,8 @@ public static class LiveRecorder
             TimeSpan? publishEvery,
             ILiveRecordingDerivation? derivation,
             long? maximumJournalBytes,
-            Action onJournalQuotaReached)
+            LiveDiskFloor? diskFloor,
+            Action onAcquisitionLimit)
         {
             this.session = session;
             this.plan = plan;
@@ -281,7 +310,8 @@ public static class LiveRecorder
             this.publishEvery = publishEvery;
             this.derivation = derivation;
             this.maximumJournalBytes = maximumJournalBytes;
-            this.onJournalQuotaReached = onJournalQuotaReached;
+            this.diskFloor = diskFloor;
+            this.onAcquisitionLimit = onAcquisitionLimit;
             mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
             builder = BeginChunk(stagePlan: true);
             emptyChunkBytes = builder.Journal.ProjectedCompleteLength;
@@ -290,6 +320,15 @@ public static class LiveRecorder
         public int Publications { get; private set; }
 
         public bool JournalQuotaReached { get; private set; }
+
+        public bool DiskReserveReached { get; private set; }
+
+        public string? DiskReserveReason { get; private set; }
+
+        private bool AcquisitionLimited => JournalQuotaReached || DiskReserveReached;
+
+        // The last generation names the chunks published so far plus the last chunk, the plan, ledger and marker.
+        private int DependenciesAfterFinal => (store.Current?.Dependencies.Count ?? 0) + 4;
 
         /// <summary>Drains the admission queue until the capture closes it, publishing a chunk whenever one is due.</summary>
         public long Drain()
@@ -348,10 +387,26 @@ public static class LiveRecorder
 
         public void Dispose() => builder.Dispose();
 
+        /// <summary>
+        /// Whether a timed rollover can happen at all now. When it cannot, the writer waits only for records rather than
+        /// waking on the publication timer, which would otherwise spin once the interval has passed.
+        /// </summary>
+        private bool RolloverPossible =>
+            !AcquisitionLimited && !rolloverBlocked && publishEvery is not null && recordsInChunk != 0
+            && !DiskBlocksRollover();
+
+        /// <summary>
+        /// Publishing writes metadata and starts a new chunk; both must leave the headroom to finish. This is not
+        /// latched: the next probe may find space another process released.
+        /// </summary>
+        private bool DiskBlocksRollover() =>
+            diskFloor is not null
+            && checked(builder.Journal.ProjectedCompleteLength + emptyChunkBytes
+                + LiveDiskFloor.IntermediatePublicationBytes(DependenciesAfterFinal, allocationUnitBytes)) > diskCeiling;
+
         private bool Due()
         {
-            if (JournalQuotaReached || rolloverBlocked || publishEvery is not { } interval
-                || recordsInChunk == 0 || sincePublished.Elapsed < interval)
+            if (!RolloverPossible || sincePublished.Elapsed < publishEvery!.Value)
             {
                 return false;
             }
@@ -370,7 +425,7 @@ public static class LiveRecorder
 
         private void Write(in AdmittedEvent admitted)
         {
-            if (JournalQuotaReached)
+            if (AcquisitionLimited)
             {
                 return;
             }
@@ -386,23 +441,112 @@ public static class LiveRecorder
             // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
             RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
             derivation?.Derive(envelope, descriptor, (ulong)journaled, builder);
-            if (maximumJournalBytes is { } maximum)
-            {
-                if (!builder.Journal.TryAppendWithin(envelope, maximum - publishedJournalBytes))
-                {
-                    envelope.Dispose();
-                    JournalQuotaReached = true;
-                    onJournalQuotaReached();
-                    return;
-                }
-            }
-            else
+            if (maximumJournalBytes is null && diskFloor is null)
             {
                 builder.Journal.Append(envelope);
+            }
+            else if (!TryAppendBounded(envelope))
+            {
+                envelope.Dispose();
+                onAcquisitionLimit();
+                return;
             }
 
             recordsInChunk++;
             journaled++;
+        }
+
+        /// <summary>
+        /// Appends only within both the journal allowance and the disk floor, and records which one refused. A refusal
+        /// on the floor probes once more first, because the observation may predate space released since.
+        /// </summary>
+        private bool TryAppendBounded(RecordEnvelopeV1 envelope)
+        {
+            if (diskFloor is not null
+                && Stopwatch.GetTimestamp() >= nextProbeTimestamp
+                && !RefreshDiskCeiling(builder.Journal))
+            {
+                return false;
+            }
+
+            long quotaCeiling = maximumJournalBytes is { } maximum ? maximum - publishedJournalBytes : long.MaxValue;
+            if (builder.Journal.TryAppendWithin(envelope, Math.Max(0, Math.Min(quotaCeiling, diskCeiling))))
+            {
+                return true;
+            }
+
+            if (diskCeiling < quotaCeiling
+                && RefreshDiskCeiling(builder.Journal)
+                && builder.Journal.TryAppendWithin(envelope, Math.Max(0, Math.Min(quotaCeiling, diskCeiling))))
+            {
+                return true;
+            }
+
+            if (DiskReserveReached)
+            {
+                return false;
+            }
+
+            if (diskCeiling < quotaCeiling)
+            {
+                LimitByDisk(FloorReachedReason());
+            }
+            else
+            {
+                JournalQuotaReached = true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Probes the volume and moves the ceiling for the chunk being written. A probe that fails leaves nothing
+        /// admissible: free space that cannot be verified is not assumed.
+        /// </summary>
+        private bool RefreshDiskCeiling(JournalV1Writer journal)
+        {
+            if (diskFloor is null)
+            {
+                return true;
+            }
+
+            try
+            {
+                VolumeSpace space = diskFloor.Observe();
+                allocationUnitBytes = space.AllocationUnitBytes;
+                long headroom = LiveDiskFloor.FinalizationHeadroom(DependenciesAfterFinal, space.AllocationUnitBytes);
+                diskCeiling = journal.WrittenLength + space.AvailableBytes - diskFloor.MinimumFreeBytes - headroom;
+                nextProbeTimestamp = Stopwatch.GetTimestamp()
+                    + (long)(diskFloor.ProbeInterval.TotalSeconds * Stopwatch.Frequency);
+                lastObservation = space;
+                return true;
+            }
+            catch (Exception exception) when (exception is IOException
+                or UnauthorizedAccessException
+                or InvalidDataException
+                or ArgumentException)
+            {
+                diskCeiling = long.MinValue;
+                LimitByDisk(
+                    $"Free space on the evidence volume could not be verified ({exception.Message}), so recording "
+                    + "stopped rather than risk writing past the configured reserve.");
+                return false;
+            }
+        }
+
+        private string FloorReachedReason() =>
+            $"Free space on the evidence volume ({LiveDiskFloor.Describe(lastObservation.AvailableBytes)}) reached the configured "
+            + $"{LiveDiskFloor.Describe(diskFloor!.MinimumFreeBytes)} reserve plus the "
+            + $"{LiveDiskFloor.Describe(LiveDiskFloor.FinalizationHeadroom(DependenciesAfterFinal, allocationUnitBytes))} "
+            + "kept to finish the recording.";
+
+        private void LimitByDisk(string reason)
+        {
+            if (!DiskReserveReached)
+            {
+                DiskReserveReached = true;
+                DiskReserveReason = reason;
+            }
         }
 
         /// <summary>
@@ -456,6 +600,20 @@ public static class LiveRecorder
                         "The journal header and schema table alone exceed the configured journal byte allowance.");
                 }
 
+                // A new chunk's header is already written; if even that leaves too little to finish, acquisition ends
+                // at once and the stop publishes this empty chunk from the reserved headroom.
+                if (diskFloor is not null
+                    && RefreshDiskCeiling(next.Journal)
+                    && next.Journal.ProjectedCompleteLength > diskCeiling)
+                {
+                    LimitByDisk(FloorReachedReason());
+                }
+
+                if (DiskReserveReached)
+                {
+                    onAcquisitionLimit();
+                }
+
                 recordsInChunk = 0;
                 sincePublished.Restart();
                 return next;
@@ -470,12 +628,12 @@ public static class LiveRecorder
         /// <summary>Waits for more records, or until the next chunk is due; false when the capture has closed the queue.</summary>
         private bool WaitForRecords()
         {
-            if (publishEvery is not { } interval || recordsInChunk == 0 || rolloverBlocked)
+            if (!RolloverPossible)
             {
                 return session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
             }
 
-            TimeSpan remaining = interval - sincePublished.Elapsed;
+            TimeSpan remaining = publishEvery!.Value - sincePublished.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
                 return true;
