@@ -1,12 +1,31 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 78
+Plan revision: 79
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: prepared journal-publication policy
+## Latest slice: broker maintenance loop
+
+`BrokerMaintenanceLoop` is the no-client half of the future broker host. `RecoverAsync` must finish before the pipe
+accepts commands. `RunAsync` then runs a pass every second by default (at most one minute): it makes autonomous stops
+(duration, journal limit, disk floor) durable, retries queued stop-completion writes without re-invoking the runtime, and
+stops captures whose owner lease expired. The two halves are isolated. An in-stop persistence failure counts as a failed
+pass, and each report carries a consecutive-failure count and an `IsNotable` flag so a host logs changes and failures
+rather than every quiet second. A throwing log sink cannot stop reconciliation, and cancellation or coordinator disposal
+ends the loop cleanly.
+
+Tests cover one pass closing an autonomously finished capture and an expired-lease capture (and a quiet second pass),
+queued completion retried by maintenance with failure counting and exactly one runtime stop, isolation of a failing
+lease read, the timed loop surviving a throwing report sink until cancelled, and interval bounds. All 738 tests pass in
+Debug and Release.
+
+Next (enablement gate): compose the executable - protected root, file-backed lifecycle store, evidence runtime, recovery,
+maintenance loop and authenticated pipe server - behind an explicit opt-in, then run the elevated crash/restart and
+capture-impact benchmark at the compiled live cadence. Only then remove the fail-closed exit.
+
+## Previous slice: prepared journal-publication policy
 
 Prepare now accepts an optional named `BrokerJournalPublication` policy (field 10): `OnStop` (default) or `Live`.
 No client can send an interval. `Live` compiles to `max(2 s, ceil(maximum duration / 1024))`; the plan review found a
