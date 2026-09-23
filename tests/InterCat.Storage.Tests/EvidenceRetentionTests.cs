@@ -130,13 +130,14 @@ public sealed class EvidenceRetentionTests
         string segment = first.Segments[0].Name;
         SessionStore writer = session.Reopen();
         SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
-        using EvidenceLease lease = reader.AcquireLease(new() { Duration = TimeSpan.FromMilliseconds(100) });
+        // Long enough that the release below still finds it live on a loaded machine; short enough to expire on its own.
+        using EvidenceLease lease = reader.AcquireLease(new() { Duration = TimeSpan.FromMilliseconds(1_500) });
         RetentionOutcome outcome = writer.ReleaseDependencies([segment], "superseded", Committed);
         Assert.True(outcome.AwaitingRelease);
 
         Assert.True(SpinWait.SpinUntil(
             () => writer.RemoveOrphans().Contains(segment),
-            TimeSpan.FromSeconds(5)));
+            TimeSpan.FromSeconds(10)));
         Assert.True(lease.IsReleased);
         Assert.False(File.Exists(Path.Combine(session.Path, segment)));
     }

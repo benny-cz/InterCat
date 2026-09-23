@@ -16,8 +16,20 @@ public sealed record LiveRecordingResult
     /// <summary>The last generation the recording published; null when the capture never started.</summary>
     public DerivedGenerationResult? Generation { get; init; }
 
-    /// <summary>How many generations the recording published: one per journal chunk, the last when it stopped.</summary>
+    /// <summary>How many journal chunks the recording published, each in a generation of its own.</summary>
     public int Publications { get; init; }
+
+    /// <summary>
+    /// How many compaction generations coalesced the recording's small publications (§20.1, ADR-026): while it
+    /// recorded, whenever enough had accumulated, and once when it stopped.
+    /// </summary>
+    public int Compactions { get; init; }
+
+    /// <summary>
+    /// Why a compaction was not published, or null. The recording itself was, and the session is whole; it is left
+    /// with more segments than it needs until `icat compact` coalesces them.
+    /// </summary>
+    public string? CompactionFailure { get; init; }
 
     /// <summary>Records written to the admitted journal, each of which derived its rows.</summary>
     public long JournaledRecords { get; init; }
@@ -47,6 +59,10 @@ public static class LiveSessionRecorder
     /// <param name="publishEvery">
     /// How often to publish what was recorded so far, or null to publish once when the capture stops.
     /// </param>
+    /// <param name="compaction">
+    /// When small publications are coalesced; §20.1's targets by default. A step while recording rewrites at most one
+    /// segment's worth of rows, so the writer is held up for a bounded time.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -55,6 +71,7 @@ public static class LiveSessionRecorder
         DateTimeOffset committedUtc,
         DerivedGenerationOptions? options = null,
         TimeSpan? publishEvery = null,
+        CompactionOptions? compaction = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -64,6 +81,11 @@ public static class LiveSessionRecorder
         if (publishEvery is { } interval && interval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(publishEvery), "A publication interval is positive.");
+        }
+
+        if (compaction?.Validate() is { } compactionProblem)
+        {
+            throw new ArgumentException(compactionProblem, nameof(compaction));
         }
 
         if (store.Current is not null)
@@ -93,7 +115,8 @@ public static class LiveSessionRecorder
             clock.Descriptor,
             committedUtc,
             options ?? DerivedGenerationOptions.Default,
-            publishEvery);
+            publishEvery,
+            compaction ?? CompactionOptions.Default);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         Task<long> writer = Task.Factory.StartNew(
@@ -157,6 +180,8 @@ public static class LiveSessionRecorder
             Stop = stop,
             Generation = published,
             Publications = chunks.Publications,
+            Compactions = chunks.Compactions,
+            CompactionFailure = chunks.CompactionFailure,
             JournaledRecords = journaled,
             Coverage = ledger,
         };
@@ -187,12 +212,14 @@ public static class LiveSessionRecorder
         private readonly DateTimeOffset createdUtc;
         private readonly DerivedGenerationOptions options;
         private readonly TimeSpan? publishEvery;
+        private readonly CompactionOptions compaction;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly ObservationNormalizerV1 normalizer;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
         private ulong recordsInChunk;
         private long journaled;
+        private int smallUnits;
 
         public ChunkWriter(
             OwnedCaptureSession session,
@@ -201,7 +228,8 @@ public static class LiveSessionRecorder
             SourceClockDescriptor clock,
             DateTimeOffset createdUtc,
             DerivedGenerationOptions options,
-            TimeSpan? publishEvery)
+            TimeSpan? publishEvery,
+            CompactionOptions compaction)
         {
             this.session = session;
             this.plan = plan;
@@ -210,12 +238,17 @@ public static class LiveSessionRecorder
             this.createdUtc = createdUtc;
             this.options = options;
             this.publishEvery = publishEvery;
+            this.compaction = compaction;
             mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
             normalizer = new ObservationNormalizerV1(clock);
             builder = BeginChunk(stagePlan: true);
         }
 
         public int Publications { get; private set; }
+
+        public int Compactions { get; private set; }
+
+        public string? CompactionFailure { get; private set; }
 
         /// <summary>Drains the admission queue until the capture closes it, publishing a chunk whenever one is due.</summary>
         public long Drain()
@@ -243,7 +276,10 @@ public static class LiveSessionRecorder
             }
         }
 
-        /// <summary>Publishes the last chunk, with the capture's coverage ledger when it could be measured.</summary>
+        /// <summary>
+        /// Publishes the last chunk, with the capture's coverage ledger when it could be measured, then coalesces every run
+        /// of small publications left, so a finished recording opens from as few segments as its rows need.
+        /// </summary>
         public DerivedGenerationResult PublishLast(CoverageLedgerV1? ledger)
         {
             if (ledger is not null)
@@ -253,7 +289,8 @@ public static class LiveSessionRecorder
 
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             Publications++;
-            return published;
+            Count(published);
+            return Compact(compaction with { RowBudget = 0 })?.Generation ?? published;
         }
 
         public void Dispose() => builder.Dispose();
@@ -292,10 +329,62 @@ public static class LiveSessionRecorder
         private void PublishChunk()
         {
             ThrowIfClockRefused(session);
-            _ = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
+            DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
             Publications++;
+            Count(published);
+
+            // A step coalesces the oldest small publications, at most one segment's worth of rows, before the next chunk
+            // takes the next generation's number.
+            if (smallUnits >= compaction.SmallUnitsBeforeCompaction)
+            {
+                _ = Compact(compaction with { RowBudget = compaction.RowBudget > 0 ? compaction.RowBudget : options.RowsPerSegment });
+            }
+
             builder = BeginChunk(stagePlan: false);
+        }
+
+        /// <summary>Counts a publication whose rows and bytes are below what a coalesced output should reach.</summary>
+        private void Count(DerivedGenerationResult published)
+        {
+            if (IsSmall(published))
+            {
+                smallUnits++;
+            }
+        }
+
+        private bool IsSmall(DerivedGenerationResult published) =>
+            published.RowCount > 0
+            && published.RowCount < compaction.TargetRows
+            && published.Segments.Sum(segment => segment.LengthBytes) < compaction.TargetBytes;
+
+        /// <summary>
+        /// Publishes one compaction, or nothing when no run of small publications is left. A compaction that fails leaves
+        /// the recording published and whole, so it is reported and not tried again rather than ending the capture.
+        /// </summary>
+        private CompactionResult? Compact(CompactionOptions bounds)
+        {
+            if (CompactionFailure is not null)
+            {
+                return null;
+            }
+
+            try
+            {
+                CompactionResult? result = SegmentCompaction.Compact(store, DateTimeOffset.UtcNow, bounds, options);
+                if (result is not null)
+                {
+                    Compactions++;
+                    smallUnits += (IsSmall(result.Generation) ? 1 : 0) - result.Plan.Coalesced.Count();
+                }
+
+                return result;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                CompactionFailure = exception.Message;
+                return null;
+            }
         }
 
         private DerivedGenerationBuilder BeginChunk(bool stagePlan)

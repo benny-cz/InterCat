@@ -20,6 +20,12 @@ internal sealed record RecordingDocument
     public required long? Generation { get; init; }
     public required long JournaledRecords { get; init; }
     public required int Publications { get; init; }
+
+    /// <summary>How many compaction generations coalesced the recording's small publications (ADR-026).</summary>
+    public required int Compactions { get; init; }
+
+    /// <summary>Why a compaction was not published, or null; the recording itself was, whole.</summary>
+    public required string? CompactionFailure { get; init; }
     public required double? PublishEverySeconds { get; init; }
     public required CaptureHealthSnapshot? Health { get; init; }
     public required IReadOnlyList<string> Degradations { get; init; }
@@ -205,6 +211,8 @@ internal static class RecordCommand
             Generation = result.Generation?.Manifest.Generation,
             JournaledRecords = result.JournaledRecords,
             Publications = result.Publications,
+            Compactions = result.Compactions,
+            CompactionFailure = result.CompactionFailure,
             PublishEverySeconds = publishSeconds > 0 ? publishSeconds : null,
             Health = result.Stop?.Health,
             Degradations = result.Stop?.Degradations ?? [],
@@ -251,6 +259,20 @@ internal static class RecordCommand
             document.Publications == 1
                 ? "once, when the capture stopped"
                 : $"{document.Publications:N0} generations, one journal chunk each; the last holds them all");
+        if (document.Compactions > 0)
+        {
+            ConsoleUi.Field(
+                "Compacted",
+                document.Compactions == 1
+                    ? "once, when the capture stopped; every row was kept"
+                    : $"{document.Compactions:N0} times, while recording and when it stopped; every row was kept");
+        }
+
+        if (document.CompactionFailure is { } failure)
+        {
+            ConsoleUi.Warn(
+                $"A compaction was not published ({failure}). The recording is whole; run icat compact to coalesce it.");
+        }
         if (document.Health is { } health)
         {
             ConsoleUi.Field("Delivered", ConsoleUi.Count(health.ObservedRecords));

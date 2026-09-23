@@ -113,9 +113,12 @@ public sealed class LiveSessionRecorderTests
         Assert.InRange(result.Publications, 2, 3);
         SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
         SessionManifestV1 manifest = reopened.Current!;
-        Assert.Equal(result.Publications, manifest.Generation);
         Assert.Equal(result.Publications, manifest.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal));
-        Assert.Equal(4, SessionSegments.Names(manifest).Sum(name => SessionSegments.Open(reopened.Root, manifest, name).RowCount));
+
+        // When it stopped, the recording coalesced its small publications, so it opens from one segment (ADR-026).
+        Assert.Equal((1, (string?)null), (result.Compactions, result.CompactionFailure));
+        Assert.Equal(result.Publications + 1, manifest.Generation);
+        Assert.Equal(4, SessionSegments.Open(reopened.Root, manifest, Assert.Single(SessionSegments.Names(manifest))).RowCount);
 
         // The ledger describes the whole capture, so there is one, published with the last chunk.
         Assert.Single(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
@@ -260,6 +263,59 @@ public sealed class LiveSessionRecorderTests
             JournalRederivation.Rebuild(writable, DateTimeOffset.UtcNow));
         Assert.Contains("rows go back to record 1, but its retained records begin at 3", refused.Message, StringComparison.Ordinal);
         Assert.Equal(later.Manifest.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
+    }
+
+    [Fact(DisplayName = "I15: a long recording coalesces its small publications as it records and keeps every row")]
+    public async Task ARecordingCompactsAsItRecords()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+
+        // Three bursts apart: every pause lets a small publication go out, and two of them make a compaction due.
+        for (int index = 0; index < 6; index++)
+        {
+            if (index is 2 or 4)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(400));
+            }
+
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100),
+            compaction: new CompactionOptions { SmallUnitsBeforeCompaction = 2 });
+
+        // Compactions ran while it recorded and once more when it stopped; every chunk of evidence is still named.
+        Assert.Null(result.CompactionFailure);
+        Assert.InRange(result.Compactions, 2, result.Publications);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+        SessionManifestV1 manifest = reopened.Current!;
+        Assert.Equal(result.Publications + result.Compactions, manifest.Generation);
+        Assert.Equal(result.Publications, manifest.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal));
+
+        // The finished recording opens from one segment holding all six rows, each at its place in the journal.
+        SegmentReaderV1 segment = SessionSegments.Open(reopened.Root, manifest, Assert.Single(SessionSegments.Names(manifest)));
+        Assert.Equal(
+            [0UL, 1UL, 2UL, 3UL, 4UL, 5UL],
+            Enumerable.Range(0, segment.RowCount).Select(row => segment.Row(row).JournalRecordIndex!.Value).Order());
+        Assert.Equal(6, JournalRederivation.Verify(reopened).ObservationRows);
+        Assert.NotNull(SessionSegments.CoverageLedger(reopened.Root, manifest));
     }
 
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]

@@ -900,6 +900,135 @@ public sealed class SessionStore
     }
 
     /// <summary>
+    /// Publishes a compaction generation (§20.1, ADR-026). The staged segments and dictionaries hold exactly the rows of
+    /// the derived files they replace, which the generation stops naming and releases like any retention: a file a
+    /// live lease holds stays until that reader lets go (I18). The journals, the plan, the ledger and the committed
+    /// boundary are carried unchanged, because only derived files are ever coalesced.
+    /// </summary>
+    public RetentionOutcome CommitCompaction(
+        IReadOnlyList<StoreStagingFile> staged,
+        IReadOnlyList<string> replaced,
+        string reason,
+        long sourceGeneration,
+        DateTimeOffset committedUtc,
+        long? expectedGeneration = null,
+        DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        ArgumentNullException.ThrowIfNull(replaced);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        if (staged.Count == 0 || staged.Count > MaximumStagedFiles)
+        {
+            throw new ArgumentException(
+                $"A compaction publishes between 1 and {MaximumStagedFiles} files; this one staged {staged.Count}.",
+                nameof(staged));
+        }
+
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
+            SessionManifestV1 previous = current
+                ?? throw new InvalidOperationException("No published generation exists to compact.");
+            if (previous.Generation != sourceGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {sourceGeneration} changed while its segments were being compacted. Reopen the "
+                    + "current generation and compact it again.");
+            }
+
+            var released = new List<StoreDependency>(replaced.Count);
+            foreach (string name in replaced)
+            {
+                StoreDependency dependency = previous.Dependencies.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new ArgumentException(
+                        $"Generation {previous.Generation} does not name '{name}', so compaction cannot replace it.",
+                        nameof(replaced));
+                if (dependency.Kind is not (StoreDependencyKind.Segment or StoreDependencyKind.Dictionary)
+                    || released.Contains(dependency))
+                {
+                    throw new ArgumentException(
+                        $"'{name}' is not a derived file this compaction can replace once. Compaction replaces "
+                        + "segments and dictionaries only; admitted evidence and what describes it are never rewritten.",
+                        nameof(replaced));
+                }
+
+                released.Add(dependency);
+            }
+
+            if (released.Count == 0)
+            {
+                throw new ArgumentException("A compaction replaces at least one derived file.", nameof(replaced));
+            }
+
+            long nextGeneration = NextAvailableGeneration();
+            if (expectedGeneration is { } expected && expected != nextGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {expected} was staged, but generation {nextGeneration} is now the next "
+                    + "unoccupied number. Reopen and stage again; a generation's file names must agree "
+                    + "with its manifest.");
+            }
+
+            List<StoreDependency> carried = [.. previous.Dependencies.Except(released)];
+            var names = new HashSet<string>(carried.Select(dependency => dependency.Name), StringComparer.OrdinalIgnoreCase);
+            var published = new List<StoreDependency>(staged.Count);
+            foreach (StoreStagingFile file in staged)
+            {
+                if (file.IsDisposed)
+                {
+                    throw new InvalidOperationException(
+                        $"Staged file '{file.PublishedName}' no longer has an active owner. "
+                        + "Disposed staging cannot be published after cleanup may have claimed it.");
+                }
+
+                RequireUnpublishedTarget(file.PublishedName);
+                StoreDependency dependency = file.Dependency
+                    ?? throw new InvalidOperationException(
+                        $"Staged file '{file.PublishedName}' was not completed, so its contents are not "
+                        + "durable and it cannot be published.");
+                if (dependency.Kind is not (StoreDependencyKind.Segment or StoreDependencyKind.Dictionary)
+                    || !names.Add(dependency.Name))
+                {
+                    throw new InvalidOperationException(
+                        $"'{dependency.Name}' is not a new segment or dictionary, so a compaction cannot publish it.");
+                }
+
+                published.Add(dependency);
+            }
+
+            // Publish the immutable files first. Until the manifest exists, none of them is referenced,
+            // so a crash here leaves unreferenced files rather than a generation missing a dependency.
+            foreach (StoreStagingFile file in staged)
+            {
+                directory.ReplaceOwnedFile(file.StagingName, file.PublishedName);
+            }
+
+            RetentionOutcome outcome = Publish(
+                previous,
+                [.. carried, .. published],
+                previous.Boundary,
+                RetentionRecord.ForDerivedFiles(
+                    now,
+                    reason,
+                    [.. released.Select(dependency => dependency.Name)],
+                    released.Sum(dependency => dependency.LengthBytes)),
+                committedUtc,
+                released,
+                now,
+                nextGeneration);
+            foreach (StoreStagingFile file in staged)
+            {
+                file.MarkPublished();
+            }
+
+            return outcome;
+        }
+    }
+
+    /// <summary>
     /// What a chunk release started from. Each released file's bytes are gone, so the extent is identified by the
     /// digest of their dependency lines, <c>name|length|digest</c> joined by a line feed and oldest first. Each line is
     /// the exact entry the superseded manifest held for its chunk.

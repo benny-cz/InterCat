@@ -305,6 +305,27 @@ retained journals, so after a release it is refused:
 
 Carrying those rows across a replacement is future work.
 
+### Compacting derived files
+
+A compaction (§20.1, ADR-026) coalesces a session's small publications into bounded segments.
+
+- **A publication unit** is the derived files one generation published: its observation and field segments, and its
+  dictionaries. A segment resolves its dictionaries through its own generation, so a unit's dictionaries serve only
+  its segments.
+- **A unit is small** while its rows and its observation bytes are both below the output targets, 64,000 rows and
+  8 MiB.
+- **Runs of two or more consecutive small units are rewritten** into the new generation's segments, run by run, so no
+  output spans a unit it did not coalesce.
+- **Every row moves unchanged**, with its locator, journal index and values, so every observation keeps its identity.
+
+The generation releases the replaced files with a `DerivedFiles` retention record whose reason says their rows were
+coalesced and kept. It carries the journals, the plan, the ledger and the boundary unchanged; only segments and
+dictionaries can be replaced. A file a reader's lease holds stays until that reader lets go.
+
+A live recording compacts itself. When 64 small publications have accumulated, the writer coalesces the oldest run
+between chunks, at most one segment's worth of rows. When the capture stops, every run left is coalesced.
+`icat compact` does the same for any session.
+
 ### What a reader sees afterwards
 
 A retention generation is a generation like any other: it reopens, its manifest verifies against its own

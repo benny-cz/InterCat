@@ -86,6 +86,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private readonly StoreStagingFile? journalFile;
     private readonly JournalV1Writer? journal;
     private readonly CommittedBoundary? retainedBoundary;
+    private readonly bool compacting;
     private readonly List<StoreStagingFile> staged = [];
     private readonly List<PendingSegment> segments = [];
     private readonly List<PendingSegment> fieldSegments = [];
@@ -105,7 +106,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
         StoreStagingFile? journalFile,
         JournalV1Writer? journal,
         CommittedBoundary? retainedBoundary = null,
-        long? sourceGeneration = null)
+        long? sourceGeneration = null,
+        bool compacting = false)
     {
         this.store = store;
         this.identity = identity;
@@ -115,6 +117,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         this.journal = journal;
         this.retainedBoundary = retainedBoundary;
         this.sourceGeneration = sourceGeneration;
+        this.compacting = compacting;
         open = new(identity, 0);
         openFields = new(identity, 0);
     }
@@ -122,6 +125,9 @@ public sealed class DerivedGenerationBuilder : IDisposable
     /// <summary>The journal this generation derives from. A caller appends the admitted envelopes it keyed.</summary>
     public JournalV1Writer Journal => journal
         ?? throw new InvalidOperationException("A re-derivation reads the retained journal; it does not write a new one.");
+
+    /// <summary>The capture, clock and derivation every segment of this generation names.</summary>
+    public SegmentIdentityV1 Identity => identity;
 
     /// <summary>How many rows have been derived so far, across every segment of this generation.</summary>
     public long RowCount { get; private set; }
@@ -256,6 +262,75 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
         return new(store, identity, bounds, store.NextGeneration, journalFile: null, journal: null, boundary,
             sourceGeneration);
+    }
+
+    /// <summary>
+    /// Begins a compaction of the current generation's derived files (§20.1, ADR-026). The caller adds the rows of
+    /// the files it replaces, unchanged, and publishes them with <see cref="CompleteCompaction"/>; no journal is
+    /// staged, and the committed boundary is carried as it is.
+    /// </summary>
+    public static DerivedGenerationBuilder BeginCompaction(
+        SessionStore store,
+        SegmentIdentityV1 identity,
+        long sourceGeneration,
+        DerivedGenerationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(identity);
+        DerivedGenerationOptions bounds = options ?? DerivedGenerationOptions.Default;
+        if (bounds.Validate() is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(options));
+        }
+
+        if (store.Current?.Generation != sourceGeneration)
+        {
+            throw new InvalidOperationException("A compaction needs the current generation it was planned against.");
+        }
+
+        return new(store, identity, bounds, store.NextGeneration, journalFile: null, journal: null,
+            retainedBoundary: null, sourceGeneration, compacting: true);
+    }
+
+    /// <summary>
+    /// Stages whatever is still open and publishes the compaction generation: the new segments replace the derived
+    /// files named, which the generation releases.
+    /// </summary>
+    public (DerivedGenerationResult Generation, RetentionOutcome Retention) CompleteCompaction(
+        IReadOnlyList<string> replaced,
+        string reason,
+        DateTimeOffset committedUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!compacting || completed)
+        {
+            throw new InvalidOperationException(
+                completed ? "This generation has already been published." : "This builder is not compacting.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        FlushSegment();
+        RetentionOutcome outcome = store.CommitCompaction(
+            staged,
+            replaced,
+            reason,
+            sourceGeneration!.Value,
+            committedUtc,
+            expectedGeneration: generation);
+        completed = true;
+        CommittedBoundary boundary = outcome.Manifest.Boundary;
+        return (
+            new(
+                outcome.Manifest,
+                boundary.JournalName,
+                boundary.CommittedRecords,
+                boundary.CommittedBytes,
+                [.. segments.Select(Summarize)])
+            {
+                FieldSegments = [.. fieldSegments.Select(Summarize)],
+            },
+            outcome);
     }
 
     /// <summary>Adds one derived row. A full segment is flushed before the row that would pass its bound.</summary>
@@ -407,6 +482,11 @@ public sealed class DerivedGenerationBuilder : IDisposable
         if (completed)
         {
             throw new InvalidOperationException("This generation has already been published.");
+        }
+
+        if (compacting)
+        {
+            throw new InvalidOperationException("A compaction publishes through CompleteCompaction.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -653,6 +733,28 @@ public static class SessionSegments
             FileShare.Read,
             FileOptions.SequentialScan);
         return JournalV1Reader.ReadSourceClock(stream).Clock;
+    }
+
+    /// <summary>
+    /// The generation that published a derived file, read from its name: `seg-`, `fld-` or `dict-` followed by the
+    /// ten-digit generation. Null for any other name, such as a journal, a plan or a ledger.
+    /// </summary>
+    public static long? PublishingGeneration(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (TableOf(name) is not null)
+        {
+            return name.Length == 25 ? GenerationOf(name) : null;
+        }
+
+        return name.Length == 26
+            && name.StartsWith("dict-", StringComparison.Ordinal)
+            && name[15] == '-'
+            && name.EndsWith(".icatd", StringComparison.Ordinal)
+            && long.TryParse(name.AsSpan(5, 10), NumberStyles.None, CultureInfo.InvariantCulture, out long generation)
+            && generation >= 1
+                ? generation
+                : null;
     }
 
     /// <summary>The generation a published segment name belongs to.</summary>

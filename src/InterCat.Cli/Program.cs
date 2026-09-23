@@ -34,6 +34,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "compact" => await CompactCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -131,6 +132,10 @@ static void PrintHelp()
     ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal would give up, and");
     ConsoleUi.Line("      performs it only with --confirm and a stated reason (ADR-010).");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat compact <directory> [--check] [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Coalesces small publications into bounded segments, keeping every row (§20.1).");
+    ConsoleUi.Line("      A live recording does this itself as it records and when it stops.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
     ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
