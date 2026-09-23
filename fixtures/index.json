@@ -366,6 +366,54 @@
         "I8: a second clock frame is refused rather than silently replacing the first",
         "R21: a journal that names no clock is refused, never read against an assumed one"
       ]
+    },
+    {
+      "id": "FX-QUERY-001",
+      "title": "The canonical query identity of a metric specification",
+      "scenario": "Sections 10.4 and 10.5: twelve metric specifications over a fixed snapshot, each written in canonical form and hashed. They cover a whole-capture count, an interval, an implied domain, layer and side, a rate, a grouping whose evidence policy cannot matter, a ranked grouping whose rows sit beside the hash, an executable grouping with candidates, and owner, participant-by-peer and sender-with-peer focus.",
+      "milestone": "M1",
+      "backlog": [
+        "IC-015",
+        "IC-018"
+      ],
+      "covers": {
+        "rules": [
+          "R18"
+        ],
+        "invariants": [
+          "I16"
+        ],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "Deterministic checked-in corpus in InterCat.Analysis.Tests",
+        "seed": 0,
+        "log": "contracts/query-identity-v1.md",
+        "independence": "Every request and snapshot value is fixed in the test, and every hash can be recomputed from its canonical line with any SHA-256 implementation."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-QUERY-001/golden/canonical-corpus.tsv",
+        "note": "The corpus is the contract: name, identity token and canonical specification per line. A change to it is a new canonicalization version or an ADR, never a test update."
+      },
+      "environment": [
+        {
+          "build": "portable",
+          "supportTier": "NotApplicable",
+          "date": "2026-09-23",
+          "result": "All twelve lines reproduce byte for byte and their hashes match an independent SHA-256. Implicit and written-out defaults hash alike, a policy that cannot change an answer is dropped, requested rows share a hash, and every member, snapshot, role and peer difference is a different identity. Answers carry the identity of their generation, unavailable answers included."
+        }
+      ],
+      "provenance": {
+        "adapter": "query-identity-v1",
+        "shareable": true,
+        "contents": "Synthetic identities and a fixed manifest digest. Nothing captured."
+      },
+      "tests": [
+        "I16: every golden specification canonicalizes to exactly its recorded bytes and identity",
+        "R18: two spellings of one request, and a policy that changes nothing, are one identity",
+        "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
+        "I16: every answer names the identity of the specification and snapshot it answers"
+      ]
     }
   ],
   "contractCoverage": {
@@ -456,26 +504,29 @@
         "I15: an empty session is empty, not a refusal",
         "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an incomplete staged file is never published",
-        "I15: staging cleanup defers an active owner and removes it after abandonment",
-        "I15: staging cleanup refuses a preview whose candidate set changed",
-        "I15: published staging clears its ownership marker",
-        "I15: staging cleanup leaves unmarked legacy files for manual review",
-        "I15: marker-only cleanup keeps an interrupted published dependency",
-        "I15: disposed staging cannot publish after abandoning its ownership",
         "I15: an orphan is reported on open and removed only when that is asked for",
         "I15: an orphan with a generation's final name is never overwritten",
         "I15: confirmed pointer repair preserves the damaged bytes and skips an orphan generation",
+        "I15: disposed staging cannot publish after abandoning its ownership",
         "I15: every derived row is writable into a segment as it stands",
+        "I15: marker-only cleanup keeps an interrupted published dependency",
         "I15: opening reports a staging file without deleting another writer's work",
         "I15: pointer repair is a no-op when the current generation verifies",
         "I15: pointer repair refuses an unbounded damaged pointer without replacing it",
+        "I15: published staging clears its ownership marker",
         "I15: releasing a journal prefix publishes a shorter journal and names the extent",
         "I15: retention refuses a file the current generation does not hold",
+        "I15: staging cleanup defers an active owner and removes it after abandonment",
+        "I15: staging cleanup leaves unmarked legacy files for manual review",
+        "I15: staging cleanup refuses a preview whose candidate set changed",
         "I15: taking a fresh reader lease does not authorize a stale writer",
         "I15: time blocks cover every row and state the interval their rows actually hold"
       ],
       "I16": [
-        "I16: a result names the materialized request it answers, so two spellings are one request"
+        "I16: a result names the materialized request it answers, so two spellings are one request",
+        "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
+        "I16: every answer names the identity of the specification and snapshot it answers",
+        "I16: every golden specification canonicalizes to exactly its recorded bytes and identity"
       ],
       "I18": [
         "I18: a lease acquires the generation and every dependency it names as one thing",
@@ -826,12 +877,12 @@
         "R8: a capture reports per-thread processor time or says the host cannot",
         "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
         "R8: a full bounded queue is reported as a counted drop, not as loss",
-        "R8: cancelled layouts do not publish a partial result",
         "R8: a queue past half its bound is pressure, and below it is headroom",
         "R8: a series declares every setting that changes what it measures",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
         "R8: a writer whose flushes outlast the acquisition window set the pace",
         "R8: an unknown series or level is refused rather than silently reduced",
+        "R8: cancelled layouts do not publish a partial result",
         "R8: invalid ETL bounds and ambiguous output paths are refused",
         "R8: loss before admission outranks every queue outcome",
         "R8: malformed layout input or a graph over budget is refused, never partly drawn",
@@ -848,6 +899,9 @@
         "R9: an envelope owns its bytes after the source memory changes",
         "R9: the callback allocation budget is measurable, so it can be met",
         "R9: writing a batch returns every buffer the records held"
+      ],
+      "R18": [
+        "R18: two spellings of one request, and a policy that changes nothing, are one identity"
       ]
     },
     "uncovered": {
@@ -934,10 +988,6 @@
       "R11": {
         "reason": "Paint and aggregate loops do not exist before IC-017.",
         "plannedBy": "IC-017"
-      },
-      "R18": {
-        "reason": "UI and CLI answer one specification only after IC-018.",
-        "plannedBy": "IC-018"
       },
       "R4": {
         "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",

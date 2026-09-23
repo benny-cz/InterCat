@@ -14,6 +14,7 @@ internal sealed record MetricDocument
     public required long Generation { get; init; }
     public required bool FromLastKnownGood { get; init; }
     public required MetricSpecificationDocument Specification { get; init; }
+    public required QueryIdentityDocument? QueryIdentity { get; init; }
     public required string? BindingRule { get; init; }
     public required string? RelationRule { get; init; }
     public required bool Available { get; init; }
@@ -29,6 +30,30 @@ internal sealed record MetricDocument
     public required MetricGroupingDocument? Grouping { get; init; }
     public required IReadOnlyList<MetricEvidenceDocument> Evidence { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+/// <summary>
+/// §10.5's query identity: the canonical specification, its SHA-256 and the canonicalization version that prefixes
+/// it, with the rows a ranking was cut to. The same request gives the same bytes from the CLI and from a UI (R18).
+/// </summary>
+internal sealed record QueryIdentityDocument
+{
+    public required string Contract { get; init; }
+    public required int CanonicalizationVersion { get; init; }
+    public required string Token { get; init; }
+    public required string Hash { get; init; }
+    public required int? RequestedRows { get; init; }
+    public required string CanonicalSpecification { get; init; }
+
+    public static QueryIdentityDocument From(QueryIdentity identity) => new()
+    {
+        Contract = "query-identity-v1",
+        CanonicalizationVersion = QueryIdentity.CanonicalizationVersion,
+        Token = identity.Token,
+        Hash = identity.Hash,
+        RequestedRows = identity.RequestedRows,
+        CanonicalSpecification = identity.CanonicalSpecification,
+    };
 }
 
 /// <summary>A grouped answer: the groups, the exact remainder and what could not be attributed, which together partition the total.</summary>
@@ -291,6 +316,7 @@ internal static class MetricCommand
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        bool printCanonical = command.TryTakeFlag("--print-canonical");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
@@ -417,6 +443,11 @@ internal static class MetricCommand
             request = request with { Interval = interval };
         }
 
+        if (printCanonical)
+        {
+            return PrintCanonical(store, request, json, cancellationToken);
+        }
+
         ConsoleUi.Progress($"Answering {Name(metric)} over generation {manifest.Generation} under an evidence lease.");
         MetricResult result;
         try
@@ -455,6 +486,37 @@ internal static class MetricCommand
                 : InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// Prints the canonical specification and identity of a request over the current generation, without answering it,
+    /// so a UI and the CLI can be compared on the bytes they hash (§10.5). The canonical line goes to stdout alone, as it
+    /// is hashed; everything around it is status.
+    /// </summary>
+    private static InterCatExitCode PrintCanonical(SessionStore store, MetricRequest request, bool json, CancellationToken cancellationToken)
+    {
+        QueryIdentity? identity = SessionMetrics.Identify(store, request, cancellationToken);
+        if (identity is null)
+        {
+            ConsoleUi.Failure(
+                "The current generation publishes no derived segment, so there is no snapshot a query could name. "
+                + "Import or re-derive the session first.");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(QueryIdentityDocument.From(identity), JsonContracts.Indented));
+        }
+        else
+        {
+            Console.Out.WriteLine(identity.CanonicalSpecification);
+            ConsoleUi.Success(identity.RequestedRows is { } rows
+                ? string.Create(CultureInfo.InvariantCulture, $"Query identity {identity.Token}, top {rows} (query-identity-v1).")
+                : $"Query identity {identity.Token} (query-identity-v1).");
+        }
+
+        return InterCatExitCode.Success;
+    }
+
     private static ProcessInstanceId? Instance(string? option) =>
         option is null ? null : new ProcessInstanceId(Guid.Parse(option));
 
@@ -469,6 +531,7 @@ internal static class MetricCommand
             Path = path,
             Generation = result.Generation,
             FromLastKnownGood = fromLastKnownGood,
+            QueryIdentity = result.Identity is { } identity ? QueryIdentityDocument.From(identity) : null,
             Specification = new()
             {
                 Basis = request.Basis.ToString(),
@@ -755,6 +818,14 @@ internal static class MetricCommand
                 { } other => $" by {Words(other.ToString()).ToLowerInvariant()}",
             });
         ConsoleUi.Field("Session", document.Path);
+        if (document.QueryIdentity is { } queryIdentity)
+        {
+            ConsoleUi.Field(
+                "Query identity",
+                queryIdentity.RequestedRows is { } rows
+                    ? string.Create(CultureInfo.InvariantCulture, $"{queryIdentity.Token}, top {rows}")
+                    : queryIdentity.Token);
+        }
         ConsoleUi.Field(
             "Generation",
             document.FromLastKnownGood
@@ -1302,7 +1373,7 @@ internal static class MetricCommand
         ConsoleUi.Line("             [--group-by process|executable|mechanism|peer] [--top <n>]");
         ConsoleUi.Line("             [--evidence-policy <name>] [--peer <process-instance-id>]");
         ConsoleUi.Line("             [--owner|--participant|--sender|--receiver <process-instance-id>]");
-        ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("             [--print-canonical] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");
         ConsoleUi.Line("      section 5.3's matrix first. A metric outside its basis is rejected with the");
@@ -1322,6 +1393,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      (the processes at the other end from a focus), with an exact remainder past --top;");
         ConsoleUi.Line("      --evidence-policy include-candidates also attributes the records of reused PIDs,");
         ConsoleUi.Line("      labelled as candidates.");
+        ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
+        ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
+        ConsoleUi.Line("      canonical form and identity without answering.");
         ConsoleUi.Line("      Exit codes: 0 answered, 1 answered from the last-known-good generation,");
         ConsoleUi.Line("      2 invalid request, 3 the session cannot supply it, 4 corrupted session.");
     }

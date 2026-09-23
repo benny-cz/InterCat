@@ -160,6 +160,27 @@ public enum LaneGrouping
     Peer = 9,
 }
 
+/// <summary>
+/// <c>EN-FilterDimension</c> (section 23): what one filter term constrains. The codes order a canonical filter's AND
+/// terms (§10.5). A peer is a member of the process-instance term, because it is relative to that term's focus, and
+/// time is the specification's time scope; neither is an independent term.
+/// </summary>
+public enum FilterDimension
+{
+    Host = 1,
+    ProcessInstance = 2,
+    Executable = 3,
+    Mechanism = 4,
+    Layer = 5,
+    Endpoint = 6,
+    Direction = 7,
+    Operation = 8,
+    Status = 9,
+    Quality = 10,
+    Source = 11,
+    ByteValue = 12,
+}
+
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }
 
 /// <summary>Stable names of the capture intents described by section 9.4.</summary>

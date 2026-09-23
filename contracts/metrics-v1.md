@@ -40,7 +40,9 @@ A metric request names:
 
 A request is resolved against §5.3's matrix (§2) **before** it is planned, and a request the matrix accepts is
 **materialized**: every default above is written out, so "unset" and "set to the value the metric fixes" become
-one request (§10.5). A result always names the materialized request it answers.
+one request (§10.5). A result always names the materialized request it answers, and - whenever it read a generation,
+value or unavailable - its query identity: the canonical specification over the snapshot it read, hashed as
+`contracts/query-identity-v1.md` freezes (R18, I16).
 
 ## 2. The matrix
 

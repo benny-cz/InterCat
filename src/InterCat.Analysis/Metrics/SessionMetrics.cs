@@ -467,6 +467,13 @@ public sealed record MetricResult
     /// <summary>The relation rule that found records' other ends, when a filter or grouping needed one (I16).</summary>
     public string? RelationRule { get; init; }
 
+    /// <summary>
+    /// What this result answers, as the canonical specification and its hash (§10.5): the same bytes for the same
+    /// request from the CLI or a UI (R18), different ones for any meaningful difference. Null only when the generation
+    /// publishes nothing derived to read.
+    /// </summary>
+    public QueryIdentity? Identity { get; init; }
+
     /// <summary>Notes a caller must show beside the number. They are part of the answer, not decoration.</summary>
     public IReadOnlyList<string> Caveats { get; init; } = [];
 
@@ -532,6 +539,14 @@ public static partial class SessionMetrics
         }
 
         MetricRequest materialized = request.Materialized();
+        if (materialized.Grouping is not null && bounds.EvidenceLimit > 0)
+        {
+            throw new ArgumentException(
+                "Evidence lists the records of one total. Ask for it without a grouping, projected onto the group "
+                + "whose records you want to see.",
+                nameof(options));
+        }
+
         if (store.Current is null)
         {
             throw new InvalidOperationException(
@@ -543,8 +558,8 @@ public static partial class SessionMetrics
         // the one the lease holds, so neither retention nor a later commit changes what is being read (I18).
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        IReadOnlyList<string> names = SessionSegments.Names(manifest);
-        if (names.Count == 0)
+        List<(string Name, SegmentReaderV1 Reader)>? segments = OpenSegments(store, manifest, cancellationToken);
+        if (segments is null)
         {
             return Unavailable(
                 materialized,
@@ -554,10 +569,64 @@ public static partial class SessionMetrics
                 + "nothing above it to count.");
         }
 
-        MetricResult? blocked = WhatIsMissing(materialized, manifest.Generation);
-        if (blocked is not null)
+        // Every answer from here on - a value, a grouping or a reason it is unavailable - is an answer to one exact
+        // specification over one exact snapshot, and names it (§10.5, I16).
+        SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
+        QueryIdentity identity = IdentityOf(materialized, manifest, segments);
+        return Answer(store, manifest, materialized, segments, clock, bounds, cancellationToken) with { Identity = identity };
+    }
+
+    /// <summary>
+    /// The query identity a request answers under over the store's current generation, without answering it: the
+    /// canonical specification and its hash, so a caller can compare two requests, or a UI with the CLI, before any
+    /// total is computed (§10.5). Null when the generation publishes no derived segment.
+    /// </summary>
+    public static QueryIdentity? Identify(SessionStore store, MetricRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Check() is { } rejection)
         {
-            return blocked;
+            throw new ArgumentException(rejection.ToString(), nameof(request));
+        }
+
+        if (store.Current is null)
+        {
+            return null;
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        List<(string Name, SegmentReaderV1 Reader)>? segments = OpenSegments(store, lease.Manifest, cancellationToken);
+        return segments is null ? null : IdentityOf(request.Materialized(), lease.Manifest, segments);
+    }
+
+    /// <summary>
+    /// The snapshot a request reads: one entry per capture its segments hold, each pinned by the manifest that names
+    /// the generation's exact bytes, and the normalizer contract the segments were derived under.
+    /// </summary>
+    private static QueryIdentity IdentityOf(
+        MetricRequest materialized,
+        SessionManifestV1 manifest,
+        IReadOnlyList<(string Name, SegmentReaderV1 Reader)> segments) =>
+        AnalysisSpecification.IdentityOf(
+            materialized,
+            [
+                .. segments
+                    .Select(segment => segment.Reader.CaptureId)
+                    .Distinct()
+                    .Select(capture => new SnapshotEntry(capture, manifest.Generation, manifest.Digest)),
+            ],
+            segments.Select(segment => segment.Reader.Derivation).MaxBy(derivation => derivation.Value));
+
+    private static List<(string Name, SegmentReaderV1 Reader)>? OpenSegments(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> names = SessionSegments.Names(manifest);
+        if (names.Count == 0)
+        {
+            return null;
         }
 
         var segments = new List<(string Name, SegmentReaderV1 Reader)>(names.Count);
@@ -567,7 +636,24 @@ public static partial class SessionMetrics
             segments.Add((name, SessionSegments.Open(store.Root, manifest, name)));
         }
 
-        SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
+        return segments;
+    }
+
+    private static MetricResult Answer(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        MetricRequest materialized,
+        List<(string Name, SegmentReaderV1 Reader)> segments,
+        SourceClockDescriptor? clock,
+        MetricEvaluationOptions bounds,
+        CancellationToken cancellationToken)
+    {
+        MetricResult? blocked = WhatIsMissing(materialized, manifest.Generation);
+        if (blocked is not null)
+        {
+            return blocked;
+        }
+
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
         if (materialized.Focus is not null
             || materialized.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer)
@@ -615,14 +701,6 @@ public static partial class SessionMetrics
 
         if (materialized.Grouping is { } grouping)
         {
-            if (bounds.EvidenceLimit > 0)
-            {
-                throw new ArgumentException(
-                    "Evidence lists the records of one total. Ask for it without a grouping, projected onto the group "
-                    + "whose records you want to see.",
-                    nameof(options));
-            }
-
             return WhatGroupingNeeds(materialized, manifest.Generation, clock)
                 ?? Grouped(context, grouping, cancellationToken);
         }
@@ -729,15 +807,7 @@ public static partial class SessionMetrics
     /// Whether answering needs records' other ends: any focus but a bare owner, a peer narrowing, a peer grouping, or a
     /// directional total grouped by process, whose records belong to their sender or their receiver.
     /// </summary>
-    private static bool NeedsRelations(MetricRequest request)
-    {
-        Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
-        return request.Focus is { Role: not ProcessRole.Owner }
-            || request.Peer is not null
-            || request.Grouping == LaneGrouping.Peer
-            || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
-                && effective is Metric.BytesSent or Metric.BytesReceived);
-    }
+    private static bool NeedsRelations(MetricRequest request) => AnalysisSpecification.UsesRelations(request);
 
     private static ProcessRoles RolesFor(
         Context context,
