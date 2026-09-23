@@ -775,6 +775,104 @@ public sealed class SessionStore
     }
 
     /// <summary>
+    /// Publishes a retention generation that stops naming a live recording's oldest journal chunks (ADR-024). A chunk
+    /// is a whole, immutable file, so nothing is rewritten: the generation names the chunks after them, keeps the
+    /// committed boundary, and records the released extent. The caller counted the released records, because this
+    /// store does not read inside the files it publishes.
+    /// </summary>
+    /// <remarks>
+    /// Only a leading run of chunks is released, and never the one the boundary names. A chunk from the middle would
+    /// leave the retained chunks describing a capture with a hole in it, and releasing the boundary's chunk would
+    /// leave the generation naming evidence it no longer holds.
+    /// </remarks>
+    public RetentionOutcome ReleaseJournalChunks(
+        IReadOnlyList<string> chunks,
+        long releasedRecords,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        ArgumentOutOfRangeException.ThrowIfNegative(releasedRecords);
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
+            SessionManifestV1 manifest = current
+                ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            StoreDependency[] journals =
+            [
+                .. manifest.Dependencies
+                    .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                    .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+            ];
+            if (chunks.Count == 0 || chunks.Count >= journals.Length)
+            {
+                throw new ArgumentException(
+                    $"Generation {manifest.Generation} names {journals.Length} journal chunks. A chunk release gives up "
+                    + "at least one of them and keeps at least the newest, which the committed boundary names.",
+                    nameof(chunks));
+            }
+
+            // The chunks sort in the order they were recorded, so the oldest are the first names.
+            StoreDependency[] released = journals[..chunks.Count];
+            if (!released.Select(dependency => dependency.Name)
+                    .SequenceEqual(chunks, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    "A chunk release gives up the oldest chunks, in the order they were recorded: "
+                    + $"{string.Join(", ", released.Select(dependency => dependency.Name))}. Releasing any other set "
+                    + "would leave the retained chunks describing a capture with a hole in it.",
+                    nameof(chunks));
+            }
+
+            if (released.Any(dependency =>
+                dependency.Name.Equals(manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new ArgumentException(
+                    "The committed boundary names one of these chunks. A generation cannot keep a boundary on "
+                    + "evidence it no longer holds.",
+                    nameof(chunks));
+            }
+
+            var record = new RetentionRecord(
+                RetentionExtentKind.JournalPrefix,
+                now,
+                reason,
+                [.. released.Select(dependency => dependency.Name)],
+                released.Sum(dependency => dependency.LengthBytes),
+                releasedRecords,
+                ChunkSourceDigest(released));
+            return Publish(
+                manifest,
+                [.. manifest.Dependencies.Except(released)],
+                manifest.Boundary,
+                record,
+                committedUtc,
+                [.. released],
+                now);
+        }
+    }
+
+    /// <summary>
+    /// What a chunk release started from. Each released file's bytes are gone, so the extent is identified by the
+    /// digest of their dependency lines, <c>name|length|digest</c> joined by a line feed and oldest first. Each line is
+    /// the exact entry the superseded manifest held for its chunk.
+    /// </summary>
+    public static string ChunkSourceDigest(IReadOnlyList<StoreDependency> chunks)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        string canonical = string.Join(
+            '\n',
+            chunks.Select(chunk => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{chunk.Name}|{chunk.LengthBytes}|{chunk.Digest}")));
+        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    /// <summary>
     /// Removes files no generation references and no live lease holds. It is separate from opening on
     /// purpose: a file that is unreferenced now may be a dependency of a generation whose publication was
     /// interrupted, and deleting it would turn a recoverable interruption into lost evidence. Staging files

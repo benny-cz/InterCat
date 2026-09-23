@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
@@ -68,6 +69,11 @@ public static class JournalRederivation
             return new(false, "The committed boundary and retained journal dependency disagree.");
         }
 
+        if (ReleasedEvidenceRefusal(manifest) is { } released)
+        {
+            return new(false, released);
+        }
+
         StoreDependency[] plans = [.. manifest.Dependencies.Where(dependency =>
             dependency.Kind == StoreDependencyKind.DerivationPlan)];
         if (plans.Length != 1)
@@ -110,6 +116,50 @@ public static class JournalRederivation
         return new(verification.SourceGeneration, verification.ReplayedRecords, generation!, verification.JournalChunks);
     }
 
+    private const string UnrebuildableRows =
+        "Released records cannot be derived again, and re-deriving replaces every row with rows derived from the "
+        + "retained journals alone, so it would drop theirs. It is refused rather than losing them (ADR-024).";
+
+    /// <summary>
+    /// Why a journal-prefix retention generation cannot be re-derived, or null for any other generation. The release
+    /// keeps every derived row, including those of the records it gave up, which only the replay would then drop.
+    /// </summary>
+    private static string? ReleasedEvidenceRefusal(SessionManifestV1 manifest) =>
+        manifest.Retention is { Kind: RetentionExtentKind.JournalPrefix } retention
+            ? $"Generation {manifest.Generation} released "
+                + retention.ReleasedRecords.ToString("N0", CultureInfo.InvariantCulture)
+                + " admitted records from its journal and still holds the rows derived from them. "
+                + UnrebuildableRows
+            : null;
+
+    /// <summary>
+    /// The oldest record each stream's rows derive from in the current generation. A replay holds every retained
+    /// record, so a stream whose rows go back further than its retained records has rows no replay can rebuild.
+    /// </summary>
+    private static Dictionary<(uint Stream, uint Epoch), ulong> OldestDerivedRecords(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<(uint Stream, uint Epoch), ulong> oldest = [];
+        foreach (string name in SessionSegments.Names(manifest))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, name);
+            SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
+            SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
+            SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                (uint Stream, uint Epoch) stream = ((uint)streams.UnsignedAt(row)!.Value, (uint)epochs.UnsignedAt(row)!.Value);
+                ulong ordinal = ordinals.UnsignedAt(row)!.Value;
+                oldest[stream] = oldest.TryGetValue(stream, out ulong known) ? Math.Min(known, ordinal) : ordinal;
+            }
+        }
+
+        return oldest;
+    }
+
     private static (JournalRederivationVerification Verification, DerivedGenerationResult? Generation) Replay(
         SessionStore store,
         DateTimeOffset? committedUtc,
@@ -150,6 +200,11 @@ public static class JournalRederivation
                 + "Evidence past the boundary is not committed, so the replay is refused rather than guessed.");
         }
 
+        if (ReleasedEvidenceRefusal(manifest) is { } released)
+        {
+            throw new InvalidOperationException(released);
+        }
+
         StoreDependency planFile = manifest.Dependencies.SingleOrDefault(dependency =>
             dependency.Kind == StoreDependencyKind.DerivationPlan)
             ?? throw new InvalidOperationException(
@@ -185,9 +240,12 @@ public static class JournalRederivation
         (CaptureId Capture, SourceClockDescriptor Clock)? recorded = null;
         JournalV1SchemaTable? validated = null;
 
-        // The highest ordinal each stream reached in the chunks already replayed, and in every record replayed so far.
+        // The highest ordinal each stream reached in the chunks already replayed, and in every record replayed so far;
+        // the lowest it holds; and the oldest record each stream's current rows derive from.
         Dictionary<(uint Stream, uint Epoch), ulong> endedAt = [];
         Dictionary<(uint Stream, uint Epoch), ulong> reached = [];
+        Dictionary<(uint Stream, uint Epoch), ulong> retainedFrom = [];
+        Dictionary<(uint Stream, uint Epoch), ulong> derivedFrom = OldestDerivedRecords(store, manifest, cancellationToken);
         ulong journalIndex = 0;
         long fieldRows = 0;
         long replayed = 0;
@@ -272,6 +330,9 @@ public static class JournalRederivation
                             reached[stream] = reached.TryGetValue(stream, out ulong highest)
                                 ? Math.Max(highest, envelope.RecordOrdinal)
                                 : envelope.RecordOrdinal;
+                            retainedFrom[stream] = retainedFrom.TryGetValue(stream, out ulong lowest)
+                                ? Math.Min(lowest, envelope.RecordOrdinal)
+                                : envelope.RecordOrdinal;
                             AdmittedEventPlan descriptor = plan.Resolve(envelope, schemas);
                             ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, journalIndex);
                             builder?.AddRow(row);
@@ -308,6 +369,22 @@ public static class JournalRederivation
             if (normalizer is null)
             {
                 throw new InvalidDataException("The admitted journal has no record batch to re-derive.");
+            }
+
+            // A replacement carries none of the current rows. A row whose record the retained journals no longer hold -
+            // one a retention released - cannot be derived again, so publishing would lose it without a word (ADR-024).
+            foreach (((uint Stream, uint Epoch) stream, ulong oldest) in derivedFrom)
+            {
+                if (!retainedFrom.TryGetValue(stream, out ulong retained) || oldest < retained)
+                {
+                    throw new InvalidOperationException(
+                        $"Generation {manifest.Generation} holds rows derived from records its journals no longer hold: "
+                        + (retainedFrom.ContainsKey(stream)
+                            ? $"stream {stream.Stream}'s rows go back to record {oldest}, but its retained records "
+                                + $"begin at {retained}. "
+                            : $"stream {stream.Stream} has rows but no retained record. ")
+                        + UnrebuildableRows);
+                }
             }
 
             var verification = new JournalRederivationVerification(

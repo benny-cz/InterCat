@@ -516,6 +516,7 @@
         "I14: relations and peers do not depend on how records were split into segments or delivered"
       ],
       "I15": [
+        "I15: a chunk release gives up only the oldest chunks and never all of the evidence",
         "I15: a column whose checksum does not match its bytes is refused when it is read",
         "I15: a committed boundary states which admitted evidence a generation derives from",
         "I15: a crash before the manifest leaves the previous generation and an orphan file",
@@ -528,6 +529,7 @@
         "I15: a generation publishes its journal, its dictionaries and its segments together",
         "I15: a journal release that would leave no evidence at all is refused",
         "I15: a later generation carries its predecessor's dependencies forward",
+        "I15: a live recording releases its oldest journal chunks whole and keeps its boundary",
         "I15: a manifest naming a dependency outside its root is refused",
         "I15: a manifest this reader cannot read exactly is refused, never read at a guess",
         "I15: a manifest whose contents no longer match its digest is refused",
@@ -549,6 +551,7 @@
         "I15: a stale store instance cannot overwrite a generation another writer published",
         "I15: a text column past the dictionary budget falls back to the variable chunk",
         "I15: a torn pointer rolls back to the retained last-known-good",
+        "I15: after its oldest chunk is released, a recording is not re-derived without the rows of that chunk",
         "I15: an abandoned generation publishes nothing and leaves only staging files",
         "I15: an admitted journal is not released by dropping its name",
         "I15: an empty segment is never published, because absence is not data",

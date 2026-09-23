@@ -21,12 +21,21 @@ internal sealed record RetentionPreviewDocument
 {
     public required long Generation { get; init; }
     public required string JournalName { get; init; }
+
+    /// <summary>1, or how many chunks a live recording's journal spans; the byte and record totals cover them all.</summary>
+    public required int JournalChunks { get; init; }
+
+    /// <summary>What a release gives up whole: `batch`, or `chunk` for a live recording.</summary>
+    public required string ReleaseUnit { get; init; }
     public required long JournalBytes { get; init; }
     public required long TotalRecords { get; init; }
     public required long ReleasedRecords { get; init; }
     public required long RetainedRecords { get; init; }
     public required long ReleasedBatches { get; init; }
     public required long RetainedBatches { get; init; }
+
+    /// <summary>The chunks this boundary gives up, oldest first; empty for a single journal.</summary>
+    public required IReadOnlyList<string> ReleasedChunks { get; init; }
     public required bool ReleasesAnything { get; init; }
     public required bool WouldEmptyTheJournal { get; init; }
 
@@ -42,8 +51,12 @@ internal sealed record RetentionResultDocument
     public required long Generation { get; init; }
     public required string ManifestDigest { get; init; }
     public required string RetainedJournalName { get; init; }
+    public required int RetainedJournalChunks { get; init; }
     public required long RetainedJournalBytes { get; init; }
     public required long RetainedJournalRecords { get; init; }
+
+    /// <summary>How many bytes the release wrote: a single journal's retained suffix, or nothing for chunks.</summary>
+    public required long WrittenBytes { get; init; }
     /// <summary>How many bytes of admitted evidence the release gave up: the old journal less the new one.</summary>
     public required long ReleasedBytes { get; init; }
 
@@ -140,8 +153,11 @@ internal static class RetainCommand
                 store.Current.SessionId,
                 store.Current.SourceIdentity);
             ConsoleUi.Progress(
-                $"Releasing {preview.ReleasedRecords:N0} records in {preview.ReleasedBatches:N0} batches and "
-                + "publishing the retention generation.");
+                preview.JournalChunks > 1
+                    ? $"Releasing {preview.ReleasedRecords:N0} records in the {preview.ReleasedChunks.Count:N0} oldest "
+                        + "chunks and publishing the retention generation."
+                    : $"Releasing {preview.ReleasedRecords:N0} records in {preview.ReleasedBatches:N0} batches and "
+                        + "publishing the retention generation.");
             outcome = JournalRetention.Release(
                 writable,
                 before,
@@ -180,23 +196,31 @@ internal static class RetainCommand
         RetentionOutcome? outcome,
         bool confirmed)
     {
+        bool chunked = preview.JournalChunks > 1;
         var notes = new List<string>
         {
             "Releasing admitted evidence gives up the ability to re-derive those records after a normalizer "
             + "revision. ADR-010 keeps a journal by default, which is why this needs a separate decision.",
-            "A batch is the unit of release: a boundary inside a batch releases nothing, because a frame's "
-            + "checksum covers the records it holds.",
+            "The rows derived from the released records stay, and a replay could rebuild only the retained ones, "
+            + "so re-derivation is refused after a release rather than dropping them (ADR-024).",
+            chunked
+                ? "A chunk is the unit of release in a live recording: a boundary inside a chunk releases only the "
+                    + "chunks before it. Nothing is rewritten; the oldest chunks stop being named."
+                : "A batch is the unit of release: a boundary inside a batch releases nothing, because a frame's "
+                    + "checksum covers the records it holds.",
         };
 
         if (!preview.ReleasesAnything)
         {
             notes.Add(
                 preview.HasAnyReleasableBoundary
-                    ? "No batch of this journal ends before that boundary, so nothing would be released. The "
-                        + $"boundaries it allows run from {preview.SmallestReleasingBoundary:N0} to "
+                    ? $"No {preview.ReleaseUnit} of this journal ends before that boundary, so nothing would be "
+                        + $"released. The boundaries it allows run from {preview.SmallestReleasingBoundary:N0} to "
                         + $"{preview.LargestReleasingBoundary:N0} records."
-                    : "This journal was written as a single batch, so it has no releasable boundary at all. A "
-                        + "capture or an import chooses that granularity with its journal batch size.");
+                    : chunked
+                        ? "No chunk of this recording can be released and still leave admitted records behind."
+                        : "This journal was written as a single batch, so it has no releasable boundary at all. A "
+                            + "capture or an import chooses that granularity with its journal batch size.");
         }
 
         if (preview.WouldEmptyTheJournal)
@@ -219,7 +243,7 @@ internal static class RetainCommand
         if (outcome?.AwaitingRelease == true)
         {
             notes.Add(
-                "The released journal is no longer part of any generation, but a live evidence lease still "
+                "The released evidence is no longer part of any generation, but a live evidence lease still "
                 + "holds its bytes. They go when that reader lets go; retention never removes evidence behind "
                 + "an open reader (I18).");
         }
@@ -234,12 +258,15 @@ internal static class RetainCommand
             {
                 Generation = store.Current!.Generation,
                 JournalName = preview.JournalName,
+                JournalChunks = preview.JournalChunks,
+                ReleaseUnit = preview.ReleaseUnit,
                 JournalBytes = preview.TotalBytes,
                 TotalRecords = preview.TotalRecords,
                 ReleasedRecords = preview.ReleasedRecords,
                 RetainedRecords = preview.RetainedRecords,
                 ReleasedBatches = preview.ReleasedBatches,
                 RetainedBatches = preview.RetainedBatches,
+                ReleasedChunks = preview.ReleasedChunks,
                 ReleasesAnything = preview.ReleasesAnything,
                 WouldEmptyTheJournal = preview.WouldEmptyTheJournal,
                 SmallestReleasingBoundary = preview.SmallestReleasingBoundary,
@@ -250,8 +277,13 @@ internal static class RetainCommand
                 Generation = outcome.Manifest.Generation,
                 ManifestDigest = outcome.Manifest.Digest,
                 RetainedJournalName = outcome.Manifest.Boundary.JournalName,
-                RetainedJournalBytes = outcome.Manifest.Boundary.CommittedBytes,
-                RetainedJournalRecords = outcome.Manifest.Boundary.CommittedRecords,
+                RetainedJournalChunks = outcome.Manifest.Dependencies.Count(dependency =>
+                    dependency.Kind == StoreDependencyKind.Journal),
+                RetainedJournalBytes = outcome.Manifest.Dependencies
+                    .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                    .Sum(dependency => dependency.LengthBytes),
+                RetainedJournalRecords = preview.RetainedRecords,
+                WrittenBytes = chunked ? 0 : outcome.Manifest.Boundary.CommittedBytes,
                 ReleasedBytes = outcome.Manifest.Retention?.ReleasedBytes ?? 0,
                 ReclaimedBytes = outcome.ReclaimedBytes,
                 ReleasedFiles = outcome.ReleasedFiles,
@@ -264,33 +296,39 @@ internal static class RetainCommand
 
     private static void Render(RetentionDocument document)
     {
+        RetentionPreviewDocument preview = document.Preview;
+        bool chunked = preview.JournalChunks > 1;
         ConsoleUi.Heading(document.Performed ? "Journal prefix released" : "Journal prefix release, measured only");
         ConsoleUi.Field("Session", document.Path);
-        ConsoleUi.Field("Generation", document.Preview.Generation.ToString("N0", CultureInfo.CurrentCulture));
+        ConsoleUi.Field("Generation", preview.Generation.ToString("N0", CultureInfo.CurrentCulture));
         ConsoleUi.Field(
             "Journal",
-            $"{document.Preview.JournalName}, {document.Preview.JournalBytes:N0} B, "
-            + $"{document.Preview.TotalRecords:N0} records");
+            (chunked ? $"{preview.JournalChunks:N0} chunks of one recording" : preview.JournalName)
+            + $", {preview.JournalBytes:N0} B, {preview.TotalRecords:N0} records");
         ConsoleUi.Field(
             "Boundaries it allows",
-            document.Preview.SmallestReleasingBoundary == 0
-                ? "none; the journal is a single batch"
-                : $"{document.Preview.SmallestReleasingBoundary:N0} to "
-                    + $"{document.Preview.LargestReleasingBoundary:N0} records");
+            preview.SmallestReleasingBoundary == 0
+                ? chunked ? "none; no chunk's release leaves records behind" : "none; the journal is a single batch"
+                : $"{preview.SmallestReleasingBoundary:N0} to {preview.LargestReleasingBoundary:N0} records");
 
         ConsoleUi.Heading("What this boundary gives up");
+        int releasedChunks = preview.ReleasedChunks.Count;
         ConsoleUi.Table(
-            ["Extent", "Records", "Batches"],
+            chunked ? ["Extent", "Records", "Batches", "Chunks"] : ["Extent", "Records", "Batches"],
             [
                 [
                     "Released",
-                    document.Preview.ReleasedRecords.ToString("N0", CultureInfo.CurrentCulture),
-                    document.Preview.ReleasedBatches.ToString("N0", CultureInfo.CurrentCulture),
+                    preview.ReleasedRecords.ToString("N0", CultureInfo.CurrentCulture),
+                    preview.ReleasedBatches.ToString("N0", CultureInfo.CurrentCulture),
+                    .. chunked ? [releasedChunks.ToString("N0", CultureInfo.CurrentCulture)] : Array.Empty<string>(),
                 ],
                 [
                     "Retained",
-                    document.Preview.RetainedRecords.ToString("N0", CultureInfo.CurrentCulture),
-                    document.Preview.RetainedBatches.ToString("N0", CultureInfo.CurrentCulture),
+                    preview.RetainedRecords.ToString("N0", CultureInfo.CurrentCulture),
+                    preview.RetainedBatches.ToString("N0", CultureInfo.CurrentCulture),
+                    .. chunked
+                        ? [(preview.JournalChunks - releasedChunks).ToString("N0", CultureInfo.CurrentCulture)]
+                        : Array.Empty<string>(),
                 ],
             ]);
 
@@ -300,14 +338,16 @@ internal static class RetainCommand
             ConsoleUi.Field("Generation", result.Generation.ToString("N0", CultureInfo.CurrentCulture));
             ConsoleUi.Field(
                 "Retained journal",
-                $"{result.RetainedJournalName}, {result.RetainedJournalBytes:N0} B, "
-                + $"{result.RetainedJournalRecords:N0} records");
+                (result.RetainedJournalChunks > 1
+                    ? $"{result.RetainedJournalChunks:N0} chunks through {result.RetainedJournalName}"
+                    : result.RetainedJournalName)
+                + $", {result.RetainedJournalBytes:N0} B, {result.RetainedJournalRecords:N0} records");
             ConsoleUi.Field("Given up", $"{result.ReleasedBytes:N0} B of admitted evidence");
             ConsoleUi.Field("Removed from disk", $"{result.ReclaimedBytes:N0} B");
             ConsoleUi.Field(
                 "Net change",
-                $"{result.RetainedJournalBytes - result.ReclaimedBytes:N0} B "
-                + $"({result.RetainedJournalBytes:N0} B written, {result.ReclaimedBytes:N0} B removed)");
+                $"{result.WrittenBytes - result.ReclaimedBytes:N0} B "
+                + $"({result.WrittenBytes:N0} B written, {result.ReclaimedBytes:N0} B removed)");
             ConsoleUi.Field("Released files", string.Join(", ", result.ReleasedFiles));
             ConsoleUi.Field(
                 "Held by a lease",
@@ -328,6 +368,9 @@ internal static class RetainCommand
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Measures what releasing a prefix of the session's admitted journal would give");
         ConsoleUi.Line("      up, and performs it only with --confirm and a stated reason. A batch is the");
-        ConsoleUi.Line("      unit of release; a release that would empty the journal is refused.");
+        ConsoleUi.Line("      unit of release, and a whole chunk for a live recording; a release that would");
+        ConsoleUi.Line("      empty the journal is refused. <n> counts records in stored order across the");
+        ConsoleUi.Line("      journal the current generation holds. Re-derivation is refused afterwards,");
+        ConsoleUi.Line("      because the released records' rows could not be rebuilt.");
     }
 }

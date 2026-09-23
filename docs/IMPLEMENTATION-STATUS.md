@@ -1,12 +1,60 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 60
+Plan revision: 61
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: re-deriving a live recording
+## Latest slice: releasing a live recording's oldest chunks
+
+`icat retain` now works on a live recording (ADR-024). A long recording could not shed its oldest evidence, because
+journal-prefix retention read one journal and refused a chunk sequence.
+
+- **A chunk is the unit of release.** `--release-journal-before-record <n>` releases each chunk that ends at or before
+  record `n`, counting records in stored order across the chunks the generation names.
+- **Nothing is rewritten.** The retention generation stops naming the oldest chunks and keeps its committed boundary.
+- **What can go is limited.** Only a leading run of chunks is released, never the boundary's chunk, and never every
+  record. That includes every chunk but an empty final one that carried only the ledger.
+- **The record identifies what went.** The retention record lists the released chunks, and its source digest covers
+  their dependency lines exactly as the superseded manifest held them.
+- **The preview shows chunks.** It counts records, batches and chunks, and shows the boundaries the recording allows.
+- **"Net change" is now correct.** It counts written bytes, so a chunk release shows 0 B written instead of the
+  retained journal's size.
+
+Writing this exposed a defect in the single-journal release of ADR-010. **Re-derivation after a release lost rows
+without a word.** The release keeps every derived row, but the next `icat rederive` replayed only the retained
+journal and carried none of the earlier rows. The released records' rows vanished, and the retained rows' journal
+indexes restarted at 0. Re-derivation is now refused whenever it would drop rows no replay can rebuild:
+
+- the retention generation is refused from its own record, before any evidence is read;
+- a later generation is refused before publishing, when a stream's rows go back further than its retained records;
+- `icat retain` states this before a release is confirmed, and `icat session` gives it as the reason
+  re-derivation is not available.
+
+Verified on a copy of the real 5-chunk recording:
+
+- A boundary at record 700 previewed the first chunk: 626 records in 1 batch, with the boundaries it allows running
+  from 626 to 1,162.
+- Confirming it published generation 6 and freed 183,169 B, with 0 B written.
+- `icat session` then showed 4 chunks and "re-derivation not available", with the reason.
+- `icat rederive --check` refused with the same explanation and exit code 3.
+
+Two store tests and two journal tests cover the slice:
+
+- Oldest chunks are released whole, the boundary is kept and the record is exact.
+- The store refuses a chunk from the middle, every chunk, and a release that would leave only an empty final chunk.
+- After a recording's first chunk is released, `Assess`, the check and the rebuild all refuse. After a later
+  derived-file release, which no longer names the journal release, the rebuild is still refused through the row scan.
+- After a single-journal prefix release, the rebuild is refused.
+
+The recording tests passed eight runs out of eight.
+
+A retention published while a recording is still running changes the generation the recorder expects, so the
+recorder's next commit is refused. Retention is safe on a finished recording, and a rolling window over a running
+capture needs the broker to schedule both writers.
+
+## Previous slice: re-deriving a live recording
 
 `icat rederive` now works on a live recording (ADR-023). It used to read only one journal, so it refused every chunked
 recording from ADR-022, which denied them the rebuild §20.1 promises for retained evidence. It now replays the chunks in
@@ -688,8 +736,8 @@ Results verified on 2026-09-23 (capture cost re-measured on 2026-09-23; the 2026
 - revision 51 focused validation: 15 Application tests (including three published-session overview regressions), 12 headless UI tests and 5 Architecture tests pass in Debug; `InterCat.Application` builds with zero warnings. The full solution remains blocked by concurrent coverage-ledger interface work, so these are not a full-suite result;
 - revision 50 focused validation: 12 Application, 13 Desktop, 12 headless UI and 5 Architecture tests pass in Debug. The full solution build remains blocked by the concurrent coverage-ledger interface change described below; no full-suite claim is made for this revision;
 - revision 49 focused validation: all 82 Analysis tests and all 5 Architecture tests pass in Debug; the CLI builds with 0 warnings. The full solution build is temporarily blocked by concurrent, uncommitted coverage-ledger work changing `IAdmittedEventSink` before `InterCat.CaptureComparison` implements its new members. The revision 48 full-suite result below is the last complete baseline, not a claimed result for this worktree;
-- build: revision 60 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
-- tests: revision 60 passed 670 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 27 Capture.Journal, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
+- build: revision 61 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
+- tests: revision 61 passed 673 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 28 Capture.Journal, 139 Storage, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
 - FX-UDP-001 UDP datagrams, measured: `fixtures/FX-UDP-001/evidence/verification.json`, fixture-scoped. 71 truth records and 64 observations of the workload's two processes and four loopback flows; nothing else on the machine was written (P16). One builder test keeps a UDP receive's delivered endpoints while reading it as its owner's flow, with a TCP receive owner-first on the same values. One evaluator test names a mirrored-only match as an orientation gap;
 - IC-015 between filters: 3 tests. Between the client-server fixture's two processes, 6 records passed either way, with the evidence listed by reading. Two records were disclosed: the client's send to an endpoint nothing held and its record with no endpoint pair. The third process's send was not disclosed, because its maker is in neither set. `BytesSent` was 100 B from the client to the server and 40 B back. The 100 B measured at the receiver was the same, and the one-way record count was the send and its receive. Adding the unconnected third process to a set changed nothing. No record passed between that process and the server, and its one unresolved send was disclosed. The client and server pair had 1 channel with no unknown. An absent instance was `ProcessInstanceNotFound`. A focus, a peer, an empty set, an empty id, an undefined direction, a peer grouping and an ungrouped peer count beside it were refused. A set may overlap the other, and a grouped peer count was accepted. With start keys published, the ids a process list derives found 6 records between the pair and 7 for the server's participant filter, and ranked the client's channels. The unfocused channel count's identity named both rules and no policy. Restoring the old loading rule failed that test;
 - IC-015 channel counts: 3 tests. The client-server fixture counted 3 channels. The connection was one at both its ends, and two sends to unheld endpoints were one-sided channels, over 8 records. The record with no endpoint pair was the one unknown, making the count "at least 3". The client had 2 channels and the server 1. Ranked by process, the rows overlapped and did not partition a total of 3, and a mechanism grouping was refused. A reused port with both connections witnessed counted 2 channels with no unknown. Two witnessed client connections against a server end with no lifecycle counted at least 2, with the server's 2 records as the undecided unknown part. A lone record with no endpoint pair was `NothingMeasured`, never zero;
@@ -740,6 +788,10 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Known limitations and cautions
 
+- A session cannot be re-derived after a journal-prefix release. The release keeps the released records' rows, and a
+  replacement can carry none of them yet, so `icat rederive` refuses rather than dropping them (ADR-024). A
+  retention published while `icat record` is still running makes the recorder's next commit fail. Retain from a
+  finished recording.
 - The host build is `10.0.26220.9223`, Windows 11 25H2 x64 on its **pre-release servicing branch**. ADR-007 put it in the §1.3 matrix, so measurements taken on it can promote a tier; every artifact states the branch, because a pre-release build can change under a measurement in a way a retail build cannot. The retail 25H2 build (26200) and 24H2 (26100) are in the matrix and their fixture corpus has not been run.
 - The live path builds a `RecordEnvelopeV1` per admitted record, but the record it builds it *from* is still bounded: an eight-slot field projection plus at most four extended-data items of at most 64 bytes each. An item longer than the bound is kept as a flagged prefix with its original length, and an item past the fourth is counted as an omission. The envelope is the production one; the callback capture bounds behind it are not, so a run proves the format's fidelity and not the adapter's completeness.
 - Extended data is opt-in per enablement, so a run that does not request it observes none. The 77,355 items that prove the envelope path came from requesting call stacks, which is a different and more expensive load point - it roughly halves the admitted rate - not the default profile.
@@ -792,8 +844,8 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. **Bind the broker and compact live sessions.** `icat record` publishes as it records, one journal chunk per generation (ADR-022). Bind the broker's `IBrokerCaptureRuntime` to `LiveSessionRecorder` and give the ordinary-integrity viewer a session root it can read; teach journal-prefix retention to read a chunk sequence, as re-derivation now does (ADR-023); and implement §20.1's compaction targets before long recordings accumulate thousands of chunks and segments. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
-2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
+1. **Bind the broker and compact live sessions.** `icat record` publishes as it records, one journal chunk per generation (ADR-022). Bind the broker's `IBrokerCaptureRuntime` to `LiveSessionRecorder` and give the ordinary-integrity viewer a session root it can read; let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024); and implement §20.1's compaction targets before long recordings accumulate thousands of chunks and segments. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
+2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Carry the rows of records a retention released across a replacement, with their journal indexes and their own derivation label, so a session can be re-derived after a release (ADR-024). Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
 3. **Publish §20.2's entity-state checkpoint (IC-016a), once IC-015 exists.** A rolling eviction has to carry the still-live identities, the endpoint bindings, the continuity quality and the pending-operation summaries across the boundary, and an operation open across one has to be censored rather than failed (I20). The retention mechanism beneath it is in; what it can state is what is missing.
 4. **Run the fixture corpus on the retail builds in the matrix.** 25H2 retail (26200) and 24H2 (26100) are listed in §1.3 and neither has been measured; the tiers above rest on a pre-release branch of 25H2. §13.4 asks for the corpus on every supported build, and a second environment row is what makes a tier more than one machine's result.
 5. What IC-008 deferred - per-level graph and timeline composition - belongs to IC-017, which owns deterministic layout, and should be picked up with it rather than as UI polish.

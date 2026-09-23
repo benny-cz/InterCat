@@ -413,6 +413,95 @@ public sealed class EvidenceRetentionTests
         Assert.Contains("a batch is the unit of release", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a live recording releases its oldest journal chunks whole and keeps its boundary")]
+    public void ALiveRecordingReleasesItsOldestChunks()
+    {
+        using var session = new TemporarySession();
+
+        // Three chunks as a live recording publishes them, each a generation of its own: 4, 5 and 6 records.
+        DerivedGenerationResult first = Publish(session.Store, 4, batchCapacity: 2);
+        DerivedGenerationResult second = Publish(session.Store, 5, batchCapacity: 2);
+        DerivedGenerationResult third = Publish(session.Store, 6, batchCapacity: 2);
+        SessionManifestV1 recorded = session.Store.Current!;
+        StoreDependency[] chunks = [.. recorded.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
+        Assert.Equal(3, chunks.Length);
+
+        // A chunk is the unit: a boundary inside the second chunk releases only the first.
+        JournalReleasePreview inside = JournalRetention.Preview(session.Store, 8);
+        Assert.Equal((3, "chunk", 4L, 11L), (inside.JournalChunks, inside.ReleaseUnit, inside.ReleasedRecords, inside.RetainedRecords));
+        Assert.Equal([first.JournalName], inside.ReleasedChunks);
+
+        JournalReleasePreview preview = JournalRetention.Preview(session.Store, 9);
+        Assert.Equal([first.JournalName, second.JournalName], preview.ReleasedChunks);
+        Assert.Equal((15L, 9L, 6L), (preview.TotalRecords, preview.ReleasedRecords, preview.RetainedRecords));
+        Assert.Equal((5L, 3L), (preview.ReleasedBatches, preview.RetainedBatches));
+        Assert.Equal((4L, 9L), (preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary));
+        Assert.Equal(chunks.Sum(chunk => chunk.LengthBytes), preview.TotalBytes);
+        Assert.Equal(third.JournalName, preview.JournalName);
+
+        RetentionOutcome outcome = JournalRetention.Release(
+            session.Store,
+            9,
+            "the first ten seconds are older than the retained window",
+            Committed,
+            Committed);
+
+        // Nothing was rewritten: the generation stops naming the two oldest chunks and keeps its boundary.
+        SessionManifestV1 retained = outcome.Manifest;
+        Assert.Equal(third.JournalName, Assert.Single(retained.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Journal).Name);
+        Assert.Equal(recorded.Boundary, retained.Boundary);
+        Assert.Equal(
+            recorded.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Segment),
+            retained.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Segment));
+        RetentionRecord record = Assert.IsType<RetentionRecord>(retained.Retention);
+        Assert.Null(record.Validate());
+        Assert.Equal(RetentionExtentKind.JournalPrefix, record.Kind);
+        Assert.Equal([first.JournalName, second.JournalName], record.ReleasedFiles);
+        Assert.Equal(9, record.ReleasedRecords);
+        Assert.Equal(chunks[0].LengthBytes + chunks[1].LengthBytes, record.ReleasedBytes);
+        Assert.Equal(SessionStore.ChunkSourceDigest(chunks[..2]), record.SourceDigest);
+        Assert.Equal([first.JournalName, second.JournalName], outcome.RemovedFiles.Order(StringComparer.Ordinal));
+        Assert.False(File.Exists(Path.Combine(session.Path, first.JournalName)));
+
+        SessionStore reopened = session.Reopen();
+        Assert.Equal(retained.Generation, reopened.Current!.Generation);
+        Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
+    }
+
+    [Fact(DisplayName = "I15: a chunk release gives up only the oldest chunks and never all of the evidence")]
+    public void AChunkReleaseKeepsTheRecordingWhole()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4, batchCapacity: 2);
+        DerivedGenerationResult second = Publish(session.Store, 5, batchCapacity: 2);
+
+        // The last chunk carried only the ledger, as a live recording's does when its final interval admitted nothing.
+        DerivedGenerationResult last = Publish(session.Store, 0);
+
+        // A chunk from the middle, or every chunk, would leave the recording with a hole or no boundary.
+        Assert.Contains("the oldest chunks", Assert.Throws<ArgumentException>(() => session.Store.ReleaseJournalChunks(
+            [second.JournalName], 5, "the middle", Committed, Committed)).Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => session.Store.ReleaseJournalChunks(
+            [first.JournalName, second.JournalName, last.JournalName], 9, "all of it", Committed, Committed));
+
+        // Only the first chunk's end leaves records behind; the second's would leave just the empty last chunk.
+        JournalReleasePreview preview = JournalRetention.Preview(session.Store, 9);
+        Assert.Equal((4L, 4L), (preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary));
+        Assert.True(preview.WouldEmptyTheJournal);
+        InvalidOperationException empty = Assert.Throws<InvalidOperationException>(() =>
+            JournalRetention.Release(session.Store, 9, "everything recorded", Committed, Committed));
+        Assert.Contains("no admitted evidence at all", empty.Message, StringComparison.Ordinal);
+        Assert.Contains("The largest boundary this journal allows is 4.", empty.Message, StringComparison.Ordinal);
+
+        InvalidOperationException nothing = Assert.Throws<InvalidOperationException>(() =>
+            JournalRetention.Release(session.Store, 3, "too early", Committed, Committed));
+        Assert.Contains("a chunk is the unit of release", nothing.Message, StringComparison.Ordinal);
+        Assert.Contains("The smallest boundary this journal allows is 4.", nothing.Message, StringComparison.Ordinal);
+
+        // Nothing was published by any refusal.
+        Assert.Equal(last.Manifest.Generation, session.Store.Current!.Generation);
+    }
+
     [Fact(DisplayName = "I15: an admitted journal is not released by dropping its name")]
     public void AJournalIsNotReleasedByDroppingItsName()
     {

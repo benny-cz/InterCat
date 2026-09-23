@@ -86,13 +86,18 @@ control file, not evidence or an orphan. It serializes independently opened writ
 threads within one store instance. A reader does not need that lock.
 
 A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
-exception: it carries exactly the current journal, retained descriptor plan and capture coverage ledger if published,
-stages a replacement set
-of segments and dictionaries, and publishes it as the next generation. Carrying the earlier segments
-would count the same capture twice. The earlier manifest and dependencies remain last-known-good;
-publication still follows the same staged-file and pointer sequence. The replacement is refused if the
-source generation changed during replay or if more than one journal is present, because dropping another
-capture's derived rows would be silent data loss. Retiring a dependency otherwise is retention (§8).
+exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan and the
+capture coverage ledger if published, stages a replacement set of segments and dictionaries, and publishes it as the
+next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
+dependencies remain last-known-good; publication still follows the same staged-file and pointer sequence. The
+replacement is refused if the source generation changed during replay. The replay itself refuses two cases:
+
+- journals that are not one capture's chunks in order (§7), because another capture's rows would be derived as this
+  capture's;
+- a generation whose rows derive from records its journals no longer hold (§8), because rows no replay can rebuild
+  would be dropped without a word.
+
+Retiring a dependency otherwise is retention (§8).
 
 ## 6. Acquiring and recovering
 
@@ -177,7 +182,8 @@ source clock, schema/policy table, every record and terminal frame. It checks th
 one clock, and that within each stream and epoch every chunk's ordinals pass those of the chunks before it, so no
 record is replayed twice or out of order. It also checks that the boundary names the newest chunk and that the boundary
 chunk's replayed records equal the boundary's count. A legacy session without a saved plan is refused rather than
-guessed from current schemas, and a replay that fails any check publishes nothing.
+guessed from current schemas, and so is a generation holding rows derived from records a retention released (§8). A
+replay that fails any check publishes nothing.
 
 A live recording (`icat record`, ADR-021, ADR-022) publishes into a session that had no generation. With a publication
 interval it publishes as it records: each publication completes a **journal chunk**, a complete and immutable
@@ -187,8 +193,7 @@ after it. The committed boundary names the newest chunk; record ordinals continu
 row's journal index counts its record across the capture's chunks in order, so a row derived while recording and the
 same row re-derived agree. The coverage ledger is published with the last generation, when the capture stops. A
 recording interrupted between publications leaves the chunks already published and staging files for the rest.
-Journal-prefix retention works on a single journal at this version: it refuses a generation that names several,
-naming them, rather than dropping the other chunks' rows.
+Journal-prefix retention releases a recording's oldest chunks whole (§8).
 
 The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
 segment is a named file with a length and a digest, which is what lets a future format arrive without
@@ -269,6 +274,24 @@ journal's batch size, which a capture or an import declares.
 
 A release that would leave no admitted evidence at all is refused. ADR-010 keeps a journal by default, and a
 session with no journal cannot re-derive anything.
+
+**A live recording is released a chunk at a time** (ADR-024). A boundary counts records in stored order across the
+chunks the generation names, and releases each chunk that ends at or before it. Only a leading run of chunks is
+released, never the chunk the boundary names. Nothing is rewritten: the retention generation stops naming the
+released chunks and keeps its committed boundary. Rewriting part of a chunk would publish it under the new
+generation's name, which sorts after every chunk and would put its records out of order. The retention record lists
+every released chunk, oldest first. Its source digest is the digest of their dependency lines, `name|length|digest`
+joined by a line feed, exactly as the superseded manifest held them.
+
+**Released records cannot be re-derived, and neither can their rows be re-derived away.** A release keeps every
+derived row, including the released records' rows. A re-derivation replaces every row with rows derived from the
+retained journals, so after a release it is refused:
+
+- on the retention generation itself, whose record names the release, before any evidence is read;
+- on any later generation, before anything is published, when a stream's rows go back further than its retained
+  records do.
+
+Carrying those rows across a replacement is future work.
 
 ### What a reader sees afterwards
 

@@ -32,10 +32,27 @@ public sealed record JournalReleasePreview(
     /// </summary>
     public bool HasAnyReleasableBoundary => SmallestReleasingBoundary > 0;
 
-    public override string ToString() => string.Create(
-        CultureInfo.InvariantCulture,
-        $"{JournalName}: release {ReleasedRecords} of {TotalRecords} records in {ReleasedBatches} batches, "
-        + $"retain {RetainedRecords} in {RetainedBatches}");
+    /// <summary>
+    /// How many files the admitted evidence spans: 1, or the chunks of a live recording (ADR-022). For chunks,
+    /// <see cref="JournalName"/> is the newest, which the committed boundary names, and every count covers them all.
+    /// </summary>
+    public int JournalChunks { get; init; } = 1;
+
+    /// <summary>The chunks a release at this boundary gives up, oldest first. A single journal has none.</summary>
+    public IReadOnlyList<string> ReleasedChunks { get; init; } = [];
+
+    /// <summary>What a release gives up whole: a batch of one journal, or a chunk of a recording.</summary>
+    public string ReleaseUnit => JournalChunks > 1 ? "chunk" : "batch";
+
+    public override string ToString() => JournalChunks > 1
+        ? string.Create(
+            CultureInfo.InvariantCulture,
+            $"{JournalChunks} journal chunks: release {ReleasedRecords} of {TotalRecords} records in "
+            + $"{ReleasedChunks.Count} chunks, retain {RetainedRecords} in {JournalChunks - ReleasedChunks.Count}")
+        : string.Create(
+            CultureInfo.InvariantCulture,
+            $"{JournalName}: release {ReleasedRecords} of {TotalRecords} records in {ReleasedBatches} batches, "
+            + $"retain {RetainedRecords} in {RetainedBatches}");
 }
 
 /// <summary>
@@ -48,6 +65,10 @@ public sealed record JournalReleasePreview(
 /// The unit of release is a whole batch. A journal's frames are checksummed batches, and releasing part of
 /// one would mean rewriting a frame whose digest covers records that are no longer in it — so the boundary a
 /// caller asks for is rounded down to a batch boundary and the preview says exactly what that costs.
+///
+/// A live recording's journal is a sequence of chunks (ADR-022), and there the unit is a whole chunk (ADR-024).
+/// The oldest chunks stop being named and nothing is rewritten. Rewriting part of a chunk would publish it under
+/// a new generation's name, which sorts after every chunk and would put its records out of order.
 ///
 /// This gives up the ability to re-derive those records after a normalizer revision. That is the whole point
 /// of it being explicit: the storage saving is visible and the loss is not, so the loss is the thing that
@@ -64,6 +85,11 @@ public static class JournalRetention
         long firstRetainedRecordIndex,
         CancellationToken cancellationToken = default)
     {
+        if (ChunksOf(store) is { } chunks)
+        {
+            return MeasureChunks(store, chunks, firstRetainedRecordIndex, cancellationToken);
+        }
+
         (string name, JournalV1Contents contents, long length) = Read(store);
         using (contents)
         {
@@ -86,30 +112,24 @@ public static class JournalRetention
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        if (ChunksOf(store) is { } chunks)
+        {
+            JournalReleasePreview measured = MeasureChunks(store, chunks, firstRetainedRecordIndex, cancellationToken);
+            RequireReleasable(measured, firstRetainedRecordIndex);
+            cancellationToken.ThrowIfCancellationRequested();
+            return store.ReleaseJournalChunks(
+                measured.ReleasedChunks,
+                measured.ReleasedRecords,
+                reason,
+                committedUtc,
+                nowUtc);
+        }
+
         (string name, JournalV1Contents contents, long length) = Read(store);
         using (contents)
         {
             JournalReleasePreview preview = Measure(name, contents, length, firstRetainedRecordIndex);
-            if (!preview.ReleasesAnything)
-            {
-                throw new InvalidOperationException(
-                    $"Releasing records before {firstRetainedRecordIndex} of '{name}' releases nothing: a batch "
-                    + "is the unit of release and none of them ends before that. "
-                    + (preview.HasAnyReleasableBoundary
-                        ? $"The smallest boundary this journal allows is {preview.SmallestReleasingBoundary}."
-                        : "This journal was written as a single batch, so it has no releasable boundary at all.")
-                    + " Nothing was published.");
-            }
-
-            if (preview.WouldEmptyTheJournal)
-            {
-                throw new InvalidOperationException(
-                    $"Releasing records before {firstRetainedRecordIndex} of '{name}' would leave no admitted "
-                    + "evidence at all. ADR-010 keeps a journal by default; a session with no journal cannot "
-                    + "re-derive anything, so this is refused rather than published. The largest boundary this "
-                    + $"journal allows is {preview.LargestReleasingBoundary}.");
-            }
-
+            RequireReleasable(preview, firstRetainedRecordIndex);
             cancellationToken.ThrowIfCancellationRequested();
             long generation = store.NextGeneration;
             string retainedName = SegmentFormatV1.JournalFileName(generation);
@@ -132,6 +152,140 @@ public static class JournalRetention
                 committedUtc,
                 nowUtc);
         }
+    }
+
+    /// <summary>Refuses a release that gives up nothing, or everything, naming the boundaries that would work.</summary>
+    private static void RequireReleasable(JournalReleasePreview preview, long firstRetainedRecordIndex)
+    {
+        string evidence = preview.JournalChunks > 1
+            ? $"the {preview.JournalChunks} journal chunks"
+            : $"'{preview.JournalName}'";
+        if (!preview.ReleasesAnything)
+        {
+            throw new InvalidOperationException(
+                $"Releasing records before {firstRetainedRecordIndex} of {evidence} releases nothing: a "
+                + $"{preview.ReleaseUnit} is the unit of release and none of them ends before that. "
+                + (preview.HasAnyReleasableBoundary
+                    ? $"The smallest boundary this journal allows is {preview.SmallestReleasingBoundary}."
+                    : preview.JournalChunks > 1
+                        ? "No chunk can be released and still leave admitted records behind."
+                        : "This journal was written as a single batch, so it has no releasable boundary at all.")
+                + " Nothing was published.");
+        }
+
+        if (preview.WouldEmptyTheJournal)
+        {
+            throw new InvalidOperationException(
+                $"Releasing records before {firstRetainedRecordIndex} of {evidence} would leave no admitted "
+                + "evidence at all. ADR-010 keeps a journal by default; a session with no journal cannot "
+                + "re-derive anything, so this is refused rather than published. "
+                + (preview.HasAnyReleasableBoundary
+                    ? $"The largest boundary this journal allows is {preview.LargestReleasingBoundary}."
+                    : "No boundary of this journal leaves admitted records behind."));
+        }
+    }
+
+    /// <summary>
+    /// Measures a live recording's chunks. Every chunk is read to count its records, and a boundary releases each
+    /// chunk that ends at or before it. Records count in stored order across the chunks the generation names, which
+    /// is where `--release-journal-before-record` counts from.
+    /// </summary>
+    private static JournalReleasePreview MeasureChunks(
+        SessionStore store,
+        StoreDependency[] chunks,
+        long firstRetainedRecordIndex,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(firstRetainedRecordIndex);
+        var measured = new (long Records, long Batches, RawRecordId? First)[chunks.Length];
+        for (int index = 0; index < chunks.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            measured[index] = CountRecords(store, chunks[index]);
+        }
+
+        long total = measured.Sum(chunk => chunk.Records);
+        long end = 0;
+        long released = 0;
+        long releasedBatches = 0;
+        long retainedBatches = 0;
+        long smallest = 0;
+        long largest = 0;
+        RawRecordId? firstRetained = null;
+        var releasedChunks = new List<string>();
+        for (int index = 0; index < chunks.Length; index++)
+        {
+            end += measured[index].Records;
+
+            // A boundary at a chunk's end is one the recording allows when it releases records and keeps some.
+            if (end > 0 && end < total)
+            {
+                smallest = smallest == 0 ? end : smallest;
+                largest = end;
+            }
+
+            // A chunk is released only when all of it is before the boundary. The chunks sort in the order they were
+            // recorded, so the released ones are always the oldest.
+            if (end <= firstRetainedRecordIndex && releasedChunks.Count == index)
+            {
+                released += measured[index].Records;
+                releasedBatches += measured[index].Batches;
+                releasedChunks.Add(chunks[index].Name);
+                continue;
+            }
+
+            retainedBatches += measured[index].Batches;
+            firstRetained ??= measured[index].First;
+        }
+
+        return new(
+            chunks[^1].Name,
+            total,
+            chunks.Sum(chunk => chunk.LengthBytes),
+            released,
+            total - released,
+            releasedBatches,
+            retainedBatches,
+            firstRetained,
+            smallest,
+            largest)
+        {
+            JournalChunks = chunks.Length,
+            ReleasedChunks = releasedChunks,
+        };
+    }
+
+    /// <summary>Counts one chunk's records and batches, and names its first record.</summary>
+    private static (long Records, long Batches, RawRecordId? First) CountRecords(SessionStore store, StoreDependency chunk)
+    {
+        using FileStream stream = store.Root.OpenOwnedFile(
+            chunk.Name,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            FileOptions.SequentialScan);
+        byte[] bytes = new byte[stream.Length];
+        stream.ReadExactly(bytes);
+        using JournalV1Contents contents = JournalV1Reader.Read(bytes);
+        return (
+            contents.Batches.Sum(batch => (long)batch.Records.Count),
+            contents.Batches.Count,
+            contents.Batches.Count > 0 ? contents.Batches[0].First : null);
+    }
+
+    /// <summary>A live recording's chunks, oldest first, or null when the generation names at most one journal.</summary>
+    private static StoreDependency[]? ChunksOf(SessionStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        SessionManifestV1 manifest = store.Current
+            ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+        StoreDependency[] journals =
+        [
+            .. manifest.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+        ];
+        return journals.Length > 1 ? journals : null;
     }
 
     private static JournalReleasePreview Measure(
@@ -287,14 +441,6 @@ public static class JournalRetention
         SessionManifestV1 manifest = store.Current
             ?? throw new InvalidOperationException("This session has published no generation to retain from.");
         StoreDependency[] journals = [.. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
-        if (journals.Length > 1)
-        {
-            throw new InvalidOperationException(
-                $"Generation {manifest.Generation} names {journals.Length} journal chunks, as a live recording publishes "
-                + "them. A journal-prefix release works on a single journal at this version, and releasing part of one "
-                + "chunk would leave its neighbours describing a capture with a hole in it.");
-        }
-
         StoreDependency journal = journals.SingleOrDefault()
             ?? throw new InvalidOperationException(
                 $"Generation {manifest.Generation} names no single admitted journal, so there is no prefix to "

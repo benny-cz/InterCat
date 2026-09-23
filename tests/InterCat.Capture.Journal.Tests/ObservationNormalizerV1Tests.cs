@@ -126,6 +126,15 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Equal(2, reopened.Current!.Generation);
         Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
 
+        // A journal-prefix release keeps every derived row, the released records' included, so a rebuild afterwards
+        // could only drop them. It is refused, and nothing is published (ADR-024).
+        RetentionOutcome released = JournalRetention.Release(
+            session.Store, 2, "the first batch is older than the retained window", DateTimeOffset.UtcNow);
+        Assert.False(JournalRederivation.Assess(released.Manifest).CanAttempt);
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
+            JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
+        Assert.Contains("released 2 admitted records", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(released.Manifest.Generation, session.Store.Current!.Generation);
     }
 
     [Fact(DisplayName = "R20: importing into an existing generation is refused before reading an ETL")]

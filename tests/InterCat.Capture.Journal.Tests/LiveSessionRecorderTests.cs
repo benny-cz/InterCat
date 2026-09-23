@@ -121,9 +121,9 @@ public sealed class LiveSessionRecorderTests
         Assert.Single(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
         Assert.Equal(4, SessionSegments.CoverageLedger(reopened.Root, manifest)!.Epochs[0].Deliveries.Sum(delivery => delivery.Admitted));
 
-        // A journal-prefix release does not guess which chunk a boundary falls in: it refuses, naming them.
-        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => JournalRetention.Preview(reopened, 1));
-        Assert.Contains("journal chunks", refused.Message, StringComparison.Ordinal);
+        // A journal-prefix release gives up whole chunks, so a boundary inside the first releases nothing.
+        JournalReleasePreview inside = JournalRetention.Preview(reopened, 1);
+        Assert.Equal((result.Publications, "chunk", false), (inside.JournalChunks, inside.ReleaseUnit, inside.ReleasesAnything));
 
         // A row's journal index counts its record across the chunks, so the recording's rows index 0..3 in order.
         (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) recorded = RowsOf(reopened, manifest);
@@ -198,6 +198,68 @@ public sealed class LiveSessionRecorderTests
             JournalRederivation.Rebuild(reopened, DateTimeOffset.UtcNow));
         Assert.Contains("not one recording", rebuildRefused.Message, StringComparison.Ordinal);
         Assert.Equal(published, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
+    }
+
+    [Fact(DisplayName = "I15: after its oldest chunk is released, a recording is not re-derived without the rows of that chunk")]
+    public async Task ReleasedChunksAreNotReDerivedAway()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 4; index++)
+        {
+            if (index == 2)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(400));
+            }
+
+            var admitted = new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = index + 1,
+            };
+            admitted.SetSlot(0, 100 * (index + 1));
+            admitted.SetSlot(1, 0x7000 + index);
+            host.Admit(admitted);
+        }
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(withFields: true),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100));
+        Assert.InRange(result.Publications, 2, 3);
+        SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), store.Current!.SessionId, store.Current.SourceIdentity);
+
+        // The first burst is the first chunk; releasing it keeps every row, including the two it derived.
+        RetentionOutcome released = JournalRetention.Release(writable, 2, "older than the retained window", DateTimeOffset.UtcNow);
+        Assert.Equal(2, released.Manifest.Retention!.ReleasedRecords);
+        Assert.Equal(4, SessionSegments.Names(released.Manifest).Sum(name => SessionSegments.Open(writable.Root, released.Manifest, name).RowCount));
+
+        // A replay could rebuild only the retained records, so re-derivation is refused rather than dropping two rows.
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(released.Manifest);
+        Assert.False(readiness.CanAttempt);
+        Assert.Contains("released 2 admitted records", readiness.Explanation, StringComparison.Ordinal);
+        Assert.Contains("ADR-024", Assert.Throws<InvalidOperationException>(() => JournalRederivation.Verify(writable)).Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => JournalRederivation.Rebuild(writable, DateTimeOffset.UtcNow));
+        Assert.Equal(released.Manifest.Generation, writable.Current!.Generation);
+
+        // A later generation no longer says what was released, but its rows still go back to the released records.
+        string fields = SessionSegments.FieldNames(released.Manifest)[0];
+        RetentionOutcome later = writable.ReleaseDependencies([fields], "source fields are not needed", DateTimeOffset.UtcNow);
+        Assert.Equal(RetentionExtentKind.DerivedFiles, later.Manifest.Retention!.Kind);
+        Assert.True(JournalRederivation.Assess(later.Manifest).CanAttempt);
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
+            JournalRederivation.Rebuild(writable, DateTimeOffset.UtcNow));
+        Assert.Contains("rows go back to record 1, but its retained records begin at 3", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(later.Manifest.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
     }
 
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
