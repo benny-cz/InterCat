@@ -1,12 +1,25 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 66
+Plan revision: 67
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: an isolated evidence directory for each broker capture
+## Latest slice: restart recovery stops an unowned active capture
+
+Before binding the live broker runtime, recovery had to be corrected. It previously kept a recording alive if its
+owner lease had not expired, even after the broker process restarted. The new process has no owned ETW handle from
+the old one; a lease is not proof that it can safely keep recording. Startup recovery now requests stop for every
+active capture using the durable session ownership record, regardless of the old lease. If the runtime cannot
+finish that stop, the durable state remains `Stopping` and recovery retries it, rather than reporting `Closed`.
+In-process lease renewal and expiry sweeping are unchanged. Tests cover both a complete and a refused-then-retried
+stop. The real runtime still needs an OS-level owned-session stop path for restart; until that exists the broker
+executable must remain disabled.
+
+Verification: all 687 tests pass in Debug and Release.
+
+## Previous slice: an isolated evidence directory for each broker capture
 
 The broker root now creates or reopens `capture-<id>` beneath its validated, pinned root. Each capture directory
 receives the same protected ACL and no-write-up label at creation, is checked by open-handle path, volume, reparse

@@ -157,7 +157,7 @@ public sealed class FileBrokerLifecycleStoreTests
     }
 
     [Fact]
-    public async Task RestartPreservesRecordingOnlyWhileOwnerLeaseIsUnexpired()
+    public async Task RestartStopsRecordingEvenWhenOwnerLeaseIsUnexpired()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
         BrokerStartOutcome start = await WriteStartedCapture(temporary.Root);
@@ -174,8 +174,44 @@ public sealed class FileBrokerLifecycleStoreTests
 
         BrokerRecoveryItem item = Assert.Single(report.Items);
         Assert.Equal(start.CaptureId, item.CaptureId);
-        Assert.Equal(BrokerRecoveryAction.ActiveLeasePreserved, item.Action);
-        Assert.Equal(0, runtime.StopCount);
+        Assert.Equal(BrokerRecoveryAction.RestartedActiveCaptureStopRequested, item.Action);
+        Assert.Equal(CaptureLifecycle.Closed, item.State);
+        Assert.Equal(1, report.StoppedOrRetriedCount);
+        Assert.Equal(1, runtime.StopCount);
+        BrokerCaptureOwnership status = Assert.IsType<BrokerCaptureOwnership>(
+            await coordinator.GetStatusAsync(start.CaptureId!.Value, OwnerA));
+        Assert.Equal(CaptureLifecycle.Closed, status.State);
+    }
+
+    [Fact]
+    public async Task RestartCannotCallAnUnstoppedRecordingClosed()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        BrokerStartOutcome start = await WriteStartedCapture(temporary.Root);
+        var clock = new ManualTimeProvider(StartTime);
+        var runtime = new BrokerFakeRuntime();
+        runtime.StopOutcomes.Enqueue(new(new(true, false, false, false, false), "ETW stop was refused."));
+        using var reopened = new FileBrokerLifecycleStore(temporary.Root);
+        using var coordinator = new BrokerLifecycleCoordinator(
+            new PreparedPlanRegistry(clock),
+            reopened,
+            runtime,
+            clock);
+
+        BrokerRecoveryItem partial = Assert.Single((await coordinator.RecoverAsync()).Items);
+
+        Assert.Equal(BrokerRecoveryAction.RestartedActiveCaptureStopRequested, partial.Action);
+        Assert.Equal(CaptureLifecycle.Stopping, partial.State);
+        Assert.Equal(1, runtime.StopCount);
+        BrokerCaptureOwnership status = Assert.IsType<BrokerCaptureOwnership>(
+            await coordinator.GetStatusAsync(start.CaptureId!.Value, OwnerA));
+        Assert.Equal(CaptureLifecycle.Stopping, status.State);
+        Assert.Contains("ETW stop was refused", status.FailureReason, StringComparison.Ordinal);
+
+        BrokerRecoveryItem retried = Assert.Single((await coordinator.RecoverAsync()).Items);
+        Assert.Equal(BrokerRecoveryAction.PartialStopRetried, retried.Action);
+        Assert.Equal(CaptureLifecycle.Closed, retried.State);
+        Assert.Equal(2, runtime.StopCount);
     }
 
     [Fact]

@@ -361,8 +361,8 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
     /// <summary>
     /// Reconciles a reopened durable store before accepting commands. Interrupted starts are never
     /// promoted to success; the runtime receives the persisted session ownership token and is asked to
-    /// stop it. Pending/partial stops resume, expired recordings stop, and only unexpired recordings are
-    /// preserved.
+    /// stop it. Pending/partial stops resume. A recording is stopped even while its owner lease is
+    /// unexpired: the new broker process cannot assume it owns an ETW handle held by its predecessor.
     /// </summary>
     public async Task<BrokerRecoveryReport> RecoverAsync(CancellationToken cancellationToken = default)
     {
@@ -461,21 +461,12 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                     continue;
                 }
 
-                if (ownership.State == CaptureLifecycle.Recording && ownership.LeaseExpiresAtUtc > now)
-                {
-                    items.Add(new(
-                        BrokerRecoveryAction.ActiveLeasePreserved,
-                        ownership.CaptureId,
-                        ownership.State,
-                        ownership.StopMilestones,
-                        "The recording has an unexpired owner lease and remains active."));
-                    continue;
-                }
-
                 BrokerRecoveryAction action = ownership.State switch
                 {
                     CaptureLifecycle.Stopping or CaptureLifecycle.Finalizing =>
                         BrokerRecoveryAction.PartialStopRetried,
+                    CaptureLifecycle.Recording when ownership.LeaseExpiresAtUtc > now =>
+                        BrokerRecoveryAction.RestartedActiveCaptureStopRequested,
                     CaptureLifecycle.Recording => BrokerRecoveryAction.ExpiredLeaseStopped,
                     _ => BrokerRecoveryAction.UnownedStateStopped,
                 };

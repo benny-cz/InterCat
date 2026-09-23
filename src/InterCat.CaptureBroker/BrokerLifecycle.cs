@@ -70,7 +70,7 @@ public enum BrokerRecoveryAction
     PartialStopRetried = 3,
     UnownedStateStopped = 4,
     ExpiredLeaseStopped = 5,
-    ActiveLeasePreserved = 6,
+    RestartedActiveCaptureStopRequested = 6,
 }
 
 public sealed record BrokerRecoveryItem(
@@ -82,7 +82,7 @@ public sealed record BrokerRecoveryItem(
 
 public sealed record BrokerRecoveryReport(IReadOnlyList<BrokerRecoveryItem> Items)
 {
-    public int StoppedOrRetriedCount => Items.Count(item => item.Action != BrokerRecoveryAction.ActiveLeasePreserved);
+    public int StoppedOrRetriedCount => Items.Count;
 }
 
 public sealed record BrokerRuntimeStartOutcome(bool Started, string? FailureReason = null);
