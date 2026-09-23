@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -12,8 +13,11 @@ public sealed record LiveRecordingResult
     /// <summary>The session's stop, with its health counters; null when it never started.</summary>
     public CaptureStopResult? Stop { get; init; }
 
-    /// <summary>The generation the recording published; null when the capture never started.</summary>
+    /// <summary>The last generation the recording published; null when the capture never started.</summary>
     public DerivedGenerationResult? Generation { get; init; }
+
+    /// <summary>How many generations the recording published: one per journal chunk, the last when it stopped.</summary>
+    public int Publications { get; init; }
 
     /// <summary>Records written to the admitted journal, each of which derived its rows.</summary>
     public long JournaledRecords { get; init; }
@@ -27,18 +31,22 @@ public sealed record LiveRecordingResult
 
 /// <summary>
 /// Records a live capture straight into a session: the owned session's admitted records become the session's own
-/// `journal-v1` evidence in acquisition order, each derives its `observation-v1` rows as the import's do, and the
-/// generation is published through the §20.1 commit protocol when the capture stops, with a live coverage epoch built
-/// from the session's own counters. It is the runtime the broker's capture binding wraps (IC-014), usable directly by an
-/// elevated command line.
+/// `journal-v1` evidence in acquisition order, each derives its `observation-v1` rows as the import's do, and the capture
+/// is published through the §20.1 commit protocol. With a publication interval, every interval that admitted records
+/// completes a journal chunk and publishes a generation holding every chunk so far, so a reader can follow the capture;
+/// the generation published when the capture stops adds the live coverage epoch built from the session's own counters.
+/// It is the runtime the broker's capture binding wraps (IC-014), usable directly by an elevated command line.
 /// </summary>
 public static class LiveSessionRecorder
 {
     /// <summary>
     /// Starts the capture, records until <paramref name="recordUntil"/> completes, then stops and publishes. Cancelling
     /// <paramref name="recordUntil"/>'s token ends the recording early; what was captured is still published. Only a
-    /// failure to capture, write or publish leaves the session without a generation.
+    /// failure to capture, write or publish leaves the session without its final generation.
     /// </summary>
+    /// <param name="publishEvery">
+    /// How often to publish what was recorded so far, or null to publish once when the capture stops.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -46,12 +54,18 @@ public static class LiveSessionRecorder
         Func<CancellationToken, Task> recordUntil,
         DateTimeOffset committedUtc,
         DerivedGenerationOptions? options = null,
+        TimeSpan? publishEvery = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(recordUntil);
+        if (publishEvery is { } interval && interval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(publishEvery), "A publication interval is positive.");
+        }
+
         if (store.Current is not null)
         {
             throw new InvalidOperationException(
@@ -72,32 +86,18 @@ public static class LiveSessionRecorder
             plan.Providers.Where(provider => enabledSources.Contains(provider.SourceId)).Select(provider => provider.ProviderGuid));
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture carries a source clock descriptor.");
-        var mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Descriptor.Id);
-        CaptureId captureId = plan.Identity.CaptureId;
-        using DerivedGenerationBuilder generation = DerivedGenerationBuilder.Begin(
+        using var chunks = new ChunkWriter(
+            session,
+            plan,
             store,
-            new()
-            {
-                CaptureId = captureId,
-                ClockId = clock.Descriptor.Id,
-                TimestampEncoding = clock.Descriptor.Encoding,
-                Derivation = ObservationNormalizerV1.ContractVersion,
-            },
             clock.Descriptor,
             committedUtc,
-            options ?? DerivedGenerationOptions.Default);
-
-        // The descriptor interpretation and the schema table precede the first record, so a later machine can re-derive
-        // this journal without consulting its own schemas (normalizer-plan-v1).
-        JournalNormalizationPlanV1 normalizerPlan = JournalNormalizationPlanV1.FromSources(plan.Sources);
-        normalizerPlan.ValidateAgainst(mapper.Schemas);
-        generation.StageNormalizerPlan(normalizerPlan.Encode());
-        generation.Journal.WriteSchemas(mapper.Schemas);
+            options ?? DerivedGenerationOptions.Default,
+            publishEvery);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
-        var normalizer = new ObservationNormalizerV1(clock.Descriptor);
         Task<long> writer = Task.Factory.StartNew(
-            () => Drain(session, mapper, generation, normalizer, captureId),
+            chunks.Drain,
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
@@ -131,86 +131,232 @@ public static class LiveSessionRecorder
         }
 
         // A reading that turned out not to be on the clock the journal names would present every record against the
-        // wrong clock, so nothing is published over it (I8).
-        if (session.SourceClock is { Confidence: SourceClockConfidence.Refused } refused)
+        // wrong clock, so nothing more is published over it (I8).
+        ThrowIfClockRefused(session);
+
+        // The ledger states what the whole capture lost, so it is published with the last chunk, and only when every loss
+        // counter was read: an unread counter is not a reported zero, and coverage then stays unknown (R21).
+        CoverageLedgerV1? ledger = null;
+        if (!session.SourceLossUnreadable)
         {
-            throw new InvalidDataException(
-                $"The capture's readings are not on the clock its journal names: {refused.RefusalReason} "
-                + "Nothing was published.");
+            ledger = coverage.ToLedger(
+            [
+                new() { Layer = LossLayer.SourceSession, Lost = stop.Health.ProviderReportedEventLoss },
+                new() { Layer = LossLayer.ConsumerBuffers, Lost = stop.Health.ConsumerReportedBufferLoss },
+                new() { Layer = LossLayer.CallbackQueue, Lost = stop.Health.ApplicationDrops },
+
+                // Admitted into the queue and never written: the writer's own loss, measured rather than assumed zero.
+                new() { Layer = LossLayer.Storage, Lost = Math.Max(0, stop.Health.AdmittedRecords - journaled) },
+            ]);
         }
 
-        // A ledger states what the session lost, so it is published only when every loss counter was read: an unread
-        // counter is not a reported zero, and the session's coverage then stays unknown rather than claimed (R21).
-        if (session.SourceLossUnreadable)
-        {
-            return new()
-            {
-                Start = start,
-                Stop = stop,
-                Generation = generation.Complete(committedUtc, CancellationToken.None),
-                JournaledRecords = journaled,
-            };
-        }
-
-        CoverageLedgerV1 ledger = coverage.ToLedger(
-        [
-            new() { Layer = LossLayer.SourceSession, Lost = stop.Health.ProviderReportedEventLoss },
-            new() { Layer = LossLayer.ConsumerBuffers, Lost = stop.Health.ConsumerReportedBufferLoss },
-            new() { Layer = LossLayer.CallbackQueue, Lost = stop.Health.ApplicationDrops },
-
-            // Admitted into the queue and never written: the writer's own loss, measured rather than assumed zero.
-            new() { Layer = LossLayer.Storage, Lost = Math.Max(0, stop.Health.AdmittedRecords - journaled) },
-        ]);
-        generation.StageCoverageLedger(ledger);
-        DerivedGenerationResult published = generation.Complete(committedUtc, CancellationToken.None);
+        DerivedGenerationResult published = chunks.PublishLast(ledger);
         return new()
         {
             Start = start,
             Stop = stop,
             Generation = published,
+            Publications = chunks.Publications,
             JournaledRecords = journaled,
             Coverage = ledger,
         };
     }
 
-    /// <summary>
-    /// Drains the admission queue into the journal and the derived rows until the capture closes it. Each envelope's
-    /// buffers pass to the journal at append, so nothing here outlives its single owner (section 18.1).
-    /// </summary>
-    private static long Drain(
-        OwnedCaptureSession session,
-        AdmittedEventEnvelopeMapper mapper,
-        DerivedGenerationBuilder generation,
-        ObservationNormalizerV1 normalizer,
-        CaptureId captureId)
+    private static void ThrowIfClockRefused(OwnedCaptureSession session)
     {
-        ulong journalIndex = 0;
-        while (true)
+        if (session.SourceClock is { Confidence: SourceClockConfidence.Refused } refused)
         {
-            while (session.Records.TryRead(out AdmittedEvent admitted))
+            throw new InvalidDataException(
+                $"The capture's readings are not on the clock its journal names: {refused.RefusalReason} "
+                + "Nothing more was published.");
+        }
+    }
+
+    /// <summary>
+    /// The journal chunk being written and the generation it will publish. Each chunk is a complete `journal-v1` file of
+    /// this capture - its own header, clock and schema table, then its batches and a terminal frame - so every published
+    /// file stays immutable; record ordinals continue from one chunk to the next, and each chunk's rows index their
+    /// records within it. Only the writer thread touches it until the capture has stopped.
+    /// </summary>
+    private sealed class ChunkWriter : IDisposable
+    {
+        private readonly OwnedCaptureSession session;
+        private readonly OwnedSessionPlan plan;
+        private readonly SessionStore store;
+        private readonly SourceClockDescriptor clock;
+        private readonly DateTimeOffset createdUtc;
+        private readonly DerivedGenerationOptions options;
+        private readonly TimeSpan? publishEvery;
+        private readonly AdmittedEventEnvelopeMapper mapper;
+        private readonly ObservationNormalizerV1 normalizer;
+        private readonly Stopwatch sincePublished = Stopwatch.StartNew();
+        private DerivedGenerationBuilder builder;
+        private ulong recordsInChunk;
+        private long journaled;
+
+        public ChunkWriter(
+            OwnedCaptureSession session,
+            OwnedSessionPlan plan,
+            SessionStore store,
+            SourceClockDescriptor clock,
+            DateTimeOffset createdUtc,
+            DerivedGenerationOptions options,
+            TimeSpan? publishEvery)
+        {
+            this.session = session;
+            this.plan = plan;
+            this.store = store;
+            this.clock = clock;
+            this.createdUtc = createdUtc;
+            this.options = options;
+            this.publishEvery = publishEvery;
+            mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
+            normalizer = new ObservationNormalizerV1(clock);
+            builder = BeginChunk(stagePlan: true);
+        }
+
+        public int Publications { get; private set; }
+
+        /// <summary>Drains the admission queue until the capture closes it, publishing a chunk whenever one is due.</summary>
+        public long Drain()
+        {
+            while (true)
             {
-                AdmittedEventPlan plan = session.AdmissionTable.FindBySourceIndex(
-                    admitted.SourceIndex,
-                    admitted.EventId,
-                    admitted.Version)
-                    ?? throw new InvalidDataException(
-                        $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"
-                        + $"v{admitted.Version}, which the compiled plan does not describe.");
-                RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, plan, captureId);
-                ObservationRowV1 row = normalizer.ToRow(envelope, plan, journalIndex);
-                generation.AddRow(row);
-                foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, plan, row))
+                while (session.Records.TryRead(out AdmittedEvent admitted))
                 {
-                    generation.AddFieldRow(field);
+                    Write(in admitted);
+                    if (Due())
+                    {
+                        PublishChunk();
+                    }
                 }
 
-                generation.Journal.Append(envelope);
-                journalIndex++;
+                if (Due())
+                {
+                    PublishChunk();
+                }
+
+                if (!WaitForRecords())
+                {
+                    return journaled;
+                }
+            }
+        }
+
+        /// <summary>Publishes the last chunk, with the capture's coverage ledger when it could be measured.</summary>
+        public DerivedGenerationResult PublishLast(CoverageLedgerV1? ledger)
+        {
+            if (ledger is not null)
+            {
+                builder.StageCoverageLedger(ledger);
             }
 
-            if (!session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult())
+            DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
+            Publications++;
+            return published;
+        }
+
+        public void Dispose() => builder.Dispose();
+
+        private bool Due() =>
+            publishEvery is { } interval && recordsInChunk > 0 && sincePublished.Elapsed >= interval;
+
+        private void Write(in AdmittedEvent admitted)
+        {
+            AdmittedEventPlan descriptor = session.AdmissionTable.FindBySourceIndex(
+                admitted.SourceIndex,
+                admitted.EventId,
+                admitted.Version)
+                ?? throw new InvalidDataException(
+                    $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"
+                    + $"v{admitted.Version}, which the compiled plan does not describe.");
+
+            // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
+            RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
+            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, recordsInChunk);
+            builder.AddRow(row);
+            foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
             {
-                return checked((long)journalIndex);
+                builder.AddFieldRow(field);
+            }
+
+            builder.Journal.Append(envelope);
+            recordsInChunk++;
+            journaled++;
+        }
+
+        /// <summary>
+        /// Completes the current chunk and publishes a generation holding every chunk so far. A reading off the journal's
+        /// clock stops publication before anything is presented against the wrong clock (I8).
+        /// </summary>
+        private void PublishChunk()
+        {
+            ThrowIfClockRefused(session);
+            _ = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
+            builder.Dispose();
+            Publications++;
+            builder = BeginChunk(stagePlan: false);
+        }
+
+        private DerivedGenerationBuilder BeginChunk(bool stagePlan)
+        {
+            DerivedGenerationBuilder next = DerivedGenerationBuilder.Begin(
+                store,
+                new()
+                {
+                    CaptureId = plan.Identity.CaptureId,
+                    ClockId = clock.Id,
+                    TimestampEncoding = clock.Encoding,
+                    Derivation = ObservationNormalizerV1.ContractVersion,
+                },
+                clock,
+                createdUtc,
+                options);
+            try
+            {
+                // The descriptor interpretation is retained once, with the first chunk, and later generations carry it;
+                // every chunk repeats the schema table, so each is a complete journal of its own (normalizer-plan-v1).
+                if (stagePlan)
+                {
+                    JournalNormalizationPlanV1 normalizerPlan = JournalNormalizationPlanV1.FromSources(plan.Sources);
+                    normalizerPlan.ValidateAgainst(mapper.Schemas);
+                    next.StageNormalizerPlan(normalizerPlan.Encode());
+                }
+
+                next.Journal.WriteSchemas(mapper.Schemas);
+                recordsInChunk = 0;
+                sincePublished.Restart();
+                return next;
+            }
+            catch
+            {
+                next.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Waits for more records, or until the next chunk is due; false when the capture has closed the queue.</summary>
+        private bool WaitForRecords()
+        {
+            if (publishEvery is not { } interval || recordsInChunk == 0)
+            {
+                return session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            }
+
+            TimeSpan remaining = interval - sincePublished.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return true;
+            }
+
+            using var due = new CancellationTokenSource(remaining);
+            try
+            {
+                return session.Records.WaitToReadAsync(due.Token).AsTask().GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return true;
             }
         }
     }

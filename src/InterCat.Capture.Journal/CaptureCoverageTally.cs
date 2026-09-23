@@ -21,6 +21,10 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     private readonly HashSet<Guid> requested;
     private readonly Dictionary<(Guid Provider, int? EventId, int? Version), Entry> entries = [];
     private readonly Entry overflow = new();
+
+    // A live recording snapshots the tally for each publication while the callback keeps counting, so every access
+    // takes this lock. It is uncontended except for the moment of a snapshot.
+    private readonly Lock gate = new();
     private HashSet<Guid>? enabled;
     private bool overflowed;
     private long queueDrops;
@@ -44,7 +48,16 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     }
 
     /// <summary>Records the bounded queue could not take after the policy admitted them: a callback-queue loss.</summary>
-    public long QueueDrops => queueDrops;
+    public long QueueDrops
+    {
+        get
+        {
+            lock (gate)
+            {
+                return queueDrops;
+            }
+        }
+    }
 
     /// <summary>
     /// Limits what the ledger calls collected to the providers the session actually enabled. A live capture knows which
@@ -58,52 +71,72 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
 
     public void Delivered(in DeliveredRecord delivered)
     {
-        EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version).Delivered++;
-        first = first is { } earliest && earliest <= delivered.NativeTicks ? earliest : delivered.NativeTicks;
-        last = last is { } latest && latest >= delivered.NativeTicks ? latest : delivered.NativeTicks;
+        lock (gate)
+        {
+            EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version).Delivered++;
+            first = first is { } earliest && earliest <= delivered.NativeTicks ? earliest : delivered.NativeTicks;
+            last = last is { } latest && latest >= delivered.NativeTicks ? latest : delivered.NativeTicks;
+        }
     }
 
     public void Admitted(Guid providerId, int eventId, int version, bool queued)
     {
-        Entry entry = EntryFor(providerId, eventId, version);
-        if (queued)
+        lock (gate)
         {
-            entry.Admitted++;
-            return;
-        }
+            Entry entry = EntryFor(providerId, eventId, version);
+            if (queued)
+            {
+                entry.Admitted++;
+                return;
+            }
 
-        // Lost after admission rather than admitted: it is reported as the callback queue's loss, and its delivery is
-        // taken back so the descriptor's outcomes still add up to what it delivered.
-        entry.Delivered--;
-        queueDrops++;
+            // Lost after admission rather than admitted: it is reported as the callback queue's loss, and its delivery
+            // is taken back so the descriptor's outcomes still add up to what it delivered.
+            entry.Delivered--;
+            queueDrops++;
+        }
     }
 
     public void Omitted(OmissionReason reason, in DeliveredRecord delivered)
     {
-        Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
-        if (reason != OmissionReason.UnrequestedProvider && !requested.Contains(delivered.ProviderId))
+        lock (gate)
         {
-            // A denied event of a provider admission does not know is its own descriptor, not the provider's
-            // unrequested remainder: move its delivery there so each entry keeps one policy.
-            entry.Delivered--;
-            entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, wholeProvider: false);
-            entry.Delivered++;
-        }
+            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
+            if (reason != OmissionReason.UnrequestedProvider && !requested.Contains(delivered.ProviderId))
+            {
+                // A denied event of a provider admission does not know is its own descriptor, not the provider's
+                // unrequested remainder: move its delivery there so each entry keeps one policy.
+                entry.Delivered--;
+                entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, wholeProvider: false);
+                entry.Delivered++;
+            }
 
-        entry.Omitted++;
-        entry.Omission = reason;
+            entry.Omitted++;
+            entry.Omission = reason;
+        }
     }
 
     public void Undecodable(UndecodableReason reason, in DeliveredRecord delivered)
     {
-        Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
-        entry.Undecodable[reason] = entry.Undecodable.GetValueOrDefault(reason) + 1;
+        lock (gate)
+        {
+            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
+            entry.Undecodable[reason] = entry.Undecodable.GetValueOrDefault(reason) + 1;
+        }
     }
 
     /// <summary>The one-epoch ledger of what was tallied, with the losses the source and InterCat reported.</summary>
     public CoverageLedgerV1 ToLedger(IReadOnlyList<CoverageLossV1> losses)
     {
         ArgumentNullException.ThrowIfNull(losses);
+        lock (gate)
+        {
+            return Snapshot(losses);
+        }
+    }
+
+    private CoverageLedgerV1 Snapshot(IReadOnlyList<CoverageLossV1> losses)
+    {
         if (overflowed)
         {
             throw new InvalidDataException(
@@ -156,7 +189,10 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
                                 Admitted = entry.Value.Admitted,
                                 Omission = entry.Value.Omitted > 0 ? entry.Value.Omission : null,
                                 Omitted = entry.Value.Omitted,
-                                Undecodable = entry.Value.Undecodable.Count > 0 ? entry.Value.Undecodable : null,
+                                // A copy: the live tally keeps counting after the snapshot is published.
+                                Undecodable = entry.Value.Undecodable.Count > 0
+                                    ? new Dictionary<UndecodableReason, long>(entry.Value.Undecodable)
+                                    : null,
                             }),
                     ],
                     Losses = losses,

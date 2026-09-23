@@ -72,6 +72,62 @@ public sealed class LiveSessionRecorderTests
             Plan(), new ScriptedHost(), reopened, _ => Task.CompletedTask, DateTimeOffset.UtcNow));
     }
 
+    [Fact(DisplayName = "R21: a recording published in chunks can be followed, and its last generation holds every chunk")]
+    public async Task ChunkedRecordingPublishesAsItGoes()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 4; index++)
+        {
+            if (index == 2)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(400));
+            }
+
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100));
+
+        // A generation was published while the capture was still recording, and each carried every chunk before it.
+        Assert.Equal(4, result.JournaledRecords);
+        Assert.InRange(result.Publications, 2, 3);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+        SessionManifestV1 manifest = reopened.Current!;
+        Assert.Equal(result.Publications, manifest.Generation);
+        Assert.Equal(result.Publications, manifest.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal));
+        Assert.Equal(4, SessionSegments.Names(manifest).Sum(name => SessionSegments.Open(reopened.Root, manifest, name).RowCount));
+
+        // The ledger describes the whole capture, so there is one, published with the last chunk.
+        Assert.Single(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
+        Assert.Equal(4, SessionSegments.CoverageLedger(reopened.Root, manifest)!.Epochs[0].Deliveries.Sum(delivery => delivery.Admitted));
+
+        // Re-derivation replays one journal at this version, so it names the chunks rather than guessing over them.
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
+        Assert.False(readiness.CanAttempt);
+        Assert.Contains("chunks", readiness.Explanation, StringComparison.Ordinal);
+
+        // Nor does a journal-prefix release guess which chunk a boundary falls in: it refuses, naming them.
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => JournalRetention.Preview(reopened, 1));
+        Assert.Contains("journal chunks", refused.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {
@@ -221,6 +277,8 @@ public sealed class LiveSessionRecorderTests
             sink.OnObserved(new DeliveredRecord(Provider, admitted.EventId, admitted.Version, admitted.TimestampQpc));
             _ = sink.Admit(admitted);
         });
+
+        public void Pause(TimeSpan pause) => script.Add(_ => Thread.Sleep(pause));
 
         public void Omit(DeliveredRecord delivered, OmissionReason reason) => script.Add(sink =>
         {

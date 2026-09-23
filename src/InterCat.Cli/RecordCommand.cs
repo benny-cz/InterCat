@@ -19,6 +19,8 @@ internal sealed record RecordingDocument
     public required string CaptureId { get; init; }
     public required long? Generation { get; init; }
     public required long JournaledRecords { get; init; }
+    public required int Publications { get; init; }
+    public required double? PublishEverySeconds { get; init; }
     public required CaptureHealthSnapshot? Health { get; init; }
     public required IReadOnlyList<string> Degradations { get; init; }
     public required IReadOnlyList<SessionMechanismCoverageDocument> Coverage { get; init; }
@@ -33,6 +35,7 @@ internal static class RecordCommand
 {
     private const int DefaultSeconds = 10;
     private const int MaximumSeconds = 3_600;
+    private const int DefaultPublishSeconds = 5;
 
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
@@ -46,6 +49,7 @@ internal static class RecordCommand
         string profileOption = command.TakeOption("--profile") ?? "explore";
         string? mechanismOption = command.TakeOption("--mechanism");
         string? durationOption = command.TakeOption("--duration");
+        string? publishOption = command.TakeOption("--publish-every");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
@@ -95,6 +99,19 @@ internal static class RecordCommand
                 || seconds is < 1 or > MaximumSeconds))
         {
             ConsoleUi.Failure($"--duration is a whole number of seconds from 1 to {MaximumSeconds:N0}; '{durationOption}' is not one.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        // Publishing as it records lets session, processes and metric read the capture while it runs; zero publishes
+        // once, when the capture stops.
+        int publishSeconds = DefaultPublishSeconds;
+        if (publishOption is not null
+            && (!int.TryParse(publishOption, NumberStyles.None, CultureInfo.InvariantCulture, out publishSeconds)
+                || publishSeconds > MaximumSeconds))
+        {
+            ConsoleUi.Failure(
+                $"--publish-every is a whole number of seconds up to {MaximumSeconds:N0}, or 0 to publish once at the end; "
+                + $"'{publishOption}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -153,13 +170,18 @@ internal static class RecordCommand
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(full), identity.CaptureId.Value, $"live-capture:{identity.CaptureId}");
         ConsoleUi.Progress(
             $"Recording {effective.EffectiveProfileId} into {full} for {seconds:N0} s under owned session "
-            + $"{identity.SessionName}. Ctrl+C stops early and keeps what was recorded.");
+            + $"{identity.SessionName}. "
+            + (publishSeconds > 0
+                ? $"It is published every {publishSeconds:N0} s, so other icat commands can read it while it records. "
+                : "It is published when the capture stops. ")
+            + "Ctrl+C stops early and keeps what was recorded.");
         LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
             plan,
             host,
             store,
             until => Task.Delay(TimeSpan.FromSeconds(seconds), until),
             DateTimeOffset.UtcNow,
+            publishEvery: publishSeconds > 0 ? TimeSpan.FromSeconds(publishSeconds) : null,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Start.Started)
         {
@@ -182,6 +204,8 @@ internal static class RecordCommand
             CaptureId = identity.CaptureId.ToString(),
             Generation = result.Generation?.Manifest.Generation,
             JournaledRecords = result.JournaledRecords,
+            Publications = result.Publications,
+            PublishEverySeconds = publishSeconds > 0 ? publishSeconds : null,
             Health = result.Stop?.Health,
             Degradations = result.Stop?.Degradations ?? [],
             Coverage = result.Coverage is null ? [] : CollectedCoverage(result.Coverage),
@@ -222,6 +246,11 @@ internal static class RecordCommand
         ConsoleUi.Field("Profile", document.Mechanism is null ? document.Profile : $"{document.Profile} ({document.Mechanism})");
         ConsoleUi.Field("Generation", document.Generation is { } generation ? ConsoleUi.Count(generation) : "none published");
         ConsoleUi.Field("Journaled records", ConsoleUi.Count(document.JournaledRecords));
+        ConsoleUi.Field(
+            "Published",
+            document.Publications == 1
+                ? "once, when the capture stopped"
+                : $"{document.Publications:N0} generations, one journal chunk each; the last holds them all");
         if (document.Health is { } health)
         {
             ConsoleUi.Field("Delivered", ConsoleUi.Count(health.ObservedRecords));
@@ -266,12 +295,15 @@ internal static class RecordCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
-        ConsoleUi.Line("            [--duration <seconds>] [--json]");
+        ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");
         ConsoleUi.Line($"  for --duration seconds (default {DefaultSeconds}, at most {MaximumSeconds:N0}) or until Ctrl+C, which keeps what");
         ConsoleUi.Line("  was recorded. The profile decides what is admitted; the session publishes its journal,");
         ConsoleUi.Line("  derived segments and a coverage ledger of what its sources delivered and lost. Needs");
         ConsoleUi.Line("  elevation. Other ETW sessions on the machine are never stopped or adopted.");
+        ConsoleUi.Line($"  --publish-every (default {DefaultPublishSeconds} s) publishes what was recorded so far as a new generation, one");
+        ConsoleUi.Line("  journal chunk each, so session, processes and metric can read the capture while it records; 0");
+        ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
     }
 }

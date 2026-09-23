@@ -286,8 +286,16 @@ public static class JournalRetention
         ArgumentNullException.ThrowIfNull(store);
         SessionManifestV1 manifest = store.Current
             ?? throw new InvalidOperationException("This session has published no generation to retain from.");
-        StoreDependency journal = manifest.Dependencies.SingleOrDefault(dependency =>
-            dependency.Kind == StoreDependencyKind.Journal)
+        StoreDependency[] journals = [.. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
+        if (journals.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Generation {manifest.Generation} names {journals.Length} journal chunks, as a live recording publishes "
+                + "them. A journal-prefix release works on a single journal at this version, and releasing part of one "
+                + "chunk would leave its neighbours describing a capture with a hole in it.");
+        }
+
+        StoreDependency journal = journals.SingleOrDefault()
             ?? throw new InvalidOperationException(
                 $"Generation {manifest.Generation} names no single admitted journal, so there is no prefix to "
                 + "release.");

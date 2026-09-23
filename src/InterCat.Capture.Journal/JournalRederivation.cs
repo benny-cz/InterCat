@@ -50,7 +50,8 @@ public static class JournalRederivation
         {
             return new(false, journals.Length == 0
                 ? "No admitted journal is retained."
-                : "More than one journal is retained; replacement would risk dropping another capture's rows.");
+                : $"This generation names {journals.Length} journals - a live recording's chunks, or another capture's. "
+                    + "Re-derivation replays exactly one at this version, so it would drop the others' rows.");
         }
 
         if (!string.Equals(journals[0].Name, manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)

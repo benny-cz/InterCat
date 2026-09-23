@@ -1,8 +1,9 @@
 # InterCat coverage ledger v1
 
 Status: **frozen, and implemented for imported and live-recorded sessions**. `icat record` publishes a `LiveCapture`
-epoch when every required loss counter was readable; otherwise the recording's generation is published without a
-ledger, and its coverage stays unknown.
+epoch with its last generation, when every required loss counter was readable; otherwise that generation is published
+without a ledger, and its coverage stays unknown. The generations a recording publishes while it records carry no
+ledger: the epoch is not over, and coverage stays unknown until it is.
 
 This contract is §7.1's `CoverageInterval` and the "capture configuration epochs and health/loss ledger" of §10: what
 a capture's sources could observe, over which readings, and what they are known to have lost. R21 is why it exists.

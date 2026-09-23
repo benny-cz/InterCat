@@ -1,12 +1,36 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 58
+Plan revision: 59
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: live recording into a session
+## Latest slice: following a live recording
+
+`icat record` now publishes as it records (ADR-022): `--publish-every <s>`, 5 s by default, completes a **journal
+chunk** at every interval that admitted records and publishes a generation holding every chunk so far. Other commands
+can then read the capture while it runs; `--publish-every 0` publishes once, at the end.
+
+- Each chunk is a complete `journal-v1` file - header, clock, schema table, batches, terminal frame - so every
+  published file stays immutable and verifies exactly as before.
+- Record ordinals continue across chunks, and a row's journal index counts within its chunk.
+- The normalizer plan comes with the first generation; the coverage ledger only with the last, because an epoch still
+  running has not stated what it lost, so coverage is unknown until the capture stops.
+- Re-derivation and journal-prefix retention still read one journal. On a chunked session they now refuse by name
+  instead of failing obscurely or dropping the other chunks' rows.
+
+Verified live: a 12-second Explore recording published every 3 s, with the TCP workload running, was read by
+`icat metric` in the middle of the capture - generation 1 with 626 observations, then generation 2 with 961. It ended
+at 5 generations holding 1,288 records, with every mechanism covered and nothing lost. A fixture test records two bursts
+of records 400 ms apart, published every 100 ms, and checks that the last generation holds every chunk, all rows and
+one ledger; it passed six runs out of six.
+
+A growing journal whose generations name longer prefixes was the other reading of §20.1's committed boundary. It is
+deferred: a published file would change, dependency checks would measure prefixes, readers would share a file with its
+writer, and a prefix would end without a terminal frame. Chunks give the same following behaviour and keep every rule.
+
+## Previous slice: live recording into a session
 
 `icat record <new-dir> [--profile explore|focused-transport] [--mechanism tcp|udp] [--duration <s>]` captures live
 under an owned ETW session straight into a new session (ADR-021). Until now every session came from an ETL another tool
@@ -624,8 +648,8 @@ Results verified on 2026-09-23 (capture cost re-measured on 2026-09-23; the 2026
 - revision 51 focused validation: 15 Application tests (including three published-session overview regressions), 12 headless UI tests and 5 Architecture tests pass in Debug; `InterCat.Application` builds with zero warnings. The full solution remains blocked by concurrent coverage-ledger interface work, so these are not a full-suite result;
 - revision 50 focused validation: 12 Application, 13 Desktop, 12 headless UI and 5 Architecture tests pass in Debug. The full solution build remains blocked by the concurrent coverage-ledger interface change described below; no full-suite claim is made for this revision;
 - revision 49 focused validation: all 82 Analysis tests and all 5 Architecture tests pass in Debug; the CLI builds with 0 warnings. The full solution build is temporarily blocked by concurrent, uncommitted coverage-ledger work changing `IAdmittedEventSink` before `InterCat.CaptureComparison` implements its new members. The revision 48 full-suite result below is the last complete baseline, not a claimed result for this worktree;
-- build: revision 58 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
-- tests: revision 58 passed 668 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 25 Capture.Journal, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
+- build: revision 59 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
+- tests: revision 59 passed 669 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 26 Capture.Journal, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
 - FX-UDP-001 UDP datagrams, measured: `fixtures/FX-UDP-001/evidence/verification.json`, fixture-scoped. 71 truth records and 64 observations of the workload's two processes and four loopback flows; nothing else on the machine was written (P16). One builder test keeps a UDP receive's delivered endpoints while reading it as its owner's flow, with a TCP receive owner-first on the same values. One evaluator test names a mirrored-only match as an orientation gap;
 - IC-015 between filters: 3 tests. Between the client-server fixture's two processes, 6 records passed either way, with the evidence listed by reading. Two records were disclosed: the client's send to an endpoint nothing held and its record with no endpoint pair. The third process's send was not disclosed, because its maker is in neither set. `BytesSent` was 100 B from the client to the server and 40 B back. The 100 B measured at the receiver was the same, and the one-way record count was the send and its receive. Adding the unconnected third process to a set changed nothing. No record passed between that process and the server, and its one unresolved send was disclosed. The client and server pair had 1 channel with no unknown. An absent instance was `ProcessInstanceNotFound`. A focus, a peer, an empty set, an empty id, an undefined direction, a peer grouping and an ungrouped peer count beside it were refused. A set may overlap the other, and a grouped peer count was accepted. With start keys published, the ids a process list derives found 6 records between the pair and 7 for the server's participant filter, and ranked the client's channels. The unfocused channel count's identity named both rules and no policy. Restoring the old loading rule failed that test;
 - IC-015 channel counts: 3 tests. The client-server fixture counted 3 channels. The connection was one at both its ends, and two sends to unheld endpoints were one-sided channels, over 8 records. The record with no endpoint pair was the one unknown, making the count "at least 3". The client had 2 channels and the server 1. Ranked by process, the rows overlapped and did not partition a total of 3, and a mechanism grouping was refused. A reused port with both connections witnessed counted 2 channels with no unknown. Two witnessed client connections against a server end with no lifecycle counted at least 2, with the server's 2 records as the undecided unknown part. A lone record with no endpoint pair was `NothingMeasured`, never zero;
@@ -728,7 +752,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. **Follow a live capture.** `icat record` publishes one generation when the capture stops (ADR-021). Publishing while recording needs the journal's committed boundary to advance under an open lease, so a viewer can take each new generation without reading a torn one; then bind the broker's `IBrokerCaptureRuntime` to `LiveSessionRecorder` and give the ordinary-integrity viewer a session root it can read. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
+1. **Bind the broker and compact live sessions.** `icat record` publishes as it records, one journal chunk per generation (ADR-022). Bind the broker's `IBrokerCaptureRuntime` to `LiveSessionRecorder` and give the ordinary-integrity viewer a session root it can read; teach re-derivation and journal-prefix retention to read a chunk sequence; and implement §20.1's compaction targets before long recordings accumulate thousands of chunks and segments. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
 2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
 3. **Publish §20.2's entity-state checkpoint (IC-016a), once IC-015 exists.** A rolling eviction has to carry the still-live identities, the endpoint bindings, the continuity quality and the pending-operation summaries across the boundary, and an operation open across one has to be censored rather than failed (I20). The retention mechanism beneath it is in; what it can state is what is missing.
 4. **Run the fixture corpus on the retail builds in the matrix.** 25H2 retail (26200) and 24H2 (26100) are listed in §1.3 and neither has been measured; the tiers above rest on a pre-release branch of 25H2. §13.4 asks for the corpus on every supported build, and a second environment row is what makes a tier more than one machine's result.

@@ -871,6 +871,7 @@
         "R21: a negative result records the control that proves the source was live",
         "R21: a record the full queue dropped is callback-queue loss, not a delivery of its descriptor",
         "R21: a record whose extended items were unreachable replays as unavailable",
+        "R21: a recording published in chunks can be followed, and its last generation holds every chunk",
         "R21: a recording whose loss counters could not be read publishes its records and no coverage claim",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",
