@@ -14,6 +14,7 @@ internal sealed record RederiveDocument
     public required long PublishedGeneration { get; init; }
     public required string ManifestDigest { get; init; }
     public required string JournalName { get; init; }
+    public required int JournalChunks { get; init; }
     public required long ReplayedRecords { get; init; }
     public required long ObservationRows { get; init; }
     public required long SourceFieldRows { get; init; }
@@ -29,6 +30,7 @@ internal sealed record RederiveCheckDocument
     public required string Path { get; init; }
     public required long SourceGeneration { get; init; }
     public required string JournalName { get; init; }
+    public required int JournalChunks { get; init; }
     public required long ReplayedRecords { get; init; }
     public required long ObservationRows { get; init; }
     public required long SourceFieldRows { get; init; }
@@ -109,11 +111,14 @@ internal static class RederiveCommand
                 + $"retained last-known-good generation {current.Generation}.");
         }
 
+        // A live recording's journal is a sequence of chunks (ADR-022), replayed in order as one capture (ADR-023).
+        int chunks = current.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal);
+        string evidence = chunks > 1 ? $"{chunks} retained journal chunks, in order," : "retained journal";
         if (check)
         {
             ConsoleUi.Progress(
-                $"Checking generation {current.Generation}'s retained plan and every committed journal record; "
-                + "no files or generation will be published.");
+                $"Checking generation {current.Generation}'s retained plan and every committed record of its {evidence} "
+                + "without publishing any file or generation.");
             JournalRederivationVerification verified;
             try
             {
@@ -131,12 +136,17 @@ internal static class RederiveCommand
                 Path = full,
                 SourceGeneration = verified.SourceGeneration,
                 JournalName = verified.JournalName,
+                JournalChunks = verified.JournalChunks,
                 ReplayedRecords = verified.ReplayedRecords,
                 ObservationRows = verified.ObservationRows,
                 SourceFieldRows = verified.SourceFieldRows,
                 Derivation = $"observation-v{ObservationNormalizerV1.ContractVersion.Value}",
-                Assurance = "Read-only replay verified the saved plan, journal digest, every frame and derived "
-                    + "row. It did not test a future segment write or commit.",
+                Assurance = verified.JournalChunks > 1
+                    ? "Read-only replay verified the saved plan, every chunk's digest and frames, that the chunks "
+                        + "continue one capture in order, and every derived row. It did not test a future segment "
+                        + "write or commit."
+                    : "Read-only replay verified the saved plan, journal digest, every frame and derived "
+                        + "row. It did not test a future segment write or commit.",
             };
             string checkPayload = JsonSerializer.Serialize(report, JsonContracts.Indented);
             if (json)
@@ -148,7 +158,7 @@ internal static class RederiveCommand
                 ConsoleUi.Heading("Re-derivation check passed");
                 ConsoleUi.Field("Session", full);
                 ConsoleUi.Field("Generation", ConsoleUi.Count(verified.SourceGeneration));
-                ConsoleUi.Field("Admitted journal", verified.JournalName);
+                ConsoleUi.Field("Admitted journal", JournalText(verified.JournalName, verified.JournalChunks));
                 ConsoleUi.Field("Replayed records", ConsoleUi.Count(verified.ReplayedRecords));
                 ConsoleUi.Field("Observations", ConsoleUi.Count(verified.ObservationRows));
                 ConsoleUi.Field("Source fields", ConsoleUi.Count(verified.SourceFieldRows));
@@ -175,7 +185,7 @@ internal static class RederiveCommand
         };
         SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(full), current.SessionId, current.SourceIdentity);
         ConsoleUi.Progress(
-            $"Replaying generation {current.Generation}'s retained journal in bounded batches; the current "
+            $"Replaying generation {current.Generation}'s {evidence} in bounded batches; the current "
             + "generation stays published until the replacement is complete.");
         JournalRederivationResult result;
         try
@@ -196,6 +206,7 @@ internal static class RederiveCommand
             PublishedGeneration = result.Generation.Manifest.Generation,
             ManifestDigest = result.Generation.Manifest.Digest,
             JournalName = result.Generation.JournalName,
+            JournalChunks = result.JournalChunks,
             ReplayedRecords = result.ReplayedRecords,
             ObservationRows = result.Generation.RowCount,
             SourceFieldRows = result.Generation.FieldRowCount,
@@ -220,7 +231,7 @@ internal static class RederiveCommand
             ConsoleUi.Heading("Re-derived session");
             ConsoleUi.Field("Session", full);
             ConsoleUi.Field("Generation", $"{result.SourceGeneration} → {document.PublishedGeneration}");
-            ConsoleUi.Field("Admitted journal", document.JournalName);
+            ConsoleUi.Field("Admitted journal", JournalText(document.JournalName, document.JournalChunks));
             ConsoleUi.Field("Replayed records", ConsoleUi.Count(document.ReplayedRecords));
             ConsoleUi.Field("Observations", ConsoleUi.Count(document.ObservationRows));
             ConsoleUi.Field("Source fields", ConsoleUi.Count(document.SourceFieldRows));
@@ -243,10 +254,15 @@ internal static class RederiveCommand
             : InterCatExitCode.Success;
     }
 
+    /// <summary>The journal a generation is bounded by, and how many chunks of one recording lead up to it.</summary>
+    private static string JournalText(string name, int chunks) =>
+        chunks > 1 ? $"{name} (the last of {chunks} chunks of one recording)" : name;
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat rederive <directory> [--check] [--rows-per-segment <n>] [--output <path>] [--overwrite] [--json]");
-        ConsoleUi.Line("      Replays the session's admitted journal with its saved normalizer plan.");
+        ConsoleUi.Line("      Replays the session's admitted journal with its saved normalizer plan. A live recording's");
+        ConsoleUi.Line("      journal chunks are replayed in order, and must continue one capture.");
         ConsoleUi.Line("      --check fully replays and validates without staging files or publishing a generation.");
         ConsoleUi.Line("      The old generation stays current until publication and remains last-known-good afterwards.");
         ConsoleUi.Line("      Legacy sessions without a saved plan are refused until a verified plan migration exists.");

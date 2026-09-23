@@ -169,21 +169,26 @@ The journal's pending batch is flushed to the device before any segment derived 
 generation can never reference evidence that was not durable when it was derived. The committed boundary of
 §4 then names that journal, its durable length and record count, and its digest.
 
-`icat rederive <directory>` replays the single published journal from that boundary with its retained
-`normalizer-plan-v1` dependency and replaces the derived segments and dictionaries in a new generation.
-The replay validates the source clock, schema/policy table, every record and terminal frame, and checks
-the replayed record count against the boundary. A legacy session without a saved plan, or a session with
-multiple journals, is refused rather than guessed from current schemas or incompletely rebuilt.
+`icat rederive <directory>` replays the published journal up to that boundary with its retained
+`normalizer-plan-v1` dependency and replaces the derived segments and dictionaries in a new generation that carries
+every journal, the plan and the coverage ledger unchanged. A live recording's journal is a sequence of chunks, replayed
+in name order, which is the order they were recorded (ADR-023). The replay validates each chunk's length, digest,
+source clock, schema/policy table, every record and terminal frame. It checks that every chunk names one capture and
+one clock, and that within each stream and epoch every chunk's ordinals pass those of the chunks before it, so no
+record is replayed twice or out of order. It also checks that the boundary names the newest chunk and that the boundary
+chunk's replayed records equal the boundary's count. A legacy session without a saved plan is refused rather than
+guessed from current schemas, and a replay that fails any check publishes nothing.
 
 A live recording (`icat record`, ADR-021, ADR-022) publishes into a session that had no generation. With a publication
 interval it publishes as it records: each publication completes a **journal chunk**, a complete and immutable
 `journal-v1` file of the capture, and publishes a generation that carries every earlier chunk and segment and adds the
 new chunk with the segments derived from it. The normalizer plan is published with the first generation and carried
 after it. The committed boundary names the newest chunk; record ordinals continue from one chunk to the next, and a
-row's journal index counts within the chunk its segment's generation published. The coverage ledger is published with
-the last generation, when the capture stops. A recording interrupted between publications leaves the chunks already
-published and staging files for the rest. Re-derivation and journal-prefix retention work on a single journal at this
-version: both refuse a generation that names several, naming them, rather than dropping the other chunks' rows.
+row's journal index counts its record across the capture's chunks in order, so a row derived while recording and the
+same row re-derived agree. The coverage ledger is published with the last generation, when the capture stops. A
+recording interrupted between publications leaves the chunks already published and staging files for the rest.
+Journal-prefix retention works on a single journal at this version: it refuses a generation that names several,
+naming them, rather than dropping the other chunks' rows.
 
 The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
 segment is a named file with a length and a digest, which is what lets a future format arrive without

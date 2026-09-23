@@ -86,7 +86,7 @@ public sealed class LiveSessionRecorderTests
                 host.Pause(TimeSpan.FromMilliseconds(400));
             }
 
-            host.Admit(new AdmittedEvent
+            var admitted = new AdmittedEvent
             {
                 SourceIndex = 0,
                 EventId = 10,
@@ -94,11 +94,14 @@ public sealed class LiveSessionRecorderTests
                 TimestampQpc = now + index,
                 TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
                 RecordOrdinal = index + 1,
-            });
+            };
+            admitted.SetSlot(0, 100 * (index + 1));
+            admitted.SetSlot(1, 0x7000 + index);
+            host.Admit(admitted);
         }
 
         LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
-            Plan(),
+            Plan(withFields: true),
             host,
             store,
             _ => host.Delivered.Task,
@@ -118,14 +121,83 @@ public sealed class LiveSessionRecorderTests
         Assert.Single(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CoverageLedger);
         Assert.Equal(4, SessionSegments.CoverageLedger(reopened.Root, manifest)!.Epochs[0].Deliveries.Sum(delivery => delivery.Admitted));
 
-        // Re-derivation replays one journal at this version, so it names the chunks rather than guessing over them.
-        JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
-        Assert.False(readiness.CanAttempt);
-        Assert.Contains("chunks", readiness.Explanation, StringComparison.Ordinal);
-
-        // Nor does a journal-prefix release guess which chunk a boundary falls in: it refuses, naming them.
+        // A journal-prefix release does not guess which chunk a boundary falls in: it refuses, naming them.
         InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => JournalRetention.Preview(reopened, 1));
         Assert.Contains("journal chunks", refused.Message, StringComparison.Ordinal);
+
+        // A row's journal index counts its record across the chunks, so the recording's rows index 0..3 in order.
+        (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) recorded = RowsOf(reopened, manifest);
+        Assert.Equal([0UL, 1UL, 2UL, 3UL], recorded.Rows.Select(row => row.JournalRecordIndex!.Value));
+        Assert.Equal([100L, 200L, 300L, 400L], recorded.Rows.Select(row => row.ByteValue!.Value));
+        Assert.Equal([0x7000L, 0x7001L, 0x7002L, 0x7003L], recorded.Fields.Select(field => field.Value!.Value));
+
+        // Re-derivation replays the chunks in order, as one capture, and derives exactly the rows the recording derived.
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
+        Assert.True(readiness.CanAttempt, readiness.Explanation);
+        Assert.Contains($"{result.Publications} journal chunks", readiness.Explanation, StringComparison.Ordinal);
+        JournalRederivationVerification verification = JournalRederivation.Verify(reopened);
+        Assert.Equal(
+            (manifest.Generation, 4L, 4L, (long)recorded.Fields.Length, result.Publications),
+            (verification.SourceGeneration, verification.ReplayedRecords, verification.ObservationRows,
+                verification.SourceFieldRows, verification.JournalChunks));
+        JournalRederivationResult rebuilt = JournalRederivation.Rebuild(reopened, DateTimeOffset.UtcNow);
+        SessionManifestV1 replaced = rebuilt.Generation.Manifest;
+        Assert.Equal(manifest.Generation + 1, replaced.Generation);
+        Assert.Equal(recorded.Rows, RowsOf(reopened, replaced).Rows);
+        Assert.Equal(recorded.Fields, RowsOf(reopened, replaced).Fields);
+
+        // The replacement carries every chunk, the plan and the ledger unchanged, and replaces only derived files.
+        Assert.Equal(EvidenceOf(manifest), EvidenceOf(replaced));
+        Assert.Equal(result.Publications, EvidenceOf(replaced).Count(dependency => dependency.Kind == StoreDependencyKind.Journal));
+        Assert.Empty(SessionSegments.Names(replaced).Intersect(SessionSegments.Names(manifest), StringComparer.OrdinalIgnoreCase));
+        Assert.NotNull(SessionSegments.CoverageLedger(reopened.Root, replaced));
+        Assert.Equal(replaced.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
+    }
+
+    [Fact(DisplayName = "I1: re-derivation refuses journal chunks that do not continue one another, and publishes nothing")]
+    public async Task ChunksThatDoNotContinueEachOtherAreRefused()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+
+        // The second burst repeats the first's ordinals, as a chunk replayed twice would; the pause puts it in a later chunk.
+        for (int index = 0; index < 4; index++)
+        {
+            if (index == 2)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(600));
+            }
+
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = (index % 2) + 1,
+            });
+        }
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100));
+        Assert.InRange(result.Publications, 2, 3);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+        long published = reopened.Current!.Generation;
+
+        InvalidDataException verifyRefused = Assert.Throws<InvalidDataException>(() => JournalRederivation.Verify(reopened));
+        Assert.Contains("had already passed", verifyRefused.Message, StringComparison.Ordinal);
+        InvalidDataException rebuildRefused = Assert.Throws<InvalidDataException>(() =>
+            JournalRederivation.Rebuild(reopened, DateTimeOffset.UtcNow));
+        Assert.Contains("not one recording", rebuildRefused.Message, StringComparison.Ordinal);
+        Assert.Equal(published, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
     }
 
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
@@ -209,7 +281,39 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal("Microsoft-Windows-Kernel-Network", Assert.Single(ledger.Epochs[0].Collected).ProviderName);
     }
 
-    private static OwnedSessionPlan Plan()
+    /// <summary>A generation's observation and source-field rows, in journal order.</summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) RowsOf(SessionStore store, SessionManifestV1 manifest)
+    {
+        ObservationRowV1[] rows =
+        [
+            .. SessionSegments.Names(manifest)
+                .Select(name => SessionSegments.Open(store.Root, manifest, name))
+                .SelectMany(segment => Enumerable.Range(0, segment.RowCount).Select(segment.Row))
+                .OrderBy(row => row.JournalRecordIndex),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. SessionSegments.FieldNames(manifest)
+                .Select(name => SessionSegments.Open(store.Root, manifest, name))
+                .SelectMany(segment => Enumerable.Range(0, segment.RowCount).Select(segment.FieldRow))
+                .OrderBy(field => field.RawRecordOrdinal)
+                .ThenBy(field => field.NativeTicks)
+                .ThenBy(field => field.Field.ToString(), StringComparer.Ordinal),
+        ];
+        return (rows, fields);
+    }
+
+    /// <summary>The dependencies a replacement derivation must carry unchanged: journals, the plan and the ledger.</summary>
+    private static StoreDependency[] EvidenceOf(SessionManifestV1 manifest) =>
+    [
+        .. manifest.Dependencies
+            .Where(dependency => dependency.Kind is StoreDependencyKind.Journal
+                or StoreDependencyKind.DerivationPlan
+                or StoreDependencyKind.CoverageLedger)
+            .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+    ];
+
+    private static OwnedSessionPlan Plan(bool withFields = false)
     {
         var request = new ProviderEnablementRequest
         {
@@ -245,11 +349,28 @@ public sealed class LiveSessionRecorderTests
                             Layer = ObservationLayer.Transport,
                             Kind = ObservationKind.Send,
                             Direction = Direction.Outbound,
-                            MinimumBodyLength = 0,
+                            MinimumBodyLength = withFields ? 12 : 0,
                             SchemaFingerprint = "sha256:fixture-live-recording",
                             BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
-                            Slots = [],
-                            FieldReport = [],
+                            Slots = withFields
+                                ?
+                                [
+                                    new("size", FieldRole.ByteCount, 0, 4, MeasurementUnit.Bytes,
+                                        ByteDomain.TransportObserved, SlotTransform.None),
+                                    new("connid", FieldRole.CorrelationKey, 4, 8, null, null, SlotTransform.None)
+                                    {
+                                        SourceField = SourceField.ConnectionId,
+                                    },
+                                ]
+                                : [],
+                            FieldReport = withFields
+                                ?
+                                [
+                                    new("size", FieldAvailability.Present, FieldRole.ByteCount,
+                                        Unit: MeasurementUnit.Bytes, ByteDomain: ByteDomain.TransportObserved),
+                                    new("connid", FieldAvailability.Present, FieldRole.CorrelationKey),
+                                ]
+                                : [],
                         },
                     ],
                     Diagnostics = [],

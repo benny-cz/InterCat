@@ -15,7 +15,8 @@ One journal file is **one capture**. The capture identity lives in the file head
 because every record in the file shares it. A record from another capture belongs in another journal, and
 the writer refuses it rather than relabelling it. A capture may span several files: a live recording completes a
 chunk with every publication, each a complete journal of its own with the same capture, clock and schema table, and
-its record ordinals continue from the chunk before (`contracts/store-v1.md` §7).
+its record ordinals continue from the chunk before. Re-derivation replays the chunks as one capture and refuses a
+sequence whose chunks do not continue one another (`contracts/store-v1.md` §7).
 
 A journal holds InterCat's **admitted** evidence. It is not a byte-identical replacement for an ETL and
 not a guarantee that ETW lost nothing: policy omissions and source loss are separate counters and neither

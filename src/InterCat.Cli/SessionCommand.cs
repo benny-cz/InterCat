@@ -61,12 +61,18 @@ internal sealed record SessionGenerationDocument
     public required IReadOnlyList<SessionDependencyDocument> Dependencies { get; init; }
 }
 
+/// <summary>
+/// The committed boundary, and the journal it closes. A live recording's journal is a sequence of chunks and the boundary
+/// names only the newest, so the chunks and their total size are stated beside it rather than left to the boundary alone.
+/// </summary>
 internal sealed record SessionBoundaryDocument
 {
     public required string JournalName { get; init; }
     public required long CommittedBytes { get; init; }
     public required long CommittedRecords { get; init; }
     public required string Digest { get; init; }
+    public required int JournalChunks { get; init; }
+    public required long JournalBytes { get; init; }
 }
 
 internal sealed record SessionDependencyDocument
@@ -394,6 +400,11 @@ internal static class SessionCommand
                         CommittedBytes = manifest.Boundary.CommittedBytes,
                         CommittedRecords = manifest.Boundary.CommittedRecords,
                         Digest = manifest.Boundary.Digest,
+                        JournalChunks = manifest.Dependencies.Count(dependency =>
+                            dependency.Kind == StoreDependencyKind.Journal),
+                        JournalBytes = manifest.Dependencies
+                            .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                            .Sum(dependency => dependency.LengthBytes),
                     }
                     : null,
                 Dependencies =
@@ -516,7 +527,14 @@ internal static class SessionCommand
         }
 
         ConsoleUi.Heading("Evidence this generation derives from");
-        if (generation.Boundary is { } boundary)
+        if (generation.Boundary is { JournalChunks: > 1 } chunked)
+        {
+            // The boundary names only the newest chunk; its extent alone would read as the whole recording's (ADR-022).
+            ConsoleUi.Field("Journal", $"{chunked.JournalChunks} chunks of one recording, {ConsoleUi.Bytes(chunked.JournalBytes)} in all");
+            ConsoleUi.Field("Newest chunk", $"{chunked.JournalName}: {ConsoleUi.Bytes(chunked.CommittedBytes)}, {ConsoleUi.Count(chunked.CommittedRecords)} records");
+            ConsoleUi.Field("Newest digest", chunked.Digest);
+        }
+        else if (generation.Boundary is { } boundary)
         {
             ConsoleUi.Field("Journal", boundary.JournalName);
             ConsoleUi.Field("Durable extent", $"{ConsoleUi.Bytes(boundary.CommittedBytes)}, {ConsoleUi.Count(boundary.CommittedRecords)} records");

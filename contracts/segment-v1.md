@@ -170,7 +170,7 @@ refuses the segment.
 | 1 | `RawStreamId` | u32 | no | Raw-record locator: the capture stream. |
 | 2 | `RawSourceEpoch` | u32 | no | Raw-record locator: the source epoch. |
 | 3 | `RawRecordOrdinal` | u64 | no | Raw-record locator: the acquisition ordinal (I1, I7). |
-| 4 | `JournalRecordIndex` | u64 | yes | Position in this generation's journal, in stored order. |
+| 4 | `JournalRecordIndex` | u64 | yes | Position in the capture's journal, in stored order; across a live recording's chunks, in the order they were recorded (`contracts/store-v1.md` §7). |
 | 5 | `FactKeyHigh` | u64 | no | Deterministic fact key, high half (I2). |
 | 6 | `FactKeyLow` | u64 | no | Deterministic fact key, low half. |
 | 7 | `SchemaCode` | u32 | no | Dictionary code: provider, event, version and fingerprint. |

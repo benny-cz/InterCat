@@ -436,23 +436,23 @@ public sealed class SessionStore
                         + "boundary; it cannot silently switch evidence while replacing derived files.");
                 }
 
-                // The plan and the coverage ledger are evidence about the capture, not derivations of its journal,
-                // so a replacement derivation carries them unchanged.
+                // The admitted evidence - every journal chunk - and the plan and coverage ledger that describe the
+                // capture are not derivations of it, so a replacement derivation carries them all unchanged. Carrying
+                // every journal means no chunk's evidence is ever dropped by replacing the rows derived from it.
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
-                        dependency.Kind is StoreDependencyKind.DerivationPlan or StoreDependencyKind.CoverageLedger
-                        || (dependency.Kind == StoreDependencyKind.Journal
-                            && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))),
+                        dependency.Kind is StoreDependencyKind.DerivationPlan
+                            or StoreDependencyKind.CoverageLedger
+                            or StoreDependencyKind.Journal),
                 ];
-                if (previous.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) != 1
-                    || carried.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) != 1
+                if (!carried.Any(dependency => dependency.Kind == StoreDependencyKind.Journal
+                        && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))
                     || carried.Count(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan) != 1)
                 {
                     throw new InvalidOperationException(
-                        "A replacement derivation currently needs exactly one journal and one retained "
-                        + "normalization plan. A multi-capture session must not lose another capture when its "
-                        + "derived files are replaced; a legacy session needs a verified plan migration.");
+                        "A replacement derivation needs the journal its boundary names and one retained normalization "
+                        + "plan; a legacy session needs a verified plan migration.");
                 }
             }
             else

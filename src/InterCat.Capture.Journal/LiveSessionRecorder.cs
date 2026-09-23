@@ -175,8 +175,8 @@ public static class LiveSessionRecorder
     /// <summary>
     /// The journal chunk being written and the generation it will publish. Each chunk is a complete `journal-v1` file of
     /// this capture - its own header, clock and schema table, then its batches and a terminal frame - so every published
-    /// file stays immutable; record ordinals continue from one chunk to the next, and each chunk's rows index their
-    /// records within it. Only the writer thread touches it until the capture has stopped.
+    /// file stays immutable; record ordinals continue from one chunk to the next, and a row's journal index counts its
+    /// record across the capture's chunks in order. Only the writer thread touches it until the capture has stopped.
     /// </summary>
     private sealed class ChunkWriter : IDisposable
     {
@@ -273,7 +273,7 @@ public static class LiveSessionRecorder
 
             // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
             RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
-            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, recordsInChunk);
+            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, (ulong)journaled);
             builder.AddRow(row);
             foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
             {

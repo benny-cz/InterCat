@@ -1,6 +1,6 @@
 # ADR-022: A live recording publishes as it records, one journal chunk per generation
 
-- Status: accepted for M1 and M2
+- Status: accepted for M1 and M2; decisions 2 and 5 amended by ADR-023
 - Date: 2026-09-23
 - Decision owners: InterCat maintainers
 - Relates to: §19.3 (live publication cadence), §20.1 (commit protocol, journal lifetime), IC-014, IC-017, R21, I7,

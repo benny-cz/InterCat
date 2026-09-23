@@ -473,6 +473,7 @@
         "I1: a journal from another format major is refused, never read at a guessed layout",
         "I1: a journal without its terminal frame is refused as an interrupted capture",
         "I1: a journal-v1 file has exactly the bytes its golden corpus records",
+        "I1: re-derivation refuses journal chunks that do not continue one another, and publishes nothing",
         "I1: replaying a journal preserves every field of every record"
       ],
       "I11": [
