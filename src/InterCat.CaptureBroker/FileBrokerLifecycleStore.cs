@@ -644,7 +644,7 @@ public sealed class FileBrokerLifecycleStore : IBrokerLifecycleStore, IDisposabl
             if (ownership.CaptureId.Value == Guid.Empty
                 || !ValidOwner(ownership.Owner)
                 || ownership.Session is null
-                || !ownership.Session.IsValid
+                || !ownership.Session.IsValidFor(ownership.CaptureId)
                 || !validDigest
                 || !Enum.IsDefined(ownership.State)
                 || ownership.CreatedAtUtc == default

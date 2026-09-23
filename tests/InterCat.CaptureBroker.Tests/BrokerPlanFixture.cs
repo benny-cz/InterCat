@@ -138,7 +138,7 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        if (!ownership.Session.IsValid)
+        if (!ownership.Session.IsValidFor(ownership.CaptureId))
         {
             throw new InvalidOperationException("The fixture received invalid session ownership.");
         }
@@ -157,7 +157,7 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime
         BrokerCaptureOwnership ownership,
         CancellationToken cancellationToken)
     {
-        if (ownership.CaptureId.Value == Guid.Empty || !ownership.Session.IsValid)
+        if (!ownership.Session.IsValidFor(ownership.CaptureId))
         {
             throw new InvalidOperationException("The fixture received invalid capture ownership.");
         }

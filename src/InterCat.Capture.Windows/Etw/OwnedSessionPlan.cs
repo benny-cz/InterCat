@@ -49,6 +49,37 @@ public sealed record CaptureSessionIdentity
     }
 
     /// <summary>
+    /// Constructs the ETW identity from a broker's already-durable ownership record. No new capture ID,
+    /// session name or token is minted here: recovery must be able to find exactly what start created.
+    /// New broker names carry the entire token as their final component. Older truncated names are
+    /// accepted by the broker only for cleanup, never for starting another session.
+    /// </summary>
+    public static CaptureSessionIdentity FromDurableOwnership(
+        CaptureId captureId,
+        string sessionName,
+        Guid ownershipToken,
+        int ownerProcessId,
+        DateTimeOffset createdAtUtc)
+    {
+        if (captureId.Value == Guid.Empty || ownershipToken == Guid.Empty || ownerProcessId <= 0)
+        {
+            throw new ArgumentException("Durable ETW ownership needs a capture ID, token and positive process ID.");
+        }
+
+        if (string.IsNullOrEmpty(sessionName)
+            || sessionName.Length > 64
+            || !sessionName.All(character => char.IsAsciiLetterOrDigit(character) || character == '-')
+            || !sessionName.EndsWith(ownershipToken.ToString("N"), StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "A durable ETW session name must be bounded, ordinary and end with its complete ownership token.",
+                nameof(sessionName));
+        }
+
+        return new(sessionName, ownershipToken, ownerProcessId, createdAtUtc.ToUniversalTime(), captureId);
+    }
+
+    /// <summary>
     /// True only for a session this identity created. Name similarity alone is never ownership, so an
     /// InterCat build never stops a session it did not start (P14).
     /// </summary>

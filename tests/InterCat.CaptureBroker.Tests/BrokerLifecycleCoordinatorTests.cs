@@ -8,6 +8,35 @@ public sealed class BrokerLifecycleCoordinatorTests
 {
     private static readonly DateTimeOffset StartTime = new(2026, 9, 22, 14, 0, 0, TimeSpan.Zero);
 
+    [Fact(DisplayName = "R16: a broker session name carries its complete ownership token and capture binding")]
+    public void SessionNameCarriesCompleteOwnershipToken()
+    {
+        CaptureId captureId = CaptureId.New();
+        BrokerSessionOwnership session = BrokerSessionOwnership.Create(captureId);
+
+        Assert.Equal(60, session.SessionName.Length);
+        Assert.EndsWith(session.OwnershipToken.ToString("N"), session.SessionName, StringComparison.Ordinal);
+        Assert.True(session.HasFullTokenInName);
+        Assert.True(session.IsValidFor(captureId));
+        Assert.False(session.IsValidFor(CaptureId.New()));
+        Assert.False((session with { OwnershipToken = Guid.NewGuid() }).IsValid);
+        Assert.Throws<ArgumentException>(() => BrokerSessionOwnership.Create(new CaptureId(Guid.Empty)));
+    }
+
+    [Fact(DisplayName = "R16: a legacy truncated session token is accepted for cleanup, never newly issued")]
+    public void LegacySessionNameRemainsRecoverable()
+    {
+        CaptureId captureId = CaptureId.New();
+        Guid token = Guid.NewGuid();
+        string legacy = $"InterCat-broker-{captureId.Value:N}-{token:N}"[..64];
+        var session = new BrokerSessionOwnership(legacy, token);
+
+        Assert.True(session.IsValidFor(captureId));
+        Assert.False(session.HasFullTokenInName);
+        Assert.False(session.IsValidFor(CaptureId.New()));
+        Assert.False((session with { OwnershipToken = Guid.NewGuid() }).IsValid);
+    }
+
     [Fact]
     public async Task StartIntentIsPersistedBeforeRuntimeAndDuplicateReplaysExactResult()
     {

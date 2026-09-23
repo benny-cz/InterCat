@@ -95,6 +95,9 @@ public sealed record BrokerRuntimeStopOutcome(BrokerStopMilestones Milestones, s
 /// </summary>
 public sealed record BrokerSessionOwnership(string SessionName, Guid OwnershipToken)
 {
+    private const string CurrentPrefix = "InterCat-b-";
+    private const string LegacyPrefix = "InterCat-broker-";
+
     public static BrokerSessionOwnership Create(CaptureId captureId)
     {
         if (captureId.Value == Guid.Empty)
@@ -104,15 +107,54 @@ public sealed record BrokerSessionOwnership(string SessionName, Guid OwnershipTo
 
         Guid token = Guid.NewGuid();
         return new(
-            $"InterCat-broker-{captureId.Value:N}-{token:N}"[..64],
+            $"{CurrentPrefix}{captureId.Value.ToString("N")[..16]}-{token:N}",
             token);
     }
 
-    public bool IsValid =>
-        OwnershipToken != Guid.Empty
-        && SessionName.Length is > 0 and <= 64
-        && SessionName.StartsWith("InterCat-broker-", StringComparison.Ordinal)
-        && SessionName.All(character => char.IsAsciiLetterOrDigit(character) || character == '-');
+    /// <summary>New sessions carry all 128 token bits in their name; older durable records remain stoppable.</summary>
+    public bool HasFullTokenInName =>
+        IsValid && SessionName.StartsWith(CurrentPrefix, StringComparison.Ordinal);
+
+    public bool IsValid
+    {
+        get
+        {
+            if (OwnershipToken == Guid.Empty || SessionName is null)
+            {
+                return false;
+            }
+
+            string token = OwnershipToken.ToString("N");
+            if (SessionName.StartsWith(CurrentPrefix, StringComparison.Ordinal))
+            {
+                ReadOnlySpan<char> current = SessionName.AsSpan(CurrentPrefix.Length);
+                return current.Length == 16 + 1 + 32
+                    && current[16] == '-'
+                    && current[..16].ToString().All(Uri.IsHexDigit)
+                    && current[17..].SequenceEqual(token);
+            }
+
+            if (!SessionName.StartsWith(LegacyPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> remainder = SessionName.AsSpan(LegacyPrefix.Length);
+            // The previous 64-character form truncated the token after 15 hex digits. Accept it only
+            // to recover an existing ownership log; Create never issues that weaker name again.
+            return remainder.Length == 32 + 1 + 15
+                && remainder[32] == '-'
+                && remainder[..32].ToString().All(Uri.IsHexDigit)
+                && remainder[33..].SequenceEqual(token.AsSpan(0, 15));
+        }
+    }
+
+    public bool IsValidFor(CaptureId captureId) =>
+        captureId.Value != Guid.Empty
+        && IsValid
+        && (HasFullTokenInName
+            ? SessionName.AsSpan(CurrentPrefix.Length, 16).SequenceEqual(captureId.Value.ToString("N").AsSpan(0, 16))
+            : SessionName.AsSpan(LegacyPrefix.Length, 32).SequenceEqual(captureId.Value.ToString("N")));
 }
 
 /// <summary>Future ETW/journal integration plugs in here; tests use a deterministic fake.</summary>

@@ -1,12 +1,24 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 67
+Plan revision: 68
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: restart recovery stops an unowned active capture
+## Latest slice: complete durable ETW ownership identity
+
+The broker's session name previously truncated its 128-bit ownership token to 15 hex digits to fit the 64-character
+ETW name limit. New names are 60 characters: `InterCat-b-`, 16 capture-ID hex digits and all 32 token hex digits.
+Validation checks the name, token and capture ID together. The durable ownership store rejects a mismatched name.
+Older 64-character names remain accepted for recovery cleanup, but cannot be newly created. The capture adapter
+can now build `CaptureSessionIdentity` from a durable broker record without minting a different capture ID or token;
+it requires the complete token in names used for new starts. This is still a runtime prerequisite, not an enabled
+broker. Tests cover current and legacy names, mismatches, and the adapter identity factory.
+
+Verification: all 690 tests pass in Debug and Release.
+
+## Previous slice: restart recovery stops an unowned active capture
 
 Before binding the live broker runtime, recovery had to be corrected. It previously kept a recording alive if its
 owner lease had not expired, even after the broker process restarted. The new process has no owned ETW handle from

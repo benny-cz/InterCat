@@ -6,6 +6,28 @@ namespace InterCat.Capture.Windows.Tests;
 
 public sealed class OwnedCaptureSessionTests
 {
+    [Fact]
+    public void DurableOwnershipIdentityDoesNotMintANewCaptureOrSession()
+    {
+        CaptureId captureId = CaptureId.New();
+        Guid token = Guid.NewGuid();
+        string name = $"InterCat-b-{captureId.Value.ToString("N")[..16]}-{token:N}";
+        DateTimeOffset created = new(2026, 9, 23, 11, 0, 0, TimeSpan.FromHours(2));
+
+        CaptureSessionIdentity identity = CaptureSessionIdentity.FromDurableOwnership(
+            captureId, name, token, 4242, created);
+
+        Assert.Equal(captureId, identity.CaptureId);
+        Assert.Equal(token, identity.OwnershipToken);
+        Assert.Equal(name, identity.SessionName);
+        Assert.Equal(4242, identity.OwnerProcessId);
+        Assert.Equal(created.ToUniversalTime(), identity.CreatedAtUtc);
+        Assert.Throws<ArgumentException>(() => CaptureSessionIdentity.FromDurableOwnership(
+            captureId, name, Guid.NewGuid(), 4242, created));
+        Assert.Throws<ArgumentException>(() => CaptureSessionIdentity.FromDurableOwnership(
+            captureId, name, token, 0, created));
+    }
+
     private static OwnedSessionPlan BuildPlan(int queueCapacity = 1_024)
     {
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("test", 4242);
