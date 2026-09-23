@@ -175,6 +175,10 @@ The replay validates the source clock, schema/policy table, every record and ter
 the replayed record count against the boundary. A legacy session without a saved plan, or a session with
 multiple journals, is refused rather than guessed from current schemas or incompletely rebuilt.
 
+A live recording (`icat record`, ADR-021) publishes the same files once, when its capture stops: one generation, in a session
+that had none, whose journal holds the admitted records in acquisition order. Nothing is published while it records, so a
+recording interrupted before it stops leaves only staging files, which are handled as for any interrupted publication.
+
 The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
 segment is a named file with a length and a digest, which is what lets a future format arrive without
 changing the commit sequence.

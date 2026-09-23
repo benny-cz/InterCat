@@ -57,6 +57,23 @@ public interface IAdmittedEventSink
 }
 
 /// <summary>
+/// Observes every delivery outcome with its descriptor, for a coverage ledger (`contracts/coverage-v1.md` §3). It is
+/// called from the capture callback, so its work must be bounded and allocation-free once a descriptor has been seen
+/// (R9, P12). A record the policy admitted but the bounded queue could not take is reported as not queued: it was lost
+/// after admission, not admitted.
+/// </summary>
+public interface IDeliveryObserver
+{
+    void Delivered(in DeliveredRecord delivered);
+
+    void Admitted(Guid providerId, int eventId, int version, bool queued);
+
+    void Omitted(OmissionReason reason, in DeliveredRecord delivered);
+
+    void Undecodable(UndecodableReason reason, in DeliveredRecord delivered);
+}
+
+/// <summary>
 /// A session this process created and therefore owns. Stopping affects only this session; no operation
 /// here can reach a session created by another tool (section 9.2, P14).
 /// </summary>

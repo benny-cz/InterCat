@@ -1,8 +1,8 @@
 # InterCat coverage ledger v1
 
-Status: **frozen for imported sessions, and implemented**. A live capture may publish the same file when the live
-runtime is composed (IC-014) and every required loss counter is readable; otherwise coverage stays unknown. The
-members it will fill are defined here and never change the ones below.
+Status: **frozen, and implemented for imported and live-recorded sessions**. `icat record` publishes a `LiveCapture`
+epoch when every required loss counter was readable; otherwise the recording's generation is published without a
+ledger, and its coverage stays unknown.
 
 This contract is §7.1's `CoverageInterval` and the "capture configuration epochs and health/loss ledger" of §10: what
 a capture's sources could observe, over which readings, and what they are known to have lost. R21 is why it exists.
@@ -101,7 +101,10 @@ and `Storage` are InterCat's own bounded queue and writer, which a live capture 
 `SourceSession` loss of zero when the file reports none, because a reported zero is a fact and an absent entry is not.
 Every import epoch requires that counter. A live epoch requires explicit, readable counters for `SourceSession`,
 `ConsumerBuffers`, `CallbackQueue` and `Storage`, including measured zeroes; when a required counter is unreadable,
-the runtime must not publish a ledger claiming coverage for that epoch.
+the runtime must not publish a ledger claiming coverage for that epoch. A live capture measures `CallbackQueue` as the
+records its full queue dropped after the policy admitted them, and `Storage` as admitted records the writer never
+journaled. A dropped record is counted in no descriptor's deliveries, so each descriptor's outcomes still add up to
+what it delivered.
 Undecodable records are the `Decode` layer's loss, and they are attributed to their descriptor in `deliveries`.
 
 No loss in this version is located in time. A later version that locates one adds an interval to it and leaves the

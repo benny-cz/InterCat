@@ -28,6 +28,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "profiles" => await ProfilesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "record" => await RecordCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -93,6 +94,11 @@ static void PrintHelp()
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
     ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
     ConsoleUi.Line("      measure udp takes --sockets instead of --connections and runs the UDP workload.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
+    ConsoleUi.Line("              [--duration <seconds>] [--json]");
+    ConsoleUi.Line("      Captures live under an owned ETW session straight into a new session, which session,");
+    ConsoleUi.Line("      processes and metric read like an imported one. Needs elevation; Ctrl+C stops early.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
     ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");

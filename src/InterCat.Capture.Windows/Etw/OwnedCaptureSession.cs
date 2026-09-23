@@ -41,6 +41,8 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private readonly List<string> degradations = [];
     private readonly Lock gate = new();
     private readonly CancellationTokenSource lifetime = new();
+    private readonly IDeliveryObserver? observer;
+    private readonly Guid[] providerBySource;
 
     private IOwnedEtwSession? session;
     private Task? pumpTask;
@@ -53,8 +55,16 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private CaptureClockEvidence? sourceClock;
     private int sourceClockChecked;
     private bool disposed;
+    private volatile bool sourceLossUnreadable;
 
-    public OwnedCaptureSession(OwnedSessionPlan plan, IEtwSessionHost host, TimeProvider? clock = null)
+    /// <param name="observer">
+    /// Told every delivery outcome with its descriptor, from the callback, when a caller keeps a coverage ledger.
+    /// </param>
+    public OwnedCaptureSession(
+        OwnedSessionPlan plan,
+        IEtwSessionHost host,
+        TimeProvider? clock = null,
+        IDeliveryObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(host);
@@ -62,6 +72,13 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         this.plan = plan;
         this.host = host;
         this.clock = clock ?? TimeProvider.System;
+        this.observer = observer;
+        providerBySource = new Guid[plan.Sources.Count == 0 ? 0 : plan.Sources.Max(source => source.SourceIndex) + 1];
+        foreach (SourceAdmissionPlan source in plan.Sources)
+        {
+            providerBySource[source.SourceIndex] = source.ProviderGuid;
+        }
+
         admissionTable = new(plan.Sources);
         records = Channel.CreateBounded<AdmittedEvent>(new BoundedChannelOptions(plan.QueueCapacityRecords)
         {
@@ -126,6 +143,12 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Whether the source's loss counters failed to read at any point. A coverage ledger then cannot claim what the
+    /// session lost, because an unread counter is not a reported zero (`coverage-v1` §3, R21).
+    /// </summary>
+    public bool SourceLossUnreadable => sourceLossUnreadable;
 
     /// <summary>Isolated stage overhead for this capture (section 12).</summary>
     public CaptureStageSnapshot ReadStageMetrics() => stages.Read(plan.QueueCapacityRecords);
@@ -268,6 +291,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             }
             catch (EtwSessionException)
             {
+                sourceLossUnreadable = true;
                 AddDegradation("Source loss counters could not be read; reported loss may be understated.");
             }
         }
@@ -537,13 +561,34 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
 
     private sealed class QueueSink(OwnedCaptureSession owner) : IAdmittedEventSink
     {
-        public void OnObserved(in DeliveredRecord delivered) => owner.ledger.RecordObserved();
+        public void OnObserved(in DeliveredRecord delivered)
+        {
+            owner.ledger.RecordObserved();
+            owner.observer?.Delivered(in delivered);
+        }
 
-        public bool Admit(in AdmittedEvent admitted) => owner.Enqueue(admitted);
+        public bool Admit(in AdmittedEvent admitted)
+        {
+            bool queued = owner.Enqueue(admitted);
+            if (owner.observer is { } observer && (uint)admitted.SourceIndex < (uint)owner.providerBySource.Length)
+            {
+                observer.Admitted(owner.providerBySource[admitted.SourceIndex], admitted.EventId, admitted.Version, queued);
+            }
 
-        public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered) => owner.ledger.RecordOmission(reason);
+            return queued;
+        }
 
-        public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered) => owner.ledger.RecordUndecodable(reason);
+        public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered)
+        {
+            owner.ledger.RecordOmission(reason);
+            owner.observer?.Omitted(reason, in delivered);
+        }
+
+        public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered)
+        {
+            owner.ledger.RecordUndecodable(reason);
+            owner.observer?.Undecodable(reason, in delivered);
+        }
 
         public void OnCallbackCompleted(in CallbackCost cost) => owner.stages.RecordCallback(in cost);
     }
