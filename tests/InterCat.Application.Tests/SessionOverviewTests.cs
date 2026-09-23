@@ -118,4 +118,76 @@ public sealed class SessionOverviewTests
         Assert.Empty(overview.Timeline);
         Assert.Empty(overview.GraphEligibleTimeline);
     }
+
+    [Theory(DisplayName = "R21: a leased overview applies imported coverage only to observed mechanism buckets")]
+    [InlineData(0L, CoverageState.Covered)]
+    [InlineData(1L, CoverageState.PartialGap)]
+    public void ImportedCoverageStaysBoundedToObservedReadings(long lost, CoverageState expected)
+    {
+        using var session = new TemporarySession();
+        CoverageLedgerV1 ledger = TcpLedger(10, 20, lost);
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 2_000 },
+        ], coverage: ledger);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        Assert.True(overview.CoverageLedgerPublished);
+        Assert.Equal(expected, overview.Timeline[0].Coverage);
+        Assert.Equal(expected, overview.Timeline[^1].Coverage);
+        Assert.Equal(expected, overview.GraphEligibleTimeline[0].Coverage);
+        Assert.Equal(expected, overview.GraphEligibleTimeline[^1].Coverage);
+        Assert.All(overview.Timeline.Where(bucket => bucket.ObservationCount == 0),
+            bucket => Assert.Equal(CoverageState.UnknownCoverage, bucket.Coverage));
+        Assert.Equal(CoverageState.UnknownCoverage,
+            Assert.Single(overview.MechanismCoverage, item => item.Mechanism == Mechanism.Rpc).State);
+        Assert.Contains(overview.Caveats, caveat => caveat.Contains("Empty buckets stay unknown", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "I8: negative session ticks map to native coverage without rounding a bucket across zero")]
+    public void NegativeSessionTimeCoverageUsesExactBoundaries()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(-1, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = -100 },
+            Transfer(0, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 0 },
+        ], coverage: TcpLedger(-1, 0, 0));
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        Assert.Equal((-1L, 1L), (overview.Extent!.Value.StartTicks, overview.Extent.Value.EndTicks));
+        Assert.Equal([CoverageState.Covered, CoverageState.Covered], overview.Timeline.Select(bucket => bucket.Coverage));
+    }
+
+    private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs = [new CoverageEpochV1
+        {
+            Epoch = 1,
+            Acquisition = CoverageAcquisition.EtlImport,
+            FirstDeliveredNativeTicks = first,
+            LastDeliveredNativeTicks = last,
+            Collected =
+            [
+                new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+                new CoverageCollectedV1 { ProviderId = ProcessProvider, ProviderName = "process", EventId = 99, Version = 0, Mechanism = Mechanism.Rpc },
+            ],
+            Deliveries = [new CoverageDeliveryV1
+            {
+                ProviderId = NetworkProvider,
+                EventId = 10,
+                Version = 0,
+                Delivered = 2,
+                Admitted = 2,
+                Omitted = 0,
+            }],
+            Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost }],
+        }],
+    };
 }

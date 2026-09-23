@@ -158,7 +158,8 @@ internal static class TestSessions
         NormalizerContractVersion? derivation = null,
         CaptureId? capture = null,
         SourceClockDescriptor? clock = null,
-        IReadOnlyList<SourceFieldRowV1>? fields = null)
+        IReadOnlyList<SourceFieldRowV1>? fields = null,
+        CoverageLedgerV1? coverage = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -201,6 +202,11 @@ internal static class TestSessions
         foreach (SourceFieldRowV1 field in fields ?? [])
         {
             builder.AddFieldRow(field);
+        }
+
+        if (coverage is not null)
+        {
+            builder.StageCoverageLedger(coverage);
         }
 
         return builder.Complete(Committed);

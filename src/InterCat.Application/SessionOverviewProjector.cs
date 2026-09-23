@@ -7,7 +7,7 @@ namespace InterCat.Application;
 /// <summary>
 /// One immutable, evidence-bounded overview. Its edges are only paired TCP relationships whose two process instances
 /// are admitted under the requested policy; they are not a total of all traffic. The timeline counts all observations
-/// with a usable session time but claims no coverage until a ledger is projected with it. The separate graph-eligible
+/// with a usable session time and projects capture coverage only when this generation publishes a ledger. The separate graph-eligible
 /// timeline uses only the exact channel IDs of the displayed relations, so a caller cannot confuse the two scopes.
 /// </summary>
 public sealed record SessionOverviewBundle(
@@ -26,6 +26,8 @@ public sealed record SessionOverviewBundle(
     long GraphRowsWithoutSessionTime,
     long UnresolvedTcpRows,
     long RelationshipsNotAdmitted,
+    bool CoverageLedgerPublished,
+    IReadOnlyList<MechanismCoverage> MechanismCoverage,
     IReadOnlyList<string> Caveats);
 
 /// <summary>
@@ -58,6 +60,7 @@ public static class SessionOverviewProjector
             .Select(name => SessionSegments.Open(store.Root, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
             .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
         TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
 
@@ -109,7 +112,7 @@ public static class SessionOverviewProjector
         HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
         (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline,
             long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
-            Timeline(segments, relations, eligibleChannels, policy, cancellationToken);
+            Timeline(segments, relations, eligibleChannels, policy, clock, coverage, cancellationToken);
         if (edges.Sum(edge => edge.ObservationCount) != graphRows)
         {
             throw new InvalidDataException(
@@ -122,8 +125,12 @@ public static class SessionOverviewProjector
                 + "One-sided, ambiguous and unsupported relationships are not rendered as guessed edges.",
             "Edge direction is a stable display order, not a claim about which process initiated or sent data. "
                 + "Edge record counts include observations from both ends and are not whole-session totals.",
-            "The timeline counts observed rows only. Its coverage is unknown until the capture coverage ledger "
-                + "is included in the projection; an empty interval is not proof of inactivity.",
+            coverage is null
+                ? "The timeline counts observed rows only. This legacy generation publishes no coverage ledger, "
+                    + "so its coverage is unknown; an empty interval is not proof of inactivity."
+                : "Timeline coverage describes the captured mechanisms of observed rows within the ledger's "
+                    + "delivered readings. Empty buckets stay unknown, and source loss has no finer location "
+                    + "than its epoch. It does not prove a graph relationship or an empty interval complete.",
             "The graph-eligible timeline uses precisely the displayed relations' channel rows on the same time axis. "
                 + "It is narrower than the all-observations timeline and does not silently replace it.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
@@ -150,6 +157,8 @@ public static class SessionOverviewProjector
             graphWithoutTime,
             unresolved,
             notAdmitted,
+            coverage is not null,
+            Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage)]),
             Array.AsReadOnly(caveats));
     }
 
@@ -160,6 +169,8 @@ public static class SessionOverviewProjector
             TransportRelationIndex relations,
             HashSet<int> eligibleChannels,
             EvidencePolicy policy,
+            SourceClockDescriptor clock,
+            CoverageLedgerV1? coverage,
             CancellationToken cancellationToken)
     {
         long rows = 0;
@@ -281,15 +292,68 @@ public static class SessionOverviewProjector
             null,
             mechanismsByBucket[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
                 .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
-            CoverageState.UnknownCoverage))];
+            BucketCoverage(coverage, clock,
+                new TimeRange(
+                    minimum + (long)(((Int128)index * width) / bucketCount),
+                    minimum + (long)(((Int128)(index + 1) * width) / bucketCount)),
+                counts[index] == 0 ? [] : mechanismsByBucket[index].Keys)))];
         TimelineBucket[] graphResult = [.. Enumerable.Range(0, bucketCount).Select(index => new TimelineBucket(
             result[index].Interval,
             graphCounts[index],
             null,
             graphCounts[index] > 0 ? Mechanism.Tcp : Mechanism.UnknownMechanism,
-            CoverageState.UnknownCoverage))];
+            BucketCoverage(coverage, clock, result[index].Interval,
+                graphCounts[index] == 0 ? [] : [Mechanism.Tcp])))];
         return (extent, result, graphResult, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
     }
+
+    private static CoverageState BucketCoverage(
+        CoverageLedgerV1? ledger,
+        SourceClockDescriptor clock,
+        TimeRange presentationInterval,
+        IEnumerable<Mechanism> mechanisms)
+    {
+        if (ledger is null)
+        {
+            return CoverageState.UnknownCoverage;
+        }
+
+        Mechanism[] scoped = [.. mechanisms];
+        if (scoped.Length == 0)
+        {
+            return CoverageState.UnknownCoverage;
+        }
+
+        try
+        {
+            // The overview's presentation tick is nanoseconds / 100 with C# truncation toward zero. These are
+            // the exact nanosecond boundaries of that mapping, including its asymmetric zero tick (I3, I8).
+            long first = SourceClockMath.FirstNativeAtOrAfter(clock,
+                new SessionTimestamp(PresentationLowerNanoseconds(presentationInterval.StartTicks)));
+            long lastExclusive = SourceClockMath.FirstNativeAtOrAfter(clock,
+                new SessionTimestamp(PresentationLowerNanoseconds(presentationInterval.EndTicks)));
+            if (lastExclusive <= first)
+            {
+                return CoverageState.UnknownCoverage;
+            }
+
+            var nativeInterval = new TimeRange(first, lastExclusive);
+            return SessionCoverage.Worst(SessionCoverage.ForMechanisms(ledger, scoped, nativeInterval)
+                .Select(result => result.State));
+        }
+        catch (OverflowException)
+        {
+            // A bucket that cannot be mapped to native readings is unknown, never inferred from neighboring bins.
+            return CoverageState.UnknownCoverage;
+        }
+    }
+
+    private static long PresentationLowerNanoseconds(long tick) => tick switch
+    {
+        < 0 => checked(tick * 100 - 99),
+        0 => -99,
+        _ => checked(tick * 100),
+    };
 
     private static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
     {

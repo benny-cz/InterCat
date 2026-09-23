@@ -612,7 +612,8 @@
         "I8: a second clock frame is refused rather than silently replacing the first",
         "I8: an imported clock identity comes from the evidence, so two imports agree",
         "I8: imported evidence never claims the machine that is reading it",
-        "I8: native clock, local time and workspace time remain distinct"
+        "I8: native clock, local time and workspace time remain distinct",
+        "I8: negative session ticks map to native coverage without rounding a bucket across zero"
       ],
       "I9": [
         "I9: alignment revisions never rewrite source time"
@@ -814,6 +815,7 @@
         "R21: an unknown descriptor version cannot silently preserve covered mechanisms",
         "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
         "R21: an interval ending at maximum ticks is evaluated without overflow",
+        "R21: a leased overview applies imported coverage only to observed mechanism buckets",
         "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",

@@ -19,7 +19,24 @@ public static class SessionCoverage
 
     /// <summary>Every mechanism's coverage over an interval, or over every epoch when none is given.</summary>
     public static IReadOnlyList<MechanismCoverage> ByMechanism(CoverageLedgerV1? ledger, TimeRange? interval = null) =>
-        [.. Enum.GetValues<Mechanism>().Select(mechanism => Of(ledger, mechanism, interval))];
+        ForMechanisms(ledger, Enum.GetValues<Mechanism>(), interval);
+
+    /// <summary>Several mechanisms over one scope, validating the ledger once and preserving the caller's order.</summary>
+    public static IReadOnlyList<MechanismCoverage> ForMechanisms(
+        CoverageLedgerV1? ledger,
+        IEnumerable<Mechanism> mechanisms,
+        TimeRange? interval = null)
+    {
+        ArgumentNullException.ThrowIfNull(mechanisms);
+        Mechanism[] requested = [.. mechanisms];
+        if (requested.Any(mechanism => !Enum.IsDefined(mechanism)))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mechanisms));
+        }
+
+        ledger?.Validate();
+        return [.. requested.Select(mechanism => OfValidated(ledger, mechanism, interval))];
+    }
 
     /// <summary>One mechanism's coverage over an interval, or over every epoch when none is given.</summary>
     public static MechanismCoverage Of(CoverageLedgerV1? ledger, Mechanism mechanism, TimeRange? interval = null)
@@ -29,12 +46,16 @@ public static class SessionCoverage
             throw new ArgumentOutOfRangeException(nameof(mechanism));
         }
 
+        ledger?.Validate();
+        return OfValidated(ledger, mechanism, interval);
+    }
+
+    private static MechanismCoverage OfValidated(CoverageLedgerV1? ledger, Mechanism mechanism, TimeRange? interval)
+    {
         if (ledger is null)
         {
             return new(mechanism, CoverageState.UnknownCoverage, "this generation publishes no coverage ledger");
         }
-
-        ledger.Validate();
 
         List<CoverageEpochV1> spanned =
         [
