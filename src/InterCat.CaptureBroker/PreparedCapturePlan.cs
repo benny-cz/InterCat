@@ -81,6 +81,7 @@ public sealed class PreparedCapturePlan
         AdmissionMode effectiveAdmission,
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
+        BrokerJournalPublication publication,
         CompiledBodyAdmissionPolicy bodyPolicy,
         ImmutableArray<SourceAdmissionPlan> sources,
         ImmutableArray<ProviderEnablementRequest> providers,
@@ -100,6 +101,8 @@ public sealed class PreparedCapturePlan
         EffectiveAdmission = effectiveAdmission;
         Quota = quota;
         Retention = retention;
+        Publication = publication;
+        PublicationInterval = BrokerJournalPublicationPolicy.Interval(publication, quota.MaximumDurationSeconds);
         BodyPolicy = bodyPolicy;
         Sources = sources;
         Providers = providers;
@@ -120,6 +123,10 @@ public sealed class PreparedCapturePlan
     public AdmissionMode EffectiveAdmission { get; }
     public BrokerCaptureQuota Quota { get; }
     public BrokerRetentionPolicy Retention { get; }
+    public BrokerJournalPublication Publication { get; }
+
+    /// <summary>How often the runtime publishes journal chunks; null publishes once, when the capture stops.</summary>
+    public TimeSpan? PublicationInterval { get; }
     public CompiledBodyAdmissionPolicy BodyPolicy { get; }
     public ImmutableArray<SourceAdmissionPlan> Sources { get; }
     public ImmutableArray<ProviderEnablementRequest> Providers { get; }
@@ -143,13 +150,21 @@ public static class BrokerPrepareCompiler
         EffectiveCapturePlan plan,
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
-        BrokerRuntimeIdentity? runtime = null)
+        BrokerRuntimeIdentity? runtime = null,
+        BrokerJournalPublication publication = BrokerJournalPublication.OnStop)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(quota);
         runtime ??= BrokerRuntimeIdentity.Current();
 
         BrokerPrepareResult? refusal = Validate(plan, quota, retention, runtime);
+        if (refusal is null && !Enum.IsDefined(publication))
+        {
+            refusal = Refused(
+                BrokerPrepareRefusalCode.InvalidOperationalLimits,
+                "Journal publication must be OnStop or Live.");
+        }
+
         if (refusal is not null)
         {
             return refusal;
@@ -181,6 +196,7 @@ public static class BrokerPrepareCompiler
             plan.EffectiveAdmission!.Value,
             quota,
             retention,
+            publication,
             bodyPolicy,
             sources,
             providers,
@@ -199,6 +215,7 @@ public static class BrokerPrepareCompiler
             plan.EffectiveAdmission.Value,
             quota,
             retention,
+            publication,
             bodyPolicy,
             sources,
             providers,
@@ -698,6 +715,7 @@ internal static class PreparedPlanDigest
         AdmissionMode effectiveAdmission,
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
+        BrokerJournalPublication publication,
         CompiledBodyAdmissionPolicy bodyPolicy,
         ImmutableArray<SourceAdmissionPlan> sources,
         ImmutableArray<ProviderEnablementRequest> providers,
@@ -722,6 +740,7 @@ internal static class PreparedPlanDigest
             writer.Write(quota.MaximumJournalBytes);
             writer.Write(quota.MinimumFreeDiskBytes);
             writer.Write((int)retention);
+            writer.Write((int)publication);
             WriteBodyPolicy(writer, bodyPolicy);
             writer.Write(preserveExtendedData);
             writer.Write(requestCallStacks);

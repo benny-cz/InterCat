@@ -17,6 +17,46 @@ public enum BrokerRetentionPolicy : int
     StopAtLimit = 1,
 }
 
+/// <summary>
+/// When a capture publishes its journal. A client names a policy; it never sends an interval, because the privileged
+/// runtime's publication cost is the broker's to bound (plan §20.3, revision 74).
+/// </summary>
+public enum BrokerJournalPublication : int
+{
+    /// <summary>One publication when the capture stops. Nothing can follow it while it records.</summary>
+    OnStop = 1,
+
+    /// <summary>Journal chunks published while recording, so an ordinary process can follow the capture.</summary>
+    Live = 2,
+}
+
+/// <summary>Compiles a publication policy into the interval the prepared plan freezes.</summary>
+public static class BrokerJournalPublicationPolicy
+{
+    /// <summary>The shortest live interval. Each publication re-verifies every dependency the manifest names.</summary>
+    public static readonly TimeSpan MinimumLiveInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// The most chunks one live capture publishes. It keeps a full-length capture's manifest to a few hundred KiB and
+    /// far inside the 65,536-dependency manifest limit, so publication cost stays bounded for the whole capture.
+    /// </summary>
+    public const int MaximumLiveChunks = 1_024;
+
+    /// <summary>The interval a policy compiles to for a capture of this maximum duration; null publishes on stop.</summary>
+    public static TimeSpan? Interval(BrokerJournalPublication publication, int maximumDurationSeconds) => publication switch
+    {
+        BrokerJournalPublication.OnStop => null,
+        BrokerJournalPublication.Live => TimeSpan.FromSeconds(Math.Max(
+            MinimumLiveInterval.TotalSeconds,
+            Math.Ceiling(maximumDurationSeconds / (double)MaximumLiveChunks))),
+        _ => throw new ArgumentOutOfRangeException(nameof(publication), publication, "Unknown journal publication policy."),
+    };
+
+    /// <summary>The compiled interval in whole milliseconds as the effective summary states it; zero for OnStop.</summary>
+    public static int IntervalMilliseconds(BrokerJournalPublication publication, int maximumDurationSeconds) =>
+        Interval(publication, maximumDurationSeconds) is { } interval ? checked((int)interval.TotalMilliseconds) : 0;
+}
+
 public sealed record BrokerCaptureQuota(
     int MaximumDurationSeconds,
     long MaximumJournalBytes,
@@ -73,7 +113,8 @@ public sealed record BrokerPrepareCaptureRequest(
     bool RequestOriginalDiagnosticEtl,
     BrokerCaptureQuota Quota,
     BrokerRetentionPolicy Retention,
-    ContentCaptureRequest? Content) : BrokerWireRequest
+    ContentCaptureRequest? Content,
+    BrokerJournalPublication Publication = BrokerJournalPublication.OnStop) : BrokerWireRequest
 {
     public override BrokerMessageType MessageType => BrokerMessageType.PrepareCapture;
 
@@ -116,7 +157,7 @@ public static class BrokerWireRequestCodec
 {
     private static readonly IReadOnlySet<ushort> HelloFields = Set(1, 2, 3, 4, 5);
     private static readonly IReadOnlySet<ushort> PrepareFields = Set(
-        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
         20, 21, 22, 23, 24, 25, 26, 27);
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2);
     private static readonly IReadOnlySet<ushort> CaptureFields = Set(1);
@@ -255,7 +296,10 @@ public static class BrokerWireRequestCodec
                 fields.RequiredInt64(7),
                 fields.RequiredInt64(8)),
             (BrokerRetentionPolicy)fields.RequiredInt32(9),
-            content);
+            content,
+            fields.OptionalInt32(10) is int publication
+                ? (BrokerJournalPublication)publication
+                : BrokerJournalPublication.OnStop);
         ValidatePrepare(request);
         return request;
     }
@@ -312,6 +356,7 @@ public static class BrokerWireRequestCodec
         fields.WriteInt64(7, request.Quota.MaximumJournalBytes);
         fields.WriteInt64(8, request.Quota.MinimumFreeDiskBytes);
         fields.WriteInt32(9, (int)request.Retention);
+        fields.WriteInt32(10, (int)request.Publication, required: false);
 
         if (request.Content is not null)
         {
@@ -360,6 +405,11 @@ public static class BrokerWireRequestCodec
         if (request.Retention != BrokerRetentionPolicy.StopAtLimit)
         {
             throw new InvalidDataException("Stop-at-limit is the only broker retention policy in protocol v1.");
+        }
+
+        if (!Enum.IsDefined(request.Publication))
+        {
+            throw new InvalidDataException("Journal publication must be OnStop or Live.");
         }
 
         bool validProcessIds = request.FocusedProcessIds.Count <= 64

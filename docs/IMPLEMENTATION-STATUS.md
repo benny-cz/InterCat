@@ -1,12 +1,32 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 77
+Plan revision: 78
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: free-disk reserve enforced at the write boundary
+## Latest slice: prepared journal-publication policy
+
+Prepare now accepts an optional named `BrokerJournalPublication` policy (field 10): `OnStop` (default) or `Live`.
+No client can send an interval. `Live` compiles to `max(2 s, ceil(maximum duration / 1024))`; the plan review found a
+fixed short interval unworkable for long captures (a 24-hour capture at 1-2 s would exceed the 65,536-dependency manifest
+limit and rewrite a multi-MB manifest per publication), so a capture is capped at about 1,024 chunks. The policy is
+part of the prepared digest, `PreparedCapturePlan.PublicationInterval` carries the compiled value, and the effective
+summary returns both the policy and the interval in milliseconds (fields 33/34) so a client can state "published every
+N s" before the user starts. A summary whose interval disagrees with its policy is refused. The evidence runtime passes
+the compiled interval to `LiveRecorder`, whose journal quota and free-disk floor already bound rollover.
+
+Tests cover request round-trip with and without the field, refusal of an unknown policy, the chunk bound for every
+allowed duration (1 s-24 h), digest separation and refusal in the compiler, summary consistency, and the coordinator
+reporting the compiled interval. All 733 tests pass in Debug and Release.
+
+Remaining for enablement: an elevated benchmark of capture impact at the compiled cadence (the 2 s floor and 1,024-chunk
+cap are engineering bounds, not measurements), the host maintenance loop (autonomous completion, queued stop-completion
+retry, lease expiry), and authenticated pipe + protected root + crash/restart recovery with real elevated ETW. The
+broker executable remains disabled.
+
+## Previous slice: free-disk reserve enforced at the write boundary
 
 `MinimumFreeDiskBytes` is now enforced where InterCat writes, not only observed once a second. `LiveDiskFloor` turns
 each free-space probe into a ceiling on the current chunk's projected complete length: bytes already written, plus the
@@ -32,8 +52,8 @@ evidence directories, and that idle free-space loss ends a broker capture with a
 and Release.
 
 Plan revision 77 records this and corrects §20.3, which claimed the journal-publication policy was already frozen in
-the prepared digest; it is not. The broker executable remains disabled. Next: freeze and benchmark the prepared
-live-publication cadence (effective summary + digest), wire the host maintenance loop (autonomous completion, queued
+the prepared digest; it was not (revision 78 adds it). The broker executable remains disabled. Next: freeze and
+benchmark the prepared live-publication cadence (effective summary + digest), wire the host maintenance loop (autonomous completion, queued
 stop-completion retry, lease expiry) and then exercise authenticated pipe + protected root + crash/restart recovery with
 real elevated ETW.
 

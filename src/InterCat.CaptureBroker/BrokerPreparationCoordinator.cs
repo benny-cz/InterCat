@@ -107,12 +107,14 @@ public sealed class BrokerPreparationCoordinator : IDisposable
             EffectiveCapturePlan effective = await source
                 .CompileAsync(request.ToProfileRequest(), cancellationToken)
                 .ConfigureAwait(false);
-            BrokerEffectiveCaptureSummary summary = ToSummary(effective, request.Quota, request.Retention);
+            BrokerEffectiveCaptureSummary summary = ToSummary(
+                effective, request.Quota, request.Retention, request.Publication);
             BrokerPrepareResult preparation = BrokerPrepareCompiler.Prepare(
                 effective,
                 request.Quota,
                 request.Retention,
-                runtime);
+                runtime,
+                request.Publication);
             if (!preparation.IsPrepared)
             {
                 return new(false, preparation.Refusal!.Code, Bound(preparation.Refusal.Message, 512), null, summary);
@@ -174,7 +176,8 @@ public sealed class BrokerPreparationCoordinator : IDisposable
     private static BrokerEffectiveCaptureSummary ToSummary(
         EffectiveCapturePlan plan,
         BrokerCaptureQuota quota,
-        BrokerRetentionPolicy retention) =>
+        BrokerRetentionPolicy retention,
+        BrokerJournalPublication publication) =>
         new(
             Bound(plan.RequestedProfileId, 64),
             BoundOptional(plan.EffectiveProfileId, 64),
@@ -199,7 +202,11 @@ public sealed class BrokerPreparationCoordinator : IDisposable
             Bound(plan.CollectionStatement, 2048),
             quota,
             retention,
-            [.. plan.Diagnostics.Take(32).Select(item => Bound(item, 512))]);
+            [.. plan.Diagnostics.Take(32).Select(item => Bound(item, 512))],
+            publication,
+            Enum.IsDefined(publication) && quota.Validate() is null
+                ? BrokerJournalPublicationPolicy.IntervalMilliseconds(publication, quota.MaximumDurationSeconds)
+                : 0);
 
     private static string? BoundOptional(string? value, int maximumBytes) =>
         value is null ? null : Bound(value, maximumBytes);

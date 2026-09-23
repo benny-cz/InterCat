@@ -56,6 +56,7 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 - compilation UTC ticks, build ID, architecture and adapter version;
 - requested/effective profile and admission;
 - maximum duration, journal-byte allowance, minimum free-space reserve and stop-at-limit retention;
+- the journal-publication policy (`OnStop` = 1, `Live` = 2), written as an `int32` after retention;
 - body policy, retained-byte bound and extended-data allowlist;
 - extended-data and stack settings;
 - requested/effective mechanism, selected and initial-view PIDs, aggregate broader-capture state,
@@ -198,7 +199,13 @@ protect different resources. The reserve is a floor for InterCat's own writes, n
 Start is refused unless the evidence volume holds the reserve plus bounded finalization headroom, every journal append
 is admitted only if the volume would keep both after it, and a stopped capture may spend that headroom - never the
 reserve - to publish its last generation. A failed or impossible free-space reading stops acquisition. The stop
-reason says which bound ended the capture. Focused and Content groups are mutually exclusive and
+reason says which bound ended the capture.
+
+Prepare field 10 is an optional journal-publication policy: `OnStop` (1, the default when absent) publishes once
+when the capture stops; `Live` (2) publishes journal chunks while recording so an ordinary process can follow it.
+A client names a policy and never an interval. `Live` compiles to `max(2 s, ceil(maximum duration / 1024))`, so one
+capture publishes at most about 1,024 chunks and its manifest stays small and far inside the dependency limit for
+the whole capture. Any other value is refused. Focused and Content groups are mutually exclusive and
 Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
 dispatch.
 
@@ -214,7 +221,9 @@ mechanism summaries. Prepare returns either one complete owner-bound grant or on
 partial combination, together with the exact effective profile/admission/scope disclosure the client
 must compare with its reviewed preview. Per-source scope includes the capture-side process mode, bounded
 applied PID group, wider-capture flag and reason. The prepared digest now binds the requested duration,
-journal limit, free-space reserve and retention as well as provider/body/scope semantics.
+journal limit, free-space reserve, retention and journal-publication policy as well as provider/body/scope
+semantics. Summary fields 33 and 34 state the effective publication policy and its compiled interval in
+milliseconds (0 for `OnStop`); a response whose interval is not the one its policy compiles to is refused.
 
 Start, status, stop and renewal responses preserve the lifecycle operation code, lease and independent
 stop milestones. Status is owner-only and never exposes the broker session name, session ownership token

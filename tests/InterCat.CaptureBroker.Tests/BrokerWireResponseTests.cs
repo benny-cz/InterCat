@@ -29,6 +29,17 @@ public sealed class BrokerWireResponseTests
             new(new string('A', 43), Digest('a'), Now, Now.AddSeconds(30)),
             Summary())];
         yield return [new BrokerPrepareCaptureResponse(
+            true,
+            null,
+            null,
+            new(new string('B', 43), Digest('c'), Now, Now.AddSeconds(30)),
+            Summary() with
+            {
+                Publication = BrokerJournalPublication.Live,
+                PublicationIntervalMilliseconds = BrokerJournalPublicationPolicy.IntervalMilliseconds(
+                    BrokerJournalPublication.Live, Quota.MaximumDurationSeconds),
+            })];
+        yield return [new BrokerPrepareCaptureResponse(
             false,
             BrokerPrepareRefusalCode.PlanNotStartable,
             "Review the effective scope before starting.",
@@ -83,6 +94,20 @@ public sealed class BrokerWireResponseTests
         Assert.Equal(encoded.MessageType, reencoded.MessageType);
         Assert.Equal(encoded.Payload.ToArray(), reencoded.Payload.ToArray());
         Assert.Null(await BrokerWireFrameCodec.ReadAsync(stream));
+    }
+
+    [Fact]
+    public void SummaryPublicationIntervalMustBeTheOneItsPolicyCompilesTo()
+    {
+        var inconsistent = new BrokerPrepareCaptureResponse(
+            true,
+            null,
+            null,
+            new(new string('A', 43), Digest('a'), Now, Now.AddSeconds(30)),
+            Summary() with { Publication = BrokerJournalPublication.Live, PublicationIntervalMilliseconds = 50 });
+
+        Assert.Throws<InvalidDataException>(() =>
+            BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(inconsistent, Guid.NewGuid())));
     }
 
     [Fact]

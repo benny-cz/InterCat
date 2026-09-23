@@ -37,6 +37,16 @@ public sealed class BrokerWireProtocolTests
             BrokerRetentionPolicy.StopAtLimit,
             null)];
         yield return [new BrokerPrepareCaptureRequest(
+            "focused-transport",
+            Mechanism.Tcp,
+            [],
+            false,
+            false,
+            ValidQuota(),
+            BrokerRetentionPolicy.StopAtLimit,
+            null,
+            BrokerJournalPublication.Live)];
+        yield return [new BrokerPrepareCaptureRequest(
             "content",
             null,
             [],
@@ -134,6 +144,34 @@ public sealed class BrokerWireProtocolTests
             await BrokerWireFrameCodec.ReadAsync(stream));
 
         Assert.Equal(BrokerWireFrameCodec.HeaderSize, stream.Position);
+    }
+
+    [Fact]
+    public void JournalPublicationIsANamedPolicyNeverAnArbitraryValue()
+    {
+        var request = new BrokerPrepareCaptureRequest(
+            "explore", null, [], false, false, ValidQuota(), BrokerRetentionPolicy.StopAtLimit, null);
+        Assert.Equal(BrokerJournalPublication.OnStop, request.Publication);
+
+        var unknown = request with { Publication = (BrokerJournalPublication)1_000 };
+        Assert.Throws<InvalidDataException>(() =>
+            BrokerWireRequestCodec.Decode(BrokerWireRequestCodec.Encode(unknown, Guid.NewGuid())));
+    }
+
+    [Fact]
+    public void LivePublicationIntervalIsBoundedForEveryAllowedDuration()
+    {
+        Assert.Null(BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.OnStop, 600));
+        Assert.Equal(TimeSpan.FromSeconds(2), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 600));
+        Assert.Equal(TimeSpan.FromSeconds(85), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 86_400));
+        for (int seconds = 1; seconds <= 86_400; seconds++)
+        {
+            TimeSpan interval = BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, seconds)!.Value;
+            Assert.True(interval >= BrokerJournalPublicationPolicy.MinimumLiveInterval);
+            Assert.True(
+                Math.Ceiling(seconds / interval.TotalSeconds) <= BrokerJournalPublicationPolicy.MaximumLiveChunks,
+                $"{seconds} s at {interval} exceeds the live chunk bound");
+        }
     }
 
     [Fact]
@@ -294,6 +332,7 @@ public sealed class BrokerWireProtocolTests
                 Assert.Equal(left.RequestOriginalDiagnosticEtl, right.RequestOriginalDiagnosticEtl);
                 Assert.Equal(left.Quota, right.Quota);
                 Assert.Equal(left.Retention, right.Retention);
+                Assert.Equal(left.Publication, right.Publication);
                 if (left.Content is null)
                 {
                     Assert.Null(right.Content);

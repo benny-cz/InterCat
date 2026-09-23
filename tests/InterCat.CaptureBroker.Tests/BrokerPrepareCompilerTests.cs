@@ -197,6 +197,28 @@ public sealed class BrokerPrepareCompilerTests
     }
 
     [Fact]
+    public void JournalPublicationIsFrozenIntoThePlanAndItsDigest()
+    {
+        EffectiveCapturePlan plan = CompileFocused();
+
+        PreparedCapturePlan onStop = BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.StopAtLimit, Runtime).PreparedPlan!;
+        PreparedCapturePlan live = BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.StopAtLimit, Runtime, BrokerJournalPublication.Live).PreparedPlan!;
+        BrokerPrepareResult unknown = BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.StopAtLimit, Runtime, (BrokerJournalPublication)9);
+
+        Assert.Null(onStop.PublicationInterval);
+        Assert.Equal(BrokerJournalPublication.Live, live.Publication);
+        Assert.Equal(
+            BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, Quota.MaximumDurationSeconds),
+            live.PublicationInterval);
+        Assert.NotEqual(onStop.Digest, live.Digest);
+        Assert.False(unknown.IsPrepared);
+        Assert.Equal(BrokerPrepareRefusalCode.InvalidOperationalLimits, unknown.Refusal!.Code);
+    }
+
+    [Fact]
     public void DiskReserveMayExceedJournalAllowance()
     {
         var limits = new BrokerCaptureQuota(30, 1_048_576, 16_777_216);

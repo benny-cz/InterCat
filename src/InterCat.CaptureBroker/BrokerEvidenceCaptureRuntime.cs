@@ -119,7 +119,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     store,
                     token => MonitorFreeDiskAsync(capture, plan.Quota.MinimumFreeDiskBytes, token),
                     ownership.CreatedAtUtc,
-                    publishEvery: null,
+                    publishEvery: plan.PublicationInterval,
                     derive: null,
                     onReady: _ => capture.Ready.TrySetResult(),
                     maximumJournalBytes: plan.Quota.MaximumJournalBytes,

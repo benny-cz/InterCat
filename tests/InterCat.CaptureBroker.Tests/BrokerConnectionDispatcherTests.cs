@@ -120,6 +120,26 @@ public sealed class BrokerConnectionDispatcherTests
     }
 
     [Fact]
+    public async Task LivePublicationIsStatedInTheEffectiveSummary()
+    {
+        var registry = new PreparedPlanRegistry();
+        using var preparation = new BrokerPreparationCoordinator(new FakePlanSource(), registry, Runtime);
+        using var lifecycle = new BrokerLifecycleCoordinator(
+            registry, new InMemoryBrokerLifecycleStore(), new BrokerFakeRuntime());
+        var owner = CreateDispatcher(OwnerA, preparation, lifecycle);
+        await CompleteHello(owner);
+
+        var prepared = Assert.IsType<BrokerPrepareCaptureResponse>(await Dispatch(
+            owner, ValidPrepare() with { Publication = BrokerJournalPublication.Live }));
+
+        Assert.True(prepared.Prepared);
+        Assert.Equal(BrokerJournalPublication.Live, prepared.Summary.Publication);
+        Assert.Equal(
+            BrokerJournalPublicationPolicy.IntervalMilliseconds(BrokerJournalPublication.Live, Quota.MaximumDurationSeconds),
+            prepared.Summary.PublicationIntervalMilliseconds);
+    }
+
+    [Fact]
     public async Task PreparedTokenCannotCrossAuthenticatedOwners()
     {
         var source = new FakePlanSource();
