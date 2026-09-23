@@ -43,7 +43,7 @@ public sealed class BrokerLauncherTests
     [Fact]
     public void EveryDocumentedBrokerExitHasItsOwnExplanation()
     {
-        int[] exitCodes = [2, 3, 4, 99];
+        int[] exitCodes = [2, 3, 4, 99, 6, 70];
         string[] explanations = [.. exitCodes.Select(WindowsBrokerLauncher.DescribeExit)];
 
         Assert.Equal(explanations.Length, explanations.Distinct(StringComparer.Ordinal).Count());

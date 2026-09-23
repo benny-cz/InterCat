@@ -42,6 +42,17 @@ public static class BrokerProcess
             ? informational
             : "0.0.0";
 
+    /// <summary>Another broker holds this machine's ownership log: one live capture broker runs at a time.</summary>
+    public const int ExitAnotherBrokerRunning = 6;
+
+    /// <summary>How long a new broker waits for a finishing predecessor to release the ownership log.</summary>
+    public static readonly TimeSpan PredecessorWait = TimeSpan.FromSeconds(15);
+
+    /// <summary>The broker stopped on an error nothing mapped; its next start recovers what it left.</summary>
+    public const int ExitUnexpected = 70;
+
+    private const int ErrorSharingViolation = 32;
+
     public static async Task<int> RunAsync(
         IReadOnlyList<string> args,
         TextWriter stdout,
@@ -78,6 +89,34 @@ public static class BrokerProcess
     }
 
     /// <summary>
+    /// Opens the ownership log, waiting for a predecessor that is still finishing (a broker exits a few seconds after
+    /// its last client). Null when another broker keeps holding it: that one is recording, and this one must not start.
+    /// </summary>
+    private static async Task<FileBrokerLifecycleStore?> OpenStoreAsync(
+        WindowsBrokerRoot root,
+        TimeSpan wait,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + wait;
+        while (true)
+        {
+            try
+            {
+                return new FileBrokerLifecycleStore(root);
+            }
+            catch (IOException exception) when (exception.InnerException is Win32Exception { NativeErrorCode: ErrorSharingViolation })
+            {
+                if (DateTimeOffset.UtcNow >= deadline)
+                {
+                    return null;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Serves until idle or cancelled. The pipe path is written to <paramref name="stdout"/> as one
     /// <c>listening &lt;path&gt;</c> line; diagnostics go to <paramref name="stderr"/>.
     /// </summary>
@@ -87,7 +126,8 @@ public static class BrokerProcess
         TextWriter stdout,
         TextWriter stderr,
         CancellationToken cancellationToken,
-        Action<string>? onListening = null)
+        Action<string>? onListening = null,
+        TimeSpan? predecessorWait = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -124,15 +164,23 @@ public static class BrokerProcess
 
         using (root)
         {
-            FileBrokerLifecycleStore store;
+            FileBrokerLifecycleStore? store;
             try
             {
-                store = new FileBrokerLifecycleStore(root);
+                store = await OpenStoreAsync(root, predecessorWait ?? PredecessorWait, cancellationToken).ConfigureAwait(false);
             }
             catch (InvalidDataException exception)
             {
                 Diagnostic($"The broker's capture ownership log is unreadable and was left untouched: {exception.Message}");
                 return (int)InterCatExitCode.CorruptedInput;
+            }
+
+            if (store is null)
+            {
+                Diagnostic(
+                    $"Another InterCat capture broker still holds this machine's ownership log after {(predecessorWait ?? PredecessorWait).TotalSeconds:0} s; "
+                    + "one live capture runs at a time.");
+                return ExitAnotherBrokerRunning;
             }
 
             using (store)
@@ -165,7 +213,8 @@ public static class BrokerProcess
                     preparation,
                     lifecycle,
                     settings,
-                    log: entry => Diagnostic($"{entry.AtUtc:O} {entry.Kind}: {entry.Message}"));
+                    log: entry => Diagnostic($"{entry.AtUtc:O} {entry.Kind}: {entry.Message}"),
+                    evidenceDirectory: runtime.EvidenceDirectory);
 
                 BrokerHostResult result;
                 try

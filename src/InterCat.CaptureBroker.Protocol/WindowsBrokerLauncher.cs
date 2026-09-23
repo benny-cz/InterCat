@@ -180,6 +180,10 @@ public static class WindowsBrokerLauncher
             + "If %ProgramData%\\InterCat exists and was not created by InterCat, an administrator must remove it.",
         4 => "The capture broker's ownership log is unreadable. It was left untouched for diagnosis; live capture "
             + "cannot start until an administrator repairs or removes it.",
+        6 => "Another live capture is already running on this computer. InterCat records one at a time: stop that "
+            + "capture or wait for it to finish, then try again.",
+        70 => "The capture broker stopped on an unexpected error. Anything it was recording is stopped and kept the "
+            + "next time a capture starts.",
         _ => $"The capture broker exited unexpectedly (code {exitCode}).",
     };
 

@@ -177,6 +177,35 @@ public sealed class BrokerHostTests
         Assert.Contains("InterruptedStartStopped", fixture.Diagnostics, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R16: a broker waits for a finishing predecessor and refuses cleanly while another one records")]
+    public async Task ASecondBrokerWaitsForThePredecessorThenRefusesWithoutCrashing()
+    {
+        using var fixture = ProcessFixture.Create();
+        using (WindowsBrokerRoot root = fixture.Reprovision())
+        using (new FileBrokerLifecycleStore(root))
+        {
+            // The predecessor keeps the ownership log for the whole wait: a clean refusal, not a crash.
+            int busy = await fixture.ServeAsync(CancellationToken.None, predecessorWait: TimeSpan.FromMilliseconds(600));
+            Assert.Equal(BrokerProcess.ExitAnotherBrokerRunning, busy);
+            Assert.Contains("one live capture runs at a time", fixture.Diagnostics, StringComparison.Ordinal);
+        }
+
+        FileBrokerLifecycleStore predecessor;
+        using (WindowsBrokerRoot root = fixture.Reprovision())
+        {
+            predecessor = new FileBrokerLifecycleStore(root);
+        }
+
+        // A predecessor that lets go during the wait is simply waited for.
+        using var shutdown = new CancellationTokenSource();
+        Task<int> serving = fixture.ServeAsync(shutdown.Token, predecessorWait: TimeSpan.FromSeconds(10));
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        predecessor.Dispose();
+        await fixture.Listening.WaitAsync(TimeSpan.FromSeconds(10));
+        await shutdown.CancelAsync();
+        Assert.Equal((int)InterCatExitCode.Success, await serving.WaitAsync(TimeSpan.FromSeconds(30)));
+    }
+
     [Fact]
     public async Task IdleHostExitsOnlyOnceNothingIsRecording()
     {
@@ -330,7 +359,10 @@ public sealed class BrokerHostTests
         public static ProcessFixture Create() =>
             new(TemporaryBrokerRoot.CreateTemporaryParent(), TemporaryBrokerRoot.PolicyForCurrentProcess());
 
-        public Task<int> ServeAsync(CancellationToken cancellationToken, Action<string>? beforeListening = null)
+        public Task<int> ServeAsync(
+            CancellationToken cancellationToken,
+            Action<string>? beforeListening = null,
+            TimeSpan? predecessorWait = null)
         {
             var options = new BrokerLaunchOptions(Owner, Guid.NewGuid(), TimeSpan.FromMinutes(5));
             var dependencies = new BrokerProcessDependencies(
@@ -349,7 +381,8 @@ public sealed class BrokerHostTests
                 {
                     beforeListening?.Invoke(path);
                     listening.TrySetResult(path.Replace(@"\\.\pipe\", "", StringComparison.Ordinal));
-                }));
+                },
+                predecessorWait));
         }
 
         public WindowsBrokerRoot Reprovision() => WindowsBrokerRoot.Provision(RootRequest());

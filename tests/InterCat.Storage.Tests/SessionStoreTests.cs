@@ -511,6 +511,35 @@ public sealed class SessionStoreTests
         Assert.Empty(session.Reopen().Recovery.OrphanFiles);
     }
 
+    [Fact(DisplayName = "I15: a publication interrupted at its pointer leaves only staging cleanup can remove")]
+    public void InterruptedPointerWriteLeavesMarkedStaging()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "InterCat.Storage.Tests.Pointer", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        try
+        {
+            Guid sessionId = Guid.NewGuid();
+            var failing = new PointerFailingDirectory(LocalOwnedDirectory.Open(path));
+            SessionStore store = SessionStore.Open(failing, sessionId, "pointer-tests");
+            using StoreStagingFile staged = Stage(store, "segment-0001.icats", "first");
+            _ = staged.Complete();
+
+            // A writer killed between writing the pointer's staging file and renaming it leaves it behind.
+            Assert.Throws<IOException>(() => store.Commit([staged], CommittedBoundary.None, Committed));
+            staged.Dispose();
+
+            SessionStore reopened = SessionStore.Open(LocalOwnedDirectory.Open(path), sessionId, "pointer-tests");
+            StagingCleanupReport cleanup = reopened.CleanupAbandonedStaging();
+
+            Assert.Empty(cleanup.UnmarkedFiles);
+            Assert.Empty(Directory.GetFiles(path, SessionStore.StagingPrefix + "*"));
+        }
+        finally
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "I15: staging cleanup leaves unmarked legacy files for manual review")]
     public void StagingCleanupSkipsUnmarkedLegacyFile()
     {
@@ -730,5 +759,26 @@ public sealed class SessionStoreTests
             {
             }
         }
+    }
+
+    /// <summary>Fails the current-pointer rename the way a killed writer would stop there; everything else is real.</summary>
+    private sealed class PointerFailingDirectory(IOwnedDirectory inner) : IOwnedDirectory
+    {
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string name, FileMode mode, FileAccess access, FileShare share, FileOptions options) =>
+            inner.OpenOwnedFile(name, mode, access, share, options);
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName)
+        {
+            if (destinationName == SessionPointerV1.FileName)
+            {
+                throw new IOException("Simulated interruption before the pointer was replaced.");
+            }
+
+            inner.ReplaceOwnedFile(sourceName, destinationName);
+        }
+
+        public bool RemoveOwnedFile(string name) => inner.RemoveOwnedFile(name);
     }
 }

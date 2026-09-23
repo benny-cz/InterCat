@@ -14,6 +14,7 @@ public sealed class BrokerConnectionDispatcher
     private readonly BrokerLifecycleCoordinator lifecycle;
     private readonly Guid serverInstanceId;
     private readonly string serverVersion;
+    private readonly Func<CaptureId, string?>? evidenceDirectory;
     private readonly Lock stateGate = new();
     private readonly HashSet<Guid> inFlight = [];
     private ConnectionState state;
@@ -23,8 +24,10 @@ public sealed class BrokerConnectionDispatcher
         BrokerPreparationCoordinator preparation,
         BrokerLifecycleCoordinator lifecycle,
         Guid serverInstanceId,
-        string serverVersion)
+        string serverVersion,
+        Func<CaptureId, string?>? evidenceDirectory = null)
     {
+        this.evidenceDirectory = evidenceDirectory;
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.preparation = preparation ?? throw new ArgumentNullException(nameof(preparation));
         this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
@@ -196,7 +199,7 @@ public sealed class BrokerConnectionDispatcher
     private static BrokerStartCaptureResponse ToResponse(BrokerStartOutcome outcome) =>
         new(outcome.Code, outcome.CaptureId, outcome.State, outcome.LeaseExpiresAtUtc, outcome.FailureReason);
 
-    private static BrokerWireResponse ToResponse(
+    private BrokerWireResponse ToResponse(
         CaptureId requestedCaptureId,
         BrokerCaptureOwnership? ownership) =>
         ownership is null
@@ -212,7 +215,8 @@ public sealed class BrokerConnectionDispatcher
                 ownership.UpdatedAtUtc,
                 ownership.LeaseExpiresAtUtc,
                 ownership.StopMilestones,
-                ownership.FailureReason);
+                ownership.FailureReason,
+                evidenceDirectory?.Invoke(ownership.CaptureId));
 
     private static BrokerStopCaptureResponse ToResponse(BrokerStopOutcome outcome) =>
         new(outcome.Code, outcome.CaptureId, outcome.State, outcome.Milestones, outcome.FailureReason);

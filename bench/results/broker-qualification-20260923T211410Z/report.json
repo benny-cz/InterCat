@@ -1,0 +1,176 @@
+{
+  "Schema": "intercat.broker-qualification.v1",
+  "StartedUtc": "2026-09-23T21:14:10.9803781+00:00",
+  "FinishedUtc": "2026-09-23T21:15:03.7222706+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "BrokerVersion": "1.0.0\u002B38fa3aa828950b6e1b298db2aaaa4f9ad0576b02",
+  "Passed": true,
+  "CleanStop": {
+    "Name": "clean-stop",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 131,
+    "RestartToListeningMilliseconds": null,
+    "PrepareMilliseconds": 222,
+    "StartMilliseconds": 259,
+    "StopMilliseconds": 996,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 151552,
+    "OwnedSessionsWhileRecording": 1,
+    "OrphanedSessionsAfterKill": [],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": true,
+      "JournalFinalized": true,
+      "AnalysisFinalized": true,
+      "FullyFinalized": true
+    },
+    "FailureReason": null,
+    "BrokerExitCode": 0,
+    "Evidence": {
+      "Generation": 3,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 3,
+      "JournaledRecords": 773,
+      "JournalBytes": 221302,
+      "Finalized": true
+    },
+    "Diagnostics": [
+      "2026-09-23T21:14:11.1153768\u002B00:00 Recovered: Recovery found nothing a previous broker left running.",
+      "2026-09-23T21:14:11.1200390\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.0671e34997ce478a9164cce72cc2e423.",
+      "2026-09-23T21:14:11.1264749\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 64188.",
+      "2026-09-23T21:14:16.6829025\u002B00:00 ClientEnded: Client disconnected.",
+      "2026-09-23T21:14:26.7949680\u002B00:00 Exiting: No client or active capture for 10 s; exiting."
+    ]
+  },
+  "KilledBroker": {
+    "Name": "killed-broker-restart",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 208,
+    "RestartToListeningMilliseconds": 325,
+    "PrepareMilliseconds": 193,
+    "StartMilliseconds": 198,
+    "StopMilliseconds": null,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 151552,
+    "OwnedSessionsWhileRecording": null,
+    "OrphanedSessionsAfterKill": [
+      "InterCat-b-6e703fda2b9a4c3e-8681914fdbb14ed295189e41f0f3cd95"
+    ],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": false,
+      "JournalFinalized": false,
+      "AnalysisFinalized": true,
+      "FullyFinalized": false
+    },
+    "FailureReason": "Interrupted: the broker recording this capture ended before finalizing it. The published prefix is kept: 1 journal chunk(s), 180,651 bytes, generation 1; records after the last publication were lost. Released 2 abandoned staging file(s). The previous process did not durably prove callback drain and no verified finalization marker does so. No capture-finalization marker (or legacy final coverage ledger) is committed.",
+    "BrokerExitCode": 1,
+    "Evidence": {
+      "Generation": 1,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 1,
+      "JournaledRecords": 616,
+      "JournalBytes": 180651,
+      "Finalized": false
+    },
+    "Diagnostics": [
+      "2026-09-23T21:14:27.1425817\u002B00:00 Recovered: Recovery found nothing a previous broker left running.",
+      "2026-09-23T21:14:27.1466705\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.3f1faee70bb741b780e89fe013f758c8.",
+      "2026-09-23T21:14:27.1529329\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 64188.",
+      "2026-09-23T21:14:31.9661733\u002B00:00 Recovered: Recovery stopped or retried 1 capture(s): 6e703fda2b9a4c3e8672e20167d88adb RestartedActiveCaptureStopRequested -\u003E Closed",
+      "2026-09-23T21:14:31.9698902\u002B00:00 Listening: Listening on \\\\.\\pipe\\InterCat.Broker.v1.7991dd81b7284c08ad0254ba85f2d832.",
+      "2026-09-23T21:14:31.9759202\u002B00:00 ClientConnected: Client connected: integrity 0x3000, elevated True, diagnostic PID 64188.",
+      "2026-09-23T21:14:31.9985201\u002B00:00 ClientEnded: Client disconnected.",
+      "2026-09-23T21:14:42.0881233\u002B00:00 Exiting: No client or active capture for 10 s; exiting."
+    ]
+  },
+  "Launcher": {
+    "Name": "launcher",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": 288,
+    "RestartToListeningMilliseconds": null,
+    "PrepareMilliseconds": 198,
+    "StartMilliseconds": 193,
+    "StopMilliseconds": null,
+    "PublicationIntervalMilliseconds": 2000,
+    "TrafficBytes": 77824,
+    "OwnedSessionsWhileRecording": 1,
+    "OrphanedSessionsAfterKill": [],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": {
+      "Requested": true,
+      "ProvidersStopped": true,
+      "CallbacksDrained": true,
+      "JournalFinalized": true,
+      "AnalysisFinalized": true,
+      "FullyFinalized": true
+    },
+    "FailureReason": null,
+    "BrokerExitCode": 0,
+    "Evidence": {
+      "Generation": 2,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 2,
+      "JournaledRecords": 571,
+      "JournalBytes": 172326,
+      "Finalized": true
+    },
+    "Diagnostics": []
+  },
+  "CliCapture": {
+    "Name": "cli-capture",
+    "Passed": true,
+    "LaunchToListeningMilliseconds": null,
+    "RestartToListeningMilliseconds": null,
+    "PrepareMilliseconds": null,
+    "StartMilliseconds": null,
+    "StopMilliseconds": 7742,
+    "PublicationIntervalMilliseconds": null,
+    "TrafficBytes": 0,
+    "OwnedSessionsWhileRecording": null,
+    "OrphanedSessionsAfterKill": [],
+    "OrphanedSessionsWhenListening": [],
+    "FinalState": "Closed",
+    "FinalMilestones": null,
+    "FailureReason": "The configured maximum capture duration elapsed; evidence was finalized.",
+    "BrokerExitCode": 0,
+    "Evidence": {
+      "Generation": 4,
+      "StagingFilesLeft": 0,
+      "JournalChunks": 3,
+      "JournaledRecords": 891,
+      "JournalBytes": 0,
+      "Finalized": true
+    },
+    "Diagnostics": [
+      ". Starting the capture broker. Windows asks for administrator approval to record system-wide events.",
+      ". Recording for up to 6 s into C:\\WINDOWS\\Temp\\claude\\E--InterCat\\4bec26e2-f98f-424f-8f07-04da82401b6c\\scratchpad\\bq11\\cli-session. Ctrl\u002BC stops early; everything published so far is kept."
+    ]
+  },
+  "LeakedSessions": [],
+  "Failure": null,
+  "Notes": [
+    "The broker child runs the production composition (real TraceEventSessionHost ETW, TDH plan source, file ownership log, evidence runtime, authenticated pipe) over a qualification root. Its only declared deviation from production is the root\u0027s parent directory.",
+    "The client is this elevated harness, so the pipe owner is an elevated token; the ordinary-integrity client path is covered by the pipe fixtures, not by this run."
+  ]
+}

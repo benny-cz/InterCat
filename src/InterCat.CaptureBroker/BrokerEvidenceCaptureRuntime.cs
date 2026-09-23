@@ -35,6 +35,10 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
         this.volumeProbe = volumeProbe ?? WindowsVolumeSpace.Probe;
     }
 
+    /// <summary>Where this capture's evidence is published; its owner may read and follow it but never write.</summary>
+    public string EvidenceDirectory(CaptureId captureId) =>
+        System.IO.Path.Combine(root.Path, $"capture-{captureId.Value:N}");
+
     public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -360,7 +364,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     private bool TryReleaseInterruptedCapture(BrokerCaptureOwnership ownership, out string summary)
     {
         const string Interrupted = "Interrupted: the broker recording this capture ended before finalizing it.";
-        if (!Directory.Exists(System.IO.Path.Combine(root.Path, $"capture-{ownership.CaptureId.Value:N}")))
+        if (!Directory.Exists(EvidenceDirectory(ownership.CaptureId)))
         {
             summary = $"{Interrupted} No evidence had been published.";
             return true;

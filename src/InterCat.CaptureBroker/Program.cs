@@ -30,6 +30,13 @@ try
 {
     return await BrokerProcess.RunAsync(args, Console.Out, Console.Error, shutdown.Token);
 }
+catch (Exception exception) when (exception is not OutOfMemoryException)
+{
+    // A failure nothing mapped still ends with a sentence and a code, never as an unexplained crash. The next broker's
+    // recovery stops anything this one left recording.
+    Console.Error.WriteLine($"The InterCat capture broker stopped on an unexpected error: {exception}");
+    return BrokerProcess.ExitUnexpected;
+}
 finally
 {
     finished.Set();

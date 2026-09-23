@@ -19,7 +19,7 @@ public sealed class DependencyDirectionTests
             ["InterCat.CaptureBroker.Protocol"] = ["InterCat.Domain"],
             ["InterCat.CaptureBroker"] = ["InterCat.Domain", "InterCat.CaptureBroker.Protocol", "InterCat.Storage", "InterCat.Capture.Windows", "InterCat.Capture.Recording"],
             ["InterCat.Desktop"] = ["InterCat.Domain", "InterCat.Application"],
-            ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal"],
+            ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal", "InterCat.CaptureBroker.Protocol"],
             ["InterCat.TestWorkloads"] = ["InterCat.Domain"],
         };
 

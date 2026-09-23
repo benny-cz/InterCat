@@ -10,5 +10,6 @@
     <ProjectReference Include="../InterCat.Storage/InterCat.Storage.csproj" />
     <ProjectReference Include="../InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
     <ProjectReference Include="../InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
+    <ProjectReference Include="../InterCat.CaptureBroker.Protocol/InterCat.CaptureBroker.Protocol.csproj" />
   </ItemGroup>
 </Project>

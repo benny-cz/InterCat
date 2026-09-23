@@ -28,6 +28,9 @@ Console.CancelKeyPress += (_, eventArgs) =>
 return args.FirstOrDefault() switch
 {
     "serve-child" => await Qualification.ServeChildAsync(args, cancellation.Token),
+
+    // As `icat capture --broker <this tool>` launches it: a broker over a qualification root beside the tool.
+    "serve" => await Qualification.ServeCliBrokerAsync(args, cancellation.Token),
     "run" => await Qualification.RunAsync(args, cancellation.Token),
     "impact" => await Qualification.ImpactAsync(args, cancellation.Token),
     _ => Qualification.Usage(),
@@ -37,6 +40,9 @@ return args.FirstOrDefault() switch
 internal static partial class Qualification
 {
     private const string RootName = "InterCat";
+
+    /// <summary>Where a broker launched by the CLI through this tool keeps its root; never the production parent.</summary>
+    public static string CliRootParent => Path.Combine(AppContext.BaseDirectory, "cli-qualification-root");
     private static readonly TimeSpan ListenTimeout = TimeSpan.FromSeconds(60);
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -69,6 +75,12 @@ internal static partial class Qualification
             },
         };
         return await BrokerProcess.ServeAsync(options, dependencies, Console.Out, Console.Error, cancellationToken);
+    }
+
+    public static Task<int> ServeCliBrokerAsync(string[] args, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(CliRootParent);
+        return ServeChildAsync(["serve-child", "--parent", CliRootParent, .. args[1..]], cancellationToken);
     }
 
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -121,6 +133,7 @@ internal static partial class Qualification
             report.CleanStop = await CleanStopAsync(parent, self, trafficSeconds, etw, cancellationToken);
             report.KilledBroker = await KilledBrokerAsync(parent, self, trafficSeconds, etw, cancellationToken);
             report.Launcher = await LauncherAsync(parent, self, etw, cancellationToken);
+            report.CliCapture = await CliCaptureAsync(output, etw, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -134,7 +147,8 @@ internal static partial class Qualification
                 && report.LeakedSessions.Count == 0
                 && report.CleanStop?.Passed == true
                 && report.KilledBroker?.Passed == true
-                && report.Launcher?.Passed == true;
+                && report.Launcher?.Passed == true
+                && report.CliCapture?.Passed == true;
             await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json), CancellationToken.None);
         }
 
@@ -275,6 +289,129 @@ internal static partial class Qualification
             && result.BrokerExitCode == 0
             && result.Evidence is { Finalized: true, JournaledRecords: > 0, StagingFilesLeft: 0 };
         return result;
+    }
+
+    /// <summary>
+    /// The CLI user path: <c>icat capture</c> launches this tool as its broker, captures a few seconds of loopback TCP,
+    /// follows the evidence into a new session and reports it. The session must be finished with records derived.
+    /// </summary>
+    private static async Task<ScenarioResult> CliCaptureAsync(
+        string output,
+        TraceEventSessionHost etw,
+        CancellationToken cancellationToken)
+    {
+        var result = new ScenarioResult { Name = "cli-capture" };
+        string? cli = FindSibling("InterCat.Cli", "InterCat.Cli.exe");
+        if (cli is null)
+        {
+            result.FailureReason = "InterCat.Cli.exe was not found; build src/InterCat.Cli first.";
+            return result;
+        }
+
+        string session = Path.Combine(output, "cli-session");
+        var start = new ProcessStartInfo(cli)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in new[] { "capture", session, "--duration", "6", "--broker", Environment.ProcessPath!, "--json" })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("icat did not start.");
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        Task traffic = Task.Run(async () =>
+        {
+            // Loopback traffic while the capture records, so the session has transport records to derive.
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            byte[] payload = new byte[2048];
+            while (!process.HasExited)
+            {
+                using var sender = new TcpClient();
+                Task<TcpClient> accepted = listener.AcceptTcpClientAsync(cancellationToken).AsTask();
+                await sender.ConnectAsync(IPAddress.Loopback, port, cancellationToken);
+                using TcpClient receiver = await accepted;
+                await sender.GetStream().WriteAsync(payload, cancellationToken);
+                await Task.Delay(100, cancellationToken);
+            }
+        }, cancellationToken);
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            timeout.CancelAfter(TimeSpan.FromSeconds(120));
+            await process.WaitForExitAsync(timeout.Token);
+        }
+
+        await traffic;
+        result.StopMilliseconds = stopwatch.ElapsedMilliseconds;
+        result.BrokerExitCode = process.ExitCode;
+        result.Diagnostics = [.. (await stderr).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        string json = await stdout;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            result.FailureReason = $"icat capture exited {process.ExitCode} without a result: " + string.Join(" | ", result.Diagnostics);
+            return result;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        result.FinalState = root.GetProperty("state").GetString();
+        result.FailureReason = root.TryGetProperty("reason", out JsonElement reason) ? reason.GetString() : null;
+        result.Evidence = new()
+        {
+            JournalChunks = root.GetProperty("derivedChunks").GetInt32(),
+            JournaledRecords = root.GetProperty("derivedRecords").GetInt64(),
+            Finalized = root.GetProperty("finished").GetBoolean(),
+            Generation = root.GetProperty("generation").GetInt64(),
+        };
+        result.Passed = process.ExitCode == 0
+            && result.Evidence is { Finalized: true, JournaledRecords: > 0 }
+            && result.FinalState == nameof(CaptureLifecycle.Closed);
+
+        // The CLI broker's root lives beside this tool; once that broker has idle-exited, remove it so a rerun starts clean.
+        foreach (Process broker in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!))
+            .Where(candidate => candidate.Id != Environment.ProcessId))
+        {
+            using (broker)
+            {
+                using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                idle.CancelAfter(TimeSpan.FromSeconds(30));
+                await broker.WaitForExitAsync(idle.Token);
+            }
+        }
+
+        try
+        {
+            Directory.Delete(CliRootParent, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return result;
+    }
+
+    private static string? FindSibling(string project, string executable)
+    {
+        for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            foreach (string configuration in (string[])["Release", "Debug"])
+            {
+                string candidate = Path.Combine(directory.FullName, "src", project, "bin", configuration, "net10.0", executable);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static async Task<CaptureId> StartAsync(
@@ -548,6 +685,7 @@ internal sealed class QualificationReport
     public ScenarioResult? CleanStop { get; set; }
     public ScenarioResult? KilledBroker { get; set; }
     public ScenarioResult? Launcher { get; set; }
+    public ScenarioResult? CliCapture { get; set; }
     public IReadOnlyList<string> LeakedSessions { get; set; } = [];
     public string? Failure { get; set; }
     public required IReadOnlyList<string> Notes { get; init; }

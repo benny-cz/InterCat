@@ -1,3 +1,4 @@
+using InterCat.Domain;
 using System.ComponentModel;
 using System.Runtime.Versioning;
 
@@ -38,7 +39,11 @@ public sealed record BrokerHostResult(
 
 public sealed record BrokerHostSettings
 {
-    public static readonly TimeSpan DefaultIdleExit = TimeSpan.FromMinutes(5);
+    /// <summary>
+    /// Ten seconds. A client cannot rediscover a broker it did not launch (each launch names a fresh pipe), so an idle
+    /// broker serves nobody; lingering only makes the next launch wait for the ownership log it still holds.
+    /// </summary>
+    public static readonly TimeSpan DefaultIdleExit = TimeSpan.FromSeconds(10);
 
     /// <summary>The single user and logon session the pipe admits.</summary>
     public required BrokerOwnerIdentity Owner { get; init; }
@@ -50,7 +55,8 @@ public sealed record BrokerHostSettings
 
     /// <summary>
     /// How long the broker stays up with no connected client and no active capture. An on-demand elevated broker must
-    /// not linger as an idle privileged process, and must not exit while it still holds an ETW session.
+    /// not linger as an idle privileged process, and must not exit while it still holds an ETW session. The period runs
+    /// only while nobody is connected and nothing records.
     /// </summary>
     public TimeSpan IdleExitAfter { get; init; } = DefaultIdleExit;
 
@@ -74,14 +80,17 @@ public sealed class BrokerHost
     private readonly BrokerHostSettings settings;
     private readonly TimeProvider clock;
     private readonly Action<BrokerHostEvent>? log;
+    private readonly Func<CaptureId, string?>? evidenceDirectory;
 
     public BrokerHost(
         BrokerPreparationCoordinator preparation,
         BrokerLifecycleCoordinator lifecycle,
         BrokerHostSettings settings,
         TimeProvider? clock = null,
-        Action<BrokerHostEvent>? log = null)
+        Action<BrokerHostEvent>? log = null,
+        Func<CaptureId, string?>? evidenceDirectory = null)
     {
+        this.evidenceDirectory = evidenceDirectory;
         this.preparation = preparation ?? throw new ArgumentNullException(nameof(preparation));
         this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
         this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -284,7 +293,8 @@ public sealed class BrokerHost
             preparation,
             lifecycle,
             settings.ServerInstanceId,
-            settings.ServerVersion);
+            settings.ServerVersion,
+            evidenceDirectory);
         try
         {
             await BrokerPipeConnectionProcessor.ProcessAsync(pipe.Stream, dispatcher, cancellationToken)

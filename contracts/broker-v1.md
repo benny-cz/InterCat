@@ -330,6 +330,9 @@ stderr and contain IDs, states and reasons only. The host keeps one pipe instanc
 disconnects each finished or refused client on that handle, so the name is never released. One client
 is served at a time.
 
+The idle period defaults to 10 s: each launch names a fresh pipe, so no other client can reach an
+idle broker, and lingering would only make the next launch wait for the ownership log. A new broker
+that finds the log held waits up to 15 s for a finishing predecessor before exiting with code 6.
 The host exits after the idle period with no connected client and no `Starting`/`Recording` capture
 (a partial stop does not keep it alive; the next recovery retries it; an unreadable store counts as
 active). On Ctrl+C, console close, logoff or shutdown it stops serving, stops the maintenance loop, then
@@ -342,6 +345,8 @@ stops every active capture with a durable `HostShutdownStop` request (kind 6) be
 | 2 | Malformed `serve` invocation |
 | 3 | Not `serve`, root refused (not elevated, untrusted owner) or pipe name already taken |
 | 4 | Ownership log unreadable; left untouched |
+| 6 | Another broker kept this machine's ownership log for the whole 15 s wait: one live capture at a time |
+| 70 | An unexpected error nothing mapped; the next broker's recovery stops what this one left |
 
 **Client obligation** (`WindowsBrokerPipeClient`): first-instance creation protects the broker from joining a
 squatter's pipe, not the client from connecting to one, and an elevated process's command line is
@@ -364,6 +369,16 @@ exits first, its exit code maps to the sentence in the table above. It connects 
 `BrokerLaunchFailure`: `BrokerNotInstalled`, `ElevationDeclined` (UAC cancelled; nothing started),
 `LaunchFailed`, `BrokerExited`, `NotListening`, `ServerNotTheBroker`. Disposing the connection closes
 the pipe only; it never stops a capture.
+
+### 5.7 Evidence location and ordinary-integrity follow
+
+`GetStatus` returns the capture's evidence directory (field 13, optional UTF-8 string of at most
+1,024 bytes, a fully qualified local path). Its owner may read it but never write it. A client follows it
+into a session of its own with `LiveSessionFollower`, which opens the evidence read-only: the writer
+creates the shared lease guard, so a viewer needs no write access, and a fixture proves the evidence
+is byte-for-byte unchanged by an ordinary-integrity follow. `icat capture` is that client. It ends its
+follow when the broker reports the capture `Closed` and one further pass mirrors nothing new. An
+interrupted capture never writes a finalization marker, so the marker alone cannot end the follow.
 
 ## 6. Threat model and current non-capabilities
 

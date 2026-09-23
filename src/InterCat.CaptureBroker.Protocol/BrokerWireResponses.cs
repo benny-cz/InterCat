@@ -104,6 +104,10 @@ public sealed record BrokerStartCaptureResponse(
     public override BrokerMessageType MessageType => BrokerMessageType.StartCapture;
 }
 
+/// <param name="EvidenceDirectory">
+/// Where the broker publishes this capture's evidence, which its owner may read (never write) and follow into a session
+/// of their own (field 13, optional). Absent from a broker that predates the field.
+/// </param>
 public sealed record BrokerCaptureStatusResponse(
     CaptureId CaptureId,
     CaptureLifecycle State,
@@ -112,7 +116,8 @@ public sealed record BrokerCaptureStatusResponse(
     DateTimeOffset UpdatedAtUtc,
     DateTimeOffset LeaseExpiresAtUtc,
     BrokerStopMilestones StopMilestones,
-    string? FailureReason) : BrokerWireResponse
+    string? FailureReason,
+    string? EvidenceDirectory = null) : BrokerWireResponse
 {
     public override BrokerMessageType MessageType => BrokerMessageType.GetStatus;
 }
@@ -151,8 +156,9 @@ public static class BrokerWireResponseCodec
     private static readonly IReadOnlySet<ushort> PrepareFields = Set(
         1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
         20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34);
+    private const int MaximumEvidenceDirectoryBytes = 1024;
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2, 3, 4, 5);
-    private static readonly IReadOnlySet<ushort> StatusFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+    private static readonly IReadOnlySet<ushort> StatusFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
     private static readonly IReadOnlySet<ushort> StopFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9);
     private static readonly IReadOnlySet<ushort> LeaseFields = Set(1, 2, 3, 4, 5);
 
@@ -343,6 +349,10 @@ public static class BrokerWireResponseCodec
         fields.WriteInt64(6, value.LeaseExpiresAtUtc.UtcTicks);
         WriteMilestones(fields, 7, value.StopMilestones);
         WriteOptionalReason(fields, 12, value.FailureReason);
+        if (value.EvidenceDirectory is not null)
+        {
+            fields.WriteString(13, value.EvidenceDirectory, required: false);
+        }
     }
 
     private static void WriteStop(BrokerWireFieldWriter fields, BrokerStopCaptureResponse value)
@@ -523,7 +533,8 @@ public static class BrokerWireResponseCodec
             ReadTime(fields.RequiredInt64(5), 5),
             ReadTime(fields.RequiredInt64(6), 6),
             ReadMilestones(fields, 7),
-            fields.OptionalString(12, 512));
+            fields.OptionalString(12, 512),
+            fields.OptionalString(13, MaximumEvidenceDirectoryBytes));
     }
 
     private static BrokerStopCaptureResponse ReadStop(ReadOnlySpan<byte> payload)
@@ -579,6 +590,14 @@ public static class BrokerWireResponseCodec
                 break;
             case BrokerCaptureStatusResponse status:
                 ValidateCapture(status.CaptureId);
+                if (status.EvidenceDirectory is { } evidence
+                    && (System.Text.Encoding.UTF8.GetByteCount(evidence) > MaximumEvidenceDirectoryBytes
+                        || !Path.IsPathFullyQualified(evidence)
+                        || evidence.Any(char.IsControl)))
+                {
+                    throw new InvalidDataException("A capture's evidence directory must be a fully qualified local path.");
+                }
+
                 RequireDigest(status.PlanDigest);
                 RequireEnum(status.State, nameof(status.State));
                 ValidateTimes(status.CreatedAtUtc, status.UpdatedAtUtc, status.LeaseExpiresAtUtc);

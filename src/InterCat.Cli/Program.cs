@@ -29,6 +29,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "measure" => await MeasureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "record" => await RecordCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "capture" when OperatingSystem.IsWindows() => await CaptureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -96,6 +97,11 @@ static void PrintHelp()
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
     ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
     ConsoleUi.Line("      measure udp takes --sockets instead of --connections and runs the UDP workload.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
+    ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--broker <exe>] [--json]");
+    ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
+    ConsoleUi.Line("      (Windows asks for approval) and this process derives the session. Ctrl+C stops early.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
     ConsoleUi.Line("              [--duration <seconds>] [--json]");

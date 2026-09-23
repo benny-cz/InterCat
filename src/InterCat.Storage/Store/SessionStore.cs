@@ -1800,25 +1800,41 @@ public sealed class SessionStore
     /// <summary>
     /// Writes one small immutable document through a staging name and a replacing rename, so a reader
     /// sees either the previous complete file or the new complete one and never a half-written name.
+    /// The staging file carries an ownership marker like every staged dependency: a writer killed between
+    /// the write and the rename otherwise leaves an unmarked file that no cleanup can prove abandoned
+    /// (found when a qualification run killed a live broker mid-publication).
     /// </summary>
     private static void Write<T>(IOwnedDirectory directory, string name, T document, JsonSerializerOptions options)
     {
         byte[] payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(document, options));
-        string stagingName = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{StagingPrefix}{Guid.NewGuid():N}{StagingSuffix}");
-        using (FileStream stream = directory.OpenOwnedFile(
-            stagingName,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            FileOptions.WriteThrough))
+        string prefix = string.Create(CultureInfo.InvariantCulture, $"{StagingPrefix}{Guid.NewGuid():N}");
+        string stagingName = prefix + StagingSuffix;
+        string ownershipName = prefix + StagingOwnershipSuffix;
+        using (directory.OpenOwnedFile(
+            ownershipName, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, FileOptions.None))
         {
-            stream.Write(payload);
-            stream.Flush(flushToDisk: true);
+            using (FileStream stream = directory.OpenOwnedFile(
+                stagingName,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                FileOptions.WriteThrough))
+            {
+                stream.Write(payload);
+                stream.Flush(flushToDisk: true);
+            }
+
+            directory.ReplaceOwnedFile(stagingName, name);
         }
 
-        directory.ReplaceOwnedFile(stagingName, name);
+        try
+        {
+            _ = directory.RemoveOwnedFile(ownershipName);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The document is published. A marker left behind is marker-only staging, which cleanup removes.
+        }
     }
 
     private static T? Read<T>(IOwnedDirectory directory, string name)

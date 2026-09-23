@@ -1,12 +1,56 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 84
+Plan revision: 85
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: protocol library, client launcher, opt-in removed
+## Latest slice: `icat capture` from an ordinary prompt
+
+`icat capture <new-session-dir> [--duration s] [--profile explore|focused-transport --mechanism tcp --pid a,b]
+[--broker exe] [--json]` does the following:
+
+1. Launches the broker through `WindowsBrokerLauncher`; Windows asks for approval.
+2. Prepares with `Live` publication and prints the effective summary in readable units: profile, sources, stop limits,
+   the free space it keeps, publication cadence, and what is and is not collected.
+3. Starts the capture and reads the evidence directory from status (new optional field 13).
+4. Follows that evidence into the user's own session, renewing the owner lease.
+5. Ends at the duration, or on Ctrl+C: it requests the stop, then derives everything published.
+6. Reports records, chunks and generation with an `icat session` hint. Exit 0 when complete, 1 when kept partially.
+
+The follow ends on the broker reporting the capture closed, because an interrupted capture never writes a
+finalization marker. In a development build, `--broker` points at the broker executable, since packaging it beside
+`icat` is installer work (M5).
+
+A new fixture proves the premise: an ordinary-integrity (lowered-token) follower derives a session from a real broker
+capture's protected evidence and leaves it byte-for-byte unchanged.
+
+Defects found and fixed along the way:
+- **Unmarked staging** (`SessionStore.Write<T>`, used for manifests and pointers): a kill between write and rename left
+  a `stg-*.tmp` no cleanup could prove abandoned. Qualification hit it once in four killed-broker runs. Every staging
+  file now carries an ownership marker. A regression test injects an interrupted pointer rename and requires cleanup to
+  leave nothing behind.
+- **Second capture crashed the broker**: clients cannot rediscover a broker they did not launch, yet idle brokers held
+  the ownership log for 5 minutes, so a new broker hit a sharing violation and crashed. The idle exit is now 10 s. A new
+  broker waits up to 15 s for a finishing predecessor, then exits with code 6 and a sentence. Unmapped failures exit 70
+  with a message instead of crashing. The launcher explains codes 6 and 70.
+
+Tests: the lowered-token follow; the interrupted pointer write; waiting for, then refusing past, a predecessor; launcher
+explanations. All 768 tests pass in Debug and Release. Real-ETW qualification now covers four scenarios, all passing
+with no session leaked (`bench/results/broker-qualification-20260923T211410Z`):
+- clean stop;
+- killed broker (closed as interrupted, 2 staging files released);
+- launcher;
+- `icat capture` (891 records derived, finished, exit 0; its broker idle-exited on its own).
+
+Known gaps: Ctrl+C in `icat capture` is implemented but not yet covered by an automated test. One live capture per
+machine is a v1 limit (plan revision 85).
+
+Next: the Desktop's one-action start (§3.1): a start control that launches the broker, shows the effective summary and
+the designed permission/unavailable states, and follows the capture into the live workspace.
+
+## Previous slice: protocol library, client launcher, opt-in removed
 
 Protocol v1 moved into a new `InterCat.CaptureBroker.Protocol` library that references only Domain. It holds the frame,
 field, request and response codecs, the shared stop, operation, refusal and grant types, token identity, the pipe

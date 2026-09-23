@@ -83,7 +83,9 @@ one of them is reproducible from the recorded seed and level.
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a
 qualification root beneath `--output`, drives it through `WindowsBrokerPipeClient`, and runs a clean stop and
-a killed-broker restart. It stops every session it started and fails if any `InterCat-b-*` session leaks.
+a killed-broker restart, the production launcher path, and `icat capture` end to end (the tool doubles as
+the CLI's `--broker`, keeping a qualification root beside itself). It stops every session it started and
+fails if any `InterCat-b-*` session leaks. Build `src/InterCat.Cli` first.
 
 ```powershell
 dotnet run --project tools/InterCat.BrokerQualification/InterCat.BrokerQualification.csproj -c Release -- `
