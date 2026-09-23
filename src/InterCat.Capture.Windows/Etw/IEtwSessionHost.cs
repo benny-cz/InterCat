@@ -115,3 +115,14 @@ public interface IEtwSessionHost
     /// </summary>
     IOwnedEtwSession CreateExclusive(OwnedSessionPlan plan);
 }
+
+/// <summary>
+/// Reclaims an ETW session after the process that created it died. The caller must first verify the
+/// name and token against its protected, durable ownership record; this adapter also checks the name's
+/// token shape and never creates or restarts a session during recovery.
+/// </summary>
+public interface IEtwSessionReclaimer
+{
+    /// <summary>Returns false only when the exact session was already absent.</summary>
+    bool StopPreviouslyOwnedSession(string sessionName, Guid ownershipToken);
+}

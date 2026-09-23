@@ -28,6 +28,20 @@ public sealed class OwnedCaptureSessionTests
             captureId, name, token, 0, created));
     }
 
+    [Fact]
+    public void RecoveryStopRejectsNamesWithoutMatchingDurableToken()
+    {
+        var host = new TraceEventSessionHost();
+        Guid token = Guid.NewGuid();
+        string current = $"InterCat-b-{Guid.NewGuid().ToString("N")[..16]}-{token:N}";
+        string legacy = $"InterCat-broker-{Guid.NewGuid():N}-{token:N}"[..64];
+
+        Assert.Throws<ArgumentException>(() => host.StopPreviouslyOwnedSession("OtherTool", token));
+        Assert.Throws<ArgumentException>(() => host.StopPreviouslyOwnedSession(current, Guid.NewGuid()));
+        Assert.Throws<ArgumentException>(() => host.StopPreviouslyOwnedSession(legacy, Guid.NewGuid()));
+        Assert.Throws<ArgumentException>(() => host.StopPreviouslyOwnedSession(current, Guid.Empty));
+    }
+
     private static OwnedSessionPlan BuildPlan(int queueCapacity = 1_024)
     {
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("test", 4242);

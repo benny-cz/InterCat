@@ -5,12 +5,97 @@ using Microsoft.Diagnostics.Tracing.Session;
 namespace InterCat.Capture.Windows;
 
 /// <summary>
-/// The live ETW host. It creates a uniquely named real-time session, never restarts or adopts an existing
-/// one, and stops only the session it created (section 9.2, P14).
+/// The live ETW host. A new capture creates a uniquely named real-time session and never restarts or
+/// adopts an existing one. Recovery may attach only to the exact token-shaped name from a durable
+/// broker ownership record, to stop an orphan from the former process (section 9.2, P14).
 /// </summary>
-public sealed class TraceEventSessionHost : IEtwSessionHost
+public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaimer
 {
+    private const string CurrentBrokerPrefix = "InterCat-b-";
+    private const string LegacyBrokerPrefix = "InterCat-broker-";
+
     public bool? IsElevated => OperatingSystem.IsWindows() ? TraceEventSession.IsElevated() : false;
+
+    /// <inheritdoc />
+    public bool StopPreviouslyOwnedSession(string sessionName, Guid ownershipToken)
+    {
+        if (!IsBrokerOwnershipName(sessionName, ownershipToken))
+        {
+            throw new ArgumentException(
+                "Recovery requires an exact InterCat broker session name containing its durable ownership token.",
+                nameof(sessionName));
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("ETW recovery requires Windows.");
+        }
+
+        if (!ListActiveSessionNames().Contains(sessionName, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Attach never creates or replaces a session. A name collision remains a refusal rather
+            // than the default TraceEventSession constructor's stop-and-recreate behavior.
+            using var attached = new TraceEventSession(sessionName, TraceEventSessionOptions.Attach)
+            {
+                StopOnDispose = false,
+            };
+            attached.Stop(noThrow: false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // A concurrent stop is harmless, but an inaccessible session that still exists is not.
+            if (!ListActiveSessionNames().Contains(sessionName, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            throw new EtwSessionException(
+                $"The previously owned ETW session '{sessionName}' could not be stopped: {exception.Message}",
+                exception);
+        }
+
+        if (ListActiveSessionNames().Contains(sessionName, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new EtwSessionException(
+                $"The previously owned ETW session '{sessionName}' still exists after its stop request.");
+        }
+
+        return true;
+    }
+
+    internal static bool IsBrokerOwnershipName(string? name, Guid token)
+    {
+        if (token == Guid.Empty || name is null)
+        {
+            return false;
+        }
+
+        string hex = token.ToString("N");
+        if (name.StartsWith(CurrentBrokerPrefix, StringComparison.Ordinal))
+        {
+            ReadOnlySpan<char> remainder = name.AsSpan(CurrentBrokerPrefix.Length);
+            return remainder.Length == 16 + 1 + 32
+                && remainder[16] == '-'
+                && remainder[..16].ToString().All(Uri.IsHexDigit)
+                && remainder[17..].SequenceEqual(hex);
+        }
+
+        if (name.StartsWith(LegacyBrokerPrefix, StringComparison.Ordinal))
+        {
+            ReadOnlySpan<char> remainder = name.AsSpan(LegacyBrokerPrefix.Length);
+            return remainder.Length == 32 + 1 + 15
+                && remainder[32] == '-'
+                && remainder[..32].ToString().All(Uri.IsHexDigit)
+                && remainder[33..].SequenceEqual(hex.AsSpan(0, 15));
+        }
+
+        return false;
+    }
 
     public IReadOnlyList<string> ListActiveSessionNames()
     {

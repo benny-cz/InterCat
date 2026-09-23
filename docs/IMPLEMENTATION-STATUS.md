@@ -1,12 +1,27 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 69
+Plan revision: 70
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: the evidence recorder signals when it is ready
+## Latest slice: exact-name ETW orphan-stop adapter
+
+`TraceEventSessionHost` now has a recovery-only stop path for a previously owned broker ETW session. It rejects a
+name whose current or legacy shape does not match the durable token before touching ETW, attaches to the exact
+active name without creating or restarting it, requests stop, then checks that the name disappeared. An absent
+session is idempotent; an inaccessible session still present is a failure, not a claimed stop. The broker runtime
+must validate the name against the capture ID and protected ownership log before calling this adapter.
+
+The shape/refusal path is tested, and all 692 tests pass in Debug and Release. An elevated live crash/restart
+exercise is still required before this path can justify enabling the broker executable.
+
+Next: compose `IBrokerCaptureRuntime` with the evidence-only recorder, protected capture directory and orphan-stop
+adapter. Define honest partial journal finalization after a process crash; enforce duration, journal and free-disk
+quotas before enabling any broker command, then exercise the authenticated pipe and recovery together.
+
+## Previous slice: the evidence recorder signals when it is ready
 
 `LiveRecorder.RecordAsync` now offers a one-shot `onReady` callback for an asynchronous broker start. It fires only
 after the ETW session has started, the source clock and first journal stage are ready, and the dedicated writer
