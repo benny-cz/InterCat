@@ -224,11 +224,16 @@ public sealed partial class MainWindow : Window, IDisposable
         if (update.Overview is { } overview
             && (overview.SessionId != displayedSessionId || overview.Generation > displayedGeneration))
         {
+            WorkspaceNavigationMemento? savedNavigation = overview.SessionId == displayedSessionId
+                ? workspace.CaptureNavigation() : null;
             displayedSessionId = overview.SessionId;
             displayedGeneration = overview.Generation;
-            ProcessInstanceId? selected = workspace.SelectedProcess?.Id;
             var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
-            if (selected is { } id) replacement.SelectProcess(id);
+            if (savedNavigation is not null
+                && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
+            {
+                CaptureDetail.Text += " " + navigationNotice;
+            }
             workspace.PropertyChanged -= OnWorkspaceChanged;
             workspace.Dispose();
             workspace = replacement;

@@ -9,6 +9,14 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
+/// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
+public sealed record WorkspaceNavigationMemento(
+    IReadOnlyList<NavigationState> Breadcrumb,
+    ProcessInstanceId? SelectedProcess,
+    TimeRange? SelectedInterval,
+    string? SelectedRungKey,
+    bool ShowTables);
+
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly GraphLayoutScheduler graphLayout = new();
@@ -58,7 +66,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         Relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
         Intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
-        selectedProcess = Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
+        selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
         if (selectedProcess is not null)
         {
             selection.SelectProcess(selectedProcess.Id);
@@ -72,6 +80,133 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public WorkspaceSnapshot Snapshot { get; }
 
     public string WorkspaceDisclosure => workspaceDisclosure;
+
+    /// <summary>Captures navigation independently of an evidence generation, for a same-session refresh only.</summary>
+    public WorkspaceNavigationMemento CaptureNavigation() => new(
+        [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
+        selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables);
+
+    /// <summary>
+    /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
+    /// nearest surviving ancestor and says so. A whole-extent viewport follows the new extent; a deliberate brush
+    /// keeps its exact half-open range where retained, or reports clipping (R7, I3).
+    /// </summary>
+    public string? RestoreNavigation(WorkspaceNavigationMemento saved)
+    {
+        ArgumentNullException.ThrowIfNull(saved);
+        if (saved.Breadcrumb.Count == 0)
+        {
+            throw new ArgumentException("Navigation needs a machine rung.", nameof(saved));
+        }
+        if (ladder.Depth != 0)
+        {
+            throw new InvalidOperationException("Navigation can only be restored into a fresh workspace.");
+        }
+        ShowTables = saved.ShowTables;
+        NavigationState[] old = [.. saved.Breadcrumb];
+        if (old[0].Level != DetailLevel.Machine || old[0].Focus is not null)
+        {
+            throw new ArgumentException("Navigation must begin at the machine rung.", nameof(saved));
+        }
+        TimeRange previousExtent = old[0].Viewport;
+        var notices = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 1; index < old.Length; index++)
+        {
+            NavigationState previous = old[index - 1];
+            NavigationState target = old[index];
+            TimeRange viewport = Rebase(target.Viewport, previousExtent, Snapshot.Extent,
+                out bool clipped, out bool lost);
+            if (lost)
+            {
+                notices.Add("The previous time viewport is no longer retained; showing the current extent.");
+            }
+            else if (clipped)
+            {
+                notices.Add("The previous time viewport was clipped to retained evidence.");
+            }
+
+            LadderDescent? descent = null;
+            if (target.Level == DetailLevel.Evidence
+                && (previous.Focus is null && target.Focus?.Key == "machine"
+                    || previous.Focus is { } focus && target.Focus?.Key == focus.Key))
+            {
+                descent = LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+            }
+            else if (target.Focus is { } targetFocus)
+            {
+                LadderRow? row = LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(
+                    candidate => candidate.Key == targetFocus.Key && candidate.DescendsTo == target.Level);
+                if (row is not null)
+                {
+                    descent = LadderProjection.DescentFor(row, ladder.Current, viewport);
+                }
+            }
+
+            if (descent is null || !ladder.TryDescend(descent, out _))
+            {
+                notices.Add($"The previous {NavigationState.Name(target.Level).ToLowerInvariant()} focus is not in this "
+                    + "generation; returned to the nearest available rung.");
+                break;
+            }
+
+            foreach (ImpliedFilter filter in ladder.Current.Filters.ToArray())
+            {
+                if (!target.Filters.Any(oldFilter => oldFilter.Field == filter.Field))
+                {
+                    _ = ladder.TryRemoveFilter(filter.Field);
+                }
+            }
+        }
+
+        AfterNavigation();
+        SelectedRung = ladder.Depth == old.Length - 1
+            ? RungRows.FirstOrDefault(row => row.Key == saved.SelectedRungKey)
+            : null;
+        ProcessNode? process = Snapshot.Processes.FirstOrDefault(node => node.Id == saved.SelectedProcess);
+        SelectedProcess = process;
+        if (saved.SelectedProcess is not null && process is null)
+        {
+            notices.Add("The selected process is not in this generation; the selection was cleared.");
+        }
+
+        if (saved.SelectedInterval is { } interval)
+        {
+            long start = Math.Max(interval.StartTicks, Snapshot.Extent.StartTicks);
+            long end = Math.Min(interval.EndTicks, Snapshot.Extent.EndTicks);
+            if (end <= start)
+            {
+                notices.Add("The selected time interval is outside retained evidence; its selection was cleared.");
+            }
+            else
+            {
+                if (start != interval.StartTicks || end != interval.EndTicks)
+                {
+                    notices.Add("The selected time interval was clipped to retained evidence.");
+                }
+
+                SelectInterval(new(start, end));
+            }
+        }
+
+        return notices.Count == 0 ? null : string.Join(" ", notices);
+    }
+
+    private static TimeRange Rebase(
+        TimeRange old, TimeRange previousExtent, TimeRange currentExtent, out bool clipped, out bool lost)
+    {
+        if (old == previousExtent)
+        {
+            clipped = false;
+            lost = false;
+            return currentExtent;
+        }
+
+        long start = Math.Max(old.StartTicks, currentExtent.StartTicks);
+        long end = Math.Min(old.EndTicks, currentExtent.EndTicks);
+        clipped = start != old.StartTicks || end != old.EndTicks;
+        lost = end <= start;
+        return !lost ? new(start, end) : currentExtent;
+    }
 
     /// <summary>Stable graph coordinates, separate from evidence, time scope and the window transform.</summary>
     public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; private set; }

@@ -6,7 +6,24 @@ Current milestone: M1 — evidence and persistence foundation. M0 and its explic
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: Desktop one-action Explore and saved-session opening
+## Latest slice: stable navigation across live generations
+
+The Desktop now captures the current ladder, visible filters, selected row/process, time brush and table mode before
+applying a newer generation **of the same session**. It replays stable keys against the new immutable snapshot, not
+row positions. A whole-extent viewport follows the new extent; a deliberate brush keeps its exact half-open time
+range where retained. If retention clips or removes that range, or a focused entity disappears, the viewer stops at
+the nearest surviving context and says what changed. It never moves an expired brush onto unrelated evidence. A
+different session starts fresh, so stale intent cannot cross sessions.
+
+Four new Desktop tests cover same-session continuity, a removed focus, an expired brush and the direct evidence jump.
+All 776 tests pass in Debug and Release on this host after the final regression run. No real Desktop/UAC qualification
+has yet been performed.
+
+Next: real-session channel, operation and exact-record projection from one leased generation, followed by a packaged
+Desktop/broker end-to-end run and §3.1 first-feedback measurement. The provisional graph bound and wider mechanism
+coverage remain separate plan work.
+
+## Previous slice: Desktop one-action Explore and saved-session opening
 
 The Desktop now launches into an **empty, truthful workspace**, with a focused `Start exploring` action (`Ctrl+R`).
 There is no profile or destination dialog. Explore defaults to 10 minutes, a 1 GiB journal cap, 1 GiB free-space
@@ -28,14 +45,14 @@ the focused action and absence of synthetic evidence. The ordinary-integrity fol
 destination remains writable when tests run from high-integrity `C:\Windows\Temp`. All 772 tests pass in Debug and
 Release on this host; the Desktop/UAC end-to-end path has not yet been run.
 
-**Not yet the §3.1 exit gate:** the viewer has no real channel, operation or exact-record projection (L3-L5), and a
-generation refresh still resets the rung/viewport. The 3-second useful-feedback budget is unmeasured. The broker is
+**Not yet the §3.1 exit gate:** the viewer has no real channel, operation or exact-record projection (L3-L5). The
+3-second useful-feedback budget is unmeasured. The broker is
 not packaged beside the Desktop development output, so an end-to-end Desktop/UAC run is not yet qualified. The
 Desktop's transitive `Capture.Journal` dependency still carries the Windows adapter, even though no privileged work
 runs in the viewer; a follower-only library would make this boundary cleaner. Do not describe this as a fully live
 whole-system viewer.
 
-Next: preserve rung/viewport across generation changes; project channels, operations and evidence from a leased
+Next (as of this previous slice): preserve rung/viewport across generation changes; project channels, operations and evidence from a leased
 generation with the same query identity as the overview; package or explicitly stage the broker beside Desktop and run
 the real UAC/stop/close/reopen qualification. Then measure §3.1's first-feedback budget and the 10-minute close/crash
 case. Wider mechanisms and the remaining plan gates still follow.
@@ -1447,7 +1464,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 - Explore currently means process lifecycle plus TCPv4 metadata on this machine. RPC, ALPC and named-pipe entries remain visible optional requests but are omitted because their capture impact is unmeasured; this is intentionally narrower than the final §9.4 breadth. `icat profiles explore` is the source of truth for the effective set before capture.
 - Focused transport compiles measured TCP. Without PIDs it requests all-process TCP metadata; with PIDs it preserves those PIDs as initial-view focus but blocks until wider collection is accepted, because network delivery is not PID-filtered and lifecycle context remains whole-machine. UDP and RPC are refused without TCP fallback. Content has a bounded request-only preview but cannot start: RPC debug descriptors 10/11 remain denied, their fragment semantics/scope are not production contracts, and no payload-specific impact series exists. Content is not silently mapped to metadata-only capture, inspection consent does not imply collection or export, and `--diagnostic-etl` blocks because the product path does not yet create a separately governed, potentially content-bearing original ETL. Timing and Flight recorder remain unavailable.
 - Four of the ten §12 budgets are measured and six have no stage to measure them. Three measured budgets are met; sustained ingest is the only miss, at roughly a tenth of target in the current call-stack series. Callback admission and its attributed allocation slope are both met; the larger managed-adapter dispatch allocation remains separate IC-019 evidence, not a failed callback-allocation budget.
-- The Desktop now starts empty and can show a real published L0-L2 session overview. The deterministic synthetic tour remains only as an explicit test fixture. Real L3-L5 projection, navigation continuity across generations, the 3-second feedback measurement and a broker-beside-Desktop packaging/qualification run remain outstanding.
+- The Desktop now starts empty and can show a real published L0-L2 session overview. The deterministic synthetic tour remains only as an explicit test fixture. Real L3-L5 projection, the 3-second feedback measurement and a broker-beside-Desktop packaging/qualification run remain outstanding; same-session navigation intent now survives generation changes where its keys and time range still exist.
 - The graph and the timeline do not change with the ladder's rung. At a channel rung the graph still draws the whole machine, which §3.2 does not permit in a finished product; per-level composition needs IC-017's deterministic layout and is recorded as defect 16 in the review.
 - The broker root is refused, not repaired, when an untrusted principal owns it. `%ProgramData%` lets any user create an entry, so an ordinary-integrity process can create `%ProgramData%\InterCat` before the broker first runs and the broker will then refuse to start with that owner named. That is the safe outcome and it is a denial of service until the directory is removed or installation pre-creates it; no installer exists yet.
 - The root's security is validated at provisioning and pinned by an open handle that refuses rename and delete. Nothing re-validates the descriptor afterwards, so an administrator or SYSTEM process can still loosen it while the broker runs. That is inside the trust boundary by construction - both are already broker principals - but it means the guarantee is "validated at open and un-renameable", not "continuously enforced".
