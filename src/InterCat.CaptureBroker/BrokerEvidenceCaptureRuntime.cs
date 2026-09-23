@@ -1,0 +1,328 @@
+using System.Runtime.Versioning;
+using InterCat.Capture.Recording;
+using InterCat.Capture.Windows;
+using InterCat.Domain;
+using InterCat.Storage;
+
+namespace InterCat.CaptureBroker;
+
+/// <summary>
+/// Privileged, evidence-only capture runtime. It never derives rows or adopts an existing evidence directory.
+/// The executable is still disabled: its host must persist autonomous quota stops and prove the full pipe/restart
+/// sequence before this runtime can serve users.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IAsyncDisposable
+{
+    private readonly WindowsBrokerRoot root;
+    private readonly IEtwSessionHost host;
+    private readonly IEtwSessionReclaimer reclaimer;
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly Dictionary<CaptureId, ActiveCapture> active = [];
+    private bool disposed;
+
+    public BrokerEvidenceCaptureRuntime(
+        WindowsBrokerRoot root,
+        IEtwSessionHost host,
+        IEtwSessionReclaimer reclaimer)
+    {
+        this.root = root ?? throw new ArgumentNullException(nameof(root));
+        this.host = host ?? throw new ArgumentNullException(nameof(host));
+        this.reclaimer = reclaimer ?? throw new ArgumentNullException(nameof(reclaimer));
+    }
+
+    public async Task<BrokerRuntimeStartOutcome> StartAsync(
+        BrokerCaptureOwnership ownership,
+        PreparedCapturePlan plan,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(ownership);
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!ownership.Session.IsValidFor(ownership.CaptureId)
+            || !ownership.Session.HasFullTokenInName
+            || !string.Equals(ownership.PlanDigest, plan.Digest, StringComparison.Ordinal)
+            || plan.Quota.Validate() is not null
+            || plan.Retention != BrokerRetentionPolicy.StopAtLimit)
+        {
+            return new(false, "The durable capture ownership, prepared digest or operational limits are invalid.");
+        }
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (active.ContainsKey(ownership.CaptureId))
+            {
+                return new(false, "This capture is already running in the broker.");
+            }
+
+            if (!HasFreeReserve(root.Path, plan.Quota.MinimumFreeDiskBytes, out string? diskProblem))
+            {
+                return new(false, diskProblem);
+            }
+
+            WindowsBrokerRoot captureRoot = root.OpenCaptureDirectory(ownership.CaptureId);
+            if (!captureRoot.Report.CreatedByThisBroker)
+            {
+                captureRoot.Dispose();
+                return new(false, "The capture evidence directory already exists; a new start cannot adopt its contents.");
+            }
+
+            var capture = new ActiveCapture(captureRoot);
+            active.Add(ownership.CaptureId, capture);
+            bool acknowledged = false;
+            try
+            {
+                var identity = CaptureSessionIdentity.FromDurableOwnership(
+                    ownership.CaptureId,
+                    ownership.Session.SessionName,
+                    ownership.Session.OwnershipToken,
+                    Environment.ProcessId,
+                    ownership.CreatedAtUtc);
+                var sessionPlan = new OwnedSessionPlan
+                {
+                    Identity = identity,
+                    Providers = plan.Providers,
+                    Sources = plan.Sources,
+                    Admission = plan.EffectiveAdmission,
+                    MaximumDuration = TimeSpan.FromSeconds(plan.Quota.MaximumDurationSeconds),
+                    PreserveExtendedData = plan.PreserveExtendedData,
+                };
+                SessionStore store = SessionStore.Open(captureRoot, ownership.CaptureId.Value, plan.Digest);
+                if (store.Current is not null)
+                {
+                    throw new InvalidDataException("A new capture directory unexpectedly contains a published generation.");
+                }
+
+                capture.Stop.CancelAfter(sessionPlan.MaximumDuration);
+                capture.Run = LiveRecorder.RecordAsync(
+                    sessionPlan,
+                    host,
+                    store,
+                    token => MonitorFreeDiskAsync(capture, plan.Quota.MinimumFreeDiskBytes, token),
+                    ownership.CreatedAtUtc,
+                    publishEvery: null,
+                    derive: null,
+                    onReady: _ => capture.Ready.TrySetResult(),
+                    maximumJournalBytes: plan.Quota.MaximumJournalBytes,
+                    cancellationToken: capture.Stop.Token);
+
+                Task first = await Task.WhenAny(capture.Ready.Task, capture.Run).ConfigureAwait(false);
+                if (first == capture.Ready.Task && !capture.Run.IsCompleted)
+                {
+                    acknowledged = true;
+                    return new(true);
+                }
+
+                LiveCaptureResult result = await capture.Run.ConfigureAwait(false);
+                return new(false, result.Start.FailureReason ?? "Capture stopped before its start could be acknowledged.");
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                try
+                {
+                    _ = reclaimer.StopPreviouslyOwnedSession(
+                        ownership.Session.SessionName, ownership.Session.OwnershipToken);
+                }
+                catch (Exception cleanup) when (cleanup is not OutOfMemoryException)
+                {
+                    return new(false, $"Capture start failed: {exception.Message}; owned-session cleanup failed: {cleanup.Message}");
+                }
+
+                return new(false, $"Capture start failed: {exception.Message}");
+            }
+            finally
+            {
+                if (!acknowledged)
+                {
+                    active.Remove(ownership.CaptureId);
+                    capture.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<BrokerRuntimeStopOutcome> StopAsync(
+        BrokerCaptureOwnership ownership,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(ownership);
+        if (!ownership.Session.IsValidFor(ownership.CaptureId))
+        {
+            return new(BrokerStopMilestones.None, "The durable ETW name does not match this capture and token.");
+        }
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!active.Remove(ownership.CaptureId, out ActiveCapture? capture))
+            {
+                return ReclaimAfterRestart(ownership);
+            }
+
+            try
+            {
+                capture.UserStopRequested = !capture.Run!.IsCompleted;
+                capture.Stop.Cancel();
+                LiveCaptureResult result = await capture.Run!.ConfigureAwait(false);
+                if (result.Stop is null || result.Generation is null)
+                {
+                    return new(new(true, result.Stop?.ProvidersStopped ?? false,
+                            result.Stop?.CallbacksDrained ?? false, false, true),
+                        "The capture stopped without a verified final journal generation.");
+                }
+
+                try
+                {
+                    _ = reclaimer.StopPreviouslyOwnedSession(
+                        ownership.Session.SessionName, ownership.Session.OwnershipToken);
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    return new(new(true, false, true, true, true),
+                        $"The journal finalized, but the owned ETW session could not be confirmed stopped: {exception.Message}");
+                }
+
+                string? reason = !result.Stop.CallbacksDrained
+                    ? "The journal finalized, but the ETW delivery pump did not confirm callback drain."
+                    : result.JournalQuotaReached
+                        ? "The configured journal byte limit was reached; the admitted prefix was finalized."
+                        : capture.LimitReason ?? (!capture.UserStopRequested
+                            ? "The configured maximum capture duration elapsed; evidence was finalized."
+                            : null);
+                return new(new(true, true, result.Stop.CallbacksDrained, true, true), reason);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                BrokerRuntimeStopOutcome reclaimed = ReclaimAfterRestart(ownership);
+                return reclaimed with
+                {
+                    FailureReason = $"Final journal publication failed: {exception.Message} "
+                        + (reclaimed.FailureReason ?? "The ETW stop was attempted."),
+                };
+            }
+            finally
+            {
+                capture.Dispose();
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        await gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (ActiveCapture capture in active.Values)
+            {
+                capture.Stop.Cancel();
+            }
+
+            foreach (ActiveCapture capture in active.Values)
+            {
+                try
+                {
+                    if (capture.Run is not null)
+                    {
+                        _ = await capture.Run.ConfigureAwait(false);
+                    }
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    // Durable startup recovery owns a failed finalization; disposal cannot claim one.
+                }
+                finally
+                {
+                    capture.Dispose();
+                }
+            }
+
+            active.Clear();
+        }
+        finally
+        {
+            gate.Release();
+            gate.Dispose();
+        }
+    }
+
+    private BrokerRuntimeStopOutcome ReclaimAfterRestart(BrokerCaptureOwnership ownership)
+    {
+        try
+        {
+            _ = reclaimer.StopPreviouslyOwnedSession(
+                ownership.Session.SessionName, ownership.Session.OwnershipToken);
+            // The old process's callback drain and journal terminal cannot be inferred from ETW's absence.
+            return new(new(true, true, false, false, true),
+                "The owned ETW session is stopped, but the previous process did not prove callback drain or journal finalization.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(new(true, false, false, false, true),
+                $"The owned ETW session could not be confirmed stopped: {exception.Message}");
+        }
+    }
+
+    private static async Task MonitorFreeDiskAsync(ActiveCapture capture, long minimumFreeBytes, CancellationToken token)
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), token).ConfigureAwait(false);
+            if (!HasFreeReserve(capture.Root.Path, minimumFreeBytes, out string? problem))
+            {
+                capture.LimitReason = problem;
+                return;
+            }
+        }
+    }
+
+    private static bool HasFreeReserve(string path, long minimumFreeBytes, out string? problem)
+    {
+        try
+        {
+            string volume = Path.GetPathRoot(path)
+                ?? throw new IOException("The broker root has no volume.");
+            long free = new DriveInfo(volume).AvailableFreeSpace;
+            problem = free < minimumFreeBytes
+                ? $"Available disk space ({free} bytes) is below the configured {minimumFreeBytes}-byte reserve."
+                : null;
+            return problem is null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            problem = $"Available disk space could not be verified: {exception.Message}";
+            return false;
+        }
+    }
+
+    private sealed class ActiveCapture(WindowsBrokerRoot root) : IDisposable
+    {
+        public WindowsBrokerRoot Root { get; } = root;
+        public CancellationTokenSource Stop { get; } = new();
+        public TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<LiveCaptureResult>? Run { get; set; }
+        public string? LimitReason { get; set; }
+        public bool UserStopRequested { get; set; }
+
+        public void Dispose()
+        {
+            Stop.Dispose();
+            Root.Dispose();
+        }
+    }
+}

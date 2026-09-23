@@ -219,6 +219,21 @@ public static class JournalV1Codec
         return EncodeFrame(JournalFrameKind.RecordBatch, payload.WrittenSpan);
     }
 
+    /// <summary>The exact bytes one record adds to a batch payload, without encoding or retaining a copy.</summary>
+    public static int EncodedRecordLength(RecordEnvelopeV1 record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        // Keep this layout in lockstep with WriteRecord below. The fixed part includes both byte-run
+        // length prefixes and the per-record CRC. A quota must account for pending, unflushed records.
+        long length = 147 + record.Body.Bytes.Length;
+        foreach (ExtendedItemV1 item in record.ExtendedItems)
+        {
+            length += 10L + item.Bytes.Length;
+        }
+
+        return checked((int)length);
+    }
+
     public static JournalBatchV1 DecodeBatch(ReadOnlySpan<byte> payload, CaptureId captureId)
     {
         var reader = new SpanReader(payload);

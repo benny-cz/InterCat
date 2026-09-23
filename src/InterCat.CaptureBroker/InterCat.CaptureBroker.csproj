@@ -7,5 +7,6 @@
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../InterCat.Storage/InterCat.Storage.csproj" />
     <ProjectReference Include="../InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <ProjectReference Include="../InterCat.Capture.Recording/InterCat.Capture.Recording.csproj" />
   </ItemGroup>
 </Project>

@@ -1,12 +1,41 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 70
+Plan revision: 71
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: exact-name ETW orphan-stop adapter
+## Latest slice: evidence-only broker runtime and exact journal quota
+
+`BrokerEvidenceCaptureRuntime` now composes the protected per-capture directory, durable full-token ETW identity,
+prepared plan digest, evidence-only `LiveRecorder`, and exact-name orphan reclaimer. A new start refuses an
+existing evidence directory and is acknowledged only after ETW and the journal writer are ready. In-process stop
+checks that the exact session is gone and uses explicit provider-stop and callback-drain evidence before claiming
+fully finalized. Restart cleanup stops only the durably owned ETW name and reports callback drain and journal
+finalization as unproven; it does not relabel a possibly interrupted journal complete.
+
+`JournalV1Writer` now measures the exact eventual file length, including unflushed records, batch frames and the
+terminal. A bounded append refuses before crossing its allowance. A journal-limit hit cancels acquisition, drains
+the queue without appending beyond the cap, and publishes a final readable journal and coverage ledger; admissions
+not journaled are counted as storage loss. The runtime also stops after the prepared duration and observes a
+minimum free-disk reserve before start and once per second while recording. The prepare rule that insisted the
+free-disk reserve be smaller than the journal limit was removed: a larger reserve is valid and safer.
+
+The runtime and quota paths have deterministic tests for normal stop, duration expiry, exact byte fits across
+batch sizes, journal-limit finalization, restart partial milestones and refusal to adopt pre-existing evidence.
+All 701 tests pass in Debug and Release.
+**The broker executable remains disabled.** Its host still must durably reconcile autonomous duration/journal/
+disk stops; free-space observation is not a hard per-write reservation and could be outrun by a busy writer;
+quota-bounded recording currently publishes only on stop, so an ordinary follower cannot yet follow it live.
+Elevated live crash/restart and pipe-to-root integration are still unverified. Do not enable a capture command
+until those gaps are closed and tested.
+
+Next: persist autonomous completion (including its stop reason and milestones) through the coordinator, make
+quota-aware chunk rollover reserve a final ledger/manifest and enforce the disk reserve at the write boundary,
+then exercise the authenticated pipe and restart recovery with real elevated ETW. Only then enable the broker.
+
+## Previous slice: exact-name ETW orphan-stop adapter
 
 `TraceEventSessionHost` now has a recovery-only stop path for a previously owned broker ETW session. It rejects a
 name whose current or legacy shape does not match the durable token before touching ETW, attaches to the exact
@@ -1000,7 +1029,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 - Existing pre-contract evidence using `{rawRecordId,factIndex}` remains readable. New builders and serialized output use normalizer version plus a deterministic 128-bit fact key. Removing the compatibility reader requires an explicit fixture migration.
 - `contracts/identity-v1.md` constrains canonical ETL import but does not implement it. Source-content identity, equal-time tie handling, collision comparison and multiplicity indexes remain IC-013; I1 and the full I2 claim stay uncovered until then.
 - The capture CLI still runs elevated in process because the broker executable remains deliberately disabled. IC-014 now has transport-independent preparation/dispatch/ownership, but R16's process separation is not real until the OS-authenticated pipe host and broker-owned filesystem boundary replace that path.
-- Broker quotas and retention are frozen into the prepared digest and returned in the effective summary, but the current runtime is a fake and enforces none of them. Duration, disk/free-space stop behavior and journal finalization must be bound to the real runtime before any capture command is enabled.
+- Broker quotas and retention are frozen into the prepared digest and returned in the effective summary. The new evidence runtime enforces duration and an exact single-journal byte cap, and observes free space at start and every second. The executable remains disabled because autonomous stop completion is not yet durably reconciled, free-space observation is not a hard write-boundary guarantee, quota-aware live chunk rollover is missing, and elevated restart/pipe integration has not been proved.
 - Only TCPv4 loopback is measured. UDP, IPv6, remote peers, reconnect, retransmission under impairment, and flows already open at capture start are unmeasured, so §13.1 scenario 1 is only partly covered.
 - `connid` is admitted but is not used as an identity; it was zero on this build.
 - Named pipes are measured `Unsupported` through `Microsoft-Windows-Kernel-File` on a supported build (ADR-003). That is a measured absence with its control, not a claim that pipes carry no traffic.
@@ -1039,11 +1068,11 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. **Bind the broker to live recording.** A privileged recording can publish evidence only, and `icat follow` derives it in an ordinary process (ADR-027). The evidence-only path is in `InterCat.Capture.Recording`, which the broker may reference (ADR-028), and each capture now has a protected broker directory. Implement `IBrokerCaptureRuntime` over these, then compose the executable and pipe host; bring the follower where the desktop can reach it. Let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024). §20.1's compaction targets are in (ADR-026); a column-level copy would make a compaction faster than its 200,000 rows per second when a budget needs it. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
+1. **Finish the broker runtime boundary.** The evidence-only runtime, protected directory and exact-name orphan stop are composed but not enabled. Add durable autonomous completion for duration/journal/disk stops, quota-aware publication rollover and a hard disk-reserve/finalization allowance; make a crashed journal's repair or partial state explicit. Then compose the executable and authenticated pipe host, exercise an elevated live crash/restart and deliver the ordinary follower to the desktop (ADR-027/028). Let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024). §20.1's compaction targets are in (ADR-026); a column-level copy would make a compaction faster than its 200,000 rows per second when a budget needs it. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
 2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Carry the rows of records a retention released across a replacement, with their journal indexes and their own derivation label, so a session can be re-derived after a release (ADR-024). Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
 3. **Publish §20.2's entity-state checkpoint (IC-016a), once IC-015 exists.** A rolling eviction has to carry the still-live identities, the endpoint bindings, the continuity quality and the pending-operation summaries across the boundary, and an operation open across one has to be censored rather than failed (I20). The retention mechanism beneath it is in; what it can state is what is missing.
 4. **Run the fixture corpus on the retail builds in the matrix.** 25H2 retail (26200) and 24H2 (26100) are listed in §1.3 and neither has been measured; the tiers above rest on a pre-release branch of 25H2. §13.4 asks for the corpus on every supported build, and a second environment row is what makes a tier more than one machine's result.
 5. What IC-008 deferred - per-level graph and timeline composition - belongs to IC-017, which owns deterministic layout, and should be picked up with it rather than as UI polish.
 6. **Continue IC-017 on real data.** The leased overview now has graph, exact graph-eligible timeline and ledger-backed coverage, while the window accepts a non-tour snapshot but still launches the synthetic tour. Add channel/operation/evidence and byte projections, then publish graph, ranking, timeline and coverage as one eligible set to the window. Supersede stale numeric bundles as the layout scheduler now supersedes layout, and compact above the provisional bound. Persist pins by stable instance ID. Keep the graph and its accessible table on the same eligible set; no covered source state may be read as proof that an empty relationship view is complete.
 
-IC-011 and IC-012 are complete for the source evidence the repository actually has. Explore and Focused TCP compile enforceable metadata policies; Content compiles a reviewable request contract and an enforceable refusal. IC-014's local prepare, ownership/recovery/compaction, bounded dispatcher, authenticated pipe and broker-owned filesystem root are complete; what remains is binding it to a live ETW/journal runtime, which depends on M1's store layers rather than on the broker. IC-013 now imports a real standalone ETL end to end and unelevated into a published session, which is what it was missing. M1's durable commit protocol, its manifests and the derived segments a generation publishes are now in, and an import produces a session `icat session` reopens and verifies. A reader holds a generation and its dependencies as one lease, and retention publishes what it released rather than merely deleting it. What a number means is now fixed too: `metrics-v1` answers counts, byte totals and rates over a whole session, refuses what means nothing and reports what cannot be answered. What the store still needs are the entity and relation tables a query joins and groups by, and the checkpoint §20.2 owes at a rolling boundary. Live viewer integration still waits on those layers.
+IC-011 and IC-012 are complete for the source evidence the repository actually has. Explore and Focused TCP compile enforceable metadata policies; Content compiles a reviewable request contract and an enforceable refusal. IC-014 now also has an evidence-only ETW/journal runtime behind the disabled executable; its autonomous completion, hard disk reserve, live quota-aware publication and elevated pipe/restart proof are the remaining enablement gates. IC-013 imports a real standalone ETL end to end and unelevated into a published session. M1's durable commit protocol, manifests and derived segments are in; a reader holds a generation and its dependencies as one lease, and retention publishes what it released rather than merely deleting it. `metrics-v1` answers counts, byte totals and rates over a whole session, refuses what means nothing and reports what cannot be answered. The store still needs the checkpoint §20.2 owes at a rolling boundary, and live viewer integration still waits on those layers.

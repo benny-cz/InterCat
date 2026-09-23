@@ -22,7 +22,14 @@ public sealed record CaptureStopResult(
     long? LastRecordUtcTicks,
     DateTimeOffset RecordingStartedUtc,
     DateTimeOffset RecordingStoppedUtc,
-    IReadOnlyList<string> Degradations);
+    IReadOnlyList<string> Degradations)
+{
+    /// <summary>False when the ETW delivery pump was still running after the stop timeout.</summary>
+    public bool CallbacksDrained { get; init; }
+
+    /// <summary>True only when stopping the exact session created by this capture succeeded.</summary>
+    public bool ProvidersStopped { get; init; }
+}
 
 /// <summary>
 /// One owned ETW session with the lifecycle of section 9.2: Idle, Probing, Starting, Recording, Stopping,
@@ -55,6 +62,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private CaptureClockEvidence? sourceClock;
     private int sourceClockChecked;
     private bool disposed;
+    private bool providersStopped;
     private volatile bool sourceLossUnreadable;
 
     /// <param name="observer">
@@ -501,6 +509,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             }
 
             current.StopSession();
+            providersStopped = true;
         }
         catch (EtwSessionException exception)
         {
@@ -531,7 +540,11 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         Interlocked.Read(ref lastRecordUtcTicks) == 0 ? null : Interlocked.Read(ref lastRecordUtcTicks),
         recordingStartedUtc,
         recordingStoppedUtc == default ? clock.GetUtcNow() : recordingStoppedUtc,
-        Degradations);
+        Degradations)
+    {
+        CallbacksDrained = pumpTask?.IsCompleted ?? true,
+        ProvidersStopped = providersStopped,
+    };
 
     private void Transition(CaptureLifecycle expected, CaptureLifecycle next)
     {

@@ -184,7 +184,7 @@ public sealed class BrokerPrepareCompilerTests
     [Fact]
     public void InvalidOperationalLimitsCannotBePrepared()
     {
-        var invalid = Quota with { MinimumFreeDiskBytes = Quota.MaximumJournalBytes };
+        var invalid = Quota with { MaximumDurationSeconds = 0 };
 
         BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(
             CompileFocused(),
@@ -194,6 +194,18 @@ public sealed class BrokerPrepareCompilerTests
 
         Assert.False(result.IsPrepared);
         Assert.Equal(BrokerPrepareRefusalCode.InvalidOperationalLimits, result.Refusal!.Code);
+    }
+
+    [Fact]
+    public void DiskReserveMayExceedJournalAllowance()
+    {
+        var limits = new BrokerCaptureQuota(30, 1_048_576, 16_777_216);
+
+        BrokerPrepareResult result = BrokerPrepareCompiler.Prepare(
+            CompileFocused(), limits, BrokerRetentionPolicy.StopAtLimit, Runtime);
+
+        Assert.True(result.IsPrepared, result.Refusal?.Message);
+        Assert.Equal(limits, result.PreparedPlan!.Quota);
     }
 
     private static BrokerPrepareResult Prepare(

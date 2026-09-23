@@ -504,6 +504,41 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(1, readyCount);
     }
 
+    [Fact(DisplayName = "R16: an exact journal quota stops capture and publishes a readable bounded journal")]
+    public async Task JournalQuotaStopsWithFinalEvidenceAndLoss()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "quota-test");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 10_000; index++)
+        {
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), host, store,
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            DateTimeOffset.UtcNow,
+            maximumJournalBytes: 1_048_576);
+
+        Assert.True(result.Start.Started);
+        Assert.True(result.JournalQuotaReached);
+        Assert.NotNull(result.Stop);
+        Assert.NotNull(result.Generation);
+        Assert.InRange(result.Generation.JournalBytes, 1, 1_048_576);
+        Assert.InRange(result.JournaledRecords, 1, 9_999);
+        Assert.NotNull(store.Current);
+        Assert.NotNull(result.Coverage);
+    }
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {

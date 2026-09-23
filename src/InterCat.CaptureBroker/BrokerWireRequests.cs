@@ -39,9 +39,9 @@ public sealed record BrokerCaptureQuota(
             return "Minimum free-disk reserve must be between 16 MiB and 1 TiB.";
         }
 
-        return MinimumFreeDiskBytes >= MaximumJournalBytes
-            ? "The free-disk reserve must be smaller than the maximum journal allowance."
-            : null;
+        // The reserve protects final metadata writes and the rest of the volume; it is independent
+        // of how many admitted journal bytes this capture is allowed to retain.
+        return null;
     }
 }
 

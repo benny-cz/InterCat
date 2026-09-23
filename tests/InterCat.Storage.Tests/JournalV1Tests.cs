@@ -152,6 +152,39 @@ public sealed class JournalV1Tests
         Assert.True(item.IsReturned);
     }
 
+    [Theory(DisplayName = "R16: journal quota accounts for pending records, batch frames and terminal exactly")]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void BoundedAppendUsesExactCompleteLength(int batchCapacity)
+    {
+        using var stream = new MemoryStream();
+        using JournalV1Writer writer = JournalV1Writer.Create(
+            stream, Capture, Clock(), Created, batchCapacity);
+        writer.WriteSchemas(new());
+        long emptyLength = writer.ProjectedCompleteLength;
+        Assert.Equal(stream.Length + 40, emptyLength);
+
+        for (ulong ordinal = 1; ordinal <= 5; ordinal++)
+        {
+            RecordEnvelopeV1 record = Record(ordinal, body: new byte[(int)ordinal]);
+            long required = writer.ProjectedCompleteLength
+                + JournalV1Codec.EncodedRecordLength(record)
+                + (ordinal == 1 || (ordinal - 1) % (ulong)batchCapacity == 0 ? 76 : 0);
+            Assert.False(writer.TryAppendWithin(record, required - 1));
+            Assert.False(record.Body.Bytes.IsReturned);
+            Assert.True(writer.TryAppendWithin(record, required));
+            Assert.Equal(required, writer.ProjectedCompleteLength);
+        }
+
+        long projected = writer.ProjectedCompleteLength;
+        writer.Complete();
+        Assert.Equal(projected, stream.Length);
+        Assert.Equal(projected, writer.ProjectedCompleteLength);
+        using JournalV1Contents replay = JournalV1Reader.Read(stream.ToArray());
+        Assert.Equal(5, replay.Records.Count());
+    }
+
     [Fact(DisplayName = "R9: a writer that is disposed mid-batch returns the buffers it was holding")]
     public void DisposingAWriterReturnsPendingBuffers()
     {

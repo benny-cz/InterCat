@@ -36,6 +36,7 @@ public sealed class JournalV1Writer : IDisposable
     private bool wroteSchemas;
     private bool completed;
     private bool disposed;
+    private long pendingEncodedBytes;
 
     private JournalV1Writer(Stream stream, bool ownsStream, int batchCapacity)
     {
@@ -50,6 +51,22 @@ public sealed class JournalV1Writer : IDisposable
     public long BatchesWritten { get; private set; }
 
     public long RecordsWritten { get; private set; }
+
+    /// <summary>Exact final file length if Complete were called now, including pending batch and terminal.</summary>
+    public long ProjectedCompleteLength
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!stream.CanSeek)
+            {
+                throw new NotSupportedException("A byte quota needs a seekable journal stage.");
+            }
+
+            return checked(stream.Position + (pending.Count == 0 ? 0 : 76 + pendingEncodedBytes)
+                + (completed ? 0 : 40));
+        }
+    }
 
     /// <summary>
     /// Starts a journal on a stream the caller owns. The header and the clock frame are written at once,
@@ -150,6 +167,7 @@ public sealed class JournalV1Writer : IDisposable
         }
 
         pending.Add(record);
+        pendingEncodedBytes = checked(pendingEncodedBytes + JournalV1Codec.EncodedRecordLength(record));
         if (pending.Count >= batchCapacity)
         {
             FlushBatch();
@@ -174,6 +192,36 @@ public sealed class JournalV1Writer : IDisposable
         }
 
         pending.Clear();
+        pendingEncodedBytes = 0;
+    }
+
+    /// <summary>
+    /// Appends only if the eventual complete file, including an unflushed batch and terminal, fits.
+    /// A false result leaves ownership of the record with the caller. No bytes are written on refusal.
+    /// </summary>
+    public bool TryAppendWithin(RecordEnvelopeV1 record, long maximumCompleteLength)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(record);
+        if (completed || !wroteSchemas)
+        {
+            throw new InvalidOperationException("A bounded append needs an open journal with its schema table.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumCompleteLength);
+
+        // A new batch needs a 40-byte frame and 36-byte count/identity prefix. An existing
+        // pending batch already has that overhead in ProjectedCompleteLength.
+        long projected = checked(ProjectedCompleteLength
+            + JournalV1Codec.EncodedRecordLength(record)
+            + (pending.Count == 0 ? 76 : 0));
+        if (projected > maximumCompleteLength)
+        {
+            return false;
+        }
+
+        Append(record);
+        return true;
     }
 
     /// <summary>

@@ -45,6 +45,9 @@ public sealed record LiveCaptureResult
     /// <summary>Records written to the admitted journal.</summary>
     public long JournaledRecords { get; init; }
 
+    /// <summary>True when the journal byte ceiling ended acquisition; unjournaled admissions are storage loss.</summary>
+    public bool JournalQuotaReached { get; init; }
+
     /// <summary>
     /// What the capture's sources could observe and what they lost (`coverage-v1`); null when a loss counter could not
     /// be read, so the session's coverage is unknown.
@@ -86,6 +89,7 @@ public static class LiveRecorder
         TimeSpan? publishEvery = null,
         Func<SourceClockDescriptor, ILiveRecordingDerivation>? derive = null,
         Action<CaptureStartResult>? onReady = null,
+        long? maximumJournalBytes = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -95,6 +99,25 @@ public static class LiveRecorder
         if (publishEvery is { } interval && interval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(publishEvery), "A publication interval is positive.");
+        }
+
+        if (maximumJournalBytes is { } maximum && maximum < 1_048_576)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumJournalBytes), "The journal quota is at least 1 MiB.");
+        }
+
+        if (maximumJournalBytes is not null && publishEvery is not null)
+        {
+            throw new ArgumentException(
+                "A byte-bounded live journal must publish once on stop until chunk rollover can reserve its final ledger.",
+                nameof(publishEvery));
+        }
+
+        if (maximumJournalBytes is not null && derive is not null)
+        {
+            throw new ArgumentException(
+                "A byte-bounded live recorder is evidence-only: derived rows cannot precede a refused journal append.",
+                nameof(derive));
         }
 
         if (store.Current is not null)
@@ -117,6 +140,7 @@ public static class LiveRecorder
             plan.Providers.Where(provider => enabledSources.Contains(provider.SourceId)).Select(provider => provider.ProviderGuid));
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture carries a source clock descriptor.");
+        using var quotaStop = new CancellationTokenSource();
         using var chunks = new ChunkWriter(
             session,
             plan,
@@ -125,7 +149,9 @@ public static class LiveRecorder
             committedUtc,
             options ?? DerivedGenerationOptions.Default,
             publishEvery,
-            derive?.Invoke(clock.Descriptor));
+            derive?.Invoke(clock.Descriptor),
+            maximumJournalBytes,
+            quotaStop.Cancel);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -141,7 +167,7 @@ public static class LiveRecorder
 
         // A writer that fails ends the recording at once: capturing on would only fill the bounded queue and drop
         // records the journal can no longer take.
-        using var recording = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var recording = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quotaStop.Token);
         _ = writer.ContinueWith(
             _ => recording.Cancel(),
             CancellationToken.None,
@@ -199,6 +225,7 @@ public static class LiveRecorder
             Generation = published,
             Publications = chunks.Publications,
             JournaledRecords = journaled,
+            JournalQuotaReached = chunks.JournalQuotaReached,
             Coverage = ledger,
         };
     }
@@ -229,6 +256,8 @@ public static class LiveRecorder
         private readonly DerivedGenerationOptions options;
         private readonly TimeSpan? publishEvery;
         private readonly ILiveRecordingDerivation? derivation;
+        private readonly long? maximumJournalBytes;
+        private readonly Action onJournalQuotaReached;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
@@ -243,7 +272,9 @@ public static class LiveRecorder
             DateTimeOffset createdUtc,
             DerivedGenerationOptions options,
             TimeSpan? publishEvery,
-            ILiveRecordingDerivation? derivation)
+            ILiveRecordingDerivation? derivation,
+            long? maximumJournalBytes,
+            Action onJournalQuotaReached)
         {
             this.session = session;
             this.plan = plan;
@@ -253,11 +284,15 @@ public static class LiveRecorder
             this.options = options;
             this.publishEvery = publishEvery;
             this.derivation = derivation;
+            this.maximumJournalBytes = maximumJournalBytes;
+            this.onJournalQuotaReached = onJournalQuotaReached;
             mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
             builder = BeginChunk(stagePlan: true);
         }
 
         public int Publications { get; private set; }
+
+        public bool JournalQuotaReached { get; private set; }
 
         /// <summary>Drains the admission queue until the capture closes it, publishing a chunk whenever one is due.</summary>
         public long Drain()
@@ -308,6 +343,11 @@ public static class LiveRecorder
 
         private void Write(in AdmittedEvent admitted)
         {
+            if (JournalQuotaReached)
+            {
+                return;
+            }
+
             AdmittedEventPlan descriptor = session.AdmissionTable.FindBySourceIndex(
                 admitted.SourceIndex,
                 admitted.EventId,
@@ -319,7 +359,21 @@ public static class LiveRecorder
             // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
             RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
             derivation?.Derive(envelope, descriptor, (ulong)journaled, builder);
-            builder.Journal.Append(envelope);
+            if (maximumJournalBytes is { } maximum)
+            {
+                if (!builder.Journal.TryAppendWithin(envelope, maximum))
+                {
+                    envelope.Dispose();
+                    JournalQuotaReached = true;
+                    onJournalQuotaReached();
+                    return;
+                }
+            }
+            else
+            {
+                builder.Journal.Append(envelope);
+            }
+
             recordsInChunk++;
             journaled++;
         }
@@ -366,6 +420,13 @@ public static class LiveRecorder
                 }
 
                 next.Journal.WriteSchemas(mapper.Schemas);
+                if (maximumJournalBytes is { } maximum
+                    && next.Journal.ProjectedCompleteLength > maximum)
+                {
+                    throw new InvalidDataException(
+                        "The journal header and schema table alone exceed the configured journal byte allowance.");
+                }
+
                 recordsInChunk = 0;
                 sincePublished.Restart();
                 return next;
