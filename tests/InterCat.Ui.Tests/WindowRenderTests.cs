@@ -19,10 +19,11 @@ public sealed class WindowRenderTests
 
     [AvaloniaTheory(DisplayName = "R15: the window renders at its minimum size and at a review size")]
     [MemberData(nameof(Sizes))]
-    public void WindowRendersAtEverySupportedSize(int width, int height)
+    public async Task WindowRendersAtEverySupportedSize(int width, int height)
     {
         var window = new MainWindow { Width = width, Height = height };
         window.Show();
+        await ((WorkspaceViewModel)window.DataContext!).LayoutReady;
         Dispatch();
 
         WriteableBitmap? frame = window.CaptureRenderedFrame();
@@ -35,11 +36,12 @@ public sealed class WindowRenderTests
 
     [AvaloniaTheory(DisplayName = "R15: the window renders every rung of the ladder down to evidence")]
     [MemberData(nameof(Sizes))]
-    public void EveryRungRenders(int width, int height)
+    public async Task EveryRungRenders(int width, int height)
     {
         var window = new MainWindow { Width = width, Height = height };
         window.Show();
         var viewModel = (WorkspaceViewModel)window.DataContext!;
+        await viewModel.LayoutReady;
 
         for (int depth = 0; depth < 5 && !viewModel.IsEmptyRung; depth++)
         {

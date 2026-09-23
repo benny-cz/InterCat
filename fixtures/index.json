@@ -813,6 +813,13 @@
       "R6": [
         "R6: linked panes observe one atomic selection state"
       ],
+      "R7": [
+        "R7: a disposed scheduler cannot publish its in-flight layout",
+        "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
+        "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
+        "R7: a worker result naming another graph identity is refused",
+        "R7: caller cancellation propagates instead of looking like a superseded query"
+      ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",
         "R8: a capture moves Idle to Recording to Closed and reports its own counters",
@@ -935,10 +942,6 @@
       "R4": {
         "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",
         "plannedBy": "IC-006"
-      },
-      "R7": {
-        "reason": "Result supersession needs the query scheduler of IC-017.",
-        "plannedBy": "IC-017"
       }
     }
   }

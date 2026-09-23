@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
         var viewModel = new WorkspaceViewModel();
         DataContext = viewModel;
+        Closed += (_, _) => viewModel.Dispose();
         viewModel.PropertyChanged += (_, _) =>
         {
             GraphSurface.InvalidateVisual();

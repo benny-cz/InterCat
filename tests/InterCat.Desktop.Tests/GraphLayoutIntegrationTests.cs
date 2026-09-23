@@ -7,11 +7,14 @@ namespace InterCat.Desktop.Tests;
 public sealed class GraphLayoutIntegrationTests
 {
     [Fact(DisplayName = "R12: desktop graph reads stable layout coordinates instead of evidence-model positions")]
-    public void DesktopUsesSeparateGraphLayout()
+    public async Task DesktopUsesSeparateGraphLayout()
     {
-        var viewModel = new WorkspaceViewModel();
+        using var viewModel = new WorkspaceViewModel();
+        await viewModel.LayoutReady;
         GraphLayoutResult expected = GraphLayout.Compute(
-            "synthetic-tour-v1", viewModel.Snapshot.Groups, viewModel.Snapshot.Processes, viewModel.Snapshot.Edges);
+            "synthetic-tour-v1", viewModel.Snapshot.Groups, viewModel.Snapshot.Processes, viewModel.Snapshot.Edges,
+            previous: viewModel.Snapshot.Processes.ToDictionary(
+                node => node.Id, node => new GraphPoint(node.X, node.Y)));
 
         Assert.Equal(viewModel.Snapshot.Processes.Count, viewModel.GraphPositions.Count);
         foreach (ProcessNode node in viewModel.Snapshot.Processes)

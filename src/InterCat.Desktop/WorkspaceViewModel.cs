@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using InterCat.Application;
@@ -8,8 +9,10 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
-public sealed class WorkspaceViewModel : INotifyPropertyChanged
+public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
+    private const string TourGraphIdentity = "synthetic-tour-v1";
+    private readonly GraphLayoutScheduler graphLayout = new();
     private readonly WorkspaceSelectionCoordinator selection = new();
     private readonly DetailLadder ladder;
     private ProcessNode? selectedProcess;
@@ -21,12 +24,15 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     private IntervalRow? selectedIntervalRow;
     private LadderView view;
     private bool showTables;
+    private bool disposed;
 
     public WorkspaceViewModel()
     {
         Snapshot = SyntheticWorkspace.Create();
-        GraphPositions = GraphLayout.Compute(
-            "synthetic-tour-v1", Snapshot.Groups, Snapshot.Processes, Snapshot.Edges).Positions;
+        // The saved tour positions are a first-frame fallback. The complete layout is computed off-thread
+        // and applied only if its identity is still the graph the window is showing.
+        GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
+            Snapshot.Processes.ToDictionary(node => node.Id, node => new GraphPoint(node.X, node.Y)));
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
@@ -35,6 +41,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = Snapshot.Processes[0];
         selection.SelectProcess(selectedProcess.Id);
+        LayoutReady = BuildLayoutAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -42,7 +49,45 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     public WorkspaceSnapshot Snapshot { get; }
 
     /// <summary>Stable graph coordinates, separate from evidence, time scope and the window transform.</summary>
-    public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; }
+    public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; private set; }
+
+    /// <summary>Completes when this workspace's initial off-thread layout has applied or reported a problem.</summary>
+    public Task LayoutReady { get; }
+
+    public string? GraphLayoutProblem { get; private set; }
+
+    private async Task BuildLayoutAsync()
+    {
+        try
+        {
+            GraphLayoutResult? result = await graphLayout.RequestAsync(
+                TourGraphIdentity, Snapshot.Groups, Snapshot.Processes, Snapshot.Edges,
+                previous: GraphPositions);
+            if (disposed || result is null || result.GraphIdentity != TourGraphIdentity)
+            {
+                return;
+            }
+
+            GraphPositions = result.Positions;
+            OnPropertyChanged(nameof(GraphPositions));
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
+        {
+            GraphLayoutProblem = exception.Message;
+            OnPropertyChanged(nameof(GraphLayoutProblem));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        graphLayout.Dispose();
+    }
 
     /// <summary>Mechanism legend with glyphs, the redundant channel beside hue (R14).</summary>
     public IReadOnlyList<LegendEntry> Legend { get; }

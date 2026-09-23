@@ -107,6 +107,13 @@ public sealed class GraphView : Control
                     10, MutedTextBrush, 70);
             }
         }
+
+        if (viewModel.GraphLayoutProblem is { } problem)
+        {
+            DrawText(context, $"Layout unavailable: {problem}",
+                new(12, Math.Max(0, Bounds.Height - 22)), 10, MutedTextBrush,
+                Math.Max(0, Bounds.Width - 24));
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
