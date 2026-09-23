@@ -59,18 +59,22 @@ public sealed class TimelineView : Control
             double x1 = left + ViewportMath.PixelAtTick(visible, Math.Max(bucket.Interval.StartTicks, visible.StartTicks), plotWidth);
             double x2 = left + ViewportMath.PixelAtTick(visible, Math.Min(bucket.Interval.EndTicks, visible.EndTicks), plotWidth);
             double width = Math.Max(1, x2 - x1 - 2);
+            if (bucket.ObservationCount > 0)
+            {
+                // Coverage and observation are separate facts. A gap or unknown coverage cannot erase records that
+                // were actually seen; the hatch crosses their bar without claiming unseen activity (P1, P26).
+                double height = Math.Max(3, plotHeight * bucket.ObservationCount / maximum);
+                var rectangle = new Rect(x1, bottom - height, width, height);
+                context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, rectangle);
+                if (viewModel.SelectedInterval == bucket.Interval)
+                {
+                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), rectangle.Inflate(2));
+                }
+            }
+
             if (bucket.Coverage != CoverageState.Covered)
             {
                 DrawCoverageGap(context, new(x1, top, width, plotHeight));
-                continue;
-            }
-
-            double height = Math.Max(3, plotHeight * bucket.ObservationCount / maximum);
-            var rectangle = new Rect(x1, bottom - height, width, height);
-            context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, rectangle);
-            if (viewModel.SelectedInterval == bucket.Interval)
-            {
-                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), rectangle.Inflate(2));
             }
         }
 
@@ -87,7 +91,7 @@ public sealed class TimelineView : Control
     private static void DrawCoverageGap(DrawingContext context, Rect cell)
     {
         const double spacing = 7;
-        context.DrawRectangle(Token(ThemePalette.Surfaces(Mode).Elevated), new Pen(GapBrush, 1), cell);
+        context.DrawRectangle(Brushes.Transparent, new Pen(GapBrush, 1), cell);
         using (context.PushClip(cell))
         {
             var pen = new Pen(GapBrush, 1);

@@ -1,0 +1,249 @@
+using InterCat.Analysis;
+using InterCat.Domain;
+using InterCat.Storage;
+
+namespace InterCat.Application;
+
+/// <summary>
+/// One immutable, evidence-bounded overview. Its edges are only paired TCP relationships whose two process instances
+/// are admitted under the requested policy; they are not a total of all traffic. The timeline counts all observations
+/// with a usable session time but claims no coverage until a ledger is projected with it.
+/// </summary>
+public sealed record SessionOverviewBundle(
+    string GraphIdentity,
+    Guid SessionId,
+    long Generation,
+    TimeRange? Extent,
+    IReadOnlyList<ProcessGroup> Groups,
+    IReadOnlyList<ProcessNode> Nodes,
+    IReadOnlyList<CommunicationEdge> Edges,
+    IReadOnlyList<TimelineBucket> Timeline,
+    long ObservationRows,
+    long RowsWithoutSessionTime,
+    long UnresolvedTcpRows,
+    long RelationshipsNotAdmitted,
+    IReadOnlyList<string> Caveats);
+
+/// <summary>
+/// Builds graph and timeline data from exactly one leased generation. This is the read-side bundle for IC-017, not a
+/// full ladder projection: channels, operations and record drill-down remain separate derivations. A caller must not
+/// advertise its resolved-relationship edge count as the session's total observations or byte volume.
+/// </summary>
+public static class SessionOverviewProjector
+{
+    public const int MaximumTimelineBuckets = 64;
+
+    public static SessionOverviewBundle Project(
+        SessionStore store,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!Enum.IsDefined(policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
+            ?? throw new InvalidDataException(
+                "This generation names no source clock. Process lifetimes and the overview time axis cannot be "
+                + "derived from an assumed clock.");
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
+            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
+            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+
+        if (processes.Instances.Count > GraphLayout.MaximumNodes)
+        {
+            throw new InvalidOperationException(
+                $"This generation has {processes.Instances.Count:N0} process instances, above the "
+                + $"{GraphLayout.MaximumNodes:N0}-node overview bound. Cluster compaction is required; silently "
+                + "omitting processes would make the graph and its table disagree with the evidence.");
+        }
+
+        ProcessInstance[] ordered = [.. processes.Instances.OrderBy(instance => instance.Id.ToString(), StringComparer.Ordinal)];
+        ProcessGroup[] groups = [.. ordered
+            .GroupBy(GroupKey, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group => new ProcessGroup(group.Key, GroupName(group.First()), LaneGrouping.Executable))];
+        ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
+            instance.Id,
+            instance.ProcessId,
+            instance.ImageName ?? $"PID {instance.ProcessId}",
+            instance.Witness.ToString(),
+            GroupKey(instance),
+            0.5 + 0.38 * Math.Cos(2 * Math.PI * index / Math.Max(1, ordered.Length)),
+            0.5 + 0.38 * Math.Sin(2 * Math.PI * index / Math.Max(1, ordered.Length)),
+            CoverageState.UnknownCoverage))];
+
+        TransportRelation[] admitted = [.. relations.Relations.Where(relation => Admitted(relation.Strength, policy))];
+        long notAdmitted = relations.Relations.Count - admitted.Length;
+        CommunicationEdge[] edges = [.. admitted
+            .GroupBy(relation => Pair(relation.First.Id, relation.Second.Id))
+            .OrderBy(group => group.Key.First.ToString(), StringComparer.Ordinal)
+            .ThenBy(group => group.Key.Second.ToString(), StringComparer.Ordinal)
+            .Select(group => new CommunicationEdge(
+                $"tcp:{group.Key.First}:{group.Key.Second}",
+                group.Key.First,
+                group.Key.Second,
+                Mechanism.Tcp,
+                group.Sum(relation => relation.Records),
+                null,
+                group.Max(relation => relation.Strength)))];
+        if (edges.Length > GraphLayout.MaximumEdges)
+        {
+            throw new InvalidOperationException(
+                $"This generation has {edges.Length:N0} resolved process relationships, above the "
+                + $"{GraphLayout.MaximumEdges:N0}-edge overview bound. Cluster compaction is required; silently "
+                + "omitting relationships would make the graph and its table disagree with the evidence.");
+        }
+
+        (TimeRange? extent, TimelineBucket[] timeline, long rows, long withoutTime, long unresolved) =
+            Timeline(segments, relations, policy, cancellationToken);
+        string[] caveats =
+        [
+            "Graph edges show paired TCP connection incarnations whose two process instances are admitted. "
+                + "One-sided, ambiguous and unsupported relationships are not rendered as guessed edges.",
+            "Edge direction is a stable display order, not a claim about which process initiated or sent data. "
+                + "Edge record counts include observations from both ends and are not whole-session totals.",
+            "The timeline counts observed rows only. Its coverage is unknown until the capture coverage ledger "
+                + "is included in the projection; an empty interval is not proof of inactivity.",
+            $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
+                + $"{(withoutTime == 1 ? "is" : "are")} absent from the timeline; "
+                + $"{unresolved:N0} TCP rows have no admitted peer; {notAdmitted:N0} paired relationships "
+                + "were withheld by the evidence policy.",
+            "Byte totals, channels, operations and evidence drill-down are not in this overview bundle.",
+        ];
+        return new(
+            $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}:policy:{policy}",
+            manifest.SessionId,
+            manifest.Generation,
+            extent,
+            Array.AsReadOnly(groups),
+            Array.AsReadOnly(nodes),
+            Array.AsReadOnly(edges),
+            Array.AsReadOnly(timeline),
+            rows,
+            withoutTime,
+            unresolved,
+            notAdmitted,
+            Array.AsReadOnly(caveats));
+    }
+
+    private static (TimeRange? Extent, TimelineBucket[] Buckets, long Rows, long WithoutTime, long Unresolved)
+        Timeline(
+            IReadOnlyList<SegmentReaderV1> segments,
+            TransportRelationIndex relations,
+            EvidencePolicy policy,
+            CancellationToken cancellationToken)
+    {
+        long rows = 0;
+        long withoutTime = 0;
+        long unresolved = 0;
+        long minimum = long.MaxValue;
+        long maximum = long.MinValue;
+        foreach (SegmentReaderV1 segment in segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            ProcessBinding[] peers = relations.PeersOf(segment);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                rows++;
+                if ((Mechanism)mechanisms.UnsignedAt(row)!.Value == Mechanism.Tcp
+                    && !peers[row].IsAdmittedUnder(policy))
+                {
+                    unresolved++;
+                }
+
+                if (times.SignedAt(row) is not { } nanoseconds)
+                {
+                    withoutTime++;
+                    continue;
+                }
+
+                long tick = nanoseconds / 100;
+                minimum = Math.Min(minimum, tick);
+                maximum = Math.Max(maximum, tick);
+            }
+        }
+
+        if (minimum == long.MaxValue)
+        {
+            return (null, [], rows, withoutTime, unresolved);
+        }
+
+        var extent = new TimeRange(minimum, maximum + 1);
+        long width = extent.EndTicks - extent.StartTicks;
+        int bucketCount = (int)Math.Min(MaximumTimelineBuckets, width);
+        var counts = new int[bucketCount];
+        var mechanismsByBucket = new Dictionary<Mechanism, int>[bucketCount];
+        for (int index = 0; index < bucketCount; index++) mechanismsByBucket[index] = [];
+        foreach (SegmentReaderV1 segment in segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                if (times.SignedAt(row) is not { } nanoseconds) continue;
+                long tick = nanoseconds / 100;
+                int bucket = (int)Math.Min(bucketCount - 1,
+                    (long)(((Int128)(tick - minimum) * bucketCount) / width));
+                if (counts[bucket] == int.MaxValue)
+                {
+                    throw new InvalidOperationException(
+                        "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                        + "represent it without compaction, so it is refused rather than wrapped to a false value.");
+                }
+
+                counts[bucket]++;
+                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                Dictionary<Mechanism, int> tally = mechanismsByBucket[bucket];
+                if (tally.GetValueOrDefault(mechanism) == int.MaxValue)
+                {
+                    throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+                }
+
+                tally[mechanism] = tally.GetValueOrDefault(mechanism) + 1;
+            }
+        }
+
+        TimelineBucket[] result = [.. Enumerable.Range(0, bucketCount).Select(index => new TimelineBucket(
+            new TimeRange(
+                minimum + (long)(((Int128)index * width) / bucketCount),
+                minimum + (long)(((Int128)(index + 1) * width) / bucketCount)),
+            counts[index],
+            null,
+            mechanismsByBucket[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
+                .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
+            CoverageState.UnknownCoverage))];
+        return (extent, result, rows, withoutTime, unresolved);
+    }
+
+    private static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
+    {
+        RelationStrength.Direct => true,
+        RelationStrength.Correlated => policy >= EvidencePolicy.IncludeCorrelated,
+        RelationStrength.Candidate => policy >= EvidencePolicy.IncludeCandidates,
+        RelationStrength.Conflicting => policy >= EvidencePolicy.AllIncludingConflicting,
+        _ => false,
+    };
+
+    private static (ProcessInstanceId First, ProcessInstanceId Second) Pair(
+        ProcessInstanceId first, ProcessInstanceId second) =>
+        string.CompareOrdinal(first.ToString(), second.ToString()) <= 0 ? (first, second) : (second, first);
+
+    private static string GroupKey(ProcessInstance instance) =>
+        string.IsNullOrWhiteSpace(instance.ImagePath) ? "executable:unknown" : "executable:" + instance.ImagePath.ToUpperInvariant();
+
+    private static string GroupName(ProcessInstance instance) =>
+        string.IsNullOrWhiteSpace(instance.ImagePath) ? "Executable not witnessed" : instance.ImagePath;
+}
