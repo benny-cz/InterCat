@@ -285,8 +285,13 @@ and the clock's ticks per second — and its per-second value is derived from th
 rounded half to even to three decimal places (§1.4, §10.5).
 
 A rate with no interval is unavailable, not defaulted. A rate whose clock the session does not describe is
-stated per native tick. Until a session publishes a coverage ledger, every rate is an *observed* rate and says
-so; no corrected rate exists (§21.1).
+stated per native tick. Every rate is an *observed* rate, whether its generation publishes `coverage-v1` or not;
+no corrected rate exists (§21.1). A metric answer reports capture coverage separately from its numeric value:
+for a mechanism filter, the state and reason over the request's native interval; for an all-mechanism request,
+the separate states of every mechanism, never a synthetic single "covered" state. A legacy generation reports
+unknown coverage. `NotCollected` or `UnknownCoverage` does not alter the admitted-observation numerator or shorten
+the denominator. A count of zero observed rows beside either state is not a claim that no activity occurred.
+Capture coverage also does not prove process binding or relation completeness.
 
 ## 8. Unavailable is not rejected
 

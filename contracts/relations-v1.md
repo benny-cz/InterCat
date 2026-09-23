@@ -126,8 +126,9 @@ identity: another relation rule can number channels differently.
 
 The orientation of §2 holds for the six admitted TCPv4 descriptors on the measured build. A descriptor whose
 orientation is not measured is not a TCP descriptor this rule reads correctly, and admitting one is a catalog change
-that requires re-measuring it. No session publishes a coverage ledger yet, so an other end that is `PeerNotObserved`
-may be a lost record rather than a remote peer, and a result that needs other ends discloses how many it could not
+that requires re-measuring it. Imported sessions publish an aggregate coverage ledger, but it cannot locate a lost
+record at one end, and live captures do not yet publish one. An other end that is `PeerNotObserved` may therefore be
+a lost record rather than a remote peer, and a result that needs other ends discloses how many it could not
 decide rather than asserting they involve nothing. Incarnations rest on the lifecycle records the capture holds: a lost
 connect, accept or disconnect merges two incarnations of an end into one, which can leave a reused port undecided,
 but never splits one connection in two.

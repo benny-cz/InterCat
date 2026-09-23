@@ -101,8 +101,9 @@ A binding a policy does not admit is reported as unattributed with the reason `N
 
 For records without a start key the rule assumes the capture lost no lifecycle record that would divide their
 lifetime. A lost exit together with the next creation could merge two such instances; a contradictory start key
-can still split a witnessed lifecycle. No session publishes a coverage ledger yet, so a result states this as an
-assumption rather than a verified condition.
+can still split a witnessed lifecycle. Imported sessions now publish aggregate source loss, but it cannot prove that
+no particular lifecycle record was lost, and live captures do not yet publish coverage epochs. A result therefore
+states this as an assumption rather than a verified condition.
 
 ## 7. Identity of a derivation
 

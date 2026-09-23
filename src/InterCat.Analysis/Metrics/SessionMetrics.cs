@@ -403,6 +403,20 @@ public sealed record MetricRate
         : null;
 }
 
+/// <summary>
+/// Capture-source coverage over the request's native interval. This is not measurement availability, process-binding
+/// completeness or a correction to a metric value (`coverage-v1`, ADR-018).
+/// </summary>
+public sealed record MetricCoverage
+{
+    public required bool LedgerPublished { get; init; }
+
+    public required string Rule { get; init; }
+
+    /// <summary>One state for an explicit mechanism filter, otherwise every mechanism's separate state.</summary>
+    public required IReadOnlyList<MechanismCoverage> Mechanisms { get; init; }
+}
+
 /// <summary>One record an answer counted, with the identities that let a caller navigate to it.</summary>
 public sealed record MetricEvidence
 {
@@ -446,6 +460,9 @@ public sealed record MetricResult
     public MeasurementUnit? Unit { get; init; }
 
     public MetricRate? Rate { get; init; }
+
+    /// <summary>What the capture could observe over this request's scope, separate from the observed value.</summary>
+    public MetricCoverage? Coverage { get; init; }
 
     /// <summary>The row labels this total took, per the request's accounting. Empty for a count.</summary>
     public IReadOnlyList<AccountingSide> TakenSides { get; init; } = [];
@@ -640,14 +657,53 @@ public static partial class SessionMetrics
                 manifest.Generation,
                 MetricUnavailableReason.NoDerivedData,
                 $"Generation {manifest.Generation} publishes evidence and no derived segment, so there is "
-                + "nothing above it to count.");
+                + "nothing above it to count.") with { Coverage = CoverageOf(store, manifest, materialized) };
         }
 
         // Every answer from here on - a value, a grouping or a reason it is unavailable - is an answer to one exact
         // specification over one exact snapshot, and names it (§10.5, I16).
         SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
         QueryIdentity identity = IdentityOf(materialized, manifest, segments);
-        return Answer(store, manifest, materialized, segments, clock, bounds, cancellationToken) with { Identity = identity };
+        MetricResult answer = Answer(store, manifest, materialized, segments, clock, bounds, cancellationToken);
+        MetricCoverage coverage = CoverageOf(store, manifest, materialized);
+        IReadOnlyList<string> caveats = answer.Caveats;
+        if (materialized.Metric == Metric.Rate && answer.IsAvailable)
+        {
+            caveats = [.. caveats, RateCoverageCaveat(coverage, materialized.Mechanism)];
+        }
+
+        return answer with { Identity = identity, Coverage = coverage, Caveats = caveats };
+    }
+
+    private static MetricCoverage CoverageOf(SessionStore store, SessionManifestV1 manifest, MetricRequest request)
+    {
+        CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
+        IReadOnlyList<MechanismCoverage> states = request.Mechanism is { } mechanism
+            ? [SessionCoverage.Of(ledger, mechanism, request.Interval)]
+            : ledger is null ? [] : SessionCoverage.ByMechanism(ledger, request.Interval);
+        return new()
+        {
+            LedgerPublished = ledger is not null,
+            Rule = SessionCoverage.Rule,
+            Mechanisms = Array.AsReadOnly([.. states]),
+        };
+    }
+
+    private static string RateCoverageCaveat(MetricCoverage coverage, Mechanism? mechanism)
+    {
+        if (!coverage.LedgerPublished)
+        {
+            return "Capture coverage is unknown: this generation publishes no coverage ledger.";
+        }
+
+        if (mechanism is { } named)
+        {
+            MechanismCoverage state = coverage.Mechanisms.Single();
+            return $"Capture coverage for {named} over the selected interval is {state.State}: {state.Reason}.";
+        }
+
+        return "Capture coverage varies by mechanism over the selected interval; the separate states are part of "
+            + "this answer. No single covered state is inferred for an all-mechanism rate.";
     }
 
     /// <summary>
@@ -1206,8 +1262,8 @@ public static partial class SessionMetrics
         {
             "The denominator is the whole selected interval. A rate is never divided by a shorter "
             + "healthy-looking part of it (§19.2).",
-            "Coverage defects over this interval are not known here: nothing in this session publishes a coverage "
-            + "ledger yet, so this is an observed rate and not a corrected one.",
+            "The numerator counts what was observed. This is an observed rate and not a corrected one, even when "
+            + "the capture ledger reports a gap; no missing count or healthy-time denominator is invented.",
         };
         if (context.Clock is null)
         {

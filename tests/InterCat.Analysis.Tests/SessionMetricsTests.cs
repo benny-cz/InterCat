@@ -393,6 +393,54 @@ public sealed class SessionMetricsTests
         Assert.Contains(rate.Caveats, caveat => caveat.Contains("observed rate and not a corrected one", StringComparison.Ordinal));
     }
 
+    [Theory(DisplayName = "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic")]
+    [InlineData(0L, CoverageState.Covered)]
+    [InlineData(1L, CoverageState.PartialGap)]
+    public void ARateReportsCaptureCoverageSeparately(long lost, CoverageState expected)
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2),
+        ], coverage: MetricLedger(lost));
+
+        MetricResult rate = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Rate,
+            rateNumerator: Metric.Observations, interval: new TimeRange(10, 21), mechanism: Mechanism.Tcp);
+        Assert.Equal(2, rate.Rate!.Numerator);
+        Assert.Equal(11, rate.Rate.IntervalTicks);
+        Assert.True(rate.Coverage!.LedgerPublished);
+        Assert.Equal(expected, Assert.Single(rate.Coverage.Mechanisms).State);
+        Assert.Contains(rate.Caveats, caveat => caveat.Contains($"is {expected}", StringComparison.Ordinal));
+        Assert.Contains(rate.Caveats, caveat => caveat.Contains("observed rate and not a corrected one", StringComparison.Ordinal));
+
+        MetricResult quiet = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Observations,
+            interval: new TimeRange(10, 21), mechanism: Mechanism.Rpc);
+        Assert.Equal(0, quiet.Value);
+        Assert.Equal(CoverageState.UnknownCoverage, Assert.Single(quiet.Coverage!.Mechanisms).State);
+        MetricResult outside = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Observations,
+            interval: new TimeRange(9, 21), mechanism: Mechanism.Tcp);
+        Assert.Equal(CoverageState.UnknownCoverage, Assert.Single(outside.Coverage!.Mechanisms).State);
+
+        MetricResult all = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Rate,
+            rateNumerator: Metric.Observations, interval: new TimeRange(10, 21));
+        Assert.Equal(Enum.GetValues<Mechanism>().Length, all.Coverage!.Mechanisms.Count);
+        Assert.Contains(all.Coverage.Mechanisms, state => state.Mechanism == Mechanism.Tcp && state.State == expected);
+        Assert.Contains(all.Caveats, caveat => caveat.Contains("No single covered state", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R21: a legacy metric names unknown capture coverage rather than claiming a healthy rate")]
+    public void LegacyRateCoverageIsUnknown()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)]);
+        MetricResult rate = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Rate,
+            rateNumerator: Metric.Observations, interval: new TimeRange(10, 11), mechanism: Mechanism.Tcp);
+        Assert.False(rate.Coverage!.LedgerPublished);
+        Assert.Equal(CoverageState.UnknownCoverage, Assert.Single(rate.Coverage.Mechanisms).State);
+        Assert.Contains(rate.Caveats, caveat => caveat.Contains("publishes no coverage ledger", StringComparison.Ordinal));
+    }
+
     [Fact(DisplayName = "R3: a rate with no interval is unavailable rather than divided by the observed span")]
     public void ARateNeedsItsInterval()
     {
@@ -599,6 +647,33 @@ public sealed class SessionMetricsTests
         Assert.NotNull(rejection);
         return rejection;
     }
+
+    private static CoverageLedgerV1 MetricLedger(long lost) => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs = [new CoverageEpochV1
+        {
+            Epoch = 1,
+            Acquisition = CoverageAcquisition.EtlImport,
+            FirstDeliveredNativeTicks = 10,
+            LastDeliveredNativeTicks = 20,
+            Collected =
+            [
+                new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+                new CoverageCollectedV1 { ProviderId = ProcessProvider, ProviderName = "process", EventId = 99, Version = 0, Mechanism = Mechanism.Rpc },
+            ],
+            Deliveries = [new CoverageDeliveryV1
+            {
+                ProviderId = NetworkProvider,
+                EventId = 10,
+                Version = 0,
+                Delivered = 2,
+                Admitted = 2,
+                Omitted = 0,
+            }],
+            Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost }],
+        }],
+    };
 
     private static MetricResult Evaluate(
         SessionStore store,

@@ -22,6 +22,7 @@ internal sealed record MetricDocument
     public required long? Value { get; init; }
     public required string? Unit { get; init; }
     public required MetricRateDocument? Rate { get; init; }
+    public required MetricCoverageDocument? Coverage { get; init; }
     public required MetricAccountingDocument? Accounting { get; init; }
     public required MetricContributionsDocument Contributions { get; init; }
     public required MetricExclusionsDocument Excluded { get; init; }
@@ -198,6 +199,20 @@ internal sealed record MetricRateDocument
     public required long? TicksPerSecond { get; init; }
     public required string? PerSecond { get; init; }
     public required string? Unit { get; init; }
+}
+
+internal sealed record MetricCoverageDocument
+{
+    public required bool LedgerPublished { get; init; }
+    public required string Rule { get; init; }
+    public required IReadOnlyList<MetricMechanismCoverageDocument> Mechanisms { get; init; }
+}
+
+internal sealed record MetricMechanismCoverageDocument
+{
+    public required string Mechanism { get; init; }
+    public required string State { get; init; }
+    public required string Reason { get; init; }
 }
 
 internal sealed record MetricAccountingDocument
@@ -641,6 +656,19 @@ internal static class MetricCommand
                     Unit = rate.Unit?.ToString(),
                 }
                 : null,
+            Coverage = result.Coverage is { } coverage
+                ? new()
+                {
+                    LedgerPublished = coverage.LedgerPublished,
+                    Rule = coverage.Rule,
+                    Mechanisms = [.. coverage.Mechanisms.Select(item => new MetricMechanismCoverageDocument
+                    {
+                        Mechanism = item.Mechanism.ToString(),
+                        State = item.State.ToString(),
+                        Reason = item.Reason,
+                    })],
+                }
+                : null,
             Accounting = request.AccountingSide is { } accounting && taken.Count > 0
                 ? new()
                 {
@@ -953,6 +981,11 @@ internal static class MetricCommand
                     .Where(value => value is not null)
                     .DefaultIfEmpty("every layer and mechanism")));
 
+        if (document.Coverage is { } coverage)
+        {
+            RenderCoverage(coverage, request.Mechanism);
+        }
+
         if (!document.Available)
         {
             ConsoleUi.Heading("Unavailable");
@@ -1004,6 +1037,29 @@ internal static class MetricCommand
         {
             ConsoleUi.Note(caveat);
         }
+    }
+
+    private static void RenderCoverage(MetricCoverageDocument coverage, Mechanism? selected)
+    {
+        if (!coverage.LedgerPublished)
+        {
+            ConsoleUi.Field("Capture coverage", "unknown: this generation publishes no coverage ledger");
+            return;
+        }
+
+        if (selected is not null)
+        {
+            MetricMechanismCoverageDocument state = coverage.Mechanisms.Single();
+            ConsoleUi.Field("Capture coverage", $"{Words(state.State)} for {Words(state.Mechanism)}: {state.Reason}");
+            return;
+        }
+
+        string[] collected = [.. coverage.Mechanisms
+            .Where(state => state.State != nameof(CoverageState.NotCollected))
+            .Select(state => $"{Words(state.Mechanism)} {Words(state.State).ToLowerInvariant()}")];
+        int uncollected = coverage.Mechanisms.Count - collected.Length;
+        string observed = collected.Length == 0 ? "no mechanisms collected" : string.Join("; ", collected);
+        ConsoleUi.Field("Capture coverage", $"{observed}; {uncollected} not collected (icat session for details)");
     }
 
     private static void RenderSides(MetricDocument document, MetricResult result)

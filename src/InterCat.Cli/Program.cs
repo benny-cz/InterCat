@@ -133,6 +133,7 @@ static void PrintHelp()
     ConsoleUi.Line("      Answers one metric over a published session against section 5.3's matrix. A");
     ConsoleUi.Line("      metric outside its basis is rejected with the compatible ones named; one this");
     ConsoleUi.Line("      session cannot derive is reported as unavailable, with what it needs.");
+    ConsoleUi.Line("      Capture coverage is shown separately; rates remain observed, not corrected.");
     ConsoleUi.Line("      --group-by process|executable|mechanism|peer ranks it, with an exact remainder past --top.");
     ConsoleUi.Line("      --owner|--participant|--sender|--receiver <instance> focuses it on one process, and");
     ConsoleUi.Line("      --peer <instance> on one process at the other end, and --between <instances>");

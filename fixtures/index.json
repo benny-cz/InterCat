@@ -816,6 +816,8 @@
         "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
         "R21: an interval ending at maximum ticks is evaluated without overflow",
         "R21: a leased overview applies imported coverage only to observed mechanism buckets",
+        "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
+        "R21: a legacy metric names unknown capture coverage rather than claiming a healthy rate",
         "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
