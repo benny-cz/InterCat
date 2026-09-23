@@ -1,7 +1,7 @@
 # InterCat metrics v1
 
-Status: **frozen for the source-observations basis, with grouping by process instance, executable and mechanism, and
-implemented**. The logical-operations and resource-topology bases, grouping by any other entity and canonical-owner
+Status: **frozen for the source-observations basis, with process filters, grouping by process instance, executable,
+mechanism and peer, and implemented**. The logical-operations and resource-topology bases, grouping by any other entity and canonical-owner
 accounting are defined here as contract and reported as unavailable by every session until the derivations they need
 exist (§12).
 
@@ -9,9 +9,10 @@ This contract is §21.2's `metrics-v1`: contribution keys, byte domains, account
 values and the exact scenarios of §21.1. It owns what a metric **means** — which records a total takes, which
 it leaves out and how it says so. It owns nothing about segment bytes, which `contracts/segment-v1.md`
 freezes, nothing about how a generation is published or held, which `contracts/store-v1.md` freezes, nothing about
-how a process instance is derived, which `contracts/entities-v1.md` freezes, and nothing about the canonical form and
-hash of a whole analysis specification, which `contracts/query-identity-v1.md` will freeze (IC-018). ADR-012 and
-ADR-013 record the decisions below.
+how a process instance is derived, which `contracts/entities-v1.md` freezes, nothing about how a record's other end is
+found, which `contracts/relations-v1.md` freezes, and nothing about the canonical form and
+hash of a whole analysis specification, which `contracts/query-identity-v1.md` will freeze (IC-018). ADR-012,
+ADR-013 and ADR-014 record the decisions below.
 
 ## 1. A request
 
@@ -25,8 +26,11 @@ A metric request names:
 | `accountingSide` | `EN-AccountingSide` | the metric's fixed side, when it has one |
 | `rateNumerator` | `EN-Metric`, a rate only | none |
 | `evidencePolicy` | `EN-EvidencePolicy` | `IncludeCorrelated` |
-| `owner` | one `ProcessInstanceId` from this generation | none |
-| `participant` | one `ProcessInstanceId` (not yet verified against a relation revision) | none; unavailable until relations are derived |
+| `owner` | `owner(P)`: one `ProcessInstanceId` from this generation | none |
+| `participant` | `participant(P)`: one `ProcessInstanceId` | none |
+| `sender` | `sender(P)`: one `ProcessInstanceId` | none |
+| `receiver` | `receiver(P)`: one `ProcessInstanceId` | none |
+| `peer` | `peer(P,Q)`: the `ProcessInstanceId` Q, narrowing the focus P | none |
 | `timeScope` | `EN-TimeScope` | `AnalysisInterval` when an interval is named, otherwise `RetainedCapture` |
 | `grouping` | `EN-Grouping` | none: one total |
 | `interval` | half-open `[start, end)` in the native ticks of the session's clock | none |
@@ -71,7 +75,12 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - A rate with no numerator, a rate as its own numerator, and a numerator that is not additive over time —
   `Duration`, `ActiveChannels`, `ActivePeers` and `MappingCapacity`. A numerator on anything but a rate.
 - Requested rows on a request that is not grouped, or fewer than one.
-- Both `owner` and `participant` in one request, or an empty instance id. A PID is not an instance id.
+- More than one process focus - `owner`, `participant`, `sender`, `receiver` - in one request, or an empty instance
+  id. A PID is not an instance id.
+- A `peer` with no focus, and a `Peer` grouping with no focus: both are relative to a focused process (§19.1).
+- **An `owner` with a cross-side byte total.** `owner(P)` selects the records P made; `BytesSent` under
+  `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
+  `sender` and `receiver`, which select those records.
 
 ## 3. A contribution
 
@@ -130,17 +139,36 @@ compared with a transfer total.
 ## 5. Scope
 
 A result is scoped by its process filter, projection and interval together. Rows outside the interval are
-counted first; within it, rows outside the owner filter are counted separately from rows outside the layer or
+counted first; within it, rows outside the process filter are counted separately from rows outside the layer or
 mechanism projection. These categories do not overlap. The same eligible rows feed an ungrouped answer, its
 evidence listing and every group, so a grouped result partitions its **filtered** total.
 
-`owner(P)` uses `process-binding-v2` on the record's payload owner and the selected evidence policy. It
-selects one instance id, never a PID or header PID; unresolved, late-after-exit and policy-excluded candidates
-remain outside the filter. A process id absent from the generation is `ProcessInstanceNotFound`, not an empty
-zero. Owner filtering of a cross-side sent/received metric is `NoTransferAssociations` until a relation proves
-the other end. `participant(P)` is accepted as a meaningful request but returns `NoParticipantRelations` until
-the relation derivation exists; it is not silently reduced to direct ownership. The binding rule is named in
-every owner-filtered result, grouped or not.
+A process filter names one focused instance P, never a PID or a header PID, and the role it selects P's records by
+(§19.1). Every binding it relies on must be admitted by the request's evidence policy:
+
+| Filter | A record is kept when |
+|---|---|
+| `owner(P)` | its own payload owner binds to P under `process-binding-v2` |
+| `participant(P)` | P made it, or P is its other end under `relations-v1` |
+| `sender(P)` | data left P: P made a `Send` record, or P is the other end of a `Receive` record |
+| `receiver(P)` | data reached P: P made a `Receive` record, or P is the other end of a `Send` record |
+| `peer(P,Q)`, with any of the above | and, seen from P, the process at the other end is Q: its other end when P made it, its maker when P is its other end |
+
+A record with no data direction - a connect, an accept, a disconnect, a lifecycle record - has no sender and no
+receiver. Unresolved, late-after-exit and policy-excluded candidates remain outside every filter. An instance absent
+from the generation, as the focus or as Q, is `ProcessInstanceNotFound`, not an empty zero.
+
+A filter that relies on a record's other end cannot decide every record. A record outside the filter whose other end
+is unresolved, or resolved at a strength the policy does not admit, might still involve P; it is left out and
+**disclosed**: the result counts such records in scope by reason (`unresolvedCounterparts`). A record P made is never
+counted there, because a process connected to itself holds both ends and both are observed. A record whose other end
+no record in the capture holds (`PeerNotObserved`) is stated apart from one whose other end is present but undecided:
+the first involves P only if P's own records of that connection are missing.
+
+Ungrouped, a filtered total takes the kept records exactly as a whole-session total takes all of them: the accounting
+decides which end's records are measured. `participant(P)` under `SendSide` is the volume of P's conversations,
+each transfer measured once at its sender. The binding rule, and the relation rule when a filter used one, are named
+in every filtered result, grouped or not.
 
 An interval is half-open (I3) and is expressed in native ticks of the session's clock. A caller that accepts a
 session-relative time converts each bound to the **first native reading at or after it** under exactly the
@@ -157,23 +185,34 @@ partition the total: their values add up to it, and a result says so.
 
 | Grouping | A record belongs to | Available |
 |---|---|---|
-| `InstanceOnly` | the process instance its binding names, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
+| `InstanceOnly` | the process instance it is attributed to, below, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
 | `Mechanism` | its mechanism, a fact about the record | yes |
-| `Executable` | the witnessed full image path of its bound process instance; paths compare case-insensitively | yes when at least one path is witnessed |
+| `Executable` | the witnessed full image path of the instance it is attributed to; paths compare case-insensitively | yes when at least one path is witnessed |
+| `Peer` | the process at its other end from the focused process, under `relations-v1` | yes, with a process focus |
 | `ServiceContainer`, `UserSession`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
 
 An executable is a full source-witnessed path, not an exit's basename: equal basenames can denote distinct
 binaries. An instance with no full path contributes to `ExecutableUnknown`, an unattributed reason. If no
 full path was witnessed at all, executable grouping is unavailable rather than a ranking with no peers.
 
-Under `InstanceOnly`, a record belongs to the process that **made** it: a send record to its sender, a receive
-record to its receiver, a record of any other kind to its owner. So a sent total under sender accounting and a
-received total under receiver accounting group directly, and so does endpoint activity. A cross-side total —
-`BytesSent` under `ReceiveSide` or `BytesReceived` under `SendSide` — is `NoTransferAssociations`: the receive record
-names its receiver, and attributing it to the sender needs a proven association.
+Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
+`BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it
+**reached**; a record of any other metric belongs to the process that made it. A send record's own owner is its
+sender and a receive record's is its receiver, so a sent total under sender accounting and a received total under
+receiver accounting group by the records' own owners. A cross-side total - `BytesSent` under `ReceiveSide` or
+`BytesReceived` under `SendSide` - groups each record under the process at its other end, found by `relations-v1`;
+a record whose other end is unresolved is unattributed with that reason. The records a total does not take are
+attributed the same way, so a group's side breakdown shows the same transfers measured at the other end, as
+corroboration.
 
-A record whose binding the evidence policy does not admit, or that binds to no instance, is **unattributed** with its
-reason (`entities-v1` §4, §5). An unattributed group is never a peer and is never ranked.
+Under `Peer`, a record belongs to the process at its other end **from the focus**: its other end when the focus made
+it, its maker when the focus is its other end. A process connected to itself is its own peer. The focus decides the
+direction: `sender(P)` grouped by peer ranks where P's data went, `receiver(P)` where it came from, and
+`participant(P)` the processes P exchanged data with in either direction.
+
+A record whose binding the evidence policy does not admit, that binds to no instance, or whose other end is not
+resolved when the grouping needs it, is **unattributed** with its reason (`entities-v1` §4, §5; `relations-v1` §4).
+An unattributed group is never a peer and is never ranked.
 
 Groups with a measured value are **ranked** by it, descending, and a tie breaks on the group's stable identity — an
 instance's identity, a mechanism's code — so a refresh never reorders equal rows. A group whose contributions the
@@ -207,14 +246,14 @@ with no value:
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations basis, before any correlator derives operations |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
-| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound; process grouping or owner filtering on a session that does not describe its clock |
+| `NoEntityBindings` | `ActiveChannels` or `ActivePeers`, before entity instances are bound; process grouping or a process filter on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
-| `NoTransferAssociations` | `CanonicalOwner`, and a cross-side total grouped or filtered by process, before a correlator proves an association |
+| `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
 | `NoInterval` | a rate with no interval |
 | `NothingMeasured` | a byte total that takes no known contribution |
 | `GroupingNotDerived` | a grouping whose derivation this session does not have |
-| `NoParticipantRelations` | `participant(P)` before a relation revision proves the peer or resource participation |
-| `ProcessInstanceNotFound` | `owner(P)` names no instance in the selected generation |
+| `NoParticipantRelations` | not produced since `relations-v1`; it answered `participant(P)` before any relation was derived, and keeps that meaning for older results |
+| `ProcessInstanceNotFound` | a process filter or its `peer` names no instance in the selected generation |
 
 `NothingMeasured` is the rule R21 and P1 require of a byte total. A sum of nothing is not an observed zero:
 when no contribution in scope is known — there is no declared slot the accounting takes, or every one is
@@ -234,7 +273,8 @@ evidence: the records of one group are the records of an ungrouped request proje
 ## 10. Reading a generation
 
 A result answers exactly one generation and names it, together with the normalizer derivations it read and, when
-grouped by process or filtered by owner, the binding rule (I16). It is computed under an evidence lease and from the manifest that lease
+grouped by process or filtered by a process, the binding rule and - when records' other ends were used - the
+relation rule (I16). It is computed under an evidence lease and from the manifest that lease
 holds, so neither a retention nor a later commit changes what it reads (I18).
 
 A generation whose segments hold two derivations of one capture is refused: they describe the same evidence
@@ -248,7 +288,7 @@ not exist yet and are answered as unavailable today.
 
 | Scenario | Expected |
 |---|---|
-| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end. `CanonicalOwner`: `NoTransferAssociations`. Logical basis, 1 call: owed, `NoLogicalOperations`. |
+| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end; with the endpoint pair each record names, grouped by process it is A's 100, and `sender(A)` takes it. `participant(B)` keeps both records. `CanonicalOwner`: `NoTransferAssociations`. Logical basis, 1 call: owed, `NoLogicalOperations`. |
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
 | Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
@@ -256,12 +296,13 @@ not exist yet and are answered as unavailable today.
 
 ## 12. Not defined at this version
 
-- Grouping by service, session, host, endpoint or package, and grouping by channel or peer, each of
-  which needs an entity derivation this version does not have.
-- Relation-derived filtering (`participant(P)`, `sender(P)`, `receiver(P)`, `between(A,B)`, `peer(P,Q)`).
-  `participant(P)` has a fail-closed unavailable result; the remaining filters have no request syntax yet.
-- The canonical-owner choice itself (§5.3 rules 1–3), which needs proven transfer associations and the
-  correlation-quality ADR.
+- Grouping by service, session, host, endpoint, package or channel, each of which needs an entity derivation this
+  version does not have.
+- `between(A,B)` over participant sets, and a direction policy for it. `peer(P,Q)` answers one pair.
+- `ActiveChannels` and `ActivePeers`. Relations exist for TCP, but a distinct count over them would leave out every
+  peer the capture cannot resolve, and the count's unknown part has no representation yet.
+- The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
+  not which of that process's records is the same transfer; the owner needs that per-transfer association.
 - Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution
   describes is part of the request when they exist.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.

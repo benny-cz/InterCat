@@ -29,13 +29,17 @@ internal static class SessionText
             ? $"{seconds} s"
             : string.Create(CultureInfo.CurrentCulture, $"{nativeTicks:N0} ticks");
 
-    /// <summary>One instance as a reader names it: its PID, which of the PID's instances it is, and how it is witnessed.</summary>
+    /// <summary>
+    /// One instance as a reader names it: its PID, which of the PID's instances it is, the image name the source
+    /// reported when one was witnessed, and how it is witnessed.
+    /// </summary>
     public static string Process(ProcessInstance instance, SourceClockDescriptor? clock, bool pidReused)
     {
         string pid = pidReused
             ? string.Create(CultureInfo.InvariantCulture, $"PID {instance.ProcessId} #{instance.LifecycleEpoch}")
             : string.Create(CultureInfo.InvariantCulture, $"PID {instance.ProcessId}");
-        return $"{pid} - {Witness(instance, clock)}";
+        string name = instance.ImageName is { Length: > 0 } image ? $" {image}" : string.Empty;
+        return $"{pid}{name} - {Witness(instance, clock)}";
     }
 
     /// <summary>What the capture witnessed of an instance's life, in one short phrase.</summary>
@@ -65,6 +69,11 @@ internal static class SessionText
         ProcessBindingReason.AfterExit => "after the PID's last exit",
         ProcessBindingReason.NotAdmittedByPolicy => "a reused PID: a candidate the evidence policy does not admit",
         ProcessBindingReason.ExecutableUnknown => "the process is known, but its full image path was not witnessed",
+        ProcessBindingReason.PeerEndpointIncomplete => "the record carries no complete endpoint pair to find its other end",
+        ProcessBindingReason.PeerNotObserved => "no record in this capture holds the other end (a remote or unobserved peer)",
+        ProcessBindingReason.PeerAmbiguous => "more than one process holds the other end",
+        ProcessBindingReason.PeerUnbound => "the other end's records bind to no process instance",
+        ProcessBindingReason.NoRelationRule => "no relation rule covers this mechanism yet",
         _ => reason.ToString(),
     };
 

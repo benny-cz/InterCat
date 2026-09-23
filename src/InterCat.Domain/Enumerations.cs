@@ -155,6 +155,9 @@ public enum LaneGrouping
     Mechanism = 6,
     Endpoint = 7,
     Package = 8,
+
+    /// <summary>The processes at the other end from one focused process, through proven relations (§19.1 peer).</summary>
+    Peer = 9,
 }
 
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }

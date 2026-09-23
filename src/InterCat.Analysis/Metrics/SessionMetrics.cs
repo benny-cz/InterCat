@@ -50,11 +50,45 @@ public sealed record MetricRequest
     /// </summary>
     public EvidencePolicy EvidencePolicy { get; init; } = EvidencePolicy.IncludeCorrelated;
 
-    /// <summary>Limit rows to those bound to this directly named process instance under <see cref="EvidencePolicy"/>.</summary>
+    /// <summary>`owner(P)`: limit rows to those whose own payload names this process instance.</summary>
     public ProcessInstanceId? Owner { get; init; }
 
-    /// <summary>A process participating through a proven relation. Unavailable until relation derivation exists.</summary>
+    /// <summary>`participant(P)`: rows this instance made, or whose other end it is through a proven relation.</summary>
     public ProcessInstanceId? Participant { get; init; }
+
+    /// <summary>`sender(P)`: rows in which data flowed out of this instance, by its own record or a relation.</summary>
+    public ProcessInstanceId? Sender { get; init; }
+
+    /// <summary>`receiver(P)`: rows in which data flowed into this instance, by its own record or a relation.</summary>
+    public ProcessInstanceId? Receiver { get; init; }
+
+    /// <summary>
+    /// `peer(P,Q)`: narrows the focused process's rows to those whose other end, relative to the focus, is this
+    /// instance. It is never a filter on its own (§19.1).
+    /// </summary>
+    public ProcessInstanceId? Peer { get; init; }
+
+    /// <summary>The focused process and the role it is selected in, or null when no process filter is set.</summary>
+    public ProcessFocus? Focus =>
+        Owner is { } owner ? new(ProcessRole.Owner, owner)
+        : Participant is { } participant ? new(ProcessRole.Participant, participant)
+        : Sender is { } sender ? new(ProcessRole.Sender, sender)
+        : Receiver is { } receiver ? new(ProcessRole.Receiver, receiver)
+        : null;
+
+    /// <summary>
+    /// Whether this is a sent total measured at the receiving end or a received total measured at the sending end:
+    /// records the other end of each transfer made.
+    /// </summary>
+    public bool IsCrossSide
+    {
+        get
+        {
+            Metric effective = Metric == Metric.Rate && RateNumerator is { } numerator ? numerator : Metric;
+            return (effective == Metric.BytesSent && AccountingSide == Domain.AccountingSide.ReceiveSide)
+                || (effective == Metric.BytesReceived && AccountingSide == Domain.AccountingSide.SendSide);
+        }
+    }
 
     /// <summary>`requestedRows`: how many ranked groups to return. The rest are one exact remainder (§5.2).</summary>
     public int? RequestedRows { get; init; }
@@ -62,24 +96,55 @@ public sealed record MetricRequest
     /// <summary>The reason this request means nothing, or null when it means something.</summary>
     public MetricRejection? Check()
     {
-        if (Owner is not null && Participant is not null)
+        int focuses = new[] { Owner, Participant, Sender, Receiver }.Count(focus => focus is not null);
+        if (focuses > 1)
         {
-            return new("Select either an owner or a participant process filter, not both.", []);
+            return new(
+                "Select one process focus - owner, participant, sender or receiver - not several. Each names a "
+                + "different role, and combining them would silently intersect those roles.",
+                []);
         }
 
-        if (Owner is { } owner && owner.Value == Guid.Empty)
+        foreach ((string name, ProcessInstanceId? instance) in new[]
         {
-            return new("An owner filter names a nonempty process instance id.", []);
+            ("An owner", Owner), ("A participant", Participant), ("A sender", Sender), ("A receiver", Receiver),
+            ("A peer", Peer),
+        })
+        {
+            if (instance is { } named && named.Value == Guid.Empty)
+            {
+                return new($"{name} filter names a nonempty process instance id.", []);
+            }
         }
 
-        if (Participant is { } participant && participant.Value == Guid.Empty)
+        if (Peer is not null && focuses == 0)
         {
-            return new("A participant filter names a nonempty process instance id.", []);
+            return new(
+                "A peer filter is relative to a focused process - peer(P,Q) of §19.1 - and never a filter on its own. "
+                + "Name the focus as an owner, participant, sender or receiver.",
+                []);
         }
 
         if (Grouping is { } grouping && !Enum.IsDefined(grouping))
         {
             return new("A request names a grouping §23 defines.", []);
+        }
+
+        if (Grouping == LaneGrouping.Peer && focuses == 0)
+        {
+            return new(
+                "Grouping by peer ranks the processes at the other end from one focused process. Name the focus as "
+                + "an owner, participant, sender or receiver.",
+                []);
+        }
+
+        if (Owner is not null && IsCrossSide)
+        {
+            return new(
+                "An owner filter selects the records the instance made. A sent total measured at the receiving end, "
+                + "or a received total measured at the sending end, is made of records its peers made; ask for it "
+                + "with a sender or receiver focus instead.",
+                []);
         }
 
         if (!Enum.IsDefined(EvidencePolicy))
@@ -159,7 +224,11 @@ public enum MetricUnavailableReason
     /// <summary>The grouping asked for needs a derivation this session does not have, such as image names.</summary>
     GroupingNotDerived = 9,
 
-    /// <summary>A participant needs a proven relationship; direct ownership alone cannot answer it.</summary>
+    /// <summary>
+    /// A participant needed a proven relationship before any relation was derived. Not produced since
+    /// `relations-v1`: a participant is answered through the relations a session supports, and the records whose
+    /// other end is unresolved are disclosed. The code keeps its meaning so an older result still reads.
+    /// </summary>
     NoParticipantRelations = 10,
 
     /// <summary>The selected process instance is not present in this generation.</summary>
@@ -340,8 +409,16 @@ public sealed record MetricResult
 
     public long ExcludedByProjection { get; init; }
 
-    /// <summary>Rows inside the interval excluded by the requested process owner.</summary>
-    public long ExcludedByOwnerFilter { get; init; }
+    /// <summary>Rows inside the interval excluded by the process filter: owner, participant, sender or receiver.</summary>
+    public long ExcludedByProcessFilter { get; init; }
+
+    /// <summary>
+    /// Records in scope the process filter left out only because their other end is unresolved, or resolved under a
+    /// strength the evidence policy does not admit, by reason: the focused process could be that end. They are
+    /// disclosed rather than guessed into the total (P6).
+    /// </summary>
+    public IReadOnlyDictionary<ProcessBindingReason, long> UnresolvedCounterparts { get; init; } =
+        new Dictionary<ProcessBindingReason, long>();
 
     public long ExcludedOutsideInterval { get; init; }
 
@@ -386,6 +463,9 @@ public sealed record MetricResult
 
     /// <summary>The binding rule a process grouping was derived under, so a result names its entity revision (I16).</summary>
     public string? BindingRule { get; init; }
+
+    /// <summary>The relation rule that found records' other ends, when a filter or grouping needed one (I16).</summary>
+    public string? RelationRule { get; init; }
 
     /// <summary>Notes a caller must show beside the number. They are part of the answer, not decoration.</summary>
     public IReadOnlyList<string> Caveats { get; init; } = [];
@@ -489,7 +569,8 @@ public static partial class SessionMetrics
 
         SourceClockDescriptor? clock = ReadClock(store, manifest, segments, materialized);
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
-        if (materialized.Owner is not null || materialized.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable)
+        if (materialized.Focus is not null
+            || materialized.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer)
         {
             context = context with
             {
@@ -500,36 +581,36 @@ public static partial class SessionMetrics
             };
         }
 
-        if (materialized.Owner is { } owner)
+        if (materialized.Focus is { } focus)
         {
             if (clock is null)
             {
                 return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.NoEntityBindings,
-                    "An owner filter needs a capture clock to identify process instances within its host and boot.");
-            }
-
-            MetricResult? ownerGap = WhatOwnerNeeds(materialized, manifest.Generation);
-            if (ownerGap is not null)
-            {
-                return ownerGap;
+                    "A process filter needs a capture clock to identify process instances within its host and boot.");
             }
 
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(
                 [.. segments.Select(segment => segment.Reader)], clock.Value, context.FieldSegments, cancellationToken);
-            if (!processes.Instances.Any(instance => instance.Id == owner))
+            int focusIndex = IndexOf(processes, focus.Instance);
+            int? peerIndex = materialized.Peer is { } peer ? IndexOf(processes, peer) : null;
+            ProcessInstanceId? missing = focusIndex < 0 ? focus.Instance : peerIndex < 0 ? materialized.Peer : null;
+            if (missing is { } absent)
             {
                 return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.ProcessInstanceNotFound,
-                    $"Process instance {owner} is not present in generation {manifest.Generation}. Select an instance id "
+                    $"Process instance {absent} is not present in generation {manifest.Generation}. Select an instance id "
                     + "from this generation's process grouping; a PID alone is not an instance identity.");
             }
 
-            var layout = new ProcessLayout(processes, materialized.EvidencePolicy, byExecutable: false);
+            ProcessRoles roles = RolesFor(context, processes, NeedsRelations(materialized), cancellationToken);
+            var filter = new ProcessFilter(focus.Role, focusIndex, peerIndex, materialized.EvidencePolicy);
             context = context with
             {
-                Processes = processes,
-                OwnerMasks = segments.ToDictionary(segment => segment.Reader,
-                    segment => layout.MaskFor(segment.Reader, owner)),
+                Roles = roles,
+                Filter = filter,
+                ProcessMasks = segments.ToDictionary(segment => segment.Reader,
+                    segment => filter.Mask(roles.For(segment.Reader))),
             };
+            context = context with { UnresolvedCounterparts = UnresolvedCounterparts(context, cancellationToken) };
         }
 
         if (materialized.Grouping is { } grouping)
@@ -561,13 +642,6 @@ public static partial class SessionMetrics
     /// </summary>
     private static MetricResult? WhatIsMissing(MetricRequest request, long generation)
     {
-        if (request.Participant is not null)
-        {
-            return Unavailable(request, generation, MetricUnavailableReason.NoParticipantRelations,
-                "A participant filter needs a proven transfer or resource relation. This generation derives direct "
-                + "process owners only; treating an owner as every participant would silently omit peers.");
-        }
-
         if (request.Basis == AnalysisBasis.LogicalOperations)
         {
             return Unavailable(
@@ -638,6 +712,84 @@ public static partial class SessionMetrics
             : null;
     }
 
+    private static int IndexOf(ProcessInstanceIndex processes, ProcessInstanceId instance)
+    {
+        for (int index = 0; index < processes.Instances.Count; index++)
+        {
+            if (processes.Instances[index].Id == instance)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Whether answering needs records' other ends: any focus but a bare owner, a peer narrowing, a peer grouping, or a
+    /// directional total grouped by process, whose records belong to their sender or their receiver.
+    /// </summary>
+    private static bool NeedsRelations(MetricRequest request)
+    {
+        Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
+        return request.Focus is { Role: not ProcessRole.Owner }
+            || request.Peer is not null
+            || request.Grouping == LaneGrouping.Peer
+            || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
+                && effective is Metric.BytesSent or Metric.BytesReceived);
+    }
+
+    private static ProcessRoles RolesFor(
+        Context context,
+        ProcessInstanceIndex processes,
+        bool withRelations,
+        CancellationToken cancellationToken) =>
+        new(processes, withRelations
+            ? TransportRelationIndex.Derive([.. context.Segments.Select(segment => segment.Reader)], processes, cancellationToken)
+            : null);
+
+    /// <summary>
+    /// The records in scope a focus could be the unresolved other end of, by reason, counted inside the interval and
+    /// the projection like every other exclusion. A bare owner filter never depends on another end, so it has none.
+    /// </summary>
+    private static Dictionary<ProcessBindingReason, long> UnresolvedCounterparts(Context context, CancellationToken cancellationToken)
+    {
+        var counts = new Dictionary<ProcessBindingReason, long>();
+        if (context.Filter is not { } filter
+            || context.Roles is not { } roles
+            || (filter.Role == ProcessRole.Owner && filter.Peer is null))
+        {
+            return counts;
+        }
+
+        const int Reasons = (int)ProcessBindingReason.NoRelationRule + 1;
+        MetricRequest request = context.Request;
+        foreach ((string _, SegmentReaderV1 reader) in context.Segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentRoles segmentRoles = roles.For(reader);
+            bool[] undecided = filter.Undecided(segmentRoles, context.ProcessMasks[reader]);
+            int[] reasons = new int[reader.RowCount];
+            for (int row = 0; row < reasons.Length; row++)
+            {
+                ProcessBinding peer = segmentRoles.Peer(row);
+                reasons[row] = (int)(peer.IsBound ? ProcessBindingReason.NotAdmittedByPolicy : peer.Reason);
+            }
+
+            long[] perReason = SegmentMeasurement.CountObservationsByGroup(
+                reader, request.Layer, request.Mechanism, request.Interval, reasons, Reasons, undecided);
+            for (int reason = 0; reason < Reasons; reason++)
+            {
+                if (perReason[reason] > 0)
+                {
+                    counts[(ProcessBindingReason)reason] = counts.GetValueOrDefault((ProcessBindingReason)reason) + perReason[reason];
+                }
+            }
+        }
+
+        return counts;
+    }
+
     /// <summary>
     /// Refuses a generation whose segments cannot be read together, and reads the clock their readings are on.
     /// </summary>
@@ -686,7 +838,7 @@ public static partial class SessionMetrics
     {
         long count = 0;
         long outsideProjection = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         long outsideInterval = 0;
         var evidence = new List<MetricEvidence>();
         foreach ((string name, SegmentReaderV1 reader) in context.Segments)
@@ -698,10 +850,10 @@ public static partial class SessionMetrics
                 request.Mechanism,
                 request.Interval,
                 Math.Max(0, context.EvidenceLimit - evidence.Count),
-                context.OwnerMask(reader));
+                context.ProcessMask(reader));
             count += counted.Counted;
             outsideProjection += counted.ExcludedByProjection;
-            outsideOwner += counted.ExcludedByOwnerFilter;
+            outsideProcess += counted.ExcludedByProcessFilter;
             outsideInterval += counted.ExcludedOutsideInterval;
             evidence.AddRange(counted.EvidenceRows.Select(row => Evidence(name, reader, row)));
         }
@@ -711,11 +863,7 @@ public static partial class SessionMetrics
             "An observation count is sensitive to instrumentation density and says nothing about volume (§5). It is "
             + "not an operation count.",
         };
-        if (request.Owner is not null)
-        {
-            caveats.Add(OwnerFilterCaveat(request));
-        }
-
+        caveats.AddRange(FocusCaveats(request, context.UnresolvedCounterparts));
         if (count == 0)
         {
             caveats.Add(
@@ -729,7 +877,7 @@ public static partial class SessionMetrics
             Unit = MeasurementUnit.Count,
             KnownContributions = count,
             ExcludedByProjection = outsideProjection,
-            ExcludedByOwnerFilter = outsideOwner,
+            ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = outsideInterval,
             Evidence = evidence,
             Caveats = caveats,
@@ -747,7 +895,7 @@ public static partial class SessionMetrics
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         long outsideInterval = 0;
         MeasurementUnit? unit = null;
         var evidence = new List<MetricEvidence>();
@@ -764,7 +912,7 @@ public static partial class SessionMetrics
                     Interval = request.Interval,
                     EvidenceSides = taken,
                     EvidenceLimit = Math.Max(0, context.EvidenceLimit - evidence.Count),
-                }, context.OwnerMask(reader));
+                }, context.ProcessMask(reader));
             if (measured.Unit is { } segmentUnit)
             {
                 if (unit is { } established && established != segmentUnit)
@@ -796,7 +944,7 @@ public static partial class SessionMetrics
             otherDomain += measured.ExcludedOtherDomain;
             noSlot += measured.ExcludedNoDeclaredSlot;
             outsideProjection += measured.ExcludedByProjection;
-            outsideOwner += measured.ExcludedByOwnerFilter;
+            outsideProcess += measured.ExcludedByProcessFilter;
             outsideInterval += measured.ExcludedOutsideInterval;
             evidence.AddRange(measured.EvidenceRows.Select(row => Evidence(name, reader, row)));
         }
@@ -838,7 +986,7 @@ public static partial class SessionMetrics
             ExcludedOtherSide = otherSide,
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
-            ExcludedByOwnerFilter = outsideOwner,
+            ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = outsideInterval,
             Evidence = evidence,
         };
@@ -943,24 +1091,28 @@ public static partial class SessionMetrics
         }
         else if (request.Metric is Metric.BytesSent or Metric.BytesReceived)
         {
-            bool crossSide = (request.Metric == Metric.BytesSent && request.AccountingSide == AccountingSide.ReceiveSide)
-                || (request.Metric == Metric.BytesReceived && request.AccountingSide == AccountingSide.SendSide);
-            caveats.Add(
-                crossSide
-                    ? $"These are {(request.Metric == Metric.BytesSent ? "sent" : "received")} bytes measured at the "
-                        + "other end of each transfer. That is well defined for the whole session; attributing them to "
-                        + "one process needs a proven transfer association, which no correlator has produced yet."
-                    : request.Owner is not null
-                        ? "This total belongs to the selected process instance under its binding policy. A record "
-                            + "of another instance, an unresolved owner, or a binding excluded by policy adds nothing."
-                        : "This total spans every process in scope; select an owner instance or group by process "
-                            + "to inspect direct process attribution (R22).");
+            if (request.IsCrossSide)
+            {
+                bool attributed = request.Focus is not null
+                    || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
+                caveats.Add(
+                    $"These are {(request.Metric == Metric.BytesSent ? "sent" : "received")} bytes measured at the "
+                    + "other end of each transfer. "
+                    + (!attributed
+                        ? "That is well defined for the whole session. Attributing them to a process needs the relation "
+                            + "that proves each record's other end: ask with a sender or receiver focus, or group by process."
+                        : $"Each is attributed through {TransportRelationIndex.RelationRule}, which proves the process at "
+                            + "that end; a record whose other end it does not resolve adds nothing."));
+            }
+            else if (request.Focus is null)
+            {
+                caveats.Add(
+                    "This total spans every process in scope; select a process focus or group by process to inspect "
+                    + "process attribution (R22).");
+            }
         }
 
-        if (request.Owner is not null && request.Metric is not (Metric.BytesSent or Metric.BytesReceived))
-        {
-            caveats.Add(OwnerFilterCaveat(request));
-        }
+        caveats.AddRange(FocusCaveats(request, answer.UnresolvedCounterparts));
 
         if (answer.UnknownContributions > 0)
         {
@@ -989,9 +1141,67 @@ public static partial class SessionMetrics
         return caveats;
     }
 
-    private static string OwnerFilterCaveat(MetricRequest request) =>
-        $"Only records bound to owner instance {request.Owner} under {request.EvidencePolicy} contribute. "
-        + "An unresolved owner, another instance or a binding this policy excludes is outside this filter (R22).";
+    /// <summary>What a process filter selected, and the records it could not decide on, in words beside the number.</summary>
+    private static List<string> FocusCaveats(
+        MetricRequest request,
+        IReadOnlyDictionary<ProcessBindingReason, long> unresolvedCounterparts)
+    {
+        var caveats = new List<string>();
+        if (request.Focus is not { } focus)
+        {
+            return caveats;
+        }
+
+        string rule = TransportRelationIndex.RelationRule;
+        string narrowed = request.Peer is { } peer
+            ? $" Only records whose other end, seen from it, is instance {peer} are kept."
+            : string.Empty;
+        caveats.Add(focus.Role switch
+        {
+            ProcessRole.Owner =>
+                $"Only records bound to owner instance {focus.Instance} under {request.EvidencePolicy} contribute. An "
+                + "unresolved owner, another instance or a binding this policy excludes is outside this filter (R22)."
+                + narrowed,
+            ProcessRole.Participant =>
+                $"Records instance {focus.Instance} made, and records whose other end is that instance through {rule}, "
+                + $"contribute under {request.EvidencePolicy}. A local transfer between it and a peer is two records, one "
+                + "at each end, and the accounting decides which of them a byte total takes." + narrowed,
+            ProcessRole.Sender =>
+                $"Records in which data left instance {focus.Instance} contribute under {request.EvidencePolicy}: its own "
+                + $"send records, and receive records whose other end is that instance through {rule}. A record with no "
+                + "data direction, such as a connect or a disconnect, is outside this filter." + narrowed,
+            _ =>
+                $"Records in which data reached instance {focus.Instance} contribute under {request.EvidencePolicy}: its "
+                + $"own receive records, and send records whose other end is that instance through {rule}. A record with "
+                + "no data direction, such as a connect or a disconnect, is outside this filter." + narrowed,
+        });
+
+        long notObserved = unresolvedCounterparts.GetValueOrDefault(ProcessBindingReason.PeerNotObserved);
+        if (notObserved > 0)
+        {
+            caveats.Add(
+                $"{notObserved:N0} records in scope have their other end outside this capture's records: a remote "
+                + "process, or a local one the capture holds no record of on that connection. They are left out; one "
+                + $"involves instance {focus.Instance} only if its own records of that connection are missing.");
+        }
+
+        List<KeyValuePair<ProcessBindingReason, long>> undecided =
+        [
+            .. unresolvedCounterparts
+                .Where(entry => entry.Key != ProcessBindingReason.PeerNotObserved)
+                .OrderBy(entry => entry.Key),
+        ];
+        if (undecided.Count > 0)
+        {
+            caveats.Add(
+                $"{undecided.Sum(entry => entry.Value):N0} records in scope have another end this session cannot decide ("
+                + string.Join(", ", undecided.Select(entry => $"{entry.Key} {entry.Value:N0}"))
+                + $"). Instance {focus.Instance} could be that end, so they are disclosed and left out rather than guessed "
+                + "into the total (P6).");
+        }
+
+        return caveats;
+    }
 
     private static MetricEvidence Evidence(string segment, SegmentReaderV1 reader, int row)
     {
@@ -1057,12 +1267,20 @@ public static partial class SessionMetrics
         /// <summary>The generation's `source-fields-v1` segments, opened only for process grouping or filtering.</summary>
         public IReadOnlyList<SegmentReaderV1> FieldSegments { get; init; } = [];
 
-        public Dictionary<SegmentReaderV1, bool[]> OwnerMasks { get; init; } = [];
+        /// <summary>Which rows of each segment the process filter keeps; empty without a filter.</summary>
+        public Dictionary<SegmentReaderV1, bool[]> ProcessMasks { get; init; } = [];
 
-        public ProcessInstanceIndex? Processes { get; init; }
+        /// <summary>Who each record belongs to in every role, when a filter needed it.</summary>
+        public ProcessRoles? Roles { get; init; }
 
-        public ReadOnlySpan<bool> OwnerMask(SegmentReaderV1 reader) =>
-            OwnerMasks.TryGetValue(reader, out bool[]? mask) ? mask : default;
+        /// <summary>The process filter, resolved against this generation's instances.</summary>
+        public ProcessFilter? Filter { get; init; }
+
+        public IReadOnlyDictionary<ProcessBindingReason, long> UnresolvedCounterparts { get; init; } =
+            new Dictionary<ProcessBindingReason, long>();
+
+        public ReadOnlySpan<bool> ProcessMask(SegmentReaderV1 reader) =>
+            ProcessMasks.TryGetValue(reader, out bool[]? mask) ? mask : default;
 
         public MetricResult Answer(MetricRequest request) => new()
         {
@@ -1079,7 +1297,9 @@ public static partial class SessionMetrics
                     .OrderBy(derivation => derivation.Value),
             ],
             Clock = Clock,
-            BindingRule = request.Owner is null ? null : ProcessInstanceIndex.BindingRule,
+            BindingRule = request.Focus is null ? null : ProcessInstanceIndex.BindingRule,
+            RelationRule = Roles?.Relations is null ? null : TransportRelationIndex.RelationRule,
+            UnresolvedCounterparts = UnresolvedCounterparts,
             FirstNativeTicks = Segments.Min(segment => segment.Reader.MinNativeTicks),
             LastNativeTicks = Segments.Max(segment => segment.Reader.MaxNativeTicks),
         };

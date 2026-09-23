@@ -172,8 +172,8 @@ public sealed record DomainMeasurement
 
     public required long ExcludedByProjection { get; init; }
 
-    /// <summary>Rows inside the interval omitted by an explicit process-owner filter.</summary>
-    public long ExcludedByOwnerFilter { get; init; }
+    /// <summary>Rows inside the interval omitted by an explicit process filter: owner, participant, sender or receiver.</summary>
+    public long ExcludedByProcessFilter { get; init; }
 
     public required long ExcludedOutsideInterval { get; init; }
 
@@ -245,7 +245,7 @@ public static class SegmentMeasurement
     /// domain, in another, or in none. Accumulation is checked, so a long capture reports an overflow rather than
     /// wrapping into a smaller total that looks plausible (§10.2).
     /// </summary>
-    public static DomainMeasurement MeasureDomain(SegmentReaderV1 segment, DomainMeasurementSpec spec, ReadOnlySpan<bool> ownerMask = default)
+    public static DomainMeasurement MeasureDomain(SegmentReaderV1 segment, DomainMeasurementSpec spec, ReadOnlySpan<bool> processMask = default)
     {
         ArgumentNullException.ThrowIfNull(segment);
         ArgumentNullException.ThrowIfNull(spec);
@@ -255,7 +255,7 @@ public static class SegmentMeasurement
             throw new ArgumentException(problem, nameof(spec));
         }
 
-        ValidateMask(segment, ownerMask);
+        ValidateMask(segment, processMask);
 
         (int first, int end) = spec.Interval is { } interval ? segment.RowsWithin(interval) : (0, segment.RowCount);
 
@@ -270,7 +270,7 @@ public static class SegmentMeasurement
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         MeasurementUnit? unit = null;
         var evidence = new List<int>(Math.Min(spec.EvidenceLimit, 64));
         bool wantsEvidence = spec.EvidenceLimit > 0 && spec.EvidenceSides.Count > 0;
@@ -288,9 +288,9 @@ public static class SegmentMeasurement
 
         for (int row = first; row < end; row++)
         {
-            if (!ownerMask.IsEmpty && !ownerMask[row])
+            if (!processMask.IsEmpty && !processMask[row])
             {
-                outsideOwner++;
+                outsideProcess++;
                 continue;
             }
 
@@ -397,7 +397,7 @@ public static class SegmentMeasurement
             OtherDomains = byDomain,
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
-            ExcludedByOwnerFilter = outsideOwner,
+            ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = segment.RowCount - (end - first),
             EvidenceRows = evidence,
         };
@@ -423,10 +423,10 @@ public static class SegmentMeasurement
         Mechanism? mechanism,
         TimeRange? interval,
         int evidenceLimit = 0,
-        ReadOnlySpan<bool> ownerMask = default)
+        ReadOnlySpan<bool> processMask = default)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        ValidateMask(segment, ownerMask);
+        ValidateMask(segment, processMask);
         if (layer is { } declaredLayer && !Enum.IsDefined(declaredLayer))
         {
             throw new ArgumentOutOfRangeException(nameof(layer), layer, "A layer projection names a §23 code.");
@@ -453,12 +453,12 @@ public static class SegmentMeasurement
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         var evidence = new List<int>(Math.Min(evidenceLimit, 64));
         long count = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         for (int row = first; row < end; row++)
         {
-            if (!ownerMask.IsEmpty && !ownerMask[row])
+            if (!processMask.IsEmpty && !processMask[row])
             {
-                outsideOwner++;
+                outsideProcess++;
                 continue;
             }
 
@@ -473,7 +473,7 @@ public static class SegmentMeasurement
             }
         }
 
-        return new(count, (end - first) - count - outsideOwner, segment.RowCount - (end - first), evidence, outsideOwner);
+        return new(count, (end - first) - count - outsideProcess, segment.RowCount - (end - first), evidence, outsideProcess);
     }
 
     /// <summary>
@@ -487,10 +487,10 @@ public static class SegmentMeasurement
         DomainMeasurementSpec spec,
         ReadOnlySpan<int> groupOfRow,
         int groupCount,
-        ReadOnlySpan<bool> ownerMask = default)
+        ReadOnlySpan<bool> processMask = default)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        ValidateMask(segment, ownerMask);
+        ValidateMask(segment, processMask);
         ArgumentNullException.ThrowIfNull(spec);
         string? problem = spec.Validate();
         if (problem is not null)
@@ -517,7 +517,7 @@ public static class SegmentMeasurement
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         MeasurementUnit? unit = null;
 
         SegmentColumnSlice layer = segment.Slice(SegmentColumnId.Layer);
@@ -530,9 +530,9 @@ public static class SegmentMeasurement
 
         for (int row = first; row < end; row++)
         {
-            if (!ownerMask.IsEmpty && !ownerMask[row])
+            if (!processMask.IsEmpty && !processMask[row])
             {
-                outsideOwner++;
+                outsideProcess++;
                 continue;
             }
 
@@ -633,7 +633,7 @@ public static class SegmentMeasurement
             groups[group] = (IReadOnlyList<SideMeasurement>?)measured ?? [];
         }
 
-        return new(spec.Domain, unit, groups, otherDomain, noSlot, outsideProjection, segment.RowCount - (end - first), outsideOwner);
+        return new(spec.Domain, unit, groups, otherDomain, noSlot, outsideProjection, segment.RowCount - (end - first), outsideProcess);
     }
 
     /// <summary>
@@ -647,10 +647,10 @@ public static class SegmentMeasurement
         TimeRange? interval,
         ReadOnlySpan<int> groupOfRow,
         int groupCount,
-        ReadOnlySpan<bool> ownerMask = default)
+        ReadOnlySpan<bool> processMask = default)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        ValidateMask(segment, ownerMask);
+        ValidateMask(segment, processMask);
         if (groupOfRow.Length != segment.RowCount)
         {
             throw new ArgumentException(
@@ -666,7 +666,7 @@ public static class SegmentMeasurement
         var counts = new long[groupCount];
         for (int row = first; row < end; row++)
         {
-            if (!ownerMask.IsEmpty && !ownerMask[row])
+            if (!processMask.IsEmpty && !processMask[row])
             {
                 continue;
             }
@@ -702,11 +702,11 @@ public static class SegmentMeasurement
         return false;
     }
 
-    private static void ValidateMask(SegmentReaderV1 segment, ReadOnlySpan<bool> ownerMask)
+    private static void ValidateMask(SegmentReaderV1 segment, ReadOnlySpan<bool> processMask)
     {
-        if (!ownerMask.IsEmpty && ownerMask.Length != segment.RowCount)
+        if (!processMask.IsEmpty && processMask.Length != segment.RowCount)
         {
-            throw new ArgumentException("An owner filter names one admission decision per segment row.", nameof(ownerMask));
+            throw new ArgumentException("A process filter names one admission decision per segment row.", nameof(processMask));
         }
     }
 }
@@ -723,7 +723,7 @@ public sealed record GroupedDomainMeasurement(
     long ExcludedNoDeclaredSlot,
     long ExcludedByProjection,
     long ExcludedOutsideInterval,
-    long ExcludedByOwnerFilter = 0);
+    long ExcludedByProcessFilter = 0);
 
 /// <summary>An observation count over one segment, with the rows it did not count on each ground.</summary>
 public sealed record ObservationCount(
@@ -731,4 +731,4 @@ public sealed record ObservationCount(
     long ExcludedByProjection,
     long ExcludedOutsideInterval,
     IReadOnlyList<int> EvidenceRows,
-    long ExcludedByOwnerFilter = 0);
+    long ExcludedByProcessFilter = 0);

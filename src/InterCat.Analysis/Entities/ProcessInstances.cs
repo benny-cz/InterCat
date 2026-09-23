@@ -70,6 +70,30 @@ public enum ProcessBindingReason
 
     /// <summary>The process binds, but no lifecycle record supplies an executable name for grouping.</summary>
     ExecutableUnknown = 6,
+
+    /// <summary>
+    /// The contribution belongs to the process at the record's other end, and the record does not carry a complete
+    /// endpoint pair to find that end by (`relations-v1`).
+    /// </summary>
+    PeerEndpointIncomplete = 7,
+
+    /// <summary>
+    /// No record in this capture holds the other end of the record's connection: the peer is remote, or it is local
+    /// and the capture holds none of its records. Nothing is inferred from the address alone.
+    /// </summary>
+    PeerNotObserved = 8,
+
+    /// <summary>
+    /// The records at the other end name more than one process, or bind to more than one instance, so which one was
+    /// the peer is not decided. A reused port is never resolved by picking the nearest holder.
+    /// </summary>
+    PeerAmbiguous = 9,
+
+    /// <summary>The other end's records name no process that binds to an instance.</summary>
+    PeerUnbound = 10,
+
+    /// <summary>No relation rule covers the record's mechanism, so its other end is unknown rather than guessed.</summary>
+    NoRelationRule = 11,
 }
 
 /// <summary>

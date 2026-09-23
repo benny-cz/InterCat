@@ -392,10 +392,10 @@
         "I12: a creation with no exit before it ends the earlier instance, and says the exit was not seen",
         "I12: a late record with an old start key resolves to the earlier epoch",
         "I12: a rundown and an exit are one instance that was running before the capture",
-        "I12: same-tick exit and reuse bind their lifecycle records by observation identity",
-        "I12: source start keys, image paths and a parent's start key survive publication and bind exactly",
         "I12: an absent activity id stays absent rather than becoming an empty identifier",
         "I12: equal process keys on different hosts never collide",
+        "I12: same-tick exit and reuse bind their lifecycle records by observation identity",
+        "I12: source start keys, image paths and a parent's start key survive publication and bind exactly",
         "I12: the same PID and creation on another capture's clock is another instance",
         "I12: without a start key, only a record in a reused PID's earliest lifetime resolves"
       ],
@@ -413,7 +413,8 @@
         "I14: equal-time byte-identical records keep their multiplicity and gain no order",
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: instance identities do not depend on how the evidence was split into segments",
-        "I14: one admitted record cannot satisfy two truth operations"
+        "I14: one admitted record cannot satisfy two truth operations",
+        "I14: relations and peers do not depend on how records were split into segments or delivered"
       ],
       "I15": [
         "I15: a column whose checksum does not match its bytes is refused when it is read",
@@ -431,13 +432,10 @@
         "I15: a manifest naming a dependency outside its root is refused",
         "I15: a manifest this reader cannot read exactly is refused, never read at a guess",
         "I15: a manifest whose contents no longer match its digest is refused",
+        "I15: a missing current pointer is repaired without inventing damaged bytes",
         "I15: a null bitmap and its availability counters describe the same rows",
         "I15: a published generation names every dependency with its length and digest",
         "I15: a published name is immutable, so republishing it is refused",
-        "I15: taking a fresh reader lease does not authorize a stale writer",
-        "I15: a stale store instance cannot overwrite a generation another writer published",
-        "I15: an exclusive publication lock prevents a second writer from committing",
-        "I15: an orphan with a generation's final name is never overwritten",
         "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",
         "I15: a retention generation publishes what it released and why",
@@ -447,24 +445,27 @@
         "I15: a segment whose trailing digest does not cover its bytes is refused",
         "I15: a segment's bytes are a function of its rows, not of their arrival order",
         "I15: a session is never opened as another session",
+        "I15: a staged generation is refused if its number becomes occupied before commit",
+        "I15: a stale recovery preview cannot repoint a newly published generation",
+        "I15: a stale store instance cannot overwrite a generation another writer published",
         "I15: a text column past the dictionary budget falls back to the variable chunk",
         "I15: a torn pointer rolls back to the retained last-known-good",
-        "I15: confirmed pointer repair preserves the damaged bytes and skips an orphan generation",
-        "I15: pointer repair is a no-op when the current generation verifies",
-        "I15: pointer repair refuses an unbounded damaged pointer without replacing it",
-        "I15: a missing current pointer is repaired without inventing damaged bytes",
-        "I15: a stale recovery preview cannot repoint a newly published generation",
-        "I15: a staged generation is refused if its number becomes occupied before commit",
         "I15: an abandoned generation publishes nothing and leaves only staging files",
         "I15: an admitted journal is not released by dropping its name",
         "I15: an empty segment is never published, because absence is not data",
         "I15: an empty session is empty, not a refusal",
+        "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an incomplete staged file is never published",
-        "I15: opening reports a staging file without deleting another writer's work",
         "I15: an orphan is reported on open and removed only when that is asked for",
+        "I15: an orphan with a generation's final name is never overwritten",
+        "I15: confirmed pointer repair preserves the damaged bytes and skips an orphan generation",
         "I15: every derived row is writable into a segment as it stands",
+        "I15: opening reports a staging file without deleting another writer's work",
+        "I15: pointer repair is a no-op when the current generation verifies",
+        "I15: pointer repair refuses an unbounded damaged pointer without replacing it",
         "I15: releasing a journal prefix publishes a shorter journal and names the extent",
         "I15: retention refuses a file the current generation does not hold",
+        "I15: taking a fresh reader lease does not authorize a stale writer",
         "I15: time blocks cover every row and state the interval their rows actually hold"
       ],
       "I16": [
@@ -475,13 +476,13 @@
         "I18: a lease holds the manifest it acquired, and a later commit does not move it",
         "I18: a lease on a session with no generation is refused rather than empty",
         "I18: a pin that reserves less than it holds is refused, not silently promised",
+        "I18: a stale reader acquires the freshly published generation",
+        "I18: a viewer leases a published generation using read-only root access",
         "I18: an expired lease holds nothing, and is not revivable",
+        "I18: expiry releases the cross-process hold without another reader call",
         "I18: released evidence goes once the last lease on it is released",
         "I18: retention cannot remove evidence a live lease holds",
         "I18: retention in a second store cannot remove another process's leased evidence",
-        "I18: a stale reader acquires the freshly published generation",
-        "I18: a viewer leases a published generation using read-only root access",
-        "I18: expiry releases the cross-process hold without another reader call",
         "I18: stale retention cannot release files from a newer generation"
       ],
       "I19": [
@@ -494,9 +495,9 @@
         "I2: an import names the evidence it cannot find instead of importing nothing",
         "I2: an import refuses a bound outside its declared range before reading a record",
         "I2: an import requires both a path and a compiled admission plan",
+        "I2: one observation cannot publish the same source field twice",
         "I2: process identity refuses a field repeated across field segments",
         "I2: records keyed against a derived clock keep one identity across imports",
-        "I2: one observation cannot publish the same source field twice",
         "I2: the same bytes under a different retained-evidence policy are a different import",
         "I2: the same record and derivation yield the same identity every time",
         "I2: two rows with one observation identity are refused rather than counted twice"
@@ -517,8 +518,10 @@
         "I4: the covered extent contains the requested one, including the final observation"
       ],
       "I5": [
+        "I5: a cross-side total groups each record under the process at its other end, or its reason",
         "I5: a total resolves to exactly the records it counted, with identities that survive a re-read",
         "I5: cell counts match the records those cells resolve to",
+        "I5: grouped by peer, a focus's counterparts and its unresolved ends partition its total",
         "I5: grouped rows, the remainder and the unattributed rows partition the total exactly"
       ],
       "I6": [
@@ -601,6 +604,7 @@
       ],
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
+        "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
         "P6: reusable values never resolve an instance without lifecycle evidence"
       ],
       "P7": [
@@ -711,18 +715,19 @@
         "R2: a measurement carries its value or null, its unit, its domain and its side",
         "R2: a metric outside its basis is rejected with the compatible alternatives named",
         "R2: a rate names an additive numerator, and nothing else carries one",
-        "R2: an invalid request is refused before it is planned, not answered"
+        "R2: an invalid request is refused before it is planned, not answered",
+        "R2: an owner never takes a cross-side total, and one request names one process focus"
       ],
       "R20": [
-        "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
-        "R20: the retained descriptor plan round-trips and refuses a different journal schema",
-        "R20: a published journal re-derives byte-identical segments in a replacement generation",
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
+        "R20: a published journal re-derives byte-identical segments in a replacement generation",
         "R20: an in-place change after store open and a cancelled check never publish",
-        "R20: importing into an existing generation is refused before reading an ETL",
+        "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
         "R20: colour measurements match published reference values",
         "R20: greyscale simulation keeps luminance and drops chroma",
-        "R20: the committed theme report matches what the palette computes today"
+        "R20: importing into an existing generation is refused before reading an ETL",
+        "R20: the committed theme report matches what the palette computes today",
+        "R20: the retained descriptor plan round-trips and refuses a different journal schema"
       ],
       "R21": [
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
@@ -745,13 +750,18 @@
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
+        "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
+        "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer or channel count is unavailable rather than counted from reusable values",
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
-        "R22: a sent total measured at the receiving end is not attributed to a sender without an association",
+        "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
+        "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
-        "R22: participant and cross-side owner filters fail closed without a proven relation",
-        "R22: an owner filter distinguishes reused PID instances and honors candidate policy"
+        "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
+        "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
+        "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
+        "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
       "R3": [
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
@@ -768,9 +778,9 @@
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a rate with no interval is unavailable rather than divided by the observed span",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
-        "R3: a source field value and its availability cannot disagree",
         "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a single sample answers every quantile from the bucket it fell in",
+        "R3: a source field value and its availability cannot disagree",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an empty latency histogram reports no quantile rather than zero",
@@ -809,12 +819,12 @@
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],
       "R9": [
+        "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets",
         "R9: a returned buffer refuses every read rather than handing out another owner's bytes",
         "R9: a writer that is disposed mid-batch returns the buffers it was holding",
         "R9: admitted fields compile to fixed offsets with a minimum body length",
         "R9: an admitted record owns its extended bytes after the source buffer changes",
         "R9: an envelope owns its bytes after the source memory changes",
-        "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets",
         "R9: the callback allocation budget is measurable, so it can be met",
         "R9: writing a batch returns every buffer the records held"
       ]

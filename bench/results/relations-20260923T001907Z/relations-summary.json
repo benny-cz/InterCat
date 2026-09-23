@@ -1,0 +1,143 @@
+{
+  "schema": "intercat.relations-summary.v1",
+  "producedUtc": "2026-09-23T00:19:17.119Z",
+  "rule": "tcp-endpoint-relation-v1",
+  "bindingRule": "process-binding-v2",
+  "sources": {
+    "peak": {
+      "description": "IC-009 peak level ETL of the 2026-09-23 series, imported into a scratch session",
+      "etl": "bench/results/capture-comparison-20260922T234102Z-series/levels/peak/etl/diagnostic-evidence.etl (not committed)",
+      "etlDigest": "sha256:dc4f849cd0b988f75b87312d20500a7079bb5bd2a10ec7d5bf9afef200d60038"
+    },
+    "baseline": {
+      "description": "FX-IMPORT-001 probe ETL, imported into a scratch session",
+      "etl": "fixtures/FX-IMPORT-001/runs/import-probe.etl (local run evidence, not committed)",
+      "etlDigest": "sha256:a97f9cee0f443700b43bda78f85dbabe338db4cad260daa6465e28f5f80a7c1e"
+    }
+  },
+  "endpointOrientation": {
+    "measuredOn": "peak",
+    "note": "Every admitted TCPv4 descriptor names the record's own endpoint first. Connection lifecycle records were checked against their owner's own send/receive records on the same endpoint pair.",
+    "connectRecords": {
+      "sameOrientationAsOwnersData": 12,
+      "mirrored": 0
+    },
+    "acceptRecords": {
+      "sameOrientationAsOwnersData": 8,
+      "mirrored": 0
+    },
+    "disconnectRecords": {
+      "sameOrientationAsOwnersData": 20,
+      "mirrored": 0
+    }
+  },
+  "derivation": {
+    "peak": {
+      "observations": 75360,
+      "instances": 522,
+      "tcpRecords": 74788,
+      "relations": 9,
+      "selfRelations": 1,
+      "relationsByStrength": {
+        "Correlated": 9
+      },
+      "tcpRecordsWithResolvedOtherEnd": 74681,
+      "resolvedByStrength": {
+        "Correlated": 74681
+      },
+      "unresolvedByReason": {
+        "PeerNotObserved": 107
+      },
+      "deriveProcessesMilliseconds": 283,
+      "deriveRelationsMilliseconds": 49
+    },
+    "baseline": {
+      "observations": 555,
+      "instances": 55,
+      "tcpRecords": 485,
+      "relations": 0,
+      "selfRelations": 0,
+      "relationsByStrength": {},
+      "tcpRecordsWithResolvedOtherEnd": 0,
+      "resolvedByStrength": {},
+      "unresolvedByReason": {
+        "PeerNotObserved": 485
+      },
+      "deriveProcessesMilliseconds": 39,
+      "deriveRelationsMilliseconds": 7
+    }
+  },
+  "queries": {
+    "workloadConversation": {
+      "request": "BytesSent/TransportObserved/SendSide, participant(workload server), grouped by peer",
+      "value": 34300070,
+      "peers": [
+        {
+          "imageName": "InterCat.TestWorkloads.exe",
+          "value": 34300070,
+          "known": 32768,
+          "unknown": 0
+        }
+      ],
+      "unattributed": [],
+      "excludedByProcessFilter": 680,
+      "unresolvedCounterparts": {
+        "PeerNotObserved": 107
+      },
+      "wallMilliseconds": 1619
+    },
+    "clientSentMeasuredAtReceivers": {
+      "request": "BytesSent/TransportObserved/ReceiveSide, sender(workload client)",
+      "value": 34168998,
+      "unresolvedCounterparts": {
+        "PeerNotObserved": 61
+      },
+      "wallMilliseconds": 1561
+    },
+    "receivedMeasuredAtSendersByProcess": {
+      "request": "BytesReceived/TransportObserved/SendSide, grouped by process, top 2",
+      "value": 34344596,
+      "top": [
+        {
+          "imageName": "InterCat.TestWorkloads.exe",
+          "value": 34168998,
+          "known": 16384,
+          "unknown": 0
+        },
+        {
+          "imageName": "InterCat.TestWorkloads.exe",
+          "value": 131072,
+          "known": 16384,
+          "unknown": 0
+        }
+      ],
+      "remainder": {
+        "value": 1,
+        "known": 1,
+        "unknown": 0
+      },
+      "unattributed": [
+        {
+          "reason": "PeerNotObserved",
+          "value": 44525,
+          "known": 38,
+          "unknown": 0
+        }
+      ],
+      "partitionsTotal": true,
+      "wallMilliseconds": 1583
+    },
+    "baselineParticipant": {
+      "request": "Observations, participant(first listed instance) on the baseline session, whose TCP traffic all leaves the host",
+      "value": 243,
+      "relationRule": "tcp-endpoint-relation-v1",
+      "unresolvedCounterparts": {
+        "PeerNotObserved": 242
+      }
+    }
+  },
+  "workload": {
+    "serverReceived": 34168998,
+    "clientSent": 34168998
+  }
+}

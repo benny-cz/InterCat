@@ -11,47 +11,21 @@ namespace InterCat.Analysis;
 /// </summary>
 public static partial class SessionMetrics
 {
-    private static MetricResult? WhatOwnerNeeds(MetricRequest request, long generation)
-    {
-        Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
-        bool crossSide = (effective == Metric.BytesSent && request.AccountingSide == AccountingSide.ReceiveSide)
-            || (effective == Metric.BytesReceived && request.AccountingSide == AccountingSide.SendSide);
-        return crossSide
-            ? Unavailable(request, generation, MetricUnavailableReason.NoTransferAssociations,
-                $"An owner-filtered {effective} total measured at the other end of a transfer needs a proven "
-                + "association: the record names its own process, not the process at the other end. Use the "
-                + "sender side for sent bytes or the receiver side for received bytes.")
-            : null;
-    }
-
     /// <summary>What a grouping needs that this session may not have. Null when it can be answered.</summary>
     private static MetricResult? WhatGroupingNeeds(MetricRequest request, long generation, SourceClockDescriptor? clock)
     {
-        Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         switch (request.Grouping)
         {
-            case LaneGrouping.InstanceOnly or LaneGrouping.Executable:
-                if (clock is null)
-                {
-                    return Unavailable(
+            case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer:
+                // A cross-side total groups each record under the process at its other end, found through the relation
+                // rule; a record whose other end it does not resolve is unattributed with the reason, never guessed.
+                return clock is null
+                    ? Unavailable(
                         request,
                         generation,
                         MetricUnavailableReason.NoEntityBindings,
                         "A process instance is identified within the host and boot its capture's clock scopes, and this "
-                        + "session does not describe its clock, so no instance can be keyed (identity-v1).");
-                }
-
-                bool crossSide = (effective == Metric.BytesSent && request.AccountingSide == AccountingSide.ReceiveSide)
-                    || (effective == Metric.BytesReceived && request.AccountingSide == AccountingSide.SendSide);
-                return crossSide
-                    ? Unavailable(
-                        request,
-                        generation,
-                        MetricUnavailableReason.NoTransferAssociations,
-                        $"{effective} measured at the other end of each transfer is attributed to a process only through a "
-                        + "proven transfer association - the receive record names its receiver, not its sender - and no "
-                        + "correlator has proven one. Group sent bytes under sender accounting or received bytes under "
-                        + "receiver accounting instead: each record then belongs to the process that made it.")
+                        + "session does not describe its clock, so no instance can be keyed (identity-v1).")
                     : null;
             case LaneGrouping.Mechanism:
                 return null;
@@ -75,13 +49,18 @@ public static partial class SessionMetrics
         MetricRequest request = context.Request;
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         bool isCount = effective == Metric.Observations;
-        ProcessInstanceIndex? processes = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
-            ? context.Processes ?? ProcessInstanceIndex.Derive(
-                [.. context.Segments.Select(segment => segment.Reader)],
-                context.Clock!.Value,
-                context.FieldSegments,
+        ProcessRoles? roles = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer
+            ? context.Roles ?? RolesFor(
+                context,
+                ProcessInstanceIndex.Derive(
+                    [.. context.Segments.Select(segment => segment.Reader)],
+                    context.Clock!.Value,
+                    context.FieldSegments,
+                    cancellationToken),
+                NeedsRelations(request),
                 cancellationToken)
             : null;
+        ProcessInstanceIndex? processes = roles?.Processes;
         if (grouping == LaneGrouping.Executable && !processes!.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ImagePath)))
         {
             return Unavailable(
@@ -91,9 +70,13 @@ public static partial class SessionMetrics
                 "No process lifecycle record in this generation carries a full image name. An executable cannot be "
                 + "identified from a PID or an exit basename; import evidence with admitted process image names.");
         }
-        GroupLayout layout = processes is null
+        GroupLayout layout = roles is null
             ? new MechanismLayout()
-            : new ProcessLayout(processes, request.EvidencePolicy, byExecutable: grouping == LaneGrouping.Executable);
+            : new ProcessLayout(
+                roles.Processes,
+                request.EvidencePolicy,
+                byExecutable: grouping == LaneGrouping.Executable,
+                segment => AttributedBindings(context, roles, segment, grouping, effective));
         IReadOnlyList<AccountingSide> taken = isCount ? [] : MetricCompatibility.RowSidesTakenBy(request.AccountingSide!.Value);
 
         var totals = new SideTotal?[layout.Count, (int)AccountingSide.CanonicalOwner + 1];
@@ -101,14 +84,14 @@ public static partial class SessionMetrics
         long otherDomain = 0;
         long noSlot = 0;
         long outsideProjection = 0;
-        long outsideOwner = 0;
+        long outsideProcess = 0;
         long outsideInterval = 0;
         MeasurementUnit? unit = null;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int[] groups = layout.Assign(reader);
-            ReadOnlySpan<bool> ownerMask = context.OwnerMask(reader);
+            ReadOnlySpan<bool> processMask = context.ProcessMask(reader);
             if (isCount)
             {
                 long[] segmentCounts = SegmentMeasurement.CountObservationsByGroup(
@@ -118,16 +101,16 @@ public static partial class SessionMetrics
                     request.Interval,
                     groups,
                     layout.Count,
-                    ownerMask);
+                    processMask);
                 for (int group = 0; group < layout.Count; group++)
                 {
                     counts[group] += segmentCounts[group];
                 }
 
                 ObservationCount scope = SegmentMeasurement.CountObservations(
-                    reader, request.Layer, request.Mechanism, request.Interval, ownerMask: ownerMask);
+                    reader, request.Layer, request.Mechanism, request.Interval, processMask: processMask);
                 outsideProjection += scope.ExcludedByProjection;
-                outsideOwner += scope.ExcludedByOwnerFilter;
+                outsideProcess += scope.ExcludedByProcessFilter;
                 outsideInterval += scope.ExcludedOutsideInterval;
                 continue;
             }
@@ -143,7 +126,7 @@ public static partial class SessionMetrics
                 },
                 groups,
                 layout.Count,
-                ownerMask);
+                processMask);
             if (measured.Unit is { } segmentUnit)
             {
                 if (unit is { } established && established != segmentUnit)
@@ -167,7 +150,7 @@ public static partial class SessionMetrics
             otherDomain += measured.ExcludedOtherDomain;
             noSlot += measured.ExcludedNoDeclaredSlot;
             outsideProjection += measured.ExcludedByProjection;
-            outsideOwner += measured.ExcludedByOwnerFilter;
+            outsideProcess += measured.ExcludedByProcessFilter;
             outsideInterval += measured.ExcludedOutsideInterval;
         }
 
@@ -292,13 +275,14 @@ public static partial class SessionMetrics
             ExcludedOtherSide = sides.Where(side => !taken.Contains(side.Side)).Sum(side => side.DeclaredContributions),
             ExcludedNoDeclaredSlot = noSlot,
             ExcludedByProjection = outsideProjection,
-            ExcludedByOwnerFilter = outsideOwner,
+            ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = outsideInterval,
             Groups = ordered,
             Remainder = remainder,
             Unattributed = unattributed,
             GroupsPartitionTotal = true,
-            BindingRule = processes is null && request.Owner is null ? null : ProcessInstanceIndex.BindingRule,
+            BindingRule = processes is null && request.Focus is null ? null : ProcessInstanceIndex.BindingRule,
+            RelationRule = (roles ?? context.Roles)?.Relations is null ? null : TransportRelationIndex.RelationRule,
         };
 
         if (!isCount && totalKnown == 0)
@@ -316,13 +300,13 @@ public static partial class SessionMetrics
         {
             caveats.AddRange(ByteCaveats(request with { Metric = effective }, answer));
         }
-        else if (request.Owner is not null)
+        else
         {
-            caveats.Add(OwnerFilterCaveat(request));
+            caveats.AddRange(FocusCaveats(request, answer.UnresolvedCounterparts));
         }
 
         caveats.RemoveAll(caveat => caveat.StartsWith("This total spans every process", StringComparison.Ordinal));
-        caveats.AddRange(GroupingCaveats(processes, request, unattributed));
+        caveats.AddRange(GroupingCaveats(roles, request, unattributed));
         MetricRate? rate = request.Metric == Metric.Rate
             ? RateOf(totalValue, isCount ? MeasurementUnit.Count : unit ?? MeasurementUnit.Bytes, context)
             : null;
@@ -377,12 +361,12 @@ public static partial class SessionMetrics
     }
 
     private static List<string> GroupingCaveats(
-        ProcessInstanceIndex? processes,
+        ProcessRoles? roles,
         MetricRequest request,
         IReadOnlyList<MetricGroup> unattributed)
     {
         var caveats = new List<string>();
-        if (processes is null)
+        if (roles is null)
         {
             return caveats;
         }
@@ -411,7 +395,61 @@ public static partial class SessionMetrics
                 + "reported by that reason and never attributed to the nearest instance (P6).");
         }
 
+        if (roles.Relations is not null)
+        {
+            caveats.Add(
+                request.Grouping == LaneGrouping.Peer
+                    ? $"Each record is grouped under the process at its other end from instance {request.Focus!.Value.Instance}, "
+                        + $"found by {TransportRelationIndex.RelationRule}: the record holding the mirrored endpoint pair "
+                        + "is the other end of the same connection, and every record there binds to one instance."
+                    : $"A {(request.Metric == Metric.BytesSent || request.RateNumerator == Metric.BytesSent ? "sent" : "received")} "
+                        + "total groups each record under the process the data left or reached. A record made at the other "
+                        + $"end is grouped through {TransportRelationIndex.RelationRule}, which finds the process holding "
+                        + "the mirrored endpoint pair.");
+        }
+
+        if (unattributed.Any(group => group.Reason is ProcessBindingReason.PeerNotObserved
+            or ProcessBindingReason.PeerAmbiguous or ProcessBindingReason.PeerUnbound
+            or ProcessBindingReason.PeerEndpointIncomplete or ProcessBindingReason.NoRelationRule))
+        {
+            caveats.Add(
+                "Some contributions belong to the process at a record's other end, and that end is not resolved: no "
+                + "record in this capture holds it, more than one process holds it, its records bind to no instance, the "
+                + "record carries no complete endpoint pair, or no relation rule covers its mechanism. They are reported "
+                + "by that reason and never attributed to a guessed peer (P6).");
+        }
+
         return caveats;
+    }
+
+    /// <summary>
+    /// The process each row of a segment belongs to under a grouping. A peer grouping takes the process at the other end
+    /// from the focus. A sent total takes the process the data left - a receive record's other end - and a received total
+    /// the process it reached - a send record's other end; any other total takes the process that made the record
+    /// (`contracts/metrics-v1.md` §6).
+    /// </summary>
+    private static ProcessBinding[] AttributedBindings(
+        Context context,
+        ProcessRoles roles,
+        SegmentReaderV1 segment,
+        LaneGrouping grouping,
+        Metric effective)
+    {
+        SegmentRoles segmentRoles = roles.For(segment);
+        var bindings = new ProcessBinding[segment.RowCount];
+        for (int row = 0; row < bindings.Length; row++)
+        {
+            bindings[row] = grouping == LaneGrouping.Peer
+                ? context.Filter!.Counterpart(segmentRoles, row)
+                : effective switch
+                {
+                    Metric.BytesSent when segmentRoles.Directions[row] < 0 => segmentRoles.Peer(row),
+                    Metric.BytesReceived when segmentRoles.Directions[row] > 0 => segmentRoles.Peer(row),
+                    _ => segmentRoles.Owner(row),
+                };
+        }
+
+        return bindings;
     }
 
     /// <summary>A grouping's slots and the groups they fold into. A slot is what one row is assigned to.</summary>
@@ -437,21 +475,29 @@ public static partial class SessionMetrics
 
     /// <summary>
     /// Slots by process instance. The first slots hold the reasons a record is unattributed; each instance then has
-    /// one slot per binding strength, so how strongly its records are bound survives into its group.
+    /// one slot per binding strength, so how strongly its records are bound survives into its group. Which process a
+    /// record belongs to - the one that made it, the one at its other end, or the one a transfer left or reached - is
+    /// the binder's to say; the layout only folds bindings into groups.
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.ExecutableUnknown + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.NoRelationRule + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;
         private readonly bool byExecutable;
+        private readonly Func<SegmentReaderV1, ProcessBinding[]> binder;
 
-        public ProcessLayout(ProcessInstanceIndex index, EvidencePolicy policy, bool byExecutable)
+        public ProcessLayout(
+            ProcessInstanceIndex index,
+            EvidencePolicy policy,
+            bool byExecutable,
+            Func<SegmentReaderV1, ProcessBinding[]> binder)
         {
             this.index = index;
             this.policy = policy;
             this.byExecutable = byExecutable;
+            this.binder = binder;
             var groups = new List<GroupDefinition>();
             for (int reason = 1; reason < ReasonSlots; reason++)
             {
@@ -505,32 +551,11 @@ public static partial class SessionMetrics
 
         public override int[] Assign(SegmentReaderV1 segment)
         {
-            SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
-            SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
-            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
-            SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
-            SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
-            SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
-            SegmentColumnSlice factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
-            SegmentColumnSlice factLow = segment.Slice(SegmentColumnId.FactKeyLow);
+            ProcessBinding[] bindings = binder(segment);
             int[] slots = new int[segment.RowCount];
             for (int row = 0; row < segment.RowCount; row++)
             {
-                bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(
-                    (Mechanism)mechanisms.UnsignedAt(row)!.Value,
-                    (ObservationKind)kinds.UnsignedAt(row)!.Value);
-                long? owner = owners.SignedAt(row);
-                ObservationId? exact = lifecycle && owner is not null
-                    ? new ObservationId(
-                        new RawRecordId(segment.CaptureId,
-                            (uint)streams.UnsignedAt(row)!.Value,
-                            (uint)epochs.UnsignedAt(row)!.Value,
-                            ordinals.UnsignedAt(row)!.Value),
-                        segment.Derivation,
-                        new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value))
-                    : null;
-                ProcessBinding binding = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle, exact);
+                ProcessBinding binding = bindings[row];
                 slots[row] = !binding.IsBound
                     ? (int)binding.Reason
                     : !binding.IsAdmittedUnder(policy)
@@ -541,34 +566,6 @@ public static partial class SessionMetrics
             }
 
             return slots;
-        }
-
-        public bool[] MaskFor(SegmentReaderV1 segment, ProcessInstanceId owner)
-        {
-            int instance = -1;
-            for (int indexAt = 0; indexAt < index.Instances.Count; indexAt++)
-            {
-                if (index.Instances[indexAt].Id == owner)
-                {
-                    instance = indexAt;
-                    break;
-                }
-            }
-
-            if (instance < 0)
-            {
-                throw new ArgumentException($"Process instance {owner} does not belong to this index.", nameof(owner));
-            }
-
-            int first = SlotOf(instance, 0);
-            int[] slots = Assign(segment);
-            var mask = new bool[slots.Length];
-            for (int row = 0; row < slots.Length; row++)
-            {
-                mask[row] = slots[row] >= first && slots[row] < first + Strengths.Length;
-            }
-
-            return mask;
         }
 
         private static int SlotOf(int instance, int strength) => ReasonSlots + (instance * Strengths.Length) + strength;

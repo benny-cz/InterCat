@@ -23,7 +23,7 @@ public sealed class GroupedMetricsTests
         MetricRequest request = Request(Metric.Observations) with { Owner = owner };
         MetricResult count = SessionMetrics.Evaluate(session.Store, request, new() { EvidenceLimit = 10 });
         Assert.Equal(4, count.Value);
-        Assert.Equal(5, count.ExcludedByOwnerFilter);
+        Assert.Equal(5, count.ExcludedByProcessFilter);
         Assert.Equal([1UL, 2UL, 5UL, 6UL], count.Evidence.Select(item => item.ObservationId.RawRecordId.RecordOrdinal));
         Assert.Equal(ProcessInstanceIndex.BindingRule, count.BindingRule);
 
@@ -34,41 +34,46 @@ public sealed class GroupedMetricsTests
         });
         Assert.Equal(2, projected.Value);
         Assert.Equal(3, projected.ExcludedOutsideInterval);
-        Assert.Equal(2, projected.ExcludedByOwnerFilter);
+        Assert.Equal(2, projected.ExcludedByProcessFilter);
         Assert.Equal(2, projected.ExcludedByProjection);
         Assert.Equal(9, projected.Value + projected.ExcludedOutsideInterval
-            + projected.ExcludedByOwnerFilter + projected.ExcludedByProjection);
+            + projected.ExcludedByProcessFilter + projected.ExcludedByProjection);
 
         MetricResult grouped = SessionMetrics.Evaluate(session.Store, request with { Grouping = LaneGrouping.Mechanism });
         Assert.True(grouped.GroupsPartitionTotal);
         Assert.Equal(4, grouped.Value);
-        Assert.Equal(5, grouped.ExcludedByOwnerFilter);
+        Assert.Equal(5, grouped.ExcludedByProcessFilter);
         Assert.Equal(4, grouped.Groups.Sum(group => group.Value));
 
         MetricResult bytes = SessionMetrics.Evaluate(session.Store,
             Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with { Owner = owner },
             new() { EvidenceLimit = 10 });
         Assert.Equal(100, bytes.Value);
-        Assert.Equal(5, bytes.ExcludedByOwnerFilter);
+        Assert.Equal(5, bytes.ExcludedByProcessFilter);
         Assert.Single(bytes.Evidence);
         Assert.Equal(2UL, bytes.Evidence[0].ObservationId.RawRecordId.RecordOrdinal);
     }
 
-    [Fact(DisplayName = "R22: participant and cross-side owner filters fail closed without a proven relation")]
-    public void ParticipantAndCrossSideOwnerNeedRelations()
+    [Fact(DisplayName = "R22: without a relation a participant is its own records, with every undecided record disclosed")]
+    public void ParticipantWithoutRelationsDisclosesWhatItCannotDecide()
     {
         using var session = new TemporarySession();
         Publish(session.Store, BusySession());
         ProcessInstanceId owner = ProcessInstanceIndex.Derive(TestSessions.Segments(session.Store), TestClock)
             .Instances.Single(instance => instance.ProcessId == 100).Id;
 
+        // No record carries an endpoint pair, so no other end is found: the participant's records are the ones it
+        // made, and the four transfer records it did not make are disclosed as possibly its own - never added.
         MetricResult participant = SessionMetrics.Evaluate(session.Store,
             Request(Metric.Observations) with { Participant = owner });
-        Assert.Equal(MetricUnavailableReason.NoParticipantRelations, participant.Unavailable);
+        Assert.Equal(4, participant.Value);
+        Assert.Equal(4, participant.UnresolvedCounterparts[ProcessBindingReason.PeerEndpointIncomplete]);
+        Assert.Equal(TransportRelationIndex.RelationRule, participant.RelationRule);
 
-        MetricResult crossSide = SessionMetrics.Evaluate(session.Store,
-            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide) with { Owner = owner });
-        Assert.Equal(MetricUnavailableReason.NoTransferAssociations, crossSide.Unavailable);
+        // An owner selects the records it made, and a sent total measured at the receiving end is made by its peers.
+        ArgumentException crossSide = Assert.Throws<ArgumentException>(() => SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide) with { Owner = owner }));
+        Assert.Contains("sender or receiver focus", crossSide.Message, StringComparison.Ordinal);
 
         MetricResult absent = SessionMetrics.Evaluate(session.Store,
             Request(Metric.Observations) with { Owner = ProcessInstanceId.New() });
@@ -107,9 +112,9 @@ public sealed class GroupedMetricsTests
         Assert.Equal(3, first.Value);
         Assert.Equal(1, laterDefault.Value);
         Assert.Equal(3, laterCandidates.Value);
-        Assert.Equal(3, first.ExcludedByOwnerFilter);
-        Assert.Equal(5, laterDefault.ExcludedByOwnerFilter);
-        Assert.Equal(3, laterCandidates.ExcludedByOwnerFilter);
+        Assert.Equal(3, first.ExcludedByProcessFilter);
+        Assert.Equal(5, laterDefault.ExcludedByProcessFilter);
+        Assert.Equal(3, laterCandidates.ExcludedByProcessFilter);
 
         MetricResult firstBytes = SessionMetrics.Evaluate(session.Store,
             Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with { Owner = instances[0] });
@@ -222,18 +227,23 @@ public sealed class GroupedMetricsTests
         Assert.Equal(1, result.Groups[2].UnknownContributions);
     }
 
-    [Fact(DisplayName = "R22: a sent total measured at the receiving end is not attributed to a sender without an association")]
-    public void ACrossSideTotalIsNotGroupedByProcess()
+    [Fact(DisplayName = "R22: a sent total measured at the receiving end is attributed to a sender only through a relation")]
+    public void ACrossSideTotalNeedsTheOtherEnd()
     {
         using var session = new TemporarySession();
         Publish(session.Store, BusySession());
 
+        // The receive records name their receivers; with no endpoint pair, nothing finds the process that sent to them,
+        // so every contribution is unattributed with that reason rather than given to the receiver.
         MetricResult result = SessionMetrics.Evaluate(
             session.Store,
             Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide) with { Grouping = LaneGrouping.InstanceOnly });
 
-        Assert.Equal(MetricUnavailableReason.NoTransferAssociations, result.Unavailable);
-        Assert.Contains("names its receiver, not its sender", result.UnavailableExplanation!, StringComparison.Ordinal);
+        Assert.True(result.GroupsPartitionTotal);
+        Assert.Empty(result.Groups);
+        MetricGroup unattributed = Assert.Single(result.Unattributed);
+        Assert.Equal((ProcessBindingReason.PeerEndpointIncomplete, 160L), (unattributed.Reason!.Value, unattributed.Value!.Value));
+        Assert.Equal(160, result.Value);
 
         // The same total grouped by mechanism is well defined: a mechanism is a fact about each record.
         MetricResult byMechanism = SessionMetrics.Evaluate(

@@ -15,6 +15,7 @@ internal sealed record MetricDocument
     public required bool FromLastKnownGood { get; init; }
     public required MetricSpecificationDocument Specification { get; init; }
     public required string? BindingRule { get; init; }
+    public required string? RelationRule { get; init; }
     public required bool Available { get; init; }
     public required MetricUnavailableDocument? Unavailable { get; init; }
     public required long? Value { get; init; }
@@ -133,6 +134,10 @@ internal sealed record MetricSpecificationDocument
     public required string? Mechanism { get; init; }
     public required string? OwnerInstanceId { get; init; }
     public required string? ParticipantInstanceId { get; init; }
+    public required string? SenderInstanceId { get; init; }
+    public required string? ReceiverInstanceId { get; init; }
+    public required string? PeerInstanceId { get; init; }
+    public required string EvidencePolicy { get; init; }
     public required MetricIntervalDocument? Interval { get; init; }
 }
 
@@ -193,8 +198,11 @@ internal sealed record MetricExclusionsDocument
     public required long OtherDomain { get; init; }
     public required long NoDeclaredSlot { get; init; }
     public required long ByProjection { get; init; }
-    public required long ByOwnerFilter { get; init; }
+    public required long ByProcessFilter { get; init; }
     public required long OutsideInterval { get; init; }
+
+    /// <summary>Records the process filter left out only because their other end is unresolved, by reason.</summary>
+    public required IReadOnlyDictionary<string, long> UnresolvedCounterparts { get; init; }
 }
 
 internal sealed record MetricReadDocument
@@ -277,6 +285,9 @@ internal static class MetricCommand
         string? policyOption = command.TakeOption("--evidence-policy");
         string? ownerOption = command.TakeOption("--owner");
         string? participantOption = command.TakeOption("--participant");
+        string? senderOption = command.TakeOption("--sender");
+        string? receiverOption = command.TakeOption("--receiver");
+        string? peerOption = command.TakeOption("--peer");
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
@@ -286,11 +297,19 @@ internal static class MetricCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if ((ownerOption is not null && !Guid.TryParse(ownerOption, out _))
-            || (participantOption is not null && !Guid.TryParse(participantOption, out _)))
+        foreach ((string name, string? value) in new[]
         {
-            ConsoleUi.Failure("--owner and --participant each require a process instance id from a process-grouped result (not a PID).");
-            return InterCatExitCode.InvalidInvocation;
+            ("--owner", ownerOption), ("--participant", participantOption), ("--sender", senderOption),
+            ("--receiver", receiverOption), ("--peer", peerOption),
+        })
+        {
+            if (value is not null && !Guid.TryParse(value, out _))
+            {
+                ConsoleUi.Failure(
+                    $"{name} requires a process instance id, as icat processes or a process-grouped result prints it. "
+                    + $"'{value}' is not one; a PID is not an instance identity.");
+                return InterCatExitCode.InvalidInvocation;
+            }
         }
 
         if (sessionPath is null || metricOption is null)
@@ -312,7 +331,7 @@ internal static class MetricCommand
         if (!TryParse(basisOption, AnalysisBasis.SourceObservations, "--basis", out AnalysisBasis basis, out string? problem)
             || !TryParse(metricOption, Metric.Observations, "--metric", out Metric metric, out problem)
             || !TryParseOptional(domainOption, "--byte-domain", out ByteDomain? domain, out problem)
-            || !TryParseOptional(sideOption, "--side", out AccountingSide? side, out problem)
+            || !TryParseOptional(SideAlias(sideOption), "--side", out AccountingSide? side, out problem)
             || !TryParseOptional(numeratorOption, "--rate-numerator", out Metric? numerator, out problem)
             || !TryParseOptional(layerOption, "--layer", out ObservationLayer? layer, out problem)
             || !TryParseOptional(mechanismOption, "--mechanism", out Mechanism? mechanism, out problem)
@@ -343,8 +362,11 @@ internal static class MetricCommand
             Mechanism = mechanism,
             Grouping = grouping,
             EvidencePolicy = policy,
-            Owner = ownerOption is null ? null : new ProcessInstanceId(Guid.Parse(ownerOption)),
-            Participant = participantOption is null ? null : new ProcessInstanceId(Guid.Parse(participantOption)),
+            Owner = Instance(ownerOption),
+            Participant = Instance(participantOption),
+            Sender = Instance(senderOption),
+            Receiver = Instance(receiverOption),
+            Peer = Instance(peerOption),
             RequestedRows = top,
         };
 
@@ -433,6 +455,9 @@ internal static class MetricCommand
                 : InterCatExitCode.Success;
     }
 
+    private static ProcessInstanceId? Instance(string? option) =>
+        option is null ? null : new ProcessInstanceId(Guid.Parse(option));
+
     private static MetricDocument Describe(MetricResult result, string path, bool fromLastKnownGood)
     {
         MetricRequest request = result.Request;
@@ -456,6 +481,10 @@ internal static class MetricCommand
                 Mechanism = request.Mechanism?.ToString(),
                 OwnerInstanceId = request.Owner?.ToString(),
                 ParticipantInstanceId = request.Participant?.ToString(),
+                SenderInstanceId = request.Sender?.ToString(),
+                ReceiverInstanceId = request.Receiver?.ToString(),
+                PeerInstanceId = request.Peer?.ToString(),
+                EvidencePolicy = request.EvidencePolicy.ToString(),
                 Interval = request.Interval is { } interval
                     ? new()
                     {
@@ -467,6 +496,7 @@ internal static class MetricCommand
                     : null,
             },
             BindingRule = result.BindingRule,
+            RelationRule = result.RelationRule,
             Available = result.IsAvailable,
             Unavailable = result.IsAvailable
                 ? null
@@ -517,8 +547,11 @@ internal static class MetricCommand
                 OtherDomain = result.ExcludedOtherDomain,
                 NoDeclaredSlot = result.ExcludedNoDeclaredSlot,
                 ByProjection = result.ExcludedByProjection,
-                ByOwnerFilter = result.ExcludedByOwnerFilter,
+                ByProcessFilter = result.ExcludedByProcessFilter,
                 OutsideInterval = result.ExcludedOutsideInterval,
+                UnresolvedCounterparts = result.UnresolvedCounterparts
+                    .OrderBy(entry => entry.Key)
+                    .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
             },
             Read = new()
             {
@@ -614,14 +647,20 @@ internal static class MetricCommand
             return;
         }
 
-        bool byProcess = result.Request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable;
+        bool byProcess = result.Request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
         bool byExecutable = result.Request.Grouping == LaneGrouping.Executable;
+        string rules = result.RelationRule is { } relationRule
+            ? $"{grouping.BindingRule} and {relationRule}"
+            : grouping.BindingRule ?? string.Empty;
         ConsoleUi.Line();
-        ConsoleUi.Line(byExecutable
-            ? $"  By witnessed executable path ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
-            : byProcess
-                ? $"  By process instance ({grouping.BindingRule}, evidence policy {grouping.EvidencePolicy}):"
-                : "  By mechanism:");
+        ConsoleUi.Line(result.Request.Grouping switch
+        {
+            LaneGrouping.Executable => $"  By witnessed executable path ({rules}, evidence policy {grouping.EvidencePolicy}):",
+            LaneGrouping.Peer when result.Request.Focus is { } focus =>
+                $"  By the process at the other end from {Role(focus.Role)} {focus.Instance} ({rules}, evidence policy {grouping.EvidencePolicy}):",
+            LaneGrouping.InstanceOnly => $"  By process instance ({rules}, evidence policy {grouping.EvidencePolicy}):",
+            _ => "  By mechanism:",
+        });
         var rows = new List<string[]>();
         foreach (MetricGroupDocument group in grouping.Groups)
         {
@@ -649,7 +688,9 @@ internal static class MetricCommand
             ConsoleUi.Line();
             ConsoleUi.Line(byExecutable
                 ? "  Not attributed to an executable, by reason (never a peer, never ranked):"
-                : "  Not attributed to an instance, by reason (never a peer, never ranked):");
+                : result.Request.Grouping == LaneGrouping.Peer
+                    ? "  Other end not resolved, by reason (never a peer, never ranked):"
+                    : "  Not attributed to an instance, by reason (never a peer, never ranked):");
             ConsoleUi.Table(
                 ["Reason", "Value", "Contributions"],
                 [
@@ -731,15 +772,20 @@ internal static class MetricCommand
         }
 
         ConsoleUi.Field("Scope", Scope(result));
-        if (request.Owner is { } owner)
+        if (request.Focus is { } focus)
         {
-            ConsoleUi.Field("Owner process instance", owner.ToString());
-            ConsoleUi.Field("Binding policy", request.EvidencePolicy.ToString());
-        }
+            ConsoleUi.Field("Process focus", $"{Role(focus.Role)} {focus.Instance}");
+            if (request.Peer is { } peer)
+            {
+                ConsoleUi.Field("Other end", $"{peer} only");
+            }
 
-        if (request.Participant is { } participant)
-        {
-            ConsoleUi.Field("Participant process instance", participant.ToString());
+            ConsoleUi.Field("Binding policy", request.EvidencePolicy.ToString());
+            ConsoleUi.Field(
+                "Rules",
+                result.RelationRule is { } relationRule
+                    ? $"{result.BindingRule ?? ProcessInstanceIndex.BindingRule}, {relationRule}"
+                    : result.BindingRule ?? ProcessInstanceIndex.BindingRule);
         }
 
         ConsoleUi.Field(
@@ -837,9 +883,14 @@ internal static class MetricCommand
         }
 
         rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
-        if (result.Request.Owner is not null)
+        if (result.Request.Focus is not null)
         {
-            rows.Add(["outside the owner filter", ConsoleUi.Count(document.Excluded.ByOwnerFilter)]);
+            rows.Add(["outside the process filter", ConsoleUi.Count(document.Excluded.ByProcessFilter)]);
+            long undecided = document.Excluded.UnresolvedCounterparts.Values.Sum();
+            if (undecided > 0)
+            {
+                rows.Add(["  of which the other end is unresolved", ConsoleUi.Count(undecided)]);
+            }
         }
 
         rows.Add(["outside the interval", ConsoleUi.Count(document.Excluded.OutsideInterval)]);
@@ -948,13 +999,21 @@ internal static class MetricCommand
 
         if (!TryParse(value, LaneGrouping.InstanceOnly, "--group-by", out LaneGrouping parsed, out problem))
         {
-            problem = $"--group-by expects process, executable or mechanism, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
+            problem = $"--group-by expects process, executable, mechanism or peer, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
             return false;
         }
 
         grouping = parsed;
         return true;
     }
+
+    private static string Role(ProcessRole role) => role switch
+    {
+        ProcessRole.Owner => "owner",
+        ProcessRole.Participant => "participant",
+        ProcessRole.Sender => "sender",
+        _ => "receiver",
+    };
 
     private static bool TryParseTop(string? value, out int? top, out string? problem)
     {
@@ -1060,6 +1119,19 @@ internal static class MetricCommand
 
         return true;
     }
+
+    /// <summary>
+    /// The accounting sides as a person says them: send, receive, endpoint or canonical, beside §23's full names. The
+    /// short form names the same side, so it is resolved here and the request never sees two spellings.
+    /// </summary>
+    private static string? SideAlias(string? value) => value?.ToLowerInvariant() switch
+    {
+        "send" or "sender" => nameof(AccountingSide.SendSide),
+        "receive" or "receiver" => nameof(AccountingSide.ReceiveSide),
+        "endpoint" => nameof(AccountingSide.EndpointActivity),
+        "canonical" => nameof(AccountingSide.CanonicalOwner),
+        _ => value,
+    };
 
     private static bool TryParseOptional<T>(string? value, string name, out T? parsed, out string? problem)
         where T : struct, Enum
@@ -1227,8 +1299,9 @@ internal static class MetricCommand
         ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
         ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
         ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
-        ConsoleUi.Line("             [--group-by process|executable|mechanism] [--top <n>] [--evidence-policy <name>]");
-        ConsoleUi.Line("             [--owner <process-instance-id> | --participant <process-instance-id>]");
+        ConsoleUi.Line("             [--group-by process|executable|mechanism|peer] [--top <n>]");
+        ConsoleUi.Line("             [--evidence-policy <name>] [--peer <process-instance-id>]");
+        ConsoleUi.Line("             [--owner|--participant|--sender|--receiver <process-instance-id>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");
@@ -1237,11 +1310,18 @@ internal static class MetricCommand
         ConsoleUi.Line("      is reported as unavailable with what it needs. --matrix prints the matrix.");
         ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s.");
         ConsoleUi.Line("      --evidence lists the first records the answer counted.");
-        ConsoleUi.Line("      --owner scopes the answer to a process instance, using the binding policy.");
-        ConsoleUi.Line("      --participant is unavailable until peer relations are proven; it never guesses from owner.");
-        ConsoleUi.Line("      --group-by ranks the total by process instance or mechanism, with an exact");
-        ConsoleUi.Line("      remainder past --top; --evidence-policy include-candidates also attributes the");
-        ConsoleUi.Line("      records of reused PIDs, labelled as candidates.");
+        ConsoleUi.Line("      One process focus scopes the answer to a process instance (ids from icat processes):");
+        ConsoleUi.Line("        --owner        the records it made");
+        ConsoleUi.Line("        --participant  those, and the records whose other end it is");
+        ConsoleUi.Line("        --sender       the records in which data left it, measured at either end");
+        ConsoleUi.Line("        --receiver     the records in which data reached it, measured at either end");
+        ConsoleUi.Line("      --peer narrows a focus to one process at the other end. The other end of a TCP");
+        ConsoleUi.Line("      record is the process holding its mirrored endpoint pair (tcp-endpoint-relation-v1);");
+        ConsoleUi.Line("      records whose other end is unresolved are counted and disclosed, never guessed.");
+        ConsoleUi.Line("      --group-by ranks the total by process instance, executable, mechanism, or peer");
+        ConsoleUi.Line("      (the processes at the other end from a focus), with an exact remainder past --top;");
+        ConsoleUi.Line("      --evidence-policy include-candidates also attributes the records of reused PIDs,");
+        ConsoleUi.Line("      labelled as candidates.");
         ConsoleUi.Line("      Exit codes: 0 answered, 1 answered from the last-known-good generation,");
         ConsoleUi.Line("      2 invalid request, 3 the session cannot supply it, 4 corrupted session.");
     }

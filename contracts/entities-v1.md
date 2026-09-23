@@ -1,7 +1,8 @@
 # InterCat entities v1
 
 Status: **implemented** as `process-binding-v2`, with the v1 fallback for older generations that publish no
-`source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8).
+`source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8); which process is at a
+record's other end is `contracts/relations-v1.md`'s, built on the bindings fixed here.
 
 This contract fixes how the process instances of §7.1 are derived from one capture's published `observation-v1`
 segments and how every record binds to one of them (§7.3's `EntityBindingRevision`). It owns no bytes: a derivation

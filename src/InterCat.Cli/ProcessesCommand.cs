@@ -41,6 +41,24 @@ internal sealed record ProcessActivityDocument
     public required IReadOnlyDictionary<string, long> Bindings { get; init; }
     public required long? TransportBytesSent { get; init; }
     public required long? TransportBytesReceived { get; init; }
+
+    /// <summary>
+    /// Who the instance exchanged data with, through proven relations, when one PID was asked about; null otherwise,
+    /// because deriving every instance's peers is a query per instance.
+    /// </summary>
+    public IReadOnlyList<ProcessPeerDocument>? Peers { get; init; }
+}
+
+/// <summary>
+/// One process at the other end from an instance, or one reason the other end is unresolved. Sent bytes are measured
+/// where the instance sent them and received bytes where it received them, so each is a record it made.
+/// </summary>
+internal sealed record ProcessPeerDocument
+{
+    public required ProcessInstanceDocument? Peer { get; init; }
+    public required string? Unresolved { get; init; }
+    public required long? SentTo { get; init; }
+    public required long? ReceivedFrom { get; init; }
 }
 
 internal sealed record ProcessUnattributedDocument
@@ -147,6 +165,23 @@ internal static class ProcessesCommand
         MetricResult sent = Grouped(store, Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide, policy, cancellationToken);
         MetricResult received = Grouped(store, Metric.BytesReceived, ByteDomain.TransportObserved, AccountingSide.ReceiveSide, policy, cancellationToken);
         ProcessesDocument document = Describe(full, records, sent, received, policy);
+        if (pid is { } selected)
+        {
+            ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with.");
+            document = document with
+            {
+                Instances =
+                [
+                    .. document.Instances.Select(item => item.Process.ProcessId != selected
+                        ? item
+                        : item with
+                        {
+                            Peers = Peers(store, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)), policy, records.Clock, cancellationToken),
+                        }),
+                ],
+            };
+        }
+
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
         if (json)
         {
@@ -154,7 +189,7 @@ internal static class ProcessesCommand
         }
         else
         {
-            Render(document, records.Clock, top, pid);
+            Render(document, records.Clock, top, pid, full);
         }
 
         if (outputPath is not null)
@@ -262,6 +297,70 @@ internal static class ProcessesCommand
     }
 
     /// <summary>
+    /// What one instance sent to and received from each process at the other end, through the relation rule, with the
+    /// traffic whose other end is unresolved kept as its own rows. Both totals are the instance's own records, so
+    /// nothing here is measured at a peer.
+    /// </summary>
+    private static List<ProcessPeerDocument> Peers(
+        SessionStore store,
+        ProcessInstanceId instance,
+        EvidencePolicy policy,
+        SourceClockDescriptor? clock,
+        CancellationToken cancellationToken)
+    {
+        MetricResult sentTo = SessionMetrics.Evaluate(store, PeerRequest(Metric.BytesSent, AccountingSide.SendSide, policy) with
+        {
+            Sender = instance,
+        }, cancellationToken: cancellationToken);
+        MetricResult receivedFrom = SessionMetrics.Evaluate(store, PeerRequest(Metric.BytesReceived, AccountingSide.ReceiveSide, policy) with
+        {
+            Receiver = instance,
+        }, cancellationToken: cancellationToken);
+
+        var peers = new Dictionary<string, (ProcessInstance? Peer, ProcessBindingReason? Reason, long? Sent, long? Received)>(StringComparer.Ordinal);
+        foreach ((MetricResult result, bool sent) in new[] { (sentTo, true), (receivedFrom, false) })
+        {
+            if (!result.IsAvailable)
+            {
+                continue;
+            }
+
+            foreach (MetricGroup group in result.Groups.Concat(result.Unattributed))
+            {
+                string key = group.Process?.Id.ToString() ?? $"reason/{group.Reason}";
+                (ProcessInstance? Peer, ProcessBindingReason? Reason, long? Sent, long? Received) entry =
+                    peers.GetValueOrDefault(key, (group.Process, group.Reason, null, null));
+                peers[key] = sent ? entry with { Sent = group.Value } : entry with { Received = group.Value };
+            }
+        }
+
+        return
+        [
+            .. peers.Values
+                .OrderBy(entry => entry.Peer is null)
+                .ThenByDescending(entry => (entry.Sent ?? 0) + (entry.Received ?? 0))
+                .ThenBy(entry => entry.Peer?.Id.ToString() ?? entry.Reason.ToString(), StringComparer.Ordinal)
+                .Select(entry => new ProcessPeerDocument
+                {
+                    Peer = entry.Peer is { } peer ? ProcessInstanceDocument.From(peer, clock) : null,
+                    Unresolved = entry.Reason?.ToString(),
+                    SentTo = entry.Sent,
+                    ReceivedFrom = entry.Received,
+                }),
+        ];
+    }
+
+    private static MetricRequest PeerRequest(Metric metric, AccountingSide side, EvidencePolicy policy) => new()
+    {
+        Basis = AnalysisBasis.SourceObservations,
+        Metric = metric,
+        ByteDomain = ByteDomain.TransportObserved,
+        AccountingSide = side,
+        Grouping = LaneGrouping.Peer,
+        EvidencePolicy = policy,
+    };
+
+    /// <summary>
     /// Each instance's value in one grouped answer. A session with nothing measured in the domain answers no groups,
     /// and every instance then has no byte value rather than zero bytes.
     /// </summary>
@@ -284,7 +383,7 @@ internal static class ProcessesCommand
         return values;
     }
 
-    private static void Render(ProcessesDocument document, SourceClockDescriptor? clock, int top, int? pid)
+    private static void Render(ProcessesDocument document, SourceClockDescriptor? clock, int top, int? pid, string path)
     {
         ConsoleUi.Heading("Process instances");
         ConsoleUi.Field("Session", document.Path);
@@ -343,6 +442,11 @@ internal static class ProcessesCommand
                 ]);
         }
 
+        foreach (ProcessActivityDocument item in pid is null ? [] : shown)
+        {
+            RenderDetail(item, path);
+        }
+
         if (pid is null && top != 0 && document.Instances.Count > shown.Count)
         {
             ConsoleUi.Line(string.Create(
@@ -371,6 +475,82 @@ internal static class ProcessesCommand
             ConsoleUi.Note(caveat);
         }
     }
+
+    /// <summary>
+    /// One instance in full: the identity to use in a process filter, the evidence it rests on, and who it exchanged
+    /// data with, with the command that answers more.
+    /// </summary>
+    private static void RenderDetail(ProcessActivityDocument item, string path)
+    {
+        ProcessInstanceDocument process = item.Process;
+        string epoch = process.LifecycleEpoch > 1
+            ? string.Create(CultureInfo.InvariantCulture, $" #{process.LifecycleEpoch}")
+            : string.Empty;
+        ConsoleUi.Line();
+        ConsoleUi.Line(string.Create(
+            CultureInfo.InvariantCulture,
+            $"  PID {process.ProcessId}{epoch} {process.ImageName ?? "(image not witnessed)"}"));
+        ConsoleUi.Field("Instance id", process.InstanceId);
+        ConsoleUi.Field("Identity from", Words(process.IdentityEvidence) + (process.StartSequence is { } sequence
+            ? string.Create(CultureInfo.InvariantCulture, $", start sequence {sequence}")
+            : string.Empty));
+        if (process.ImagePath is { } image)
+        {
+            ConsoleUi.Field("Image path", image);
+        }
+
+        if (process.ParentProcessId is { } parent)
+        {
+            ConsoleUi.Field(
+                "Parent",
+                process.ParentInstanceId is { } parentInstance
+                    ? string.Create(CultureInfo.InvariantCulture, $"PID {parent}, instance {parentInstance} ({process.ParentBinding?.ToLowerInvariant() ?? "linked"})")
+                    : string.Create(CultureInfo.InvariantCulture, $"PID {parent}, named by the source; no instance of it is in the capture"));
+        }
+
+        if (process.SessionId is { } session)
+        {
+            ConsoleUi.Field("Session", session.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (process.Gaps.Count > 0)
+        {
+            ConsoleUi.Field("Evidence gaps", string.Join(", ", process.Gaps.Select(Words)));
+        }
+
+        if (item.Peers is not { } peers)
+        {
+            return;
+        }
+
+        if (peers.Count == 0)
+        {
+            ConsoleUi.Note("It sent and received no transport bytes in this session.");
+        }
+        else
+        {
+            ConsoleUi.Line($"  Exchanged with ({TransportRelationIndex.RelationRule}; each total is a record this instance made):");
+            ConsoleUi.Table(
+                ["Other end", "Sent to", "Received from"],
+                [
+                    .. peers.Select(peer => new[]
+                    {
+                        peer.Peer is { } other
+                            ? string.Create(CultureInfo.InvariantCulture, $"PID {other.ProcessId} {other.ImageName ?? "(image not witnessed)"}")
+                            : "unresolved: " + SessionText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
+                        peer.SentTo is { } sentTo ? ConsoleUi.Bytes(sentTo) : "-",
+                        peer.ReceivedFrom is { } receivedFrom ? ConsoleUi.Bytes(receivedFrom) : "-",
+                    }),
+                ]);
+        }
+
+        ConsoleUi.Note("To rank every record it took part in by the process at the other end:");
+        ConsoleUi.Line($"    icat metric \"{path}\" --metric observations --participant {process.InstanceId} --group-by peer");
+    }
+
+    private static string Words(string pascal) =>
+        string.Concat(pascal.Select((character, index) =>
+            index > 0 && char.IsUpper(character) ? " " + char.ToLowerInvariant(character) : character.ToString())).Trim();
 
     private static string Lifetime(ProcessInstanceDocument process, SourceClockDescriptor? clock)
     {
@@ -408,5 +588,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      running at capture start, or seen only in their own records - with each one's");
         ConsoleUi.Line("      lifetime, how many records bind to it, and the transport bytes it sent and");
         ConsoleUi.Line("      received. A PID is never an identity on its own: a reused PID is two instances.");
+        ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
+        ConsoleUi.Line("      takes, its image path and parent, and what it sent to and received from each");
+        ConsoleUi.Line("      process at the other end (tcp-endpoint-relation-v1).");
     }
 }

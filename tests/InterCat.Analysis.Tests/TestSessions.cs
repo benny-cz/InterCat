@@ -68,6 +68,33 @@ internal static class TestSessions
     };
 
     /// <summary>
+    /// The same record with the endpoint pair its source names: the record's own endpoint first, then the remote one,
+    /// as every admitted TCP descriptor names them. Each endpoint is written "a.b.c.d:port".
+    /// </summary>
+    public static ObservationRowV1 Between(this ObservationRowV1 row, string local, string remote)
+    {
+        (uint localAddress, ushort localPort) = Endpoint(local);
+        (uint remoteAddress, ushort remotePort) = Endpoint(remote);
+        return row with
+        {
+            EndpointAddressFamily = 4,
+            SourceEndpointAddress = localAddress,
+            SourceEndpointPort = localPort,
+            DestinationEndpointAddress = remoteAddress,
+            DestinationEndpointPort = remotePort,
+        };
+
+        static (uint Address, ushort Port) Endpoint(string text)
+        {
+            string[] parts = text.Split(':');
+            byte[] octets = [.. parts[0].Split('.').Select(part => byte.Parse(part, System.Globalization.CultureInfo.InvariantCulture))];
+            return (
+                ((uint)octets[0] << 24) | ((uint)octets[1] << 16) | ((uint)octets[2] << 8) | octets[3],
+                ushort.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>
     /// A process lifecycle record: a creation, an exit or a capture-state rundown of <paramref name="processId"/>. It
     /// declares no byte field, and an exit carries the exit code the source reported.
     /// </summary>
