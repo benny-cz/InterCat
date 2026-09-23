@@ -54,7 +54,7 @@ public sealed class GraphView : Control
         }
 
         IReadOnlyList<ProcessNode> nodes = viewModel.Snapshot.Processes;
-        var positions = nodes.ToDictionary(node => node.Id, Position);
+        var positions = nodes.ToDictionary(node => node.Id, node => Position(node, viewModel));
         foreach (CommunicationEdge edge in viewModel.Snapshot.Edges)
         {
             Point source = positions[edge.SourceId];
@@ -89,13 +89,22 @@ public sealed class GraphView : Control
         foreach (ProcessNode node in nodes)
         {
             Point point = positions[node.Id];
-            DrawText(context, node.Name, new(point.X - 36, point.Y + 31), 12, TextBrush, 76);
+            // At the minimum window height, a label under the upper band can collide with a
+            // lower-band node. Place upper-band labels above their circles and lower-band labels
+            // below; the chosen side is a presentation fact, not a graph or evidence change.
+            bool labelAbove = viewModel.GraphPositions[node.Id].Y < 0.5;
+            int nameOffset = labelAbove ? (roomForDetail ? -61 : -42) : 31;
+            DrawText(context, node.Name,
+                new(point.X - 36, point.Y + nameOffset),
+                12, TextBrush, 76);
 
             // A narrow pane drops the secondary line rather than letting two labels collide. The value is
             // never lost: the ranked list and the relationship table still carry the process id (R15).
             if (roomForDetail)
             {
-                DrawText(context, $"PID {node.ProcessId}", new(point.X - 31, point.Y + 47), 10, MutedTextBrush, 70);
+                DrawText(context, $"PID {node.ProcessId}",
+                    new(point.X - 31, point.Y + (labelAbove ? -45 : 47)),
+                    10, MutedTextBrush, 70);
             }
         }
     }
@@ -113,7 +122,7 @@ public sealed class GraphView : Control
         for (int index = 0; index < viewModel.Snapshot.Processes.Count; index++)
         {
             ProcessNode node = viewModel.Snapshot.Processes[index];
-            Point point = Position(node);
+            Point point = Position(node, viewModel);
             double dx = point.X - pointer.X;
             double dy = point.Y - pointer.Y;
             if ((dx * dx) + (dy * dy) <= 30 * 30)
@@ -154,9 +163,15 @@ public sealed class GraphView : Control
     /// Places a node so that its label fits inside the pane. The inset is the label half-width, so a node
     /// near an edge keeps its name readable instead of having it clipped (§6.8 legibility).
     /// </summary>
-    private Point Position(ProcessNode node) => new(
-        LabelInset + (node.X * Math.Max(0, Bounds.Width - (LabelInset * 2))),
-        38 + (node.Y * Math.Max(0, Bounds.Height - 98)));
+    private Point Position(ProcessNode node, WorkspaceViewModel viewModel)
+    {
+        GraphPoint graph = viewModel.GraphPositions[node.Id];
+        return new(
+            LabelInset + (graph.X * Math.Max(0, Bounds.Width - (LabelInset * 2))),
+            // Reserve the node radius above and the two-line label below. Using the intervening
+            // height keeps separate group bands legible even at the minimum window size.
+            24 + (graph.Y * Math.Max(0, Bounds.Height - 72)));
+    }
 
     private static void DrawText(DrawingContext context, string text, Point origin, double size, IBrush brush, double width)
     {

@@ -25,6 +25,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     public WorkspaceViewModel()
     {
         Snapshot = SyntheticWorkspace.Create();
+        GraphPositions = GraphLayout.Compute(
+            "synthetic-tour-v1", Snapshot.Groups, Snapshot.Processes, Snapshot.Edges).Positions;
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
@@ -38,6 +40,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public WorkspaceSnapshot Snapshot { get; }
+
+    /// <summary>Stable graph coordinates, separate from evidence, time scope and the window transform.</summary>
+    public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; }
 
     /// <summary>Mechanism legend with glyphs, the redundant channel beside hue (R14).</summary>
     public IReadOnlyList<LegendEntry> Legend { get; }

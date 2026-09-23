@@ -635,6 +635,12 @@
         "R10: the time under the pointer survives a zoom across generated viewports",
         "R10: zooming in and back out restores the viewport unless a clamp intervened"
       ],
+      "R12": [
+        "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",
+        "R12: desktop graph reads stable layout coordinates instead of evidence-model positions",
+        "R12: graph layout is identical after node, group and edge enumeration is reversed",
+        "R12: groups occupy stable separate bands and no process is silently omitted"
+      ],
       "R13": [
         "R13: Alt and Left ascend, the second gesture the ladder promises",
         "R13: Enter descends a rung and Escape returns to exactly where it was",
@@ -813,6 +819,7 @@
         "R8: a capture reports per-thread processor time or says the host cannot",
         "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
         "R8: a full bounded queue is reported as a counted drop, not as loss",
+        "R8: cancelled layouts do not publish a partial result",
         "R8: a queue past half its bound is pressure, and below it is headroom",
         "R8: a series declares every setting that changes what it measures",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
@@ -820,6 +827,7 @@
         "R8: an unknown series or level is refused rather than silently reduced",
         "R8: invalid ETL bounds and ambiguous output paths are refused",
         "R8: loss before admission outranks every queue outcome",
+        "R8: malformed layout input or a graph over budget is refused, never partly drawn",
         "R8: source-reported loss is read into its own counter, never merged with drops",
         "R8: staged UTF-8 resource names count against the segment's flush budget",
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
@@ -918,10 +926,6 @@
       },
       "R11": {
         "reason": "Paint and aggregate loops do not exist before IC-017.",
-        "plannedBy": "IC-017"
-      },
-      "R12": {
-        "reason": "Published render results arrive with IC-017.",
         "plannedBy": "IC-017"
       },
       "R18": {
