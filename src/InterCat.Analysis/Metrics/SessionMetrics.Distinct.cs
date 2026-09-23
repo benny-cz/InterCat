@@ -4,20 +4,32 @@ using InterCat.Storage;
 namespace InterCat.Analysis;
 
 /// <summary>
-/// `ActivePeers`: how many distinct processes are at the other end from a process, under the relation rule. A peer
-/// is a process instance - an identity, never a PID or an address and port pair (R22) - so a record whose other end
-/// is unresolved names no peer. Such a record is an unknown contribution with its reason, the count is a lower bound
-/// beside them, and a remote peer, which is not a process instance of this capture, is never counted.
+/// Distinct counts over relations: `ActivePeers`, the process instances at the other end from a process, and
+/// `ActiveChannels`, the connection incarnations records belong to. Each counts instances - identities, never a PID or
+/// an address and port pair (R22) - so a record that names none is an unknown contribution with its reason, and the
+/// count is a lower bound beside those records rather than a total that silently omits them.
 /// </summary>
 public static partial class SessionMetrics
 {
-    /// <summary>The peers of one focused process: the distinct counterparts of the records its filter keeps.</summary>
-    private static MetricResult ActivePeers(Context context, CancellationToken cancellationToken)
+    /// <summary>
+    /// One distinct count: a focus's peers or channels, or every channel in scope. Only records with another end take
+    /// part; a lifecycle record is neither counted nor unknown.
+    /// </summary>
+    private static MetricResult DistinctCount(Context context, CancellationToken cancellationToken)
     {
         MetricRequest request = context.Request;
-        ProcessRoles roles = context.Roles!;
-        ProcessFilter filter = context.Filter!;
-        var peers = new HashSet<int>();
+        bool peers = request.Metric == Metric.ActivePeers;
+        ProcessRoles roles = context.Roles ?? RolesFor(
+            context,
+            ProcessInstanceIndex.Derive(
+                [.. context.Segments.Select(segment => segment.Reader)],
+                context.Clock!.Value,
+                context.FieldSegments,
+                cancellationToken),
+            withRelations: true,
+            cancellationToken);
+        ProcessFilter? filter = context.Filter;
+        var counted = new HashSet<int>();
         var unknownReasons = new Dictionary<ProcessBindingReason, long>();
         var evidence = new List<MetricEvidence>();
         long known = 0;
@@ -34,21 +46,23 @@ public static partial class SessionMetrics
             outsideInterval += scope.ExcludedOutsideInterval;
 
             bool[] inScope = SegmentMeasurement.RowsInScope(reader, request.Layer, request.Mechanism, request.Interval);
-            bool[] kept = context.ProcessMasks[reader];
+            bool[]? kept = context.ProcessMasks.GetValueOrDefault(reader);
             SegmentRoles segmentRoles = roles.For(reader);
+            ChannelBinding[]? channels = peers ? null : roles.Relations!.ChannelsOf(reader);
             for (int row = 0; row < reader.RowCount; row++)
             {
-                // A lifecycle record has no other end: it is neither a peer nor an unknown one.
-                if (!inScope[row] || !kept[row] || !segmentRoles.Communicates[row])
+                if (!inScope[row] || (kept is not null && !kept[row]) || !segmentRoles.Communicates[row])
                 {
                     continue;
                 }
 
-                ProcessBinding counterpart = filter.Counterpart(segmentRoles, row);
-                if (counterpart.IsAdmittedUnder(request.EvidencePolicy))
+                (int? element, ProcessBindingReason reason) = peers
+                    ? PeerElement(filter!.Counterpart(segmentRoles, row), request.EvidencePolicy)
+                    : ChannelElement(channels![row]);
+                if (element is { } counts)
                 {
                     known++;
-                    peers.Add(counterpart.Instance);
+                    counted.Add(counts);
                     if (evidence.Count < context.EvidenceLimit)
                     {
                         evidence.Add(Evidence(name, reader, row));
@@ -56,7 +70,6 @@ public static partial class SessionMetrics
                 }
                 else
                 {
-                    ProcessBindingReason reason = UnknownReason(counterpart);
                     unknownReasons[reason] = unknownReasons.GetValueOrDefault(reason) + 1;
                 }
             }
@@ -73,44 +86,48 @@ public static partial class SessionMetrics
             ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = outsideInterval,
             Evidence = evidence,
+            RelationRule = TransportRelationIndex.RelationRule,
         };
 
-        // No resolved other end among records that have one is not "no peers": every such record may have one the
-        // capture cannot name, so the count is unavailable rather than an observed zero (R21, P1).
-        if (peers.Count == 0 && unknown > 0)
+        // Nothing identified among records that have another end is not "none": each of them may belong to an instance
+        // the capture cannot name, so the count is unavailable rather than an observed zero (R21, P1).
+        string noun = peers ? "peer" : "channel";
+        if (counted.Count == 0 && unknown > 0)
         {
             return answer with
             {
                 Unavailable = MetricUnavailableReason.NothingMeasured,
                 UnavailableExplanation =
-                    $"None of the {unknown:N0} records in scope that have another end resolves it ("
-                    + Reasons(unknownReasons) + "), so no peer can be named. They may involve remote processes, which "
-                    + "are not instances of this capture, or local ones whose records it does not hold; zero would be "
-                    + "a guess.",
+                    $"None of the {unknown:N0} records in scope that have another end identifies a {noun} ("
+                    + Reasons(unknownReasons) + "), so none can be counted. Zero would be a guess about what the "
+                    + "capture could not resolve.",
                 Unit = null,
             };
         }
 
-        var caveats = new List<string> { PeersCaveat(request) };
+        var caveats = new List<string> { peers ? PeersCaveat(request) : ChannelsCaveat() };
         caveats.AddRange(FocusCaveats(request, context.UnresolvedCounterparts));
         if (unknown > 0)
         {
             caveats.Add(
-                $"At least {peers.Count:N0}: {unknown:N0} records in scope have another end this session does not resolve "
-                + $"({Reasons(unknownReasons)}), and each may add a peer it cannot name. A remote process is never "
-                + "counted, because it is not a process instance of this capture.");
+                $"At least {counted.Count:N0}: {unknown:N0} records in scope identify no {noun} ({Reasons(unknownReasons)}), "
+                + $"and each may add one this session cannot name. "
+                + (peers
+                    ? "A remote process is never counted, because it is not a process instance of this capture."
+                    : "A record of a mechanism no relation rule covers belongs to a channel nothing here identifies."));
         }
 
-        return answer with { Value = peers.Count, Caveats = caveats };
+        return answer with { Value = counted.Count, Caveats = caveats };
     }
 
     /// <summary>
-    /// Each process's peers, ranked. A record between two resolved processes is a peer of each, so the groups overlap
-    /// and do not add up to the total, which is the number of distinct processes with at least one peer.
+    /// Each process's peers or channels, ranked. A record between two resolved processes counts for each, so the groups
+    /// overlap and do not add up to the total, which says so.
     /// </summary>
-    private static MetricResult GroupedPeers(Context context, LaneGrouping grouping, CancellationToken cancellationToken)
+    private static MetricResult GroupedDistinct(Context context, LaneGrouping grouping, CancellationToken cancellationToken)
     {
         MetricRequest request = context.Request;
+        bool peers = request.Metric == Metric.ActivePeers;
         EvidencePolicy policy = request.EvidencePolicy;
         ProcessRoles roles = context.Roles ?? RolesFor(
             context,
@@ -133,9 +150,10 @@ public static partial class SessionMetrics
                 + "identified from a PID or an exit basename; import evidence with admitted process image names.");
         }
 
-        // One tally per group key: an instance's index, or an executable's path folded case-insensitively.
-        var tallies = new Dictionary<string, PeerTally>(StringComparer.Ordinal);
+        // One tally per group key: an instance's identity, or an executable's path folded case-insensitively.
+        var tallies = new Dictionary<string, DistinctTally>(StringComparer.Ordinal);
         var unattributed = new Dictionary<ProcessBindingReason, long>();
+        var everything = new HashSet<int>();
         long outsideProjection = 0;
         long outsideInterval = 0;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
@@ -146,6 +164,7 @@ public static partial class SessionMetrics
             outsideInterval += scope.ExcludedOutsideInterval;
             bool[] inScope = SegmentMeasurement.RowsInScope(reader, request.Layer, request.Mechanism, request.Interval);
             SegmentRoles segmentRoles = roles.For(reader);
+            ChannelBinding[]? channels = peers ? null : roles.Relations!.ChannelsOf(reader);
             for (int row = 0; row < reader.RowCount; row++)
             {
                 if (!inScope[row] || !segmentRoles.Communicates[row])
@@ -157,26 +176,43 @@ public static partial class SessionMetrics
                 ProcessBinding peer = segmentRoles.Peer(row);
                 bool ownerKnown = owner.IsAdmittedUnder(policy);
                 bool peerKnown = peer.IsAdmittedUnder(policy);
+
+                // What the row adds to its owner's group and to its peer's: the process at the other end, or the one
+                // channel both ends share.
+                (int? ForOwner, ProcessBindingReason OwnerUnknown, int? ForPeer, ProcessBindingReason PeerUnknown) adds = peers
+                    ? (peerKnown ? peer.Instance : null, UnknownReason(peer), ownerKnown ? owner.Instance : null, UnknownReason(owner))
+                    : channels![row] is { IsKnown: true } channel
+                        ? (channel.Channel, ProcessBindingReason.Bound, channel.Channel, ProcessBindingReason.Bound)
+                        : (null, channels[row].Reason, null, channels[row].Reason);
+                if (!peers && channels![row].IsKnown)
+                {
+                    everything.Add(channels[row].Channel);
+                }
+
                 if (ownerKnown && peerKnown && KeyOf(owner) is { } shared && shared == KeyOf(peer))
                 {
                     // Both ends are in one group - a process connected to itself, or two instances of one executable:
-                    // the record is one contribution to that group, and each end is a peer of it.
-                    PeerTally tally = TallyFor(shared, owner);
+                    // the record is one contribution to that group, with everything it adds.
+                    DistinctTally tally = TallyFor(shared, owner);
                     tally.Known++;
-                    tally.Peers.Add(peer.Instance);
-                    tally.Peers.Add(owner.Instance);
-                    tally.Bindings[peer.Strength] = tally.Bindings.GetValueOrDefault(peer.Strength) + 1;
+                    tally.Elements.Add(adds.ForOwner!.Value);
+                    tally.Elements.Add(adds.ForPeer!.Value);
+                    if (peers)
+                    {
+                        tally.Bindings[peer.Strength] = tally.Bindings.GetValueOrDefault(peer.Strength) + 1;
+                    }
+
                     continue;
                 }
 
                 if (ownerKnown)
                 {
-                    Record(owner, peerKnown ? peer : null, UnknownReason(peer));
+                    Record(owner, adds.ForOwner, adds.OwnerUnknown, peers ? peer.Strength : null);
                 }
 
                 if (peerKnown)
                 {
-                    Record(peer, ownerKnown ? owner : null, UnknownReason(owner));
+                    Record(peer, adds.ForPeer, adds.PeerUnknown, peers ? owner.Strength : null);
                 }
 
                 if (!ownerKnown && !peerKnown)
@@ -189,37 +225,28 @@ public static partial class SessionMetrics
             }
         }
 
-        var built = tallies.Values
-            .Select(tally => (Tally: tally, Group: tally.ToGroup()))
-            .ToList();
-        List<(PeerTally Tally, MetricGroup Group)> ranked =
+        List<(DistinctTally Tally, MetricGroup Group)> built = [.. tallies.Values.Select(tally => (tally, tally.ToGroup()))];
+        List<(DistinctTally Tally, MetricGroup Group)> ordered =
         [
             .. built.Where(entry => entry.Group.Value is not null)
                 .OrderByDescending(entry => entry.Group.Value)
-                .ThenBy(entry => entry.Tally.StableKey, StringComparer.Ordinal),
-        ];
-        List<(PeerTally Tally, MetricGroup Group)> unmeasured =
-        [
+                .ThenBy(entry => entry.Tally.StableKey, StringComparer.Ordinal)
+                .Select((entry, index) => (entry.Tally, entry.Group with { Rank = index + 1 })),
             .. built.Where(entry => entry.Group.Value is null)
                 .OrderBy(entry => entry.Tally.StableKey, StringComparer.Ordinal),
-        ];
-        List<(PeerTally Tally, MetricGroup Group)> ordered =
-        [
-            .. ranked.Select((entry, index) => (entry.Tally, entry.Group with { Rank = index + 1 })),
-            .. unmeasured,
         ];
 
         MetricGroup? remainder = null;
         if (request.RequestedRows is { } rows && ordered.Count > rows)
         {
-            // The rest is one exact distinct count over the union of their peers, not a sum of overlapping counts.
-            List<(PeerTally Tally, MetricGroup Group)> rest = [.. ordered.Skip(rows)];
-            var restPeers = new HashSet<int>(rest.SelectMany(entry => entry.Tally.Peers));
+            // The rest is one exact distinct count over the union of what they count, not a sum of overlapping counts.
+            List<(DistinctTally Tally, MetricGroup Group)> rest = [.. ordered.Skip(rows)];
+            var restElements = new HashSet<int>(rest.SelectMany(entry => entry.Tally.Elements));
             long restUnknown = rest.Sum(entry => entry.Group.UnknownContributions);
             remainder = new MetricGroup
             {
                 Kind = MetricGroupKind.Remainder,
-                Value = restPeers.Count > 0 || restUnknown == 0 ? restPeers.Count : null,
+                Value = restElements.Count > 0 || restUnknown == 0 ? restElements.Count : null,
                 KnownContributions = rest.Sum(entry => entry.Group.KnownContributions),
                 UnknownContributions = restUnknown,
                 GroupsMerged = rest.Count,
@@ -227,34 +254,41 @@ public static partial class SessionMetrics
             ordered = [.. ordered.Take(rows)];
         }
 
-        var allPeers = new HashSet<int>(tallies.Values.SelectMany(tally => tally.Peers));
+        if (peers)
+        {
+            everything.UnionWith(tallies.Values.SelectMany(tally => tally.Elements));
+        }
+
         long known = tallies.Values.Sum(tally => tally.Known);
-        long unknown = tallies.Values.Sum(tally => tally.UnknownReasons.Values.Sum());
         var unknownReasons = new Dictionary<ProcessBindingReason, long>();
         foreach ((ProcessBindingReason reason, long count) in tallies.Values.SelectMany(tally => tally.UnknownReasons))
         {
             unknownReasons[reason] = unknownReasons.GetValueOrDefault(reason) + count;
         }
 
+        long unknown = unknownReasons.Values.Sum();
         var caveats = new List<string>
         {
-            PeersCaveat(request),
-            "A record between two resolved processes makes each the other's peer, so a process's peers are counted "
-                + "in its own row and it is counted in its peers' rows: the rows overlap and do not add up to the "
-                + "total, which is the number of distinct processes with at least one resolved peer.",
+            peers ? PeersCaveat(request) : ChannelsCaveat(),
+            peers
+                ? "A record between two resolved processes makes each the other's peer, so a process's peers are counted "
+                    + "in its own row and it is counted in its peers' rows: the rows overlap and do not add up to the "
+                    + "total, which is the number of distinct processes with at least one resolved peer."
+                : "A channel between two processes counts in both of their rows, so the rows overlap and do not add up to "
+                    + "the total, which is the number of distinct channels in scope, whoever holds them.",
         };
         if (unknown > 0)
         {
             caveats.Add(
-                $"Each count is a lower bound: {unknown:N0} of the groups' records have another end this session does "
-                + $"not resolve ({Reasons(unknownReasons)}). A process whose records resolve no peer is unmeasured "
-                + "rather than ranked at zero, and a remote process is never counted (R21).");
+                $"Each count is a lower bound: {unknown:N0} of the groups' records identify no {(peers ? "peer" : "channel")} "
+                + $"({Reasons(unknownReasons)}). A process whose records identify none is unmeasured rather than ranked "
+                + "at zero (R21).");
         }
 
         caveats.AddRange(GroupingCaveats(roles, request, []));
         return context.Answer(request) with
         {
-            Value = allPeers.Count,
+            Value = everything.Count,
             Unit = MeasurementUnit.Count,
             KnownContributions = known,
             UnknownContributions = unknown,
@@ -288,9 +322,9 @@ public static partial class SessionMetrics
                 : string.IsNullOrWhiteSpace(instance.ImagePath) ? null : instance.ImagePath.ToUpperInvariant();
         }
 
-        PeerTally TallyFor(string key, ProcessBinding subject)
+        DistinctTally TallyFor(string key, ProcessBinding subject)
         {
-            if (!tallies.TryGetValue(key, out PeerTally? tally))
+            if (!tallies.TryGetValue(key, out DistinctTally? tally))
             {
                 ProcessInstance instance = processes.Instances[subject.Instance];
                 tally = new(key, byExecutable ? null : instance, byExecutable ? instance.ImagePath : null);
@@ -300,7 +334,7 @@ public static partial class SessionMetrics
             return tally;
         }
 
-        void Record(ProcessBinding subject, ProcessBinding? counterpart, ProcessBindingReason unknownReason)
+        void Record(ProcessBinding subject, int? element, ProcessBindingReason unknownReason, RelationStrength? strength)
         {
             if (KeyOf(subject) is not { } key)
             {
@@ -309,12 +343,15 @@ public static partial class SessionMetrics
                 return;
             }
 
-            PeerTally tally = TallyFor(key, subject);
-            if (counterpart is { } other)
+            DistinctTally tally = TallyFor(key, subject);
+            if (element is { } counted)
             {
                 tally.Known++;
-                tally.Peers.Add(other.Instance);
-                tally.Bindings[other.Strength] = tally.Bindings.GetValueOrDefault(other.Strength) + 1;
+                tally.Elements.Add(counted);
+                if (strength is { } bound)
+                {
+                    tally.Bindings[bound] = tally.Bindings.GetValueOrDefault(bound) + 1;
+                }
             }
             else
             {
@@ -322,6 +359,12 @@ public static partial class SessionMetrics
             }
         }
     }
+
+    private static (int? Element, ProcessBindingReason Reason) PeerElement(ProcessBinding counterpart, EvidencePolicy policy) =>
+        counterpart.IsAdmittedUnder(policy) ? (counterpart.Instance, ProcessBindingReason.Bound) : (null, UnknownReason(counterpart));
+
+    private static (int? Element, ProcessBindingReason Reason) ChannelElement(ChannelBinding channel) =>
+        channel.IsKnown ? (channel.Channel, ProcessBindingReason.Bound) : (null, channel.Reason);
 
     private static ProcessBindingReason UnknownReason(ProcessBinding binding) =>
         binding.IsBound ? ProcessBindingReason.NotAdmittedByPolicy : binding.Reason;
@@ -335,26 +378,33 @@ public static partial class SessionMetrics
         + "Peers are counted once however many records they share, and never from a PID or an address and port pair "
         + "(R22).";
 
-    /// <summary>One group's peers while the rows are read.</summary>
-    private sealed class PeerTally(string stableKey, ProcessInstance? process, string? executable)
+    private static string ChannelsCaveat() =>
+        $"A channel is a connection incarnation under {TransportRelationIndex.RelationRule}: the two ends of one "
+        + "connection are one channel, a port reused by a later connection is another, and a connection whose other end "
+        + "no record holds is a one-sided channel. Channels are never counted from address and port pairs alone (R22); "
+        + "where the capture lost a connect, accept or disconnect, two connections on one port are one channel here.";
+
+    /// <summary>One group's counted instances while the rows are read.</summary>
+    private sealed class DistinctTally(string stableKey, ProcessInstance? process, string? executable)
     {
         public string StableKey { get; } = stableKey;
 
-        public HashSet<int> Peers { get; } = [];
+        public HashSet<int> Elements { get; } = [];
 
         public long Known { get; set; }
 
         public Dictionary<ProcessBindingReason, long> UnknownReasons { get; } = [];
 
+        /// <summary>For peers: how strongly each counted record's other end is bound.</summary>
         public Dictionary<RelationStrength, long> Bindings { get; } = [];
 
-        /// <summary>The group a reader sees: unmeasured, not zero, when no record resolved a peer (R21).</summary>
+        /// <summary>The group a reader sees: unmeasured, not zero, when no record identified anything (R21).</summary>
         public MetricGroup ToGroup() => new()
         {
             Kind = process is null ? MetricGroupKind.Executable : MetricGroupKind.ProcessInstance,
             Process = process,
             Executable = executable,
-            Value = Peers.Count > 0 ? Peers.Count : null,
+            Value = Elements.Count > 0 ? Elements.Count : null,
             KnownContributions = Known,
             UnknownContributions = UnknownReasons.Values.Sum(),
             Bindings = Bindings,

@@ -806,7 +806,7 @@ internal static class MetricCommand
             return $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {unit}/s";
         }
 
-        string unresolved = result.Request.Metric == Metric.ActivePeers && group.Unknown > 0
+        string unresolved = result.Request.Metric is Metric.ActivePeers or Metric.ActiveChannels && group.Unknown > 0
             ? $" (+{ConsoleUi.Count(group.Unknown)} unresolved)"
             : string.Empty;
         return group.Value is not { } value
@@ -1044,6 +1044,11 @@ internal static class MetricCommand
             Metric.ActivePeers =>
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "process" : "processes")} at the other end",
+            Metric.ActiveChannels when result.Request.Grouping is not null =>
+                $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")} in scope",
+            Metric.ActiveChannels =>
+                (result.UnknownContributions > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")}",
             _ => $"{ConsoleUi.Count(count)} counted",
         };
     }

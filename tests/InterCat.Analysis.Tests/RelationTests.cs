@@ -6,7 +6,7 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Analysis.Tests;
 
 /// <summary>
-/// `tcp-endpoint-relation-v1`: a record's other end is the process holding the mirrored endpoint pair, when every
+/// `tcp-endpoint-relation-v2`: a record's other end is the process holding the mirrored endpoint pair, when every
 /// record at that end binds to one instance. The filters and groupings built on it - participant, sender, receiver,
 /// peer and cross-side totals - keep what they cannot resolve visible rather than guessing a peer (§7.4, §19.1, P6).
 /// </summary>
@@ -350,6 +350,76 @@ public sealed class RelationTests
         Assert.Empty(relations.Relations);
     }
 
+    [Fact(DisplayName = "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone")]
+    public void ChannelsCountConnectionIncarnations()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ConnectedSession());
+        (ProcessInstanceId client, ProcessInstanceId server, ProcessInstanceId other) = Instances(session.Store);
+        MetricRequest channels = Request(Metric.ActiveChannels);
+
+        // The client-server connection is one channel at both of its ends; the two sends to endpoints nothing in the
+        // capture holds are one-sided channels; the record with no endpoint pair is a channel nothing identifies.
+        MetricResult total = SessionMetrics.Evaluate(session.Store, channels);
+        Assert.Equal(3, total.Value);
+        Assert.Equal((8L, 1L), (total.KnownContributions, total.UnknownContributions));
+        Assert.Equal(ProcessBindingReason.PeerEndpointIncomplete, Assert.Single(total.UnknownCounterparts).Key);
+        Assert.Contains(total.Caveats, caveat => caveat.StartsWith("At least 3:", StringComparison.Ordinal));
+
+        Assert.Equal(2, SessionMetrics.Evaluate(session.Store, channels with { Participant = client }).Value);
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store, channels with { Participant = server }).Value);
+
+        MetricResult ranked = SessionMetrics.Evaluate(session.Store, channels with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.False(ranked.GroupsPartitionTotal);
+        Assert.Equal(3, ranked.Value);
+        Assert.Equal(
+            [(client, 2L), (other, 1L), (server, 1L)],
+            ranked.Groups
+                .Select(group => (group.Process!.Id, group.Value!.Value))
+                .OrderByDescending(entry => entry.Item2)
+                .ThenBy(entry => entry.Id == other ? 0 : 1));
+
+        Assert.Contains("for each process or executable", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R22: two connections on one reused port are two channels, and undecided ones are a lower bound")]
+    public void ReusedAndUndecidedConnectionsAreCountedSoundly()
+    {
+        using var reused = new TemporarySession();
+        Publish(reused.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(30, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 4).Between(ClientEnd, ServerEnd),
+            Transfer(31, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 5).Between(ServerEnd, ClientEnd),
+            Transfer(100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 6).Between(ClientEnd, ServerEnd),
+            Transfer(101, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 7).Between(ServerEnd, ClientEnd),
+            Transfer(130, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 8).Between(ClientEnd, ServerEnd),
+            Transfer(131, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 400, 9).Between(ServerEnd, ClientEnd),
+        ]);
+        MetricResult twoConnections = SessionMetrics.Evaluate(reused.Store, Request(Metric.ActiveChannels));
+        Assert.Equal((2L, 0L), (twoConnections.Value!.Value, twoConnections.UnknownContributions));
+
+        // Two client connections, each opened and closed, against a server end with no lifecycle: at least two
+        // connections, whichever of them each server record belongs to.
+        using var undecided = new TemporarySession();
+        Publish(undecided.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 2).Between(ClientEnd, ServerEnd),
+            Transfer(30, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between(ClientEnd, ServerEnd),
+            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 7, 300, 5).Between(ClientEnd, ServerEnd),
+            Transfer(130, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 6).Between(ClientEnd, ServerEnd),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 200, 7).Between(ServerEnd, ClientEnd),
+            Transfer(111, ObservationKind.Receive, AccountingSide.ReceiveSide, 7, 200, 8).Between(ServerEnd, ClientEnd),
+        ]);
+        MetricResult atLeastTwo = SessionMetrics.Evaluate(undecided.Store, Request(Metric.ActiveChannels));
+        Assert.Equal(2, atLeastTwo.Value);
+        Assert.Equal(2, atLeastTwo.UnknownCounterparts[ProcessBindingReason.PeerAmbiguous]);
+    }
+
     [Fact(DisplayName = "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve")]
     public void APeerCountIsALowerBoundOnProcessInstances()
     {
@@ -379,9 +449,6 @@ public sealed class RelationTests
         Assert.Equal(MetricUnavailableReason.NothingMeasured, unresolved.Unavailable);
         Assert.Null(unresolved.Value);
 
-        MetricResult channels = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels));
-        Assert.Equal(MetricUnavailableReason.NoEntityBindings, channels.Unavailable);
-        Assert.Contains("time-scoped", channels.UnavailableExplanation!, StringComparison.Ordinal);
         Assert.Contains("is one count", (peers with { Participant = client, Grouping = LaneGrouping.InstanceOnly }).Check()!.Reason, StringComparison.Ordinal);
     }
 

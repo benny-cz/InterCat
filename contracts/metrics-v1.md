@@ -80,8 +80,10 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - More than one process focus - `owner`, `participant`, `sender`, `receiver` - in one request, or an empty instance
   id. A PID is not an instance id.
 - A `peer` with no focus, and a `Peer` grouping with no focus: both are relative to a focused process (§19.1).
-- `ActivePeers` with neither a process focus nor a grouping by process or executable, and with a focus and any
-  grouping: a count of peers is the count of one process's peers, or each process's (§6.1).
+- `ActivePeers` with neither a process focus nor a grouping by process or executable, and `ActivePeers` or
+  `ActiveChannels` with a focus and any grouping: a count of peers is the count of one process's peers, or each
+  process's (§6.1). `ActiveChannels` grouped other than by process or executable: a channel belongs to the processes
+  at its two ends, so no other grouping divides it.
 - **An `owner` with a cross-side byte total.** `owner(P)` selects the records P made; `BytesSent` under
   `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
   `sender` and `receiver`, which select those records.
@@ -227,7 +229,7 @@ whose value is their exact sum; it is a grouping, not a peer (§5.2).
 
 A grouped rate divides every group by the same whole interval.
 
-### 6.1 Counting peers
+### 6.1 Counting peers and channels
 
 `ActivePeers` counts the distinct **process instances** at the other end from a process, under `relations-v1`: an
 identity, never a PID or an address and port pair (R22). With a process focus it is one count over the records the
@@ -244,8 +246,16 @@ a lifecycle record - is neither. When records in scope have another end and none
 Distinct counts overlap: a record between two resolved processes makes each the other's peer, so it counts in both
 groups. A grouped peer count therefore does **not** partition its total, and says so; its total is the number of
 distinct processes with at least one resolved peer, and a remainder is the distinct count over the union of the
-groups it merges. `ActiveChannels` stays unavailable: a channel is a connection incarnation with a lifetime, and
-relations here span the whole capture.
+groups it merges.
+
+`ActiveChannels` counts **connection incarnations** under `relations-v1` §5a: the two ends of one connection are one
+channel, a port reused by a later connection is another, and a connection whose other end no record holds is a
+one-sided channel. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the
+records the focus keeps, and grouped by process or executable each group's channels, overlapping as peers do; the
+grouped total is every distinct channel in scope. A record of a mechanism no relation rule covers, a record with no
+endpoint pair, and a record of an undecided connection on the side whose incarnations are not counted identify no
+channel: they are unknown contributions with their reason, and the count is a lower bound beside them. Where the
+capture lost a connect, accept or disconnect, two connections on one port are one channel.
 
 ## 7. Rates
 
@@ -270,7 +280,7 @@ with no value:
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations basis, before any correlator derives operations |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
-| `NoEntityBindings` | `ActiveChannels`, until connection ends are scoped by their lifetimes; process grouping, a process filter or a peer count on a session that does not describe its clock |
+| `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
 | `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
 | `NoInterval` | a rate with no interval |
@@ -323,8 +333,6 @@ not exist yet and are answered as unavailable today.
 - Grouping by service, session, host, endpoint, package or channel, each of which needs an entity derivation this
   version does not have.
 - `between(A,B)` over participant sets, and a direction policy for it. `peer(P,Q)` answers one pair.
-- `ActiveChannels`, which needs connection ends scoped by their lifetimes: an endpoint pair reused by a later
-  connection is another channel, and relations here span the whole capture.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
 - Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution

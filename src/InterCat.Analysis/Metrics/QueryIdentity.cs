@@ -231,7 +231,8 @@ public static class AnalysisSpecification
 
     /// <summary>
     /// Whether answering needs records' other ends: any focus but a bare owner, a peer narrowing, a peer grouping, a
-    /// count of peers, or a directional total grouped by process, whose records belong to their sender or receiver.
+    /// count of peers or channels, or a directional total grouped by process, whose records belong to their sender or
+    /// receiver.
     /// When it does, the relation rule is one of the result's version axes.
     /// </summary>
     internal static bool UsesRelations(MetricRequest request)
@@ -240,7 +241,7 @@ public static class AnalysisSpecification
         return request.Focus is { Role: not ProcessRole.Owner }
             || request.Peer is not null
             || request.Grouping == LaneGrouping.Peer
-            || effective == Metric.ActivePeers
+            || effective is Metric.ActivePeers or Metric.ActiveChannels
             || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
                 && effective is Metric.BytesSent or Metric.BytesReceived);
     }

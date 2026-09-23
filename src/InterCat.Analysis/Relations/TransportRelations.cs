@@ -42,6 +42,17 @@ public sealed record TransportRelation
 }
 
 /// <summary>
+/// The connection incarnation - the channel of §7.1 - one record belongs to, or why the record names none. A paired
+/// incarnation and its partner are one channel; an incarnation whose other end no record holds is a one-sided channel.
+/// </summary>
+public readonly record struct ChannelBinding(int Channel, ProcessBindingReason Reason)
+{
+    public bool IsKnown => Channel >= 0;
+
+    public static ChannelBinding Unknown(ProcessBindingReason reason) => new(-1, reason);
+}
+
+/// <summary>
 /// Derives the other end of every transport record of one capture (`tcp-endpoint-relation-v2`). A record names its own
 /// endpoint first and the remote one second, on every admitted TCP descriptor, so the records holding the mirrored pair
 /// are the other end of the same connection. An end's records are divided into **incarnations** by the connection
@@ -67,7 +78,11 @@ public sealed class TransportRelationIndex
     {
         this.ends = ends;
         Relations = BuildRelations(processes, ends);
+        Channels = NumberChannels(ends);
     }
+
+    /// <summary>How many distinct connection incarnations the capture's TCP records establish.</summary>
+    public int Channels { get; }
 
     /// <summary>Every connection incarnation whose two ends each have one holder, in a stable order.</summary>
     public IReadOnlyList<TransportRelation> Relations { get; }
@@ -179,6 +194,65 @@ public sealed class TransportRelationIndex
         }
 
         return peers;
+    }
+
+    /// <summary>
+    /// The channel every row of a segment belongs to. A row whose incarnation's partner is undecided could belong to
+    /// either of two connections at the other end, so its channel is unknown rather than counted twice or guessed.
+    /// </summary>
+    public ChannelBinding[] ChannelsOf(SegmentReaderV1 segment)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        EndKey?[] keys = KeysOf(segment);
+        Position[] positions = PositionsOf(segment);
+        var channels = new ChannelBinding[segment.RowCount];
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Tcp)
+            {
+                channels[row] = ChannelBinding.Unknown(ProcessBindingReason.NoRelationRule);
+                continue;
+            }
+
+            channels[row] = keys[row] is { } key && ends[key].At(positions[row]) is { } incarnation
+                ? incarnation.Channel >= 0
+                    ? new(incarnation.Channel, ProcessBindingReason.Bound)
+                    : ChannelBinding.Unknown(ProcessBindingReason.PeerAmbiguous)
+                : ChannelBinding.Unknown(ProcessBindingReason.PeerEndpointIncomplete);
+        }
+
+        return channels;
+    }
+
+    /// <summary>
+    /// Numbers the channels in a stable order: by end, then by incarnation. A paired incarnation shares its partner's
+    /// number, one whose other end is not observed has its own, and an undecided one has its own only on the side with
+    /// more incarnations; the other side's undecided records have none.
+    /// </summary>
+    private static int NumberChannels(Dictionary<EndKey, EndTimeline> ends)
+    {
+        int next = 0;
+        foreach ((EndKey _, EndTimeline timeline) in ends.OrderBy(entry => entry.Key))
+        {
+            foreach (Incarnation incarnation in timeline.Incarnations.Where(incarnation => incarnation.Records > 0))
+            {
+                if (incarnation.Channel >= 0 || (incarnation.Pairing == Pairing.Ambiguous && !incarnation.NumberedAlone))
+                {
+                    continue;
+                }
+
+                incarnation.Channel = next;
+                if (incarnation is { Pairing: Pairing.Paired, Partner: { } partner })
+                {
+                    partner.Channel = next;
+                }
+
+                next++;
+            }
+        }
+
+        return next;
     }
 
     private static ProcessBinding PeerOf(Incarnation incarnation) => incarnation.Pairing switch
@@ -449,6 +523,15 @@ public sealed class TransportRelationIndex
             {
                 incarnation.Resolve(near, far);
             }
+
+            // Undecided incarnations are still connections: each one bounded by its own lifecycle is distinct, so the
+            // side with more of them counts that many channels, and the other side's records belong to one of them,
+            // undecided which. Numbering both sides would count one connection twice.
+            Incarnation[] counted = far.Length > near.Length ? far : near;
+            foreach (Incarnation incarnation in counted.Where(incarnation => incarnation.Pairing == Pairing.Ambiguous))
+            {
+                incarnation.NumberedAlone = true;
+            }
         }
     }
 
@@ -487,6 +570,15 @@ public sealed class TransportRelationIndex
         public Pairing Pairing { get; private set; }
 
         public Incarnation? Partner { get; private set; }
+
+        /// <summary>
+        /// The channel this incarnation belongs to, or -1 when its partner is undecided and the other side's
+        /// incarnations are the ones counted.
+        /// </summary>
+        public int Channel { get; set; } = -1;
+
+        /// <summary>Whether this undecided incarnation is counted as a channel of its own.</summary>
+        public bool NumberedAlone { get; set; }
 
         /// <summary>The mirror incarnations that could be this one's partner, when more than one could.</summary>
         public IReadOnlyList<Incarnation> Candidates { get; private set; } = [];

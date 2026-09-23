@@ -81,8 +81,8 @@ persisted (IC-017), the revision they record replaces the rule name, under a new
 
 A total that binds no record to a process does not depend on the binding rule, and naming it would split one query
 into two identities; the same holds for the relation rule. The answer depends on a relation rule when it has a
-process focus other than a bare owner, a peer narrowing, a peer grouping, a count of peers, or a sent or received
-total grouped by process or executable (`metrics-v1` §5, §6).
+process focus other than a bare owner, a peer narrowing, a peer grouping, a count of peers or channels, or a sent or
+received total grouped by process or executable (`metrics-v1` §5, §6).
 
 The axis values are an input to the form, not part of it: a new binding or relation rule changes the identities of the
 requests that depend on it, as §24 requires, and changes no rule of this contract.

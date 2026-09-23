@@ -157,11 +157,19 @@ public sealed record MetricRequest
                 []);
         }
 
-        if (Metric == Metric.ActivePeers && focuses > 0 && Grouping is not null)
+        if (Metric is Metric.ActivePeers or Metric.ActiveChannels && focuses > 0 && Grouping is not null)
         {
             return new(
-                "ActivePeers with a process focus is one count. To rank processes by their peers, group by process or "
-                + "executable without a focus; to see the peers themselves, count observations grouped by peer.",
+                $"{Metric} with a process focus is one count. To rank processes, group by process or executable without "
+                + "a focus; to see the processes at the other end themselves, count observations grouped by peer.",
+                []);
+        }
+
+        if (Metric == Metric.ActiveChannels && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        {
+            return new(
+                "ActiveChannels is counted in total, for one process focus, or for each process or executable. A channel "
+                + "belongs to the processes at its two ends, so no other grouping divides it.",
                 []);
         }
 
@@ -724,11 +732,18 @@ public static partial class SessionMetrics
             context = context with { UnresolvedCounterparts = UnresolvedCounterparts(context, cancellationToken) };
         }
 
-        if (materialized.Metric == Metric.ActivePeers)
+        if (materialized.Metric is Metric.ActivePeers or Metric.ActiveChannels)
         {
+            if (clock is null)
+            {
+                return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.NoEntityBindings,
+                    "Peers and channels are found through process instances, which are identified within the host and boot "
+                    + "the capture's clock scopes, and this session does not describe its clock (identity-v1).");
+            }
+
             return materialized.Grouping is { } byProcess
-                ? WhatGroupingNeeds(materialized, manifest.Generation, clock) ?? GroupedPeers(context, byProcess, cancellationToken)
-                : ActivePeers(context, cancellationToken);
+                ? WhatGroupingNeeds(materialized, manifest.Generation, clock) ?? GroupedDistinct(context, byProcess, cancellationToken)
+                : DistinctCount(context, cancellationToken);
         }
 
         if (materialized.Grouping is { } grouping)
@@ -775,19 +790,6 @@ public static partial class SessionMetrics
         }
 
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
-        if (effective == Metric.ActiveChannels)
-        {
-            return Unavailable(
-                request,
-                generation,
-                MetricUnavailableReason.NoEntityBindings,
-                "ActiveChannels counts distinct connection incarnations, and a connection is only an instance with a "
-                + "lifetime: an endpoint pair reused by a later connection is another channel. Counting address and "
-                + "port pairs instead would establish identity from reusable values, which R22 forbids. The relation "
-                + "rule divides ends into time-scoped incarnations, but this metrics contract does not yet define how "
-                + "they are counted as channels. ActivePeers counts processes, which are instances, and is available.");
-        }
-
         if (effective == Metric.Errors)
         {
             return Unavailable(

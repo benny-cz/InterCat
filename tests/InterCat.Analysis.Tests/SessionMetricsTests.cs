@@ -405,16 +405,19 @@ public sealed class SessionMetricsTests
         Assert.Contains("there is no default", noInterval.UnavailableExplanation!, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "R22: a channel count is unavailable rather than counted from reusable values, and a peer count needs a process")]
-    public void AChannelCountIsUnavailableRatherThanGuessed()
+    [Fact(DisplayName = "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process")]
+    public void AChannelCountNeverCountsWhatItCannotIdentify()
     {
         using var session = new TemporarySession();
         Publish(session.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 10, 1_000)]);
 
+        // A channel is a connection incarnation found through endpoints; a record without them identifies none, and a
+        // count of nothing identified is not an observed zero.
         MetricResult channels = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.ActiveChannels);
         Assert.False(channels.IsAvailable);
-        Assert.Equal(MetricUnavailableReason.NoEntityBindings, channels.Unavailable);
-        Assert.Contains("which R22 forbids", channels.UnavailableExplanation!, StringComparison.Ordinal);
+        Assert.Equal(MetricUnavailableReason.NothingMeasured, channels.Unavailable);
+        Assert.Equal(1, channels.UnknownCounterparts[ProcessBindingReason.PeerEndpointIncomplete]);
+        Assert.Contains("Zero would be a guess", channels.UnavailableExplanation!, StringComparison.Ordinal);
 
         // Peers are process instances, which are identities; but the peers of nothing mean nothing.
         ArgumentException peers = Assert.Throws<ArgumentException>(() =>

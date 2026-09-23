@@ -91,6 +91,22 @@ of the two incarnations' binding strengths, the earliest and latest reading of a
 they hold, and whether each end's open and close were witnessed. A process connected to itself is a relation with
 itself. Relations are listed by the end whose key sorts first, then by incarnation.
 
+## 5a. Channels
+
+A **channel** is one connection incarnation, the instance §7.1 calls a channel. Channels are numbered in a stable
+order, by end and then by incarnation:
+
+- two paired incarnations are one channel;
+- an incarnation no mirror incarnation could pair with is a one-sided channel of its own: a remote peer, or a local
+  one the capture holds no record of on that connection;
+- among undecided incarnations, each one on the side with more incarnations is a channel of its own, because each is
+  bounded by its own lifecycle and is a distinct connection. The other side's undecided incarnations belong to one of
+  those channels, undecided which, so their records identify no channel. Counting both sides would count one connection
+  twice.
+
+A record identifies its incarnation's channel; a record with no end, and one of a mechanism no rule covers, identifies
+none.
+
 ## 6. What is not inferred
 
 - **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is
