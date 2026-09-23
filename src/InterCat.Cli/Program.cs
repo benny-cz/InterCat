@@ -85,13 +85,14 @@ static void PrintHelp()
     ConsoleUi.Line("      Reads schemas only; never enables a provider or starts a capture.");
     ConsoleUi.Line("      Focused TCP: focused-transport --mechanism tcp [--pid <id> ...]");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat measure <tcp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
+    ConsoleUi.Line("  icat measure <tcp|udp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the named fixture under one owned ETW session and computes its tier.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat measure tcp [--output <dir>] [--seed <n>] [--connections <n>] [--messages <n>]");
     ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
     ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
+    ConsoleUi.Line("      measure udp takes --sockets instead of --connections and runs the UDP workload.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
     ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
@@ -143,7 +144,7 @@ static void PrintHelp()
     ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
     ConsoleUi.Line("      lifetime, records and transport bytes. A reused PID is two instances.");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
+    ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat bench [--output <path>] [--series <series.json>] [--overwrite] [--json]");

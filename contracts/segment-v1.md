@@ -190,7 +190,7 @@ refuses the segment.
 | 21 | `ResourceName` | text | yes | The bounded resource name as delivered. |
 | 22 | `SourceIdentifier` | guid | yes | A 16-byte identifier the descriptor carried. |
 | 23 | `EndpointAddressFamily` | u8 | yes | 4 or 6; what the address columns' bits mean. |
-| 24 | `SourceEndpointAddress` | u32 | yes | The endpoint the source names as the origin. |
+| 24 | `SourceEndpointAddress` | u32 | yes | The endpoint the source names as the origin. Which end that is depends on the descriptor: a TCP record names its owner's own endpoint, a UDP receive the datagram's sender (ADR-019). |
 | 25 | `SourceEndpointPort` | u16 | yes | Its port. |
 | 26 | `DestinationEndpointAddress` | u32 | yes | The endpoint the source names as the destination. |
 | 27 | `DestinationEndpointPort` | u16 | yes | Its port. |

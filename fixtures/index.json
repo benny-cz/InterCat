@@ -64,6 +64,54 @@
       ]
     },
     {
+      "id": "FX-UDP-001",
+      "title": "Seeded two-process UDP loopback exchange",
+      "scenario": "Section 13.1 scenario 2, first part: UDP IPv4 loopback datagrams sent from two bound client sockets and each acknowledged back to the endpoint it came from. Endpoint reuse, multicast and absent receivers are not part of it.",
+      "milestone": "M1",
+      "backlog": [
+        "IC-004",
+        "IC-015"
+      ],
+      "covers": {
+        "rules": [
+          "R1"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P16",
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads udp-loopback",
+        "seed": 20260923,
+        "log": "fixtures/FX-UDP-001/evidence/truth.jsonl",
+        "independence": "Both processes write their own log from ordinary socket calls; neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-UDP-001/evidence/verification.json",
+        "note": "Measured counters and the inputs they came from. The committed evidence re-evaluates to its tier in the test suite, so a change to matching or orientation that would move it fails there."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-09-23",
+          "result": "All four traffic criteria of section 14.2 met at 100%: 64 of 64 truth operations observed, bound to their flow and byte-measured, and 0 false peer attributions of 4. Truth and observed transport were both 11,802 B sent and received. A send named its owner first and a receive the datagram's sender first, 16 of 16 each way, and every receive's header PID differed from its payload owner. Tier TrafficVisualization, reproduced by a second run. Resource discovery and membership are not measured, because UDP has no connection lifecycle."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.6.0",
+        "shareable": true,
+        "contents": "Fixture-scoped loopback observations and truth records only. Unrelated whole-machine flows are never written (P16)."
+      },
+      "tests": [
+        "P27: committed transport fixture evidence reproduces its measured tier",
+        "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
+        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -535,6 +583,7 @@
         "I18: a lease holds the manifest it acquired, and a later commit does not move it",
         "I18: a lease on a session with no generation is refused rather than empty",
         "I18: a pin that reserves less than it holds is refused, not silently promised",
+        "I18: a published coverage ledger survives reopen and cannot be released as a derived index",
         "I18: a stale reader acquires the freshly published generation",
         "I18: a viewer leases a published generation using read-only root access",
         "I18: an expired lease holds nothing, and is not revivable",
@@ -542,7 +591,6 @@
         "I18: released evidence goes once the last lease on it is released",
         "I18: retention cannot remove evidence a live lease holds",
         "I18: retention in a second store cannot remove another process's leased evidence",
-        "I18: a published coverage ledger survives reopen and cannot be released as a derived index",
         "I18: stale retention cannot release files from a newer generation"
       ],
       "I19": [
@@ -653,6 +701,8 @@
         "P27: a release is listed by exact build numbers, so a near build is not accepted",
         "P27: a source that registers and enables but emits nothing stays unsupported",
         "P27: a supported build states its release and whether it is a pre-release branch",
+        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss",
+        "P27: committed transport fixture evidence reproduces its measured tier",
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
@@ -678,6 +728,7 @@
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown"
       ],
       "R1": [
+        "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
         "R1: a published segment carries source facts only, never a resolved identity",
         "R1: a published segment is immutable, and a later generation reads the same bytes",
         "R1: source fields round-trip with their observation identity and deterministic order"
@@ -700,12 +751,12 @@
       "R13": [
         "R13: Alt and Left ascend, the second gesture the ladder promises",
         "R13: Enter descends a rung and Escape returns to exactly where it was",
-        "R13: a non-tour workspace labels its own extent and uses its own graph identity",
         "R13: a descent that skips a rung is refused with a reason, not reinterpreted",
-        "R13: an empty session workspace opens without a fabricated selected process",
         "R13: a filter a descent implied can be removed without changing the level",
         "R13: a level change alters grouping, never the observations in scope",
+        "R13: a non-tour workspace labels its own extent and uses its own graph identity",
         "R13: a rung with no rows names the source that would supply them",
+        "R13: an empty session workspace opens without a fabricated selected process",
         "R13: ascending restores the rung that was left, field for field",
         "R13: descending adds only filters the filter bar shows and can remove",
         "R13: descending to the deepest rung never leaves an unexplained empty pane",
@@ -804,44 +855,43 @@
       ],
       "R21": [
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
-        "R21: a coverage ledger round-trips every outcome and refuses unknown members",
-        "R21: coverage outcomes and descriptor bounds refuse overflow rather than wrapping",
-        "R21: an absent source-loss counter is never interpreted as a reported zero",
-        "R21: an unidentified ETL provider is counted only as a whole-provider policy omission",
-        "R21: a legacy generation cannot turn silence into a covered zero",
-        "R21: an import distinguishes delivered, quiet, and uncollected mechanisms",
-        "R21: source loss and undecodable records make coverage partial; policy omissions do not",
-        "R21: live quiet enablement is covered, unlike a quiet imported file",
-        "R21: an unknown descriptor version cannot silently preserve covered mechanisms",
-        "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
-        "R21: an interval ending at maximum ticks is evaluated without overflow",
-        "R21: a leased overview applies imported coverage only to observed mechanism buckets",
-        "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
-        "R21: a legacy metric names unknown capture coverage rather than claiming a healthy rate",
-        "R21: an untimed relation remains a graph edge without an invented timeline extent",
-        "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
+        "R21: a coverage ledger round-trips every outcome and refuses unknown members",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
         "R21: a journal that names no clock is refused, never read against an assumed one",
+        "R21: a leased overview applies imported coverage only to observed mechanism buckets",
+        "R21: a legacy generation cannot turn silence into a covered zero",
+        "R21: a legacy metric names unknown capture coverage rather than claiming a healthy rate",
         "R21: a machine that falls short of the reference names every way it does",
         "R21: a machine that meets the reference has no gaps to name",
+        "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
         "R21: a negative result records the control that proves the source was live",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",
         "R21: a variant with no queue reports no utilization rather than zero",
+        "R21: an absent source-loss counter is never interpreted as a reported zero",
+        "R21: an import distinguishes delivered, quiet, and uncollected mechanisms",
+        "R21: an interval ending at maximum ticks is evaluated without overflow",
         "R21: an item with a declared size but no data is counted, not read at a guess",
+        "R21: an unidentified ETL provider is counted only as a whole-provider policy omission",
+        "R21: an unknown descriptor version cannot silently preserve covered mechanisms",
         "R21: an unmeasured stage total reads as unknown rather than as zero",
+        "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
+        "R21: an untimed relation remains a graph edge without an invented timeline extent",
+        "R21: coverage outcomes and descriptor bounds refuse overflow rather than wrapping",
+        "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
+        "R21: live quiet enablement is covered, unlike a quiet imported file",
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
+        "R21: source loss and undecodable records make coverage partial; policy omissions do not",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
         "R21: total-machine processor time is readable or explicitly unavailable"
       ],
       "R22": [
         "R22: a call to another interface is scope, not a match",
-        "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
@@ -853,6 +903,7 @@
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
+        "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
@@ -901,11 +952,11 @@
       ],
       "R7": [
         "R7: a disposed scheduler cannot publish its in-flight layout",
-        "R7: one leased generation yields a stable graph and exact graph-eligible timeline",
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a worker result naming another graph identity is refused",
-        "R7: caller cancellation propagates instead of looking like a superseded query"
+        "R7: caller cancellation propagates instead of looking like a superseded query",
+        "R7: one leased generation yields a stable graph and exact graph-eligible timeline"
       ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",

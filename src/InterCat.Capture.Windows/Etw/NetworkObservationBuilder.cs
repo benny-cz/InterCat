@@ -65,10 +65,12 @@ public static class NetworkObservationBuilder
             }
         }
 
-        // Measured on FX-TCP-001: for this source the saddr and sport pair is the owning process's own
-        // endpoint on send and on receive descriptors alike, so the flow is not re-oriented by direction.
-        // The source-named values above stay exactly as delivered (R1).
-        var flow = new FlowKey(sourceAddress, sourcePort, destinationAddress, destinationPort);
+        // The source-named values above stay exactly as delivered (R1). The flow is the owner's own pair, read through
+        // the descriptor's measured orientation: every TCP descriptor names the owner first (FX-TCP-001), while a UDP
+        // receive names the datagram's sender first (FX-UDP-001).
+        FlowKey flow = TransportEndpoints.OrientationOf(plan.Mechanism, plan.Kind) == EndpointOrientation.OwnerFirst
+            ? new(sourceAddress, sourcePort, destinationAddress, destinationPort)
+            : new(destinationAddress, destinationPort, sourceAddress, sourcePort);
 
         return new()
         {

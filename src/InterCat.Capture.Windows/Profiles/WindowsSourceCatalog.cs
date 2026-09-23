@@ -100,6 +100,26 @@ public static class WindowsSourceCatalog
         new("connid", FieldRole.CorrelationKey, Notes: "Reported as zero on several builds; never an identity by itself (R22).", SourceField: SourceField.ConnectionId),
     ];
 
+    private static readonly IReadOnlyList<AdmittedFieldIntent> UdpSendFields =
+    [
+        new("PID", FieldRole.ProcessAttribution, Notes: "Payload owner: the sending process. The event header PID may belong to an unrelated context (section 4.1)."),
+        new("size", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.TransportObserved, Notes: "The datagram's payload bytes, equal to the truth log's on FX-UDP-001."),
+        new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address, Notes: "Network-order address of the sending process's own endpoint, measured on FX-UDP-001."),
+        new("sport", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the sending process's own endpoint."),
+        new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address, Notes: "Network-order address the datagram was sent to."),
+        new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port the datagram was sent to."),
+    ];
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> UdpReceiveFields =
+    [
+        new("PID", FieldRole.ProcessAttribution, Notes: "Payload owner: the receiving process. On FX-UDP-001 the event header PID differed from it on every receive (section 4.1)."),
+        new("size", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.TransportObserved, Notes: "The datagram's payload bytes, equal to the truth log's on FX-UDP-001."),
+        new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address, Notes: "Network-order address of the datagram's sender. Unlike a TCP receive, a UDP receive names the origin first: measured on FX-UDP-001."),
+        new("sport", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the datagram's sender."),
+        new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address, Notes: "Network-order address of the receiving process's own endpoint."),
+        new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the receiving process's own endpoint."),
+    ];
+
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileCreateFields =
     [
         new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion.", SourceField: SourceField.IoRequestPacket),
@@ -195,8 +215,7 @@ public static class WindowsSourceCatalog
             DisplayName = "Kernel network (TCP and UDP transfer events)",
             Kind = SourceKind.ManifestProvider,
             ProviderName = "Microsoft-Windows-Kernel-Network",
-            Mechanisms = [Mechanism.Tcp],
-            MechanismsOmittedByProfile = [Mechanism.Udp],
+            Mechanisms = [Mechanism.Tcp, Mechanism.Udp],
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
             MatchAnyKeyword = 0x10,
@@ -210,8 +229,8 @@ public static class WindowsSourceCatalog
                 + "from its next transfer, so its lifetime stays uncertain (section 18.5).",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
-            Overhead = OverheadClass.Low,
-            OverheadEvidence = "bench/results/capture-impact-20260922T234102Z/impact.json",
+            Overhead = OverheadClass.Moderate,
+            OverheadEvidence = "bench/results/capture-impact-20260923T095313Z/impact.json",
             AdmittedEvents =
             [
                 new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
@@ -220,12 +239,16 @@ public static class WindowsSourceCatalog
                 new(13, 0, "TCPv4 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields),
                 new(14, 0, "TCPv4 data retransmitted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
                 new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields),
+                new(42, 0, "UDPv4 datagram sent", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, UdpSendFields),
+                new(43, 0, "UDPv4 datagram received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, UdpReceiveFields),
             ],
             Notes =
             [
                 "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
                 "Measured on FX-TCP-001: addresses and ports arrive in network byte order, and the saddr and sport "
                 + "pair names the owning process's own endpoint on both send and receive descriptors.",
+                "Measured on FX-UDP-001: a UDP send names the sender's own endpoint first, and a UDP receive names the "
+                + "datagram's sender first, so the receiver's own endpoint is its destination. Records keep both as delivered.",
                 "Loopback traffic is observed on both endpoints; the canonical owner rule of section 5.3 decides the total.",
             ],
         };
@@ -251,8 +274,8 @@ public static class WindowsSourceCatalog
                 + "capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
             SupportsCaptureState = true,
             ContractStatus = SourceContractStatus.Documented,
-            Overhead = OverheadClass.Low,
-            OverheadEvidence = "bench/results/capture-impact-20260922T234102Z/impact.json",
+            Overhead = OverheadClass.Moderate,
+            OverheadEvidence = "bench/results/capture-impact-20260923T095313Z/impact.json",
             AdmittedEvents =
             [
                 new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),

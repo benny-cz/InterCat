@@ -42,6 +42,17 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         PipeName = Option(args, "--pipe") ?? string.Empty,
     };
 
+    var udpOptions = new UdpLoopbackOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_260_923,
+        Sockets = Integer(args, "--sockets") ?? 2,
+        DatagramsPerSocket = Integer(args, "--messages") ?? 8,
+        MaximumDatagramBytes = Integer(args, "--bytes") ?? 1_400,
+        InterDatagramDelayMilliseconds = Integer(args, "--delay") ?? 15,
+        Port = Integer(args, "--port") ?? 0,
+    };
+
     var options = new TcpLoopbackOptions
     {
         TruthDirectory = truth,
@@ -61,6 +72,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "tcp-loopback" => await TcpLoopbackScenario.RunCoordinatorAsync(options, cancellationToken).ConfigureAwait(false),
             "tcp-loopback-server" => await TcpLoopbackScenario.RunServerAsync(options, cancellationToken).ConfigureAwait(false),
             "tcp-loopback-client" => await TcpLoopbackScenario.RunClientAsync(options, cancellationToken).ConfigureAwait(false),
+            "udp-loopback" => await UdpLoopbackScenario.RunCoordinatorAsync(udpOptions, cancellationToken).ConfigureAwait(false),
+            "udp-loopback-server" => await UdpLoopbackScenario.RunServerAsync(udpOptions, cancellationToken).ConfigureAwait(false),
+            "udp-loopback-client" => await UdpLoopbackScenario.RunClientAsync(udpOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback" when OperatingSystem.IsWindows() =>
                 await PipeLoopbackScenario.RunCoordinatorAsync(pipeOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback-server" when OperatingSystem.IsWindows() =>
@@ -131,6 +145,11 @@ static void PrintHelp()
     Console.WriteLine("      default 15 ms pacing so the exchange runs as fast as the sockets allow, and");
     Console.WriteLine("      --concurrency runs that many connections at once so the machine rather than");
     Console.WriteLine("      the fixture decides the rate.");
+    Console.WriteLine();
+    Console.WriteLine("  udp-loopback --truth <dir> [--seed n] [--sockets n] [--messages n] [--bytes n] [--delay ms]");
+    Console.WriteLine("      FX-UDP-001: a seeded two-process UDP loopback exchange. The client sends datagrams from");
+    Console.WriteLine("      several bound sockets and the server acknowledges each to the endpoint it came from, so");
+    Console.WriteLine("      both directions carry data and every truth record names both ports.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

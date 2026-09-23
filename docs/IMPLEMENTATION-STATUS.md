@@ -1,12 +1,47 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 55
+Plan revision: 56
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: metric answers carry capture coverage separately
+## Latest slice: UDP datagrams, measured before admitted
+
+UDPv4 datagrams are admitted (FX-UDP-001, ADR-019). The Kernel-Network source always delivered them under its IPv4
+keyword, and the catalog dropped them because nothing said what their endpoints mean. A new `udp-loopback` truth
+workload settled that: a client sends seeded datagrams from two bound sockets, and the server acknowledges each one to
+the endpoint it came from. Each process logs both ports. The raw events were first decoded independently through the
+registered manifest, before any plan assumed an orientation:
+
+- a UDP **send** names its owner's own endpoint first, as every TCP descriptor does;
+- a UDP **receive** names the datagram's **sender** first, and the receiver's own endpoint as its destination (16 of 16
+  each way);
+- every receive's event-header PID differs from its payload owner, so the payload owner stays the attribution.
+
+Records keep endpoints as the source names them. A reader that needs a record's own end reads it through one measured
+orientation, stated in the domain by mechanism and kind. `icat measure udp` and `icat verify udp` share the TCP
+path through a small scenario record. The fixture met every traffic criterion of §14.2 at 100%, and a second run
+reproduced it:
+
+- 64 of 64 truth operations were observed, bound to their flow and byte-measured;
+- 0 of 4 peer attributions were false;
+- 11,802 B was sent and received, equal to the truth log;
+- the tier is `TrafficVisualization`.
+
+The evaluator now reports an operation seen only with its endpoints mirrored as an orientation gap. A test
+re-evaluates both committed transport fixtures to their tiers.
+
+Two follow-ups came with admission. A focused capture used to compile every descriptor of its source, so a TCP focus
+would now have persisted UDP as well. Focus now filters a source's descriptors to the named transport, which also
+narrows the events it enables, and UDP is a valid focus. The capture impact was re-measured with the wider plan
+(`bench/results/capture-impact-20260923T095313Z/impact.json`, seven pairs per source). Kernel-Network is 1.61 CPU percentage points and 0.00% throughput
+regression: `Moderate`, loss-free, and well inside §12's 5-point target. Kernel-Process, whose admission did not change, measured 1.53 points in the same run. The previous committed run (three pairs, 2026-09-22) had both under the 1-point Low ceiling. A three-pair run just before this one (`bench/results/capture-impact-20260923T095041Z/impact.json`) read 0.62 for Kernel-Network and 2.16 for Kernel-Process. Seven pairs on a machine that was not quiet put both just over the ceiling, with single pairs spanning -2.5 to +7.3 points. So the catalog records the newer, wider measurement - Moderate for both - rather than keeping the older class for the source that did not change, and a run on a quiet machine is owed before the class is treated as settled.
+
+The relation rule still reads TCP only, so a UDP record's other end is `NoRelationRule`. A channel or peer count over a
+capture with UDP is a lower bound that discloses it.
+
+## Previous slice: metric answers carry capture coverage separately
 
 `SessionMetrics.Evaluate` now reads `coverage-v1` from the same leased generation as its segments and attaches a
 structured `MetricCoverage` to the result. A mechanism filter receives one state over its exact native interval;
@@ -340,7 +375,7 @@ The workspace prototype now carries the §3.2 L0-L5 ladder over synthetic data: 
 | IC-001 solution and boundaries | Complete for M0 | `InterCat.slnx`, central build/package settings, ADR-001, 5 architecture tests. Build has zero warnings. |
 | IC-002 capability/schema inventory | Complete for M0 | `icat capabilities` reads the TDH manifest per registered provider, compiles the admission plan those schemas allow, and reports registration, enablement, observed health and semantic coverage as four separate checks with exact fields, units, attribution roles and unavailable reasons. Contract: `contracts/capability-report-v1.md`. Artifact: `capabilities/10.0.26220.0-x64/windows-etw-inventory.json`. Remaining: classic/kernel (non-manifest) source inventory beyond the ALPC placeholder. |
 | IC-003 owned ETW lifecycle | Complete for M0 | `OwnedCaptureSession` implements the §9.2 states, unique name plus ownership token, allowlisted provider plans, event-id scoping, bounded queue with independent drop counters, post-start rundown, and cleanup limited to the session an attempt created. 8 lifecycle tests run against a fake host with no ETW or elevation. ADR-002 records the strategy. |
-| IC-004 TCP/RPC truth workloads | Complete for M0 | `tcp-loopback` and `pipe-loopback` each run a seeded two-process exchange, and each process writes its own JSONL truth log from ordinary socket or pipe calls. The pipe scenario includes a deliberately short read so requested and completed sizes differ (§21.1), and `rpc-local` issues a known number of local RPC calls through the documented service API with no package dependency. |
+| IC-004 TCP/RPC truth workloads | Complete for M0; UDP added in M1 | `tcp-loopback`, `udp-loopback` and `pipe-loopback` each run a seeded two-process exchange, and each process writes its own JSONL truth log from ordinary socket or pipe calls. The pipe scenario includes a deliberately short read so requested and completed sizes differ (§21.1), and `rpc-local` issues a known number of local RPC calls through the documented service API with no package dependency. |
 | IC-005 pipe/section feasibility | Named pipes measured on a supported build; sections not started | `icat measure pipe` runs `FX-PIPE-001` under the owned session and computes the tier. Result on this build: `Unsupported`, with a 2,472-record control proving the source was live for the same processes. ADR-003 records the scope decision and routes the gap to M7 and M9. Shared sections remain a lead only. |
 | IC-006 ALPC/RPC feasibility | RPC measured on a supported build; ALPC not measurable in M0 | `icat measure rpc` runs `FX-RPC-001` twice in one session and computes the tier: 8 of 8 calls observed, bound and completion-paired, tier `ExperimentalEvidence`, gaps recorded in ADR-004. Server-side records arrive but share no activity id with the client, so peers stay unresolved rather than inferred. ALPC remains a kernel flag group with no registered manifest provider and no tier claimed. |
 | IC-007 IDs and clocks | Complete for its live/local M0 scope | `contracts/identity-v1.md`, ADR-005 and ADR-006 define raw and normalized observation IDs, process/resource lifecycle epochs, alias revisions and native/local/wall/workspace time. `FX-IDENTITY-001` asserts PID and resource reuse, late old-key resolution, cross-host isolation, immutable alignment, checked QPC conversion and quarantine. The full I1/I2 standalone-ETL proof remains correctly assigned to IC-013 rather than being claimed here. |
@@ -527,8 +562,9 @@ Results verified on 2026-09-23 (capture cost re-measured on 2026-09-23; the 2026
 - revision 51 focused validation: 15 Application tests (including three published-session overview regressions), 12 headless UI tests and 5 Architecture tests pass in Debug; `InterCat.Application` builds with zero warnings. The full solution remains blocked by concurrent coverage-ledger interface work, so these are not a full-suite result;
 - revision 50 focused validation: 12 Application, 13 Desktop, 12 headless UI and 5 Architecture tests pass in Debug. The full solution build remains blocked by the concurrent coverage-ledger interface change described below; no full-suite claim is made for this revision;
 - revision 49 focused validation: all 82 Analysis tests and all 5 Architecture tests pass in Debug; the CLI builds with 0 warnings. The full solution build is temporarily blocked by concurrent, uncommitted coverage-ledger work changing `IAdmittedEventSink` before `InterCat.CaptureComparison` implements its new members. The revision 48 full-suite result below is the last complete baseline, not a claimed result for this worktree;
-- build: revision 48 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
-- tests: revision 48 passed 630 in both Debug and Release, 0 failed (157 CaptureBroker, 132 Storage, 77 Property, 79 Analysis, 57 Capture.Windows, 55 Domain, 21 Capture.Journal, 13 CaptureComparison, 12 Application, 11 Desktop, 11 Ui, 5 Architecture); the query-identity, layout, staging, relation, recovery, publication and lease regressions are registered in `fixtures/index.json`, and R18 is covered for the first time;
+- build: revision 56 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
+- tests: revision 56 passed 663 in both Debug and Release, 0 failed (95 Analysis, 59 Capture.Windows, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
+- FX-UDP-001 UDP datagrams, measured: `fixtures/FX-UDP-001/evidence/verification.json`, fixture-scoped. 71 truth records and 64 observations of the workload's two processes and four loopback flows; nothing else on the machine was written (P16). One builder test keeps a UDP receive's delivered endpoints while reading it as its owner's flow, with a TCP receive owner-first on the same values. One evaluator test names a mirrored-only match as an orientation gap;
 - IC-015 between filters: 3 tests. Between the client-server fixture's two processes, 6 records passed either way, with the evidence listed by reading. Two records were disclosed: the client's send to an endpoint nothing held and its record with no endpoint pair. The third process's send was not disclosed, because its maker is in neither set. `BytesSent` was 100 B from the client to the server and 40 B back. The 100 B measured at the receiver was the same, and the one-way record count was the send and its receive. Adding the unconnected third process to a set changed nothing. No record passed between that process and the server, and its one unresolved send was disclosed. The client and server pair had 1 channel with no unknown. An absent instance was `ProcessInstanceNotFound`. A focus, a peer, an empty set, an empty id, an undefined direction, a peer grouping and an ungrouped peer count beside it were refused. A set may overlap the other, and a grouped peer count was accepted. With start keys published, the ids a process list derives found 6 records between the pair and 7 for the server's participant filter, and ranked the client's channels. The unfocused channel count's identity named both rules and no policy. Restoring the old loading rule failed that test;
 - IC-015 channel counts: 3 tests. The client-server fixture counted 3 channels. The connection was one at both its ends, and two sends to unheld endpoints were one-sided channels, over 8 records. The record with no endpoint pair was the one unknown, making the count "at least 3". The client had 2 channels and the server 1. Ranked by process, the rows overlapped and did not partition a total of 3, and a mechanism grouping was refused. A reused port with both connections witnessed counted 2 channels with no unknown. Two witnessed client connections against a server end with no lifecycle counted at least 2, with the server's 2 records as the undecided unknown part. A lone record with no endpoint pair was `NothingMeasured`, never zero;
 - IC-015 connection incarnations: 2 tests. One local port used by two connections in turn, each opened and closed at both ends, gave two relations (100 with 200, 300 with 400), each of 6 records with its open and close witnessed. Every data and disconnect record named its own connection's other end, and the later server received exactly the later client's 7 bytes. When the server end carried no lifecycle, so both client connections could pair with it, the clients' records still named the one server holding it, while the server's records stayed ambiguous between the two clients and no relation was claimed;
@@ -630,7 +666,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. **Widen relations.** §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
+1. **Relate UDP datagrams.** UDPv4 is admitted with its measured orientation (ADR-019), and a UDP record's other end is `NoRelationRule` until a rule reads it: key UDP ends by protocol as well as endpoints, read a receive origin-first, treat a UDP end pair as one incarnation for the capture, and re-verify on a real session. §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own. **Widen relations.** §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
 2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
 3. **Publish §20.2's entity-state checkpoint (IC-016a), once IC-015 exists.** A rolling eviction has to carry the still-live identities, the endpoint bindings, the continuity quality and the pending-operation summaries across the boundary, and an operation open across one has to be censored rather than failed (I20). The retention mechanism beneath it is in; what it can state is what is missing.
 4. **Run the fixture corpus on the retail builds in the matrix.** 25H2 retail (26200) and 24H2 (26100) are listed in §1.3 and neither has been measured; the tiers above rest on a pre-release branch of 25H2. §13.4 asks for the corpus on every supported build, and a second environment row is what makes a tier more than one machine's result.

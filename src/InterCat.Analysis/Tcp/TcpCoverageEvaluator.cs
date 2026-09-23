@@ -64,8 +64,9 @@ public sealed record TcpCoverageResult
 }
 
 /// <summary>
-/// Compares an independent TCP truth log with admitted observations and computes the section 14.2 counters.
-/// It is pure and portable: the same evaluation runs in a test with synthetic inputs (R19, R18).
+/// Compares an independent TCP or UDP truth log with admitted observations and computes the section 14.2 counters.
+/// Observation flows are the owner's own pair, read through each descriptor's measured orientation. It is pure and
+/// portable: the same evaluation runs in a test with synthetic inputs (R19, R18).
 /// </summary>
 public static class TcpCoverageEvaluator
 {
@@ -176,6 +177,13 @@ public static class TcpCoverageEvaluator
                 }
             }
 
+            // An operation seen only with its endpoints mirrored means the descriptor's declared orientation is wrong,
+            // which is a different finding from an operation the capture never saw.
+            bool mirroredOnly = matched == 0
+                && byFlow.TryGetValue(flow.Mirror(), out List<NetworkTransferObservation>? mirrored)
+                && mirrored.Any(candidate => candidate.Kind == expected
+                    && candidate.OwnerProcessId == record.ProcessId
+                    && Int128.Abs((Int128)candidate.TimestampUtcTicks - at) <= window);
             operations.Add(new(
                 record.Role,
                 record.ProcessId,
@@ -188,7 +196,9 @@ public static class TcpCoverageEvaluator
                 observedBytes,
                 boundToInstance,
                 matched == 0
-                    ? "No admitted observation of this kind was found for this flow inside the match window."
+                    ? mirroredOnly
+                        ? "Observed only with its endpoints mirrored: the descriptor's measured orientation does not hold here."
+                        : "No admitted observation of this kind was found for this flow inside the match window."
                     : observedBytes is null
                         ? "Observed, but no byte measurement accompanied the record."
                         : null));

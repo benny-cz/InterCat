@@ -77,7 +77,7 @@ readings.
 | Its partner is unbound | — | `Unresolved`, `PeerUnbound` |
 | No record in the capture holds its end's mirror, or no mirror incarnation overlaps its own | — | `Unresolved`, `PeerNotObserved` |
 | It names no end | — | `Unresolved`, `PeerEndpointIncomplete` |
-| Any other mechanism | — | `Unresolved`, `NoRelationRule` |
+| Any other mechanism, UDP included | — | `Unresolved`, `NoRelationRule` |
 
 The strength is never `Direct`: no single record names both ends. A record's other end depends only on the evidence
 at that other end; the record's own binding is a separate fact, so a record whose own owner is unresolved can still
@@ -124,7 +124,10 @@ identity: another relation rule can number channels differently.
 
 ## 7. Assumptions
 
-The orientation of §2 holds for the six admitted TCPv4 descriptors on the measured build. A descriptor whose
+The orientation of §2 holds for the six admitted TCPv4 descriptors on the measured build. It does not hold for UDP:
+since plan revision 56 UDPv4 datagrams are admitted, and a UDP receive names the datagram's sender first (FX-UDP-001,
+ADR-019). This rule reads TCP only, so a UDP record's other end is `NoRelationRule` until a rule reads UDP through
+the measured orientation. A descriptor whose
 orientation is not measured is not a TCP descriptor this rule reads correctly, and admitting one is a catalog change
 that requires re-measuring it. Imported sessions publish an aggregate coverage ledger, but it cannot locate a lost
 record at one end, and live captures do not yet publish one. An other end that is `PeerNotObserved` may therefore be

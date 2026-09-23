@@ -41,7 +41,7 @@ public static class CaptureProfileCatalog
             Sources =
             [
                 new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
-                new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated TCP endpoints, direction and transport-observed byte counts."),
+                new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated TCP and UDP endpoints, direction and transport-observed byte counts."),
                 new(WindowsSourceCatalog.RpcSourceId, false, true, "Validated RPC call metadata when its capture impact is known."),
                 new(WindowsSourceCatalog.KernelAlpcSourceId, false, true, "ALPC metadata when a bounded adapter and capture impact are known."),
                 new(WindowsSourceCatalog.KernelFileSourceId, false, true, "Named-pipe metadata when its whole-machine cost is acceptable."),
@@ -64,7 +64,7 @@ public static class CaptureProfileCatalog
             Sources =
             [
                 new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Lifecycle context required to identify selected and peer processes."),
-                new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated TCP endpoints, direction and transport-observed byte counts."),
+                new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated endpoints, direction and transport-observed byte counts of the focused transport."),
             ],
             PreserveExtendedData = true,
             RequestCallStacks = false,
@@ -324,6 +324,26 @@ public static class CaptureProfileCompiler
         }
 
         SourcePlanCompilation compilation = compileSources(candidates, bodyPolicy);
+        if (request.Profile == CaptureProfileKind.FocusedTransport && request.FocusedMechanism is { } focused)
+        {
+            // A focused capture admits the transport it names and the context that explains it. A source that serves
+            // several focusable transports contributes only the focused one's descriptors, and enables only their events.
+            compilation = compilation with
+            {
+                Plans =
+                [
+                    .. compilation.Plans.Select(plan => plan with
+                    {
+                        Events =
+                        [
+                            .. plan.Events.Where(descriptor =>
+                                descriptor.Mechanism == focused || !FocusableTransports.Contains(descriptor.Mechanism)),
+                        ],
+                    }),
+                ],
+            };
+        }
+
         Dictionary<string, SourceAdmissionPlan> plansBySource = compilation.Plans.ToDictionary(
             plan => plan.SourceId,
             StringComparer.Ordinal);
@@ -413,6 +433,12 @@ public static class CaptureProfileCompiler
         };
     }
 
+    /// <summary>
+    /// The transports whose source semantics and capture impact are measured, so a focused capture may name one:
+    /// TCP on FX-TCP-001 and UDP on FX-UDP-001.
+    /// </summary>
+    private static readonly Mechanism[] FocusableTransports = [Mechanism.Tcp, Mechanism.Udp];
+
     private static string? ValidateRequest(CaptureProfileRequest request)
     {
         IReadOnlyList<int> processIds = request.FocusedProcessIds ?? [];
@@ -452,12 +478,12 @@ public static class CaptureProfileCompiler
 
         if (request.FocusedMechanism is null)
         {
-            return "Focused transport requires an explicit mechanism. TCP is the only validated option in this build.";
+            return "Focused transport requires an explicit mechanism. TCP and UDP are the validated options in this build.";
         }
 
-        if (request.FocusedMechanism != Mechanism.Tcp)
+        if (!FocusableTransports.Contains(request.FocusedMechanism.Value))
         {
-            return $"{request.FocusedMechanism} is not available in Focused transport. TCP is the only mechanism with measured source semantics and capture impact.";
+            return $"{request.FocusedMechanism} is not available in Focused transport. TCP and UDP are the only mechanisms with measured source semantics and capture impact.";
         }
 
         return request.AllowBroaderCapture && processIds.Count == 0

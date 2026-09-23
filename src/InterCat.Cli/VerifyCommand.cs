@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A portable, shareable re-evaluation of one raw local TCP measurement run (R18, I14).</summary>
+/// <summary>A portable, shareable re-evaluation of one raw local TCP or UDP measurement run (R18, I14).</summary>
 internal sealed record FixtureVerification
 {
     public required string FixtureId { get; init; }
@@ -46,9 +46,15 @@ internal static class VerifyCommand
         }
 
         string mechanism = command.TakePositional() ?? "tcp";
-        if (!string.Equals(mechanism, "tcp", StringComparison.OrdinalIgnoreCase))
+        string? expectedFixture = mechanism.ToUpperInvariant() switch
         {
-            ConsoleUi.Failure($"Only 'tcp' verification exists in this milestone. Unknown mechanism: {mechanism}");
+            "TCP" => TransportScenario.Tcp.FixtureId,
+            "UDP" => TransportScenario.Udp.FixtureId,
+            _ => null,
+        };
+        if (expectedFixture is null)
+        {
+            ConsoleUi.Failure($"Only 'tcp' and 'udp' verification exist in this milestone. Unknown mechanism: {mechanism}");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -97,6 +103,12 @@ internal static class VerifyCommand
             await File.ReadAllTextAsync(measurementPath, cancellationToken).ConfigureAwait(false),
             JsonContracts.Compact)
             ?? throw new InvalidDataException("measurement.json has no run header.");
+        if (!string.Equals(header.FixtureId, expectedFixture, StringComparison.Ordinal))
+        {
+            ConsoleUi.Failure(
+                $"The run measured {header.FixtureId}, not {expectedFixture}. Verify it as the mechanism it measured.");
+            return InterCatExitCode.InvalidInvocation;
+        }
 
         string[] truthPaths = Directory.EnumerateFiles(runDirectory, "truth-*.jsonl")
             .Order(StringComparer.Ordinal)
@@ -247,9 +259,9 @@ internal static class VerifyCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat verify tcp --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
+        ConsoleUi.Line("icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("  Recomputes TCP coverage without ETW or elevation and writes a shareable artifact");
+        ConsoleUi.Line("  Recomputes TCP or UDP coverage without ETW or elevation and writes a shareable artifact");
         ConsoleUi.Line("  containing only fixture-scoped loopback evidence. The raw run is never modified.");
     }
 }

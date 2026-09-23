@@ -111,6 +111,33 @@ public sealed class CaptureProfileCompilerTests
         Assert.All(plan.Providers, provider => Assert.Empty(provider.ProcessIdsToInclude));
     }
 
+    [Fact(DisplayName = "IC-012: a focused capture admits only the transport it names from a source that serves two")]
+    public void FocusAdmitsOnlyTheNamedTransport()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan tcpOnly = BuildPlan(WindowsSourceCatalog.KernelNetworkSourceId, 1, 10);
+        SourceAdmissionPlan network = tcpOnly with
+        {
+            Events = [tcpOnly.Events[0], tcpOnly.Events[0] with { EventId = 42, Mechanism = Mechanism.Udp }],
+        };
+
+        foreach ((Mechanism focus, int eventId) in new[] { (Mechanism.Tcp, 10), (Mechanism.Udp, 42) })
+        {
+            EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+                new(CaptureProfileKind.FocusedTransport, FocusedMechanism: focus),
+                new SourcePlanCompilation([process, network], []));
+
+            Assert.True(plan.CanStart);
+            SourceAdmissionPlan admitted = plan.Sources.Single(source => source.SourceId == WindowsSourceCatalog.KernelNetworkSourceId);
+            Assert.Equal(eventId, Assert.Single(admitted.Events).EventId);
+            Assert.Single(plan.Sources, source => source.SourceId == WindowsSourceCatalog.KernelProcessSourceId);
+
+            // The provider is enabled for the focused transport's events only, not for everything the source serves.
+            ProviderEnablementRequest provider = plan.Providers.Single(request => request.SourceId == WindowsSourceCatalog.KernelNetworkSourceId);
+            Assert.Equal([eventId], provider.EventIdsToEnable);
+        }
+    }
+
     [Fact(DisplayName = "IC-012: process focus blocks until unavoidable broader TCP collection is accepted")]
     public void FocusedProcessNeedsBroaderCaptureConsent()
     {
@@ -228,7 +255,8 @@ public sealed class CaptureProfileCompilerTests
             decision =>
             {
                 Assert.Equal(ProfileSourceDecisionState.Included, decision.State);
-                Assert.Equal(OverheadClass.Low, decision.Overhead);
+                // Whatever class a measurement gives, a required source is one whose capture impact was measured (§4.3).
+                Assert.NotEqual(OverheadClass.Unmeasured, decision.Overhead);
                 Assert.NotNull(decision.OverheadEvidence);
             });
         Assert.All(plan.Providers, provider => Assert.Equal(4, provider.Level));

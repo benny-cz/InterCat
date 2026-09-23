@@ -1,6 +1,6 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-22T23:50:32.0279095+00:00",
+  "probedAtUtc": "2026-09-23T09:47:49.1209316+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
@@ -15,7 +15,7 @@
       "isSupported": true
     }
   },
-  "adapterVersion": "windows-etw-inventory-0.5.0",
+  "adapterVersion": "windows-etw-inventory-0.6.0",
   "probeOnly": true,
   "sources": [
     {
@@ -24,7 +24,8 @@
       "kind": "ManifestProvider",
       "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
       "mechanisms": [
-        "Tcp"
+        "Tcp",
+        "Udp"
       ],
       "state": "Experimental",
       "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
@@ -492,6 +493,136 @@
               "notes": "Reported as zero on several builds; never an identity by itself (R22)."
             }
           ]
+        },
+        {
+          "eventId": 42,
+          "version": 0,
+          "opcode": 42,
+          "taskName": "KERNEL_NETWORK_TASK_UDPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner: the sending process. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": "The datagram\u0027s payload bytes, equal to the truth log\u0027s on FX-UDP-001."
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the sending process\u0027s own endpoint, measured on FX-UDP-001."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the sending process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address the datagram was sent to."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port the datagram was sent to."
+            }
+          ]
+        },
+        {
+          "eventId": 43,
+          "version": 0,
+          "opcode": 43,
+          "taskName": "KERNEL_NETWORK_TASK_UDPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV4"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner: the receiving process. On FX-UDP-001 the event header PID differed from it on every receive (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": "The datagram\u0027s payload bytes, equal to the truth log\u0027s on FX-UDP-001."
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the datagram\u0027s sender. Unlike a TCP receive, a UDP receive names the origin first: measured on FX-UDP-001."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the datagram\u0027s sender."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the receiving process\u0027s own endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the receiving process\u0027s own endpoint."
+            }
+          ]
         }
       ],
       "checks": [
@@ -528,6 +659,7 @@
       "notes": [
         "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
         "Measured on FX-TCP-001: addresses and ports arrive in network byte order, and the saddr and sport pair names the owning process\u0027s own endpoint on both send and receive descriptors.",
+        "Measured on FX-UDP-001: a UDP send names the sender\u0027s own endpoint first, and a UDP receive names the datagram\u0027s sender first, so the receiver\u0027s own endpoint is its destination. Records keep both as delivered.",
         "Loopback traffic is observed on both endpoints; the canonical owner rule of section 5.3 decides the total."
       ]
     },
@@ -2405,14 +2537,14 @@
     },
     {
       "mechanism": "Udp",
-      "state": "DisabledByProfile",
+      "state": "Experimental",
       "tier": "Unsupported",
       "coverage": "UnknownCoverage",
-      "summary": "Udp: reachable from a registered source, but not requested by the M0 capture plan.",
+      "summary": "Udp: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
       "sourceIds": [
         "etw/manifest/Microsoft-Windows-Kernel-Network"
       ],
-      "unavailableReason": "A registered source could serve this mechanism, but the M0 plan does not request it.",
+      "unavailableReason": "The schema was read, but no capture has demonstrated emission, field semantics or health.",
       "measurement": null,
       "tierAssessment": null,
       "fixtureIds": []

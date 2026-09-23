@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using InterCat.Analysis;
 using InterCat.Domain;
 using Xunit;
@@ -58,6 +60,72 @@ public sealed class TcpCoverageEvaluatorTests
         Assert.Equal(1, operation.MatchedObservations);
         Assert.Null(operation.ObservedBytes);
         Assert.Equal(0, result.Measurement.ByteMeasuredOperations);
+    }
+
+    [Fact(DisplayName = "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss")]
+    public void MirroredObservationsNameTheOrientationAsTheGap()
+    {
+        TruthRecord[] truth = [Truth(1, recordedTicks: 10_000, callId: 1)];
+        NetworkTransferObservation mirrored = Observation(1, timestampTicks: 10_000, flow: new(Loopback, 40_000, Loopback, 50_000));
+
+        TcpCoverageResult result = TcpCoverageEvaluator.Evaluate(truth, [mirrored], Settings());
+
+        OperationCoverage operation = Assert.Single(result.Operations);
+        Assert.Equal(0, operation.MatchedObservations);
+        Assert.Contains("mirrored", operation.Gap, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The committed, fixture-scoped evidence of each measured transport re-evaluates to the counters it was published
+    /// with: a change to matching or orientation that would move a tier fails here rather than in the next capture.
+    /// </summary>
+    [Theory(DisplayName = "P27: committed transport fixture evidence reproduces its measured tier")]
+    [InlineData("FX-TCP-001", 48, 4)]
+    [InlineData("FX-UDP-001", 64, 4)]
+    public void CommittedEvidenceReproducesItsTier(string fixture, int operations, int peers)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", fixture, "evidence");
+        TruthRecord[] truth = ReadLines<TruthRecord>(Path.Combine(evidence, "truth.jsonl"));
+        NetworkTransferObservation[] observations = ReadLines<NetworkTransferObservation>(Path.Combine(evidence, "observations.jsonl"));
+
+        TcpCoverageResult result = TcpCoverageEvaluator.Evaluate(truth, observations, new()
+        {
+            FixtureId = fixture,
+            BuildId = "10.0.26220.0-x64",
+            BuildIsSupported = true,
+            Reproduced = true,
+        });
+
+        Assert.Equal(operations, result.Measurement.TruthOperations);
+        Assert.Equal(operations, result.Measurement.TruthOperationsWithAdmittedObservation);
+        Assert.Equal(operations, result.Measurement.TruthOperationsBoundToResourceInstance);
+        Assert.Equal(operations, result.Measurement.ByteMeasuredOperations);
+        Assert.Equal((peers, 0L), (result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions));
+        Assert.Equal(result.TruthBytesSent, result.ObservedBytesSent);
+        Assert.Equal(CapabilityTier.TrafficVisualization, result.Assessment.Tier);
+    }
+
+    private static T[] ReadLines<T>(string path)
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.Converters.Add(new JsonStringEnumConverter());
+        return
+        [
+            .. File.ReadAllLines(path)
+                .Where(line => line.Length > 0)
+                .Select(line => JsonSerializer.Deserialize<T>(line, options)!),
+        ];
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the repository root.");
     }
 
     private static TcpCoverageSettings Settings() => new()

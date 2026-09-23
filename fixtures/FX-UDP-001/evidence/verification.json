@@ -1,0 +1,1332 @@
+{
+  "fixtureId": "FX-UDP-001",
+  "sourceRunId": "20260923T094823Z",
+  "verifiedAtUtc": "2026-09-23T09:48:27.3532108+00:00",
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26220",
+    "buildId": "10.0.26220.0-x64",
+    "architecture": "X64",
+    "isSupportedBuild": true,
+    "isElevated": true,
+    "machineScope": "local machine",
+    "support": {
+      "tier": "Primary",
+      "releaseName": "Windows 11 25H2 x64",
+      "isPrerelease": true,
+      "isSupported": true
+    }
+  },
+  "adapterVersion": "windows-etw-inventory-0.6.0",
+  "truthRecords": 71,
+  "observationsRead": 64,
+  "scopedObservationsWritten": 64,
+  "excludedWholeMachineObservations": 0,
+  "coverage": {
+    "measurement": {
+      "fixtureId": "FX-UDP-001",
+      "buildId": "10.0.26220.0-x64",
+      "reproduced": true,
+      "measuredOnSupportedBuild": true,
+      "truthOperations": 64,
+      "truthOperationsWithAdmittedObservation": 64,
+      "truthOperationsBoundToResourceInstance": 64,
+      "peerAttributions": 4,
+      "falsePeerAttributions": 0,
+      "byteEligibleOperations": 64,
+      "byteMeasuredOperations": 64,
+      "truthResources": 0,
+      "discoveredResourcesWithLifetime": 0,
+      "expectedMemberships": 0,
+      "resolvedMemberships": 0,
+      "claimsBytesOrOperations": true
+    },
+    "assessment": {
+      "tier": "TrafficVisualization",
+      "criteria": [
+        {
+          "name": "AdmittedObservations",
+          "requirement": "at least 95% of truth operations produce an admitted observation",
+          "numerator": 64,
+          "denominator": 64,
+          "measured": 1,
+          "satisfied": true,
+          "gap": null
+        },
+        {
+          "name": "ResourceInstanceBinding",
+          "requirement": "at least 90% of truth operations bind to a specific resource instance",
+          "numerator": 64,
+          "denominator": 64,
+          "measured": 1,
+          "satisfied": true,
+          "gap": null
+        },
+        {
+          "name": "FalsePeerAttribution",
+          "requirement": "at most 1% false peer attributions",
+          "numerator": 0,
+          "denominator": 4,
+          "measured": 0,
+          "satisfied": true,
+          "gap": null
+        },
+        {
+          "name": "ByteMeasurement",
+          "requirement": "a byte measurement in a named domain on at least 90% of eligible operations",
+          "numerator": 64,
+          "denominator": 64,
+          "measured": 1,
+          "satisfied": true,
+          "gap": null
+        },
+        {
+          "name": "ResourceDiscovery",
+          "requirement": "at least 95% of truth resources discovered with their lifetimes",
+          "numerator": 0,
+          "denominator": 0,
+          "measured": null,
+          "satisfied": false,
+          "gap": "ResourceDiscovery: not measured; the truth workload declared no eligible item for this criterion."
+        },
+        {
+          "name": "MembershipResolution",
+          "requirement": "memberships or endpoints resolved for every discovered resource",
+          "numerator": 0,
+          "denominator": 0,
+          "measured": null,
+          "satisfied": false,
+          "gap": "MembershipResolution: not measured; the truth workload declared no eligible item for this criterion."
+        }
+      ],
+      "gaps": [
+        "ResourceDiscovery: not measured; the truth workload declared no eligible item for this criterion.",
+        "MembershipResolution: not measured; the truth workload declared no eligible item for this criterion."
+      ]
+    },
+    "operations": [
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 0,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 1120,
+        "completedBytes": 1120,
+        "matchedObservations": 1,
+        "observedBytes": 1120,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 0,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 1120,
+        "completedBytes": 1120,
+        "matchedObservations": 1,
+        "observedBytes": 1120,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 0,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 0,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 1,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 1180,
+        "completedBytes": 1180,
+        "matchedObservations": 1,
+        "observedBytes": 1180,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 1,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 1180,
+        "completedBytes": 1180,
+        "matchedObservations": 1,
+        "observedBytes": 1180,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 1,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 1,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 2,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 894,
+        "completedBytes": 894,
+        "matchedObservations": 1,
+        "observedBytes": 894,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 2,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 894,
+        "completedBytes": 894,
+        "matchedObservations": 1,
+        "observedBytes": 894,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 2,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 2,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 3,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 518,
+        "completedBytes": 518,
+        "matchedObservations": 1,
+        "observedBytes": 518,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 3,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 518,
+        "completedBytes": 518,
+        "matchedObservations": 1,
+        "observedBytes": 518,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 3,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 3,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 4,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 84,
+        "completedBytes": 84,
+        "matchedObservations": 1,
+        "observedBytes": 84,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 4,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 84,
+        "completedBytes": 84,
+        "matchedObservations": 1,
+        "observedBytes": 84,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 4,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 4,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 5,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 1039,
+        "completedBytes": 1039,
+        "matchedObservations": 1,
+        "observedBytes": 1039,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 5,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 1039,
+        "completedBytes": 1039,
+        "matchedObservations": 1,
+        "observedBytes": 1039,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 5,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 5,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 6,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 271,
+        "completedBytes": 271,
+        "matchedObservations": 1,
+        "observedBytes": 271,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 6,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 271,
+        "completedBytes": 271,
+        "matchedObservations": 1,
+        "observedBytes": 271,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 6,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 6,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 7,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 729,
+        "completedBytes": 729,
+        "matchedObservations": 1,
+        "observedBytes": 729,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 7,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 729,
+        "completedBytes": 729,
+        "matchedObservations": 1,
+        "observedBytes": 729,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 7,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 7,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 8,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 482,
+        "completedBytes": 482,
+        "matchedObservations": 1,
+        "observedBytes": 482,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 8,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 482,
+        "completedBytes": 482,
+        "matchedObservations": 1,
+        "observedBytes": 482,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 8,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 8,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 9,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 235,
+        "completedBytes": 235,
+        "matchedObservations": 1,
+        "observedBytes": 235,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 9,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 235,
+        "completedBytes": 235,
+        "matchedObservations": 1,
+        "observedBytes": 235,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 9,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 9,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 10,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 491,
+        "completedBytes": 491,
+        "matchedObservations": 1,
+        "observedBytes": 491,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 10,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 491,
+        "completedBytes": 491,
+        "matchedObservations": 1,
+        "observedBytes": 491,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 10,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 10,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 11,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 803,
+        "completedBytes": 803,
+        "matchedObservations": 1,
+        "observedBytes": 803,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 11,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 803,
+        "completedBytes": 803,
+        "matchedObservations": 1,
+        "observedBytes": 803,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 11,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 11,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 12,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 687,
+        "completedBytes": 687,
+        "matchedObservations": 1,
+        "observedBytes": 687,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 12,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 687,
+        "completedBytes": 687,
+        "matchedObservations": 1,
+        "observedBytes": 687,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 12,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 12,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 13,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 871,
+        "completedBytes": 871,
+        "matchedObservations": 1,
+        "observedBytes": 871,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 13,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 871,
+        "completedBytes": 871,
+        "matchedObservations": 1,
+        "observedBytes": 871,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 13,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 13,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 14,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 870,
+        "completedBytes": 870,
+        "matchedObservations": 1,
+        "observedBytes": 870,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 14,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 870,
+        "completedBytes": 870,
+        "matchedObservations": 1,
+        "observedBytes": 870,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 14,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 14,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 15,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 1400,
+        "completedBytes": 1400,
+        "matchedObservations": 1,
+        "observedBytes": 1400,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 15,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 1400,
+        "completedBytes": 1400,
+        "matchedObservations": 1,
+        "observedBytes": 1400,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "server",
+        "processId": 31328,
+        "callId": 15,
+        "expectedKind": "Send",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      },
+      {
+        "role": "client",
+        "processId": 46696,
+        "callId": 15,
+        "expectedKind": "Receive",
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "declaredBytes": 8,
+        "completedBytes": 8,
+        "matchedObservations": 1,
+        "observedBytes": 8,
+        "boundToFlowInstance": true,
+        "gap": null
+      }
+    ],
+    "peerAttributions": [
+      {
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60709,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "observedProcessId": 46696,
+        "observedPeerProcessId": 31328,
+        "agreesWithTruth": true,
+        "detail": "Both endpoints of this connection were attributed to the processes the truth log names."
+      },
+      {
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60709
+        },
+        "observedProcessId": 31328,
+        "observedPeerProcessId": 46696,
+        "agreesWithTruth": true,
+        "detail": "Both endpoints of this connection were attributed to the processes the truth log names."
+      },
+      {
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60710,
+          "remoteAddress": 2130706433,
+          "remotePort": 60708
+        },
+        "observedProcessId": 46696,
+        "observedPeerProcessId": 31328,
+        "agreesWithTruth": true,
+        "detail": "Both endpoints of this connection were attributed to the processes the truth log names."
+      },
+      {
+        "flow": {
+          "localAddress": 2130706433,
+          "localPort": 60708,
+          "remoteAddress": 2130706433,
+          "remotePort": 60710
+        },
+        "observedProcessId": 31328,
+        "observedPeerProcessId": 46696,
+        "agreesWithTruth": true,
+        "detail": "Both endpoints of this connection were attributed to the processes the truth log names."
+      }
+    ],
+    "truthBytesSent": 11802,
+    "truthBytesReceived": 11802,
+    "observedBytesSent": 11802,
+    "observedBytesReceived": 11802,
+    "observationsOutsideScope": 0,
+    "notes": [
+      "Operations were matched inside a 500 ms window on the same flow, owner process and observation kind.",
+      "Transport byte totals are reported beside truth totals as evidence; they are different byte domains and are never summed or substituted (I6, P3)."
+    ]
+  },
+  "inputSha256": {
+    "measurement.json": "ac805fafc98b96d7e5de55a4acc64314b68ac17b8f5b81ec6c85faeffa9c8f7c",
+    "observations.jsonl": "3c2528b13bc71021c0c481a58627300ccfa9782c82a879ffa55bcb7a2298a610",
+    "truth-client.jsonl": "665dffadbfec5bb67eea64671821f27cc1016fb6b51f741ae09afcdf5201348f",
+    "truth-server.jsonl": "32043fc0760c6dbe4cc51b18e0a82c3c3077c8e4e17b9e6d254bbe35f9a18b6f"
+  },
+  "shareable": true,
+  "notes": [
+    "This curated artifact contains only the synthetic fixture\u0027s loopback flows.",
+    "Unrelated whole-machine observations were counted and excluded before persistence (P16).",
+    "Coverage was recomputed with deterministic one-to-one truth/observation matching (I14)."
+  ]
+}

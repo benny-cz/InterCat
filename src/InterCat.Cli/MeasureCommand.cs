@@ -48,7 +48,28 @@ internal sealed record MeasurementRun
 }
 
 /// <summary>
-/// `icat measure tcp`: runs the seeded truth workload under an owned ETW session and reports measured
+/// A transport truth workload `icat measure` can run: its fixture, the workload verb and the option that sets how many
+/// flows it opens, and the mechanism its measurement is credited to.
+/// </summary>
+internal sealed record TransportScenario(
+    string FixtureId,
+    string Verb,
+    Mechanism Mechanism,
+    string SessionPrefix,
+    string CountOption,
+    string CountNoun,
+    int DefaultSeed,
+    int DefaultBytes)
+{
+    public static TransportScenario Tcp { get; } =
+        new("FX-TCP-001", "tcp-loopback", Mechanism.Tcp, "m0tcp", "--connections", "connections", 20_260_920, 4_096);
+
+    public static TransportScenario Udp { get; } =
+        new("FX-UDP-001", "udp-loopback", Mechanism.Udp, "m1udp", "--sockets", "sockets", 20_260_923, 1_400);
+}
+
+/// <summary>
+/// `icat measure tcp|udp`: runs the seeded truth workload under an owned ETW session and reports measured
 /// coverage against the independent truth log (IC-003, IC-004, section 14.2).
 /// </summary>
 internal static partial class MeasureCommand
@@ -74,19 +95,25 @@ internal static partial class MeasureCommand
             return await RunRpcAsync(command, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!string.Equals(mechanism, "tcp", StringComparison.OrdinalIgnoreCase))
+        TransportScenario? scenario = mechanism.ToUpperInvariant() switch
+        {
+            "TCP" => TransportScenario.Tcp,
+            "UDP" => TransportScenario.Udp,
+            _ => null,
+        };
+        if (scenario is null)
         {
             ConsoleUi.Failure(
-                $"Only 'tcp', 'pipe' and 'rpc' are measurable in this milestone. Unknown mechanism: {mechanism}");
+                $"Only 'tcp', 'udp', 'pipe' and 'rpc' are measurable in this milestone. Unknown mechanism: {mechanism}");
             return InterCatExitCode.InvalidInvocation;
         }
 
         string? outputOption = command.TakeOption("--output");
         string? workloadOption = command.TakeOption("--workload");
-        int seed = command.TakeIntegerOption("--seed") ?? 20_260_920;
-        int connections = command.TakeIntegerOption("--connections") ?? 2;
+        int seed = command.TakeIntegerOption("--seed") ?? scenario.DefaultSeed;
+        int connections = command.TakeIntegerOption(scenario.CountOption) ?? 2;
         int messages = command.TakeIntegerOption("--messages") ?? 8;
-        int maximumBytes = command.TakeIntegerOption("--bytes") ?? 4_096;
+        int maximumBytes = command.TakeIntegerOption("--bytes") ?? scenario.DefaultBytes;
         int graceSeconds = command.TakeIntegerOption("--grace") ?? 2;
         bool json = command.TryTakeFlag("--json");
         bool overwrite = command.TryTakeFlag("--overwrite");
@@ -117,7 +144,7 @@ internal static partial class MeasureCommand
 
         string runId = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
         string outputDirectory = Path.GetFullPath(
-            outputOption ?? Path.Combine("fixtures", "FX-TCP-001", "runs", runId));
+            outputOption ?? Path.Combine("fixtures", scenario.FixtureId, "runs", runId));
         if (Directory.Exists(outputDirectory) && Directory.EnumerateFileSystemEntries(outputDirectory).Any() && !overwrite)
         {
             ConsoleUi.Failure($"{outputDirectory} already contains files. Pass --overwrite to replace them.");
@@ -141,7 +168,7 @@ internal static partial class MeasureCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
-        CaptureSessionIdentity identity = CaptureSessionIdentity.Create("m0tcp", System.Environment.ProcessId);
+        CaptureSessionIdentity identity = CaptureSessionIdentity.Create(scenario.SessionPrefix, System.Environment.ProcessId);
         var sessionPlan = new OwnedSessionPlan
         {
             Identity = identity,
@@ -215,9 +242,11 @@ internal static partial class MeasureCommand
             },
             CancellationToken.None);
 
-        ConsoleUi.Progress($"Running FX-TCP-001: {connections} connections, {messages} messages, seed {seed}.");
+        ConsoleUi.Progress(
+            $"Running {scenario.FixtureId}: {connections} {scenario.CountNoun}, {messages} messages each, seed {seed}.");
         int workloadExit = await RunWorkloadAsync(
             workload,
+            scenario,
             outputDirectory,
             seed,
             connections,
@@ -244,7 +273,7 @@ internal static partial class MeasureCommand
 
         var settings = new TcpCoverageSettings
         {
-            FixtureId = "FX-TCP-001",
+            FixtureId = scenario.FixtureId,
             BuildId = environment.BuildId,
             BuildIsSupported = environment.IsSupportedBuild,
             Reproduced = false,
@@ -272,7 +301,7 @@ internal static partial class MeasureCommand
 
         var run = new MeasurementRun
         {
-            FixtureId = "FX-TCP-001",
+            FixtureId = scenario.FixtureId,
             RunId = runId,
             StartedUtc = started,
             CompletedUtc = DateTimeOffset.UtcNow,
@@ -309,8 +338,8 @@ internal static partial class MeasureCommand
 
         CapabilityReport report = probe.Probe(
             environment,
-            BuildRuntimeEvidence(start, stop, coverage),
-            new Dictionary<Mechanism, MechanismMeasurement> { [Mechanism.Tcp] = coverage.Measurement });
+            BuildRuntimeEvidence(start, stop, coverage, scenario.FixtureId),
+            new Dictionary<Mechanism, MechanismMeasurement> { [scenario.Mechanism] = coverage.Measurement });
         string reportPath = Path.Combine(outputDirectory, "capability-report.json");
         await File.WriteAllTextAsync(
             reportPath,
@@ -432,7 +461,8 @@ internal static partial class MeasureCommand
     private static List<SourceRuntimeEvidence> BuildRuntimeEvidence(
         CaptureStartResult start,
         CaptureStopResult stop,
-        TcpCoverageResult coverage)
+        TcpCoverageResult coverage,
+        string fixtureId)
     {
         var evidence = new List<SourceRuntimeEvidence>(start.Providers.Count);
         foreach (ProviderEnablementResult provider in start.Providers)
@@ -454,9 +484,9 @@ internal static partial class MeasureCommand
                     ? coverage.Assessment.Gaps.Count == 0 ? CheckOutcome.Passed : CheckOutcome.Inconclusive
                     : CheckOutcome.NotAttempted,
                 network
-                    ? $"Measured against FX-TCP-001: tier {coverage.Assessment.Tier}."
+                    ? $"Measured against {fixtureId}: tier {coverage.Assessment.Tier}."
                     : "No truth workload targets this source in this run.",
-                network ? ["FX-TCP-001"] : [],
+                network ? [fixtureId] : [],
                 provider.Enabled ? null : provider.FailureReason));
         }
 
@@ -509,6 +539,7 @@ internal static partial class MeasureCommand
 
     private static async Task<int> RunWorkloadAsync(
         string workload,
+        TransportScenario scenario,
         string truthDirectory,
         int seed,
         int connections,
@@ -517,12 +548,12 @@ internal static partial class MeasureCommand
         CancellationToken cancellationToken)
     {
         var start = new ProcessStartInfo(workload) { UseShellExecute = false, CreateNoWindow = true };
-        start.ArgumentList.Add("tcp-loopback");
+        start.ArgumentList.Add(scenario.Verb);
         start.ArgumentList.Add("--truth");
         start.ArgumentList.Add(truthDirectory);
         start.ArgumentList.Add("--seed");
         start.ArgumentList.Add(seed.ToString(CultureInfo.InvariantCulture));
-        start.ArgumentList.Add("--connections");
+        start.ArgumentList.Add(scenario.CountOption);
         start.ArgumentList.Add(connections.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--messages");
         start.ArgumentList.Add(messages.ToString(CultureInfo.InvariantCulture));
@@ -636,9 +667,11 @@ internal static partial class MeasureCommand
     {
         ConsoleUi.Line("icat measure tcp [--output <dir>] [--seed <n>] [--connections <n>] [--messages <n>]");
         ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("icat measure udp [--output <dir>] [--seed <n>] [--sockets <n>] [--messages <n>]");
+        ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--overwrite] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("  Starts one uniquely named ETW session, runs FX-TCP-001, stops the session it created,");
-        ConsoleUi.Line("  and measures the section 14.2 thresholds against the workload's independent truth log.");
+        ConsoleUi.Line("  Starts one uniquely named ETW session, runs FX-TCP-001 or FX-UDP-001, stops the session it");
+        ConsoleUi.Line("  created, and measures the section 14.2 thresholds against the workload's independent truth log.");
         ConsoleUi.Line("  Other ETW sessions on the machine are never stopped or adopted.");
     }
 }
