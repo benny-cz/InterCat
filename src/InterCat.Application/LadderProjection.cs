@@ -272,7 +272,7 @@ public static class LadderProjection
                 operation.Key,
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{operation.Kind} {operation.Direction} · {operation.Interval.StartTicks / 10_000_000} s"),
+                    $"{operation.Kind} {operation.Direction} · {operation.Interval.StartTicks / WorkspaceTime.TicksPerSecond} s"),
                 Describe(operation),
                 records,
                 operation.CompletedBytes,

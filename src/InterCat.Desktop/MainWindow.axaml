@@ -348,11 +348,13 @@
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
         <TextBlock Text="●" Foreground="{DynamicResource Family.Alpc.Ink}" />
-        <TextBlock Grid.Column="1" Margin="6,0,18,0" Text="Synthetic snapshot ready"
+        <TextBlock x:Name="WorkspaceTitleText" Grid.Column="1" Margin="6,0,18,0" MaxWidth="270" TextTrimming="CharacterEllipsis"
+                   Text="{Binding Snapshot.Title}" ToolTip.Tip="{Binding Snapshot.Title}"
                    Foreground="{DynamicResource Ink.Body}" FontSize="11" />
-        <TextBlock Grid.Column="2" Text="Coverage gap: 2 seconds · not extrapolated"
+        <TextBlock x:Name="CoverageSummaryText" Grid.Column="2" Text="{Binding CoverageSummary}"
+                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CoverageSummary}"
                    Foreground="{DynamicResource Family.RemoteCall.Ink}" FontSize="11" />
-        <TextBlock Grid.Column="3" Text="M0 interaction prototype" Classes="muted" FontSize="11" />
+        <TextBlock Grid.Column="3" Text="Workspace preview" Classes="muted" FontSize="11" />
       </Grid>
     </Border>
   </Grid>

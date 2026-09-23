@@ -698,7 +698,9 @@
       "R13": [
         "R13: Alt and Left ascend, the second gesture the ladder promises",
         "R13: Enter descends a rung and Escape returns to exactly where it was",
+        "R13: a non-tour workspace labels its own extent and uses its own graph identity",
         "R13: a descent that skips a rung is refused with a reason, not reinterpreted",
+        "R13: an empty session workspace opens without a fabricated selected process",
         "R13: a filter a descent implied can be removed without changing the level",
         "R13: a level change alters grouping, never the observations in scope",
         "R13: a rung with no rows names the source that would supply them",
@@ -716,6 +718,7 @@
         "R14: every ink token clears 4.5 to 1 against every surface it can land on"
       ],
       "R15": [
+        "R15: a custom workspace header names its session without inventing a capture gap",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the table toggle is reachable by keyboard while a list has focus",
         "R15: the window renders at its minimum size and at a review size",

@@ -77,6 +77,16 @@ public sealed record TimelineBucket(
     CoverageState Coverage);
 
 /// <summary>
+/// Workspace viewport ticks are 100-nanosecond presentation ticks. A real-session projection converts source-native
+/// and session-relative readings into this scale before they reach the graph or timeline; no UI assumes the source
+/// clock itself has this frequency.
+/// </summary>
+public static class WorkspaceTime
+{
+    public const long TicksPerSecond = TimeSpan.TicksPerSecond;
+}
+
+/// <summary>
 /// Everything one workspace shows, at every rung of the section 3.2 ladder. The levels are separate
 /// collections rather than a nested tree so a projection can be written as a pure query at any rung.
 /// </summary>

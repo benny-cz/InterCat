@@ -119,8 +119,8 @@ public static class WorkspaceRowBuilder
         foreach (TimelineBucket bucket in snapshot.Timeline)
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(bucket.DominantMechanism));
-            decimal from = bucket.Interval.StartTicks / 10_000_000m;
-            decimal to = bucket.Interval.EndTicks / 10_000_000m;
+            decimal from = bucket.Interval.StartTicks / (decimal)WorkspaceTime.TicksPerSecond;
+            decimal to = bucket.Interval.EndTicks / (decimal)WorkspaceTime.TicksPerSecond;
             rows.Add(new(
                 bucket.Interval,
                 string.Create(CultureInfo.CurrentCulture, $"{from:N0} s to {to:N0} s"),

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
+using InterCat.Application;
 using InterCat.Desktop;
 using Xunit;
 
@@ -14,6 +15,23 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class WindowRenderTests
 {
+    [AvaloniaFact(DisplayName = "R15: a custom workspace header names its session without inventing a capture gap")]
+    public void CustomWorkspaceHeaderIsTruthful()
+    {
+        WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
+        {
+            Title = "Imported session generation 2",
+            Timeline = [],
+        };
+        var window = new MainWindow(new WorkspaceViewModel(snapshot, "generation-2"));
+        window.Show();
+        Dispatch();
+
+        Assert.Equal(snapshot.Title, window.GetControl<TextBlock>("WorkspaceTitleText").Text);
+        Assert.Equal("Coverage not quantified", window.GetControl<TextBlock>("CoverageSummaryText").Text);
+        window.Close();
+    }
+
     /// <summary>The section 1.3 minimum window, and a size a reviewer is likely to use.</summary>
     public static TheoryData<int, int> Sizes => new() { { 1080, 700 }, { 1456, 939 } };
 

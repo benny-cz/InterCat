@@ -74,8 +74,8 @@ public sealed class TimelineView : Control
             }
         }
 
-        DrawText(context, $"{visible.StartTicks / 10_000_000m:N1}s", new(left, bottom + 7));
-        DrawText(context, $"{visible.EndTicks / 10_000_000m:N1}s", new(right - 38, bottom + 7));
+        DrawText(context, $"{visible.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(left, bottom + 7));
+        DrawText(context, $"{visible.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(right - 38, bottom + 7));
         DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
     }
 

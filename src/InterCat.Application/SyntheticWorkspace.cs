@@ -9,7 +9,7 @@ namespace InterCat.Application;
 /// </summary>
 public static class SyntheticWorkspace
 {
-    private const long Second = 10_000_000;
+    private const long Second = WorkspaceTime.TicksPerSecond;
 
     public static WorkspaceSnapshot Create()
     {

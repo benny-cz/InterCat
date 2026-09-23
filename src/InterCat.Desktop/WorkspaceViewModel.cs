@@ -11,7 +11,6 @@ namespace InterCat.Desktop;
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
-    private const string TourGraphIdentity = "synthetic-tour-v1";
     private readonly GraphLayoutScheduler graphLayout = new();
     private readonly WorkspaceSelectionCoordinator selection = new();
     private readonly DetailLadder ladder;
@@ -26,10 +25,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private bool showTables;
     private bool disposed;
 
-    public WorkspaceViewModel()
+    public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
-        Snapshot = SyntheticWorkspace.Create();
-        // The saved tour positions are a first-frame fallback. The complete layout is computed off-thread
+    }
+
+    /// <summary>
+    /// Presents one immutable workspace. The graph identity must name the same data revision as the snapshot,
+    /// so an off-thread layout from an older revision can never replace its coordinates.
+    /// </summary>
+    public WorkspaceViewModel(WorkspaceSnapshot snapshot, string graphIdentity)
+    {
+        Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
+        ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
+        // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
             Snapshot.Processes.ToDictionary(node => node.Id, node => new GraphPoint(node.X, node.Y)));
@@ -39,9 +47,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         Relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
         Intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
-        selectedProcess = Snapshot.Processes[0];
-        selection.SelectProcess(selectedProcess.Id);
-        LayoutReady = BuildLayoutAsync();
+        selectedProcess = Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
+        if (selectedProcess is not null)
+        {
+            selection.SelectProcess(selectedProcess.Id);
+        }
+
+        LayoutReady = BuildLayoutAsync(graphIdentity);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -56,14 +68,55 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     public string? GraphLayoutProblem { get; private set; }
 
-    private async Task BuildLayoutAsync()
+    /// <summary>Coverage is derived from the snapshot's intervals, never from a prototype constant.</summary>
+    public string CoverageSummary
+    {
+        get
+        {
+            if (Snapshot.Timeline.Count == 0)
+            {
+                return "Coverage not quantified";
+            }
+
+            var limitations = new List<string>();
+            int gaps = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.PartialGap);
+            if (gaps > 0)
+            {
+                limitations.Add($"{gaps:N0} partial-gap intervals");
+            }
+
+            int unknown = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.UnknownCoverage);
+            if (unknown > 0)
+            {
+                limitations.Add($"{unknown:N0} coverage-unknown intervals");
+            }
+
+            int omitted = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.NotCollected);
+            if (omitted > 0)
+            {
+                limitations.Add($"{omitted:N0} not-collected intervals");
+            }
+
+            int reduced = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.ReducedFidelity);
+            if (reduced > 0)
+            {
+                limitations.Add($"{reduced:N0} reduced-fidelity intervals");
+            }
+
+            return limitations.Count == 0
+                ? $"Coverage reported for {Snapshot.Timeline.Count:N0} intervals"
+                : string.Join(" · ", limitations) + " · not extrapolated";
+        }
+    }
+
+    private async Task BuildLayoutAsync(string graphIdentity)
     {
         try
         {
             GraphLayoutResult? result = await graphLayout.RequestAsync(
-                TourGraphIdentity, Snapshot.Groups, Snapshot.Processes, Snapshot.Edges,
+                graphIdentity, Snapshot.Groups, Snapshot.Processes, Snapshot.Edges,
                 previous: GraphPositions);
-            if (disposed || result is null || result.GraphIdentity != TourGraphIdentity)
+            if (disposed || result is null || result.GraphIdentity != graphIdentity)
             {
                 return;
             }
@@ -245,8 +298,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
 
     public string IntervalLabel => selectedInterval is null
-        ? "All 24 seconds"
-        : $"{selectedInterval.Value.StartTicks / 10_000_000m:N1}s – {selectedInterval.Value.EndTicks / 10_000_000m:N1}s";
+        ? $"All {(Snapshot.Extent.EndTicks - (decimal)Snapshot.Extent.StartTicks) / WorkspaceTime.TicksPerSecond:N1} seconds"
+        : $"{selectedInterval.Value.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s – "
+            + $"{selectedInterval.Value.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s";
 
     public string EvidenceSummary
     {

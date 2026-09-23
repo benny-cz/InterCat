@@ -6,14 +6,18 @@ namespace InterCat.Desktop;
 
 public sealed partial class MainWindow : Window
 {
-    public MainWindow()
+    public MainWindow() : this(new WorkspaceViewModel())
     {
+    }
+
+    public MainWindow(WorkspaceViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
 
         // Window shortcuts are handled while the key tunnels down, because a focused list would otherwise
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
-        var viewModel = new WorkspaceViewModel();
         DataContext = viewModel;
         Closed += (_, _) => viewModel.Dispose();
         viewModel.PropertyChanged += (_, _) =>
