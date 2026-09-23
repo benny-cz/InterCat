@@ -12,4 +12,5 @@
     <ProjectReference Include="../InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
     <ProjectReference Include="../InterCat.CaptureBroker.Protocol/InterCat.CaptureBroker.Protocol.csproj" />
   </ItemGroup>
+  <Import Project="../InterCat.BrokerStage.targets" />
 </Project>

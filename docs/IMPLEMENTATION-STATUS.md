@@ -1,12 +1,32 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 87
+Plan revision: 88
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: real paired-TCP channel rung and headless overview parity
+## Latest slice: broker staging for both ordinary clients
+
+Windows Debug and Release builds and framework-dependent publishes of Desktop and `icat` now stage the separate
+capture broker executable beside the client, with its managed deps/runtime files and native subdirectories. The
+shared MSBuild target builds the broker without adding its assembly as a code reference. This closes the development
+first-run packaging gap: Desktop `Start exploring` and `icat capture` can find a broker without manual copying or
+`--broker`. A self-contained client publish fails with a clear reason until it can carry a matching broker, instead
+of producing an artifact that breaks only after capture approval. A Desktop regression checks the built payload.
+
+Fresh Desktop and CLI Release publish outputs were inspected for the broker apphost, DLL, deps, runtime configuration
+and x64 native dependency. The published broker starts far enough to print its intended usage/fail-closed message.
+All 780 tests pass in Debug and Release. Plan revision 88 records the packaging boundary.
+
+This is **not** real Desktop/UAC qualification: the previous elevated shell (PID 17004) is no longer running, and the
+current shell is ordinary integrity. The installer still must pre-create the protected root and negotiate version
+compatibility; self-contained distribution is explicitly unsupported for now. The §3.1 first-feedback budget and
+stop/close/reopen path still need a real UI run. L4 logical operations, L5 exact-record drill-down, scoped channels
+above the overview cap and the wider plan remain open. Next, implement a bounded, leased exact-record query with
+stable cursors and explicit source provenance; do not invent completion-paired operations from TCP record counts.
+
+## Previous slice: real paired-TCP channel rung and headless overview parity
 
 The leased overview now projects L3 channels from **exactly the admitted paired TCP incarnations** that produced its
 graph edges. Every channel names both source-reported endpoints and its observed-record count; it claims no direction,

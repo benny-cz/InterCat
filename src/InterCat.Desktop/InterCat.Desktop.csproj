@@ -13,4 +13,5 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
   </ItemGroup>
+  <Import Project="../InterCat.BrokerStage.targets" />
 </Project>

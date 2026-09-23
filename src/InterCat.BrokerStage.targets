@@ -1,0 +1,34 @@
+<Project>
+  <!-- Ordinary-integrity clients stage the separately elevated broker's complete runtime payload. -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)InterCat.CaptureBroker/InterCat.CaptureBroker.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <PropertyGroup>
+    <_InterCatBrokerOutput>$(MSBuildThisFileDirectory)InterCat.CaptureBroker/bin/$(Configuration)/$(TargetFramework)/</_InterCatBrokerOutput>
+  </PropertyGroup>
+  <Target Name="StageCaptureBroker" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <ItemGroup>
+      <_InterCatBrokerFiles Include="$(_InterCatBrokerOutput)**/*.*" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_InterCatBrokerOutput)InterCat.CaptureBroker.exe')"
+           Text="The broker executable was not built; live capture cannot start." />
+    <Copy SourceFiles="@(_InterCatBrokerFiles)"
+          DestinationFiles="@(_InterCatBrokerFiles->'$(TargetDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="ValidateBrokerPublishMode" BeforeTargets="Publish" Condition="'$(OS)' == 'Windows_NT'">
+    <Error Condition="'$(SelfContained)' == 'true'"
+           Text="Self-contained client publishing needs a matching self-contained broker package; use framework-dependent publish until that package is implemented." />
+  </Target>
+  <Target Name="StagePublishedCaptureBroker" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT'">
+    <ItemGroup>
+      <_InterCatPublishedBrokerFiles Include="$(_InterCatBrokerOutput)**/*.*" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_InterCatBrokerOutput)InterCat.CaptureBroker.exe')"
+           Text="The broker executable was not built; published live capture cannot start." />
+    <Copy SourceFiles="@(_InterCatPublishedBrokerFiles)"
+          DestinationFiles="@(_InterCatPublishedBrokerFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

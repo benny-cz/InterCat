@@ -9,6 +9,31 @@ namespace InterCat.Desktop.Tests;
 public sealed class DesktopCaptureTests
 {
     [Fact]
+    public void WindowsDesktopBuildStagesACompleteSeparateBroker()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        Assert.NotNull(root);
+        string configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+        string output = Path.Combine(root.FullName, "src", "InterCat.Desktop", "bin", configuration, "net10.0");
+        foreach (string file in new[]
+        {
+            "InterCat.CaptureBroker.exe", "InterCat.CaptureBroker.dll",
+            "InterCat.CaptureBroker.deps.json", "InterCat.CaptureBroker.runtimeconfig.json",
+            Path.Combine("amd64", "KernelTraceControl.dll"),
+        })
+        {
+            Assert.True(File.Exists(Path.Combine(output, file)), $"Missing staged broker payload: {file}");
+        }
+    }
+
+    [Fact]
     public void BoundedChannelRungExplainsWhyItCannotShowACompleteSet()
     {
         const string reason = "4,097 paired channels exceed the 4,096-channel overview bound; use a scoped query.";
