@@ -68,6 +68,12 @@ public sealed record MetricRequest
     /// </summary>
     public ProcessInstanceId? Peer { get; init; }
 
+    /// <summary>
+    /// `between(A,B)`: rows connecting a process of one set with a process of the other, under a direction policy. A
+    /// process filter of its own, never combined with a focus or a peer (§19.1).
+    /// </summary>
+    public ProcessBetween? Between { get; init; }
+
     /// <summary>The focused process and the role it is selected in, or null when no process filter is set.</summary>
     public ProcessFocus? Focus =>
         Owner is { } owner ? new(ProcessRole.Owner, owner)
@@ -114,6 +120,32 @@ public sealed record MetricRequest
             if (instance is { } named && named.Value == Guid.Empty)
             {
                 return new($"{name} filter names a nonempty process instance id.", []);
+            }
+        }
+
+        if (Between is { } between)
+        {
+            if (focuses > 0 || Peer is not null)
+            {
+                return new(
+                    "between(A,B) names the processes at both ends, so it is a process filter of its own: combining it "
+                    + "with an owner, participant, sender, receiver or peer would silently intersect two selections.",
+                    []);
+            }
+
+            if (between.First.Count == 0 || between.Second.Count == 0)
+            {
+                return new("between(A,B) names at least one process instance in each set; an empty set is not 'all'.", []);
+            }
+
+            if (between.First.Concat(between.Second).Any(instance => instance.Value == Guid.Empty))
+            {
+                return new("A between filter names nonempty process instance ids.", []);
+            }
+
+            if (!Enum.IsDefined(between.Direction))
+            {
+                return new("A between filter names a direction §23 defines.", []);
             }
         }
 
@@ -687,9 +719,10 @@ public static partial class SessionMetrics
             return blocked;
         }
 
+        // Whatever reads a process binding derives instances from the start keys the side segments hold, so an instance
+        // has one identity in every answer and in the process list (I12).
         var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
-        if (materialized.Focus is not null
-            || materialized.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer)
+        if (AnalysisSpecification.ReadsProcesses(materialized))
         {
             context = context with
             {
@@ -700,7 +733,7 @@ public static partial class SessionMetrics
             };
         }
 
-        if (materialized.Focus is { } focus)
+        if (materialized.Focus is not null || materialized.Between is not null)
         {
             if (clock is null)
             {
@@ -710,22 +743,39 @@ public static partial class SessionMetrics
 
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(
                 [.. segments.Select(segment => segment.Reader)], clock.Value, context.FieldSegments, cancellationToken);
-            int focusIndex = IndexOf(processes, focus.Instance);
-            int? peerIndex = materialized.Peer is { } peer ? IndexOf(processes, peer) : null;
-            ProcessInstanceId? missing = focusIndex < 0 ? focus.Instance : peerIndex < 0 ? materialized.Peer : null;
-            if (missing is { } absent)
+            ProcessInstanceId[] named =
+            [
+                .. materialized.Focus is { } focused ? [focused.Instance] : Array.Empty<ProcessInstanceId>(),
+                .. materialized.Peer is { } narrowed ? [narrowed] : Array.Empty<ProcessInstanceId>(),
+                .. materialized.Between?.First ?? [],
+                .. materialized.Between?.Second ?? [],
+            ];
+            int absent = Array.FindIndex(named, instance => IndexOf(processes, instance) < 0);
+            if (absent >= 0)
             {
                 return Unavailable(materialized, manifest.Generation, MetricUnavailableReason.ProcessInstanceNotFound,
-                    $"Process instance {absent} is not present in generation {manifest.Generation}. Select an instance id "
+                    $"Process instance {named[absent]} is not present in generation {manifest.Generation}. Select an instance id "
                     + "from this generation's process grouping; a PID alone is not an instance identity.");
             }
 
             ProcessRoles roles = RolesFor(context, processes, NeedsRelations(materialized), cancellationToken);
-            var filter = new ProcessFilter(focus.Role, focusIndex, peerIndex, materialized.EvidencePolicy);
+            ProcessFilter? focusFilter = materialized.Focus is { } focus
+                ? new ProcessFilter(
+                    focus.Role,
+                    IndexOf(processes, focus.Instance),
+                    materialized.Peer is { } peer ? IndexOf(processes, peer) : null,
+                    materialized.EvidencePolicy)
+                : null;
+            IRowFilter filter = (IRowFilter?)focusFilter ?? new BetweenFilter(
+                materialized.Between!.First.Select(instance => IndexOf(processes, instance)).ToHashSet(),
+                materialized.Between.Second.Select(instance => IndexOf(processes, instance)).ToHashSet(),
+                materialized.Between.Direction,
+                materialized.EvidencePolicy);
             context = context with
             {
                 Roles = roles,
-                Filter = filter,
+                Filter = focusFilter,
+                RowFilter = filter,
                 ProcessMasks = segments.ToDictionary(segment => segment.Reader,
                     segment => filter.Mask(roles.For(segment.Reader))),
             };
@@ -860,9 +910,7 @@ public static partial class SessionMetrics
     private static Dictionary<ProcessBindingReason, long> UnresolvedCounterparts(Context context, CancellationToken cancellationToken)
     {
         var counts = new Dictionary<ProcessBindingReason, long>();
-        if (context.Filter is not { } filter
-            || context.Roles is not { } roles
-            || (filter.Role == ProcessRole.Owner && filter.Peer is null))
+        if (context.RowFilter is not { DependsOnOtherEnds: true } filter || context.Roles is not { } roles)
         {
             return counts;
         }
@@ -1199,6 +1247,7 @@ public static partial class SessionMetrics
             if (request.IsCrossSide)
             {
                 bool attributed = request.Focus is not null
+                    || request.Between is not null
                     || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
                 caveats.Add(
                     $"These are {(request.Metric == Metric.BytesSent ? "sent" : "received")} bytes measured at the "
@@ -1209,7 +1258,7 @@ public static partial class SessionMetrics
                         : $"Each is attributed through {TransportRelationIndex.RelationRule}, which proves the process at "
                             + "that end; a record whose other end it does not resolve adds nothing."));
             }
-            else if (request.Focus is null)
+            else if (request.Focus is null && request.Between is null)
             {
                 caveats.Add(
                     "This total spans every process in scope; select a process focus or group by process to inspect "
@@ -1252,12 +1301,32 @@ public static partial class SessionMetrics
         IReadOnlyDictionary<ProcessBindingReason, long> unresolvedCounterparts)
     {
         var caveats = new List<string>();
+        string rule = TransportRelationIndex.RelationRule;
+        if (request.Between is { } between)
+        {
+            caveats.Add(
+                $"Records connecting {Instances(between.First)} with {Instances(between.Second)} contribute under "
+                + $"{request.EvidencePolicy}: one end made by a process of one set, the other end, found through {rule}, a "
+                + "process of the other. "
+                + between.Direction switch
+                {
+                    BetweenDirection.FirstToSecond =>
+                        "Only data from the first set to the second is kept; a record with no data direction, such as a "
+                        + "connect, is not.",
+                    BetweenDirection.SecondToFirst =>
+                        "Only data from the second set to the first is kept; a record with no data direction, such as a "
+                        + "connect, is not.",
+                    _ => "Records in either direction are kept, and so are connects, accepts and disconnects between them.",
+                });
+            caveats.AddRange(UnresolvedCaveats(unresolvedCounterparts, "a process of either set"));
+            return caveats;
+        }
+
         if (request.Focus is not { } focus)
         {
             return caveats;
         }
 
-        string rule = TransportRelationIndex.RelationRule;
         string narrowed = request.Peer is { } peer
             ? $" Only records whose other end, seen from it, is instance {peer} are kept."
             : string.Empty;
@@ -1281,13 +1350,21 @@ public static partial class SessionMetrics
                 + "no data direction, such as a connect or a disconnect, is outside this filter." + narrowed,
         });
 
+        caveats.AddRange(UnresolvedCaveats(unresolvedCounterparts, $"instance {focus.Instance}"));
+        return caveats;
+    }
+
+    /// <summary>The records a filter could not decide on, with ends outside the capture stated apart (P6).</summary>
+    private static List<string> UnresolvedCaveats(IReadOnlyDictionary<ProcessBindingReason, long> unresolvedCounterparts, string subject)
+    {
+        var caveats = new List<string>();
         long notObserved = unresolvedCounterparts.GetValueOrDefault(ProcessBindingReason.PeerNotObserved);
         if (notObserved > 0)
         {
             caveats.Add(
                 $"{notObserved:N0} records in scope have their other end outside this capture's records: a remote "
                 + "process, or a local one the capture holds no record of on that connection. They are left out; one "
-                + $"involves instance {focus.Instance} only if its own records of that connection are missing.");
+                + $"involves {subject} only if its own records of that connection are missing.");
         }
 
         List<KeyValuePair<ProcessBindingReason, long>> undecided =
@@ -1301,12 +1378,15 @@ public static partial class SessionMetrics
             caveats.Add(
                 $"{undecided.Sum(entry => entry.Value):N0} records in scope have another end this session cannot decide ("
                 + string.Join(", ", undecided.Select(entry => $"{entry.Key} {entry.Value:N0}"))
-                + $"). Instance {focus.Instance} could be that end, so they are disclosed and left out rather than guessed "
-                + "into the total (P6).");
+                + $"). {char.ToUpperInvariant(subject[0])}{subject[1..]} could be that end, so they are disclosed and left "
+                + "out rather than guessed into the total (P6).");
         }
 
         return caveats;
     }
+
+    private static string Instances(IReadOnlyList<ProcessInstanceId> instances) =>
+        instances.Count == 1 ? $"instance {instances[0]}" : $"instances {string.Join(", ", instances)}";
 
     private static MetricEvidence Evidence(string segment, SegmentReaderV1 reader, int row)
     {
@@ -1378,8 +1458,11 @@ public static partial class SessionMetrics
         /// <summary>Who each record belongs to in every role, when a filter needed it.</summary>
         public ProcessRoles? Roles { get; init; }
 
-        /// <summary>The process filter, resolved against this generation's instances.</summary>
+        /// <summary>The focus filter, resolved against this generation's instances, when the request names a focus.</summary>
         public ProcessFilter? Filter { get; init; }
+
+        /// <summary>The process filter that decides which rows are kept: the focus filter or a between filter.</summary>
+        public IRowFilter? RowFilter { get; init; }
 
         public IReadOnlyDictionary<ProcessBindingReason, long> UnresolvedCounterparts { get; init; } =
             new Dictionary<ProcessBindingReason, long>();
@@ -1402,7 +1485,7 @@ public static partial class SessionMetrics
                     .OrderBy(derivation => derivation.Value),
             ],
             Clock = Clock,
-            BindingRule = request.Focus is null ? null : ProcessInstanceIndex.BindingRule,
+            BindingRule = request.Focus is null && request.Between is null ? null : ProcessInstanceIndex.BindingRule,
             RelationRule = Roles?.Relations is null ? null : TransportRelationIndex.RelationRule,
             UnresolvedCounterparts = UnresolvedCounterparts,
             FirstNativeTicks = Segments.Min(segment => segment.Reader.MinNativeTicks),

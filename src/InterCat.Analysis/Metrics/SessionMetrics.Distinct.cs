@@ -155,19 +155,23 @@ public static partial class SessionMetrics
         var unattributed = new Dictionary<ProcessBindingReason, long>();
         var everything = new HashSet<int>();
         long outsideProjection = 0;
+        long outsideProcess = 0;
         long outsideInterval = 0;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ObservationCount scope = SegmentMeasurement.CountObservations(reader, request.Layer, request.Mechanism, request.Interval);
+            ObservationCount scope = SegmentMeasurement.CountObservations(
+                reader, request.Layer, request.Mechanism, request.Interval, processMask: context.ProcessMask(reader));
             outsideProjection += scope.ExcludedByProjection;
+            outsideProcess += scope.ExcludedByProcessFilter;
             outsideInterval += scope.ExcludedOutsideInterval;
             bool[] inScope = SegmentMeasurement.RowsInScope(reader, request.Layer, request.Mechanism, request.Interval);
+            bool[]? kept = context.ProcessMasks.GetValueOrDefault(reader);
             SegmentRoles segmentRoles = roles.For(reader);
             ChannelBinding[]? channels = peers ? null : roles.Relations!.ChannelsOf(reader);
             for (int row = 0; row < reader.RowCount; row++)
             {
-                if (!inScope[row] || !segmentRoles.Communicates[row])
+                if (!inScope[row] || (kept is not null && !kept[row]) || !segmentRoles.Communicates[row])
                 {
                     continue;
                 }
@@ -294,6 +298,7 @@ public static partial class SessionMetrics
             UnknownContributions = unknown,
             UnknownCounterparts = unknownReasons,
             ExcludedByProjection = outsideProjection,
+            ExcludedByProcessFilter = outsideProcess,
             ExcludedOutsideInterval = outsideInterval,
             Groups = [.. ordered.Select(entry => entry.Group)],
             Remainder = remainder,

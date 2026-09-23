@@ -109,13 +109,12 @@ public static class AnalysisSpecification
 
         json.EndArray();
 
-        // The version axes this answer depends on, in §24's order, and only those: a total that binds no record to a
-        // process does not depend on the binding rule, so naming it would split one query into two.
-        bool bindsProcesses = request.Focus is not null
-            || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
+        // The version axes this answer depends on, in §24's order, and only those: a total that reads no process
+        // binding does not depend on the binding rule, so naming it would split one query into two. A relation's ends
+        // are held by process instances, so an answer read through relations depends on the binding rule too.
         json.BeginObject("versions");
         json.Number("normalizerContract", axes.NormalizerContract);
-        if (bindsProcesses)
+        if (ReadsProcesses(request))
         {
             json.Token("entityRevision", axes.EntityRevision);
         }
@@ -145,7 +144,9 @@ public static class AnalysisSpecification
             json.Token("accountingSide", side.ToString());
         }
 
-        if (bindsProcesses)
+        // A policy is named only where it decides something: which records a process filter keeps, or which group a
+        // record joins. A channel count over every process admits every holder alike, so it names none.
+        if (AdmitsByPolicy(request))
         {
             json.Token("evidencePolicy", request.EvidencePolicy.ToString());
         }
@@ -175,7 +176,7 @@ public static class AnalysisSpecification
     /// </summary>
     private static void WriteFilter(CanonicalWriter json, MetricRequest request)
     {
-        if (request.Focus is null && request.Mechanism is null && request.Layer is null)
+        if (request.Focus is null && request.Between is null && request.Mechanism is null && request.Layer is null)
         {
             return;
         }
@@ -205,6 +206,39 @@ public static class AnalysisSpecification
             json.EndObject();
         }
 
+        if (request.Between is { } between)
+        {
+            // One spelling per meaning: each set sorted and without repeats, "from the second to the first" written as
+            // "from the first to the second" with the sets exchanged, and an undirected pair in a fixed order.
+            string[] first = [.. between.First.Select(instance => instance.ToString()).Distinct().Order(StringComparer.Ordinal)];
+            string[] second = [.. between.Second.Select(instance => instance.ToString()).Distinct().Order(StringComparer.Ordinal)];
+            BetweenDirection direction = between.Direction;
+            if (direction == BetweenDirection.SecondToFirst
+                || (direction == BetweenDirection.Either && CompareSets(second, first) < 0))
+            {
+                (first, second) = (second, first);
+                direction = direction == BetweenDirection.SecondToFirst ? BetweenDirection.FirstToSecond : direction;
+            }
+
+            json.BeginObject();
+            json.Token("facet", nameof(FilterDimension.ProcessInstance));
+            json.BeginArray("between");
+            foreach (string[] set in new[] { first, second })
+            {
+                json.BeginArray();
+                foreach (string instance in set)
+                {
+                    json.Token(instance);
+                }
+
+                json.EndArray();
+            }
+
+            json.EndArray();
+            json.Token("direction", direction.ToString());
+            json.EndObject();
+        }
+
         if (request.Mechanism is { } mechanism)
         {
             Include(json, FilterDimension.Mechanism, mechanism.ToString());
@@ -217,6 +251,20 @@ public static class AnalysisSpecification
 
         json.EndArray();
         json.EndObject();
+    }
+
+    private static int CompareSets(string[] left, string[] right)
+    {
+        for (int index = 0; index < Math.Min(left.Length, right.Length); index++)
+        {
+            int compared = string.CompareOrdinal(left[index], right[index]);
+            if (compared != 0)
+            {
+                return compared;
+            }
+        }
+
+        return left.Length.CompareTo(right.Length);
     }
 
     private static void Include(CanonicalWriter json, FilterDimension dimension, string value)
@@ -235,10 +283,26 @@ public static class AnalysisSpecification
     /// receiver.
     /// When it does, the relation rule is one of the result's version axes.
     /// </summary>
+    /// <summary>
+    /// Whether the evidence policy decides anything in the answer: a process filter keeps records by their bindings,
+    /// and a process or peer grouping places them by those bindings.
+    /// </summary>
+    internal static bool AdmitsByPolicy(MetricRequest request) =>
+        request.Focus is not null
+        || request.Between is not null
+        || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
+
+    /// <summary>
+    /// Whether the answer reads process bindings - through a policy, or through relations, whose ends processes hold -
+    /// so it depends on the entity revision and derives instances from every start key the session holds.
+    /// </summary>
+    internal static bool ReadsProcesses(MetricRequest request) => AdmitsByPolicy(request) || UsesRelations(request);
+
     internal static bool UsesRelations(MetricRequest request)
     {
         Metric effective = request.Metric == Metric.Rate && request.RateNumerator is { } numerator ? numerator : request.Metric;
         return request.Focus is { Role: not ProcessRole.Owner }
+            || request.Between is not null
             || request.Peer is not null
             || request.Grouping == LaneGrouping.Peer
             || effective is Metric.ActivePeers or Metric.ActiveChannels

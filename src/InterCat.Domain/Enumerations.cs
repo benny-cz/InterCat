@@ -181,6 +181,22 @@ public enum FilterDimension
     ByteValue = 12,
 }
 
+/// <summary>
+/// <c>EN-BetweenDirection</c> (section 23): which data a <c>between(A,B)</c> filter keeps (§19.1). A record with no data
+/// direction, such as a connect, connects the two sets only under <see cref="Either"/>.
+/// </summary>
+public enum BetweenDirection
+{
+    /// <summary>Every record connecting a process of one set with a process of the other, in either direction.</summary>
+    Either = 1,
+
+    /// <summary>Data that left a process of the first set and reached a process of the second.</summary>
+    FirstToSecond = 2,
+
+    /// <summary>Data that left a process of the second set and reached a process of the first.</summary>
+    SecondToFirst = 3,
+}
+
 public enum AdmissionMode { MetadataOnly = 1, ScopedContent = 2, OriginalEvidence = 3 }
 
 /// <summary>Stable names of the capture intents described by section 9.4.</summary>

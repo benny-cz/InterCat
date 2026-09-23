@@ -135,7 +135,8 @@ static void PrintHelp()
     ConsoleUi.Line("      session cannot derive is reported as unavailable, with what it needs.");
     ConsoleUi.Line("      --group-by process|executable|mechanism|peer ranks it, with an exact remainder past --top.");
     ConsoleUi.Line("      --owner|--participant|--sender|--receiver <instance> focuses it on one process, and");
-    ConsoleUi.Line("      --peer <instance> on one process at the other end (icat metric --help lists them).");
+    ConsoleUi.Line("      --peer <instance> on one process at the other end, and --between <instances>");
+    ConsoleUi.Line("      --and <instances> on the records connecting two sets (icat metric --help lists them).");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--json]");
     ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");

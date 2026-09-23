@@ -39,7 +39,7 @@ not apply is **absent**, never `null`:
 | `rateNumerator` | `EN-Metric` name | a rate |
 | `byteDomain` | `EN-ByteDomain` name | a byte metric, materialized |
 | `accountingSide` | `EN-AccountingSide` name | a byte metric, materialized |
-| `evidencePolicy` | `EN-EvidencePolicy` name | when any record is bound to a process, §5 |
+| `evidencePolicy` | `EN-EvidencePolicy` name | when the policy decides which records are kept or where they are grouped, §5 |
 | `timeScope` | `{"kind":"RetainedCapture"}`, or `{"kind":"AnalysisInterval","startTicks":"<n>","endTicks":"<n>"}` | always |
 | `grouping` | `EN-Grouping` name | a grouped request |
 | `filter` | `{"and":[terms]}`, §6 | when any term applies |
@@ -71,7 +71,7 @@ answers.
 | Member | Value | Present |
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
-| `entityRevision` | the process binding rule, e.g. `process-binding-v2` | when any record is bound to a process |
+| `entityRevision` | the process binding rule, e.g. `process-binding-v2` | when the answer reads a process binding: a process filter, a process or peer grouping, or a relation |
 | `correlationRevision` | the relation rule, e.g. `tcp-endpoint-relation-v2` | when the answer uses records' other ends |
 | `metricsContract` | `metrics-v1` | always |
 
@@ -79,28 +79,34 @@ Entity and correlation revisions are named by their rule while derivations are c
 the generation, pinned by its manifest, and the rule decide the derivation completely. When revision tables are
 persisted (IC-017), the revision they record replaces the rule name, under a new canonicalization version.
 
-A total that binds no record to a process does not depend on the binding rule, and naming it would split one query
-into two identities; the same holds for the relation rule. The answer depends on a relation rule when it has a
-process focus other than a bare owner, a peer narrowing, a peer grouping, a count of peers or channels, or a sent or
-received total grouped by process or executable (`metrics-v1` §5, §6).
+A total that reads no process binding does not depend on the binding rule, and naming it would split one query into
+two identities; the same holds for the relation rule. The answer depends on a relation rule when it has a process focus
+other than a bare owner, a peer narrowing, a `between` filter, a peer grouping, a count of peers or channels, or a
+sent or received total grouped by process or executable (`metrics-v1` §5, §6). A relation's ends are held by process
+instances, so an answer that depends on a relation rule depends on the binding rule as well: `entityRevision` is
+present whenever `correlationRevision` is. A channel count over every process, answered from plan revision 47, omitted
+it until revision 48 (ADR-017); no other identity changed, and no line of the golden corpus.
 
 The axis values are an input to the form, not part of it: a new binding or relation rule changes the identities of the
 requests that depend on it, as §24 requires, and changes no rule of this contract.
 
 ## 5. Terms that change nothing are dropped
 
-An evidence policy decides which process bindings a result admits. With no process focus and no grouping by process,
-executable or peer, no record is bound and every policy gives the same answer, so `evidencePolicy` is absent: a
-mechanism grouping under `DirectOnly` and under the default is one query. Wherever a binding is used, the policy is
-present and materialized.
+An evidence policy decides which process bindings a result admits. With no process filter and no grouping by process,
+executable or peer, the policy decides nothing and every policy gives the same answer, so `evidencePolicy` is absent:
+a mechanism grouping under `DirectOnly` and under the default is one query, and so is a channel count over every
+process, which counts every holder's connections alike. Wherever the policy decides which records are kept or where
+they are grouped, it is present and materialized.
 
 ## 6. Filter
 
-The filter is a conjunction of terms sorted by `EN-FilterDimension` code (§23). This version writes three:
+The filter is a conjunction of terms sorted by `EN-FilterDimension` code (§23). This version writes three dimensions,
+the process one in two forms:
 
 | Dimension | Code | Term |
 |---|---|---|
 | `ProcessInstance` | 2 | `{"facet":"ProcessInstance","<role>":["<instance>"]}`, with `"peer":["<instance>"]` after the role when narrowed |
+| `ProcessInstance` | 2 | `{"facet":"ProcessInstance","between":[["<instance>",…],["<instance>",…]],"direction":"<EN-BetweenDirection>"}` |
 | `Mechanism` | 4 | `{"facet":"Mechanism","include":["<name>"]}` |
 | `Layer` | 5 | `{"facet":"Layer","include":["<name>"]}` |
 
@@ -108,6 +114,11 @@ The role is `owner`, `participant`, `sender` or `receiver`. A peer is a member o
 own: `peer(P,Q)` is relative to its focus and must never become an independent filter (§19.1). Time is the
 specification's `timeScope`, not a filter term. Include values within a term are sorted by value code; this version
 writes one value per term, because `metrics-v1` accepts one.
+
+A `between` term writes one meaning one way. Each set is sorted by its instances' text and holds each instance once.
+`SecondToFirst` is written as `FirstToSecond` with the sets exchanged. Under `Either` the set that sorts first is
+written first, comparing instance by instance, and a set that is a prefix of the other sorts first. The term was added
+by plan revision 48 under this version, as §9 allows: no earlier specification could name it.
 
 ## 7. What a result carries
 
@@ -123,7 +134,8 @@ canonical specification and identity without answering.
 canonical bytes and identities, one line each: name, identity token, canonical specification. It covers every rule
 above: a whole-capture count, an interval, an implied domain, an implied layer, an implied side, a rate, a grouping
 that drops the policy, a grouping by process with rows outside the hash, an executable grouping with candidates, and
-owner, participant-by-peer and sender-with-peer focus. The corpus fixes the axis values as well as the snapshot, so it
+owner, participant-by-peer and sender-with-peer focus, a `between` filter written from the first set to the second, and
+a channel count that names the binding rule and no policy. The corpus fixes the axis values as well as the snapshot, so it
 pins the form alone: a new rule changes what the CLI prints, never these bytes. The test recomputes each line and each
 hash; a change to this file is a new canonicalization version or an ADR, never a test update.
 

@@ -109,6 +109,35 @@ public sealed class QueryIdentityTests
         Assert.Throws<ArgumentException>(() => Identity(sent with { Owner = Focus, AccountingSide = AccountingSide.ReceiveSide }));
     }
 
+    [Fact(DisplayName = "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query")]
+    public void BetweenHasOneSpellingPerMeaning()
+    {
+        MetricRequest sent = Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide);
+        ProcessInstanceId third = new(Guid.Parse("00000000-0000-4000-8000-00000000000a"));
+
+        // Either way is symmetric; one way from B to A is one way from A to B read backwards; a set is a set.
+        Assert.Equal(
+            Identity(sent with { Between = new([Focus], [Counterpart]) }),
+            Identity(sent with { Between = new([Counterpart], [Focus]) }));
+        Assert.Equal(
+            Identity(sent with { Between = new([Focus], [Counterpart], BetweenDirection.FirstToSecond) }),
+            Identity(sent with { Between = new([Counterpart], [Focus], BetweenDirection.SecondToFirst) }));
+        Assert.Equal(
+            Identity(sent with { Between = new([Focus, third, Focus], [Counterpart]) }),
+            Identity(sent with { Between = new([third, Focus], [Counterpart]) }));
+
+        string[] identities =
+        [
+            Identity(sent with { Between = new([Focus], [Counterpart]) }),
+            Identity(sent with { Between = new([Focus], [Counterpart], BetweenDirection.FirstToSecond) }),
+            Identity(sent with { Between = new([Counterpart], [Focus], BetweenDirection.FirstToSecond) }),
+            Identity(sent with { Between = new([Focus, third], [Counterpart]) }),
+            Identity(sent with { Between = new([Focus], [Counterpart, third]) }),
+            Identity(sent with { Participant = Focus, Peer = Counterpart }),
+        ];
+        Assert.Equal(identities.Length, identities.Distinct(StringComparer.Ordinal).Count());
+    }
+
     [Fact(DisplayName = "I16: every answer names the identity of the specification and snapshot it answers")]
     public void AnswersNameTheirIdentity()
     {
@@ -178,6 +207,11 @@ public sealed class QueryIdentityTests
             Sender = Focus,
             Peer = Counterpart,
         }),
+        ("between-two-processes-written-first-to-second", Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide) with
+        {
+            Between = new([Counterpart], [Focus], BetweenDirection.SecondToFirst),
+        }),
+        ("channels-over-every-process-name-the-binding-rule", Request(Metric.ActiveChannels)),
     ];
 
     private static string Identity(MetricRequest request, SnapshotEntry[]? snapshot = null) =>

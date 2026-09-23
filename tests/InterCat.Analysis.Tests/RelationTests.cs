@@ -187,6 +187,120 @@ public sealed class RelationTests
         Assert.Contains("peer(P,Q)", (count with { Peer = server }).Check()!.Reason, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide")]
+    public void BetweenKeepsTheRecordsConnectingTwoSets()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ConnectedSession());
+        (ProcessInstanceId client, ProcessInstanceId server, ProcessInstanceId other) = Instances(session.Store);
+        MetricRequest count = Request(Metric.Observations);
+        MetricRequest sent = Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide);
+
+        // Either way: the connect, the accept, and both transfers at both of their ends.
+        MetricResult either = SessionMetrics.Evaluate(
+            session.Store, count with { Between = new([client], [server]) }, new() { EvidenceLimit = 20 });
+        Assert.Equal(6, either.Value);
+        Assert.Equal(6, either.ExcludedByProcessFilter);
+        Assert.Equal([20L, 21, 30, 31, 40, 41], either.Evidence.Select(item => item.Observation.NativeTicks).Order());
+        Assert.Equal(ProcessInstanceIndex.BindingRule, either.BindingRule);
+        Assert.Equal(TransportRelationIndex.RelationRule, either.RelationRule);
+
+        // The client's records whose other end is unresolved could connect it with the server, so they are disclosed.
+        // The third process's send is not: it is in neither set, so its other end cannot make it a record between them.
+        Assert.Equal(
+            [(ProcessBindingReason.PeerEndpointIncomplete, 1L), (ProcessBindingReason.PeerNotObserved, 1L)],
+            either.UnresolvedCounterparts.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
+        Assert.Contains(either.Caveats, caveat => caveat.Contains("could be that end", StringComparison.Ordinal));
+
+        // One way: only the data that flowed that way, measured where it left or where it arrived. A connect has no data
+        // direction, so it belongs to neither.
+        Assert.Equal(100, SessionMetrics.Evaluate(session.Store,
+            sent with { Between = new([client], [server], BetweenDirection.FirstToSecond) }).Value);
+        Assert.Equal(40, SessionMetrics.Evaluate(session.Store,
+            sent with { Between = new([client], [server], BetweenDirection.SecondToFirst) }).Value);
+        Assert.Equal(100, SessionMetrics.Evaluate(session.Store, sent with
+        {
+            AccountingSide = AccountingSide.ReceiveSide,
+            Between = new([client], [server], BetweenDirection.FirstToSecond),
+        }).Value);
+        MetricResult oneWay = SessionMetrics.Evaluate(session.Store,
+            count with { Between = new([server], [client], BetweenDirection.SecondToFirst) }, new() { EvidenceLimit = 20 });
+        Assert.Equal([30L, 31], oneWay.Evidence.Select(item => item.Observation.NativeTicks).Order());
+
+        // A set is any of its processes: the third process connects with neither, so it adds nothing it cannot prove.
+        Assert.Equal(6, SessionMetrics.Evaluate(session.Store, count with { Between = new([client, other], [server]) }).Value);
+        MetricResult unconnected = SessionMetrics.Evaluate(session.Store, count with { Between = new([other], [server]) });
+        Assert.Equal(0, unconnected.Value);
+        Assert.Equal(1, Assert.Single(unconnected.UnresolvedCounterparts).Value);
+
+        // Their connections: one channel, known at both ends.
+        MetricResult channels = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Between = new([client], [server]) });
+        Assert.Equal(1, channels.Value);
+        Assert.Equal(0, channels.UnknownContributions);
+
+        MetricResult absent = SessionMetrics.Evaluate(session.Store, count with { Between = new([client], [ProcessInstanceId.New()]) });
+        Assert.Equal(MetricUnavailableReason.ProcessInstanceNotFound, absent.Unavailable);
+    }
+
+    [Fact(DisplayName = "I12: every answer that reads a binding knows a process by the identity its start key gives")]
+    public void AnswersIdentifyProcessesByTheirStartKeys()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = ConnectedSession();
+        Publish(session.Store, rows, fields:
+        [
+            Field(rows[0], SourceField.ProcessStartSequence, 900),
+            Field(rows[1], SourceField.ProcessStartSequence, 901),
+            Field(rows[^1], SourceField.ProcessStartSequence, 901),
+        ]);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(
+            Segments(session.Store),
+            TestClock,
+            [
+                .. SessionSegments.FieldNames(session.Store.Current!)
+                    .Select(name => SessionSegments.Open(session.Store.Root, session.Store.Current!, name)),
+            ]);
+        Assert.True(processes.StartKeysAvailable);
+        ProcessInstanceId client = processes.Instances.Single(instance => instance.ProcessId == 100).Id;
+        ProcessInstanceId server = processes.Instances.Single(instance => instance.ProcessId == 200).Id;
+
+        // The ids a process list prints are the ids a between filter and a focus find.
+        Assert.Equal(6, SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Between = new([client], [server]) }).Value);
+        Assert.Equal(7, SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Participant = server }).Value);
+        MetricResult channels = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Contains(channels.Groups, group => group.Process!.Id == client);
+
+        // A channel count over every process reads its bindings through relations: it depends on the binding rule,
+        // while no policy decides anything in it.
+        string canonical = SessionMetrics.Identify(session.Store, Request(Metric.ActiveChannels))!.CanonicalSpecification;
+        Assert.Contains($"\"entityRevision\":\"{ProcessInstanceIndex.BindingRule}\"", canonical, StringComparison.Ordinal);
+        Assert.Contains($"\"correlationRevision\":\"{TransportRelationIndex.RelationRule}\"", canonical, StringComparison.Ordinal);
+        Assert.DoesNotContain("evidencePolicy", canonical, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R2: between(A,B) names both sets, and is a process filter of its own")]
+    public void BetweenRequestsThatMeanNothingAreRefused()
+    {
+        ProcessInstanceId one = ProcessInstanceId.New();
+        ProcessInstanceId two = ProcessInstanceId.New();
+        MetricRequest count = Request(Metric.Observations);
+
+        Assert.Null((count with { Between = new([one], [two]) }).Check());
+        Assert.Null((count with { Between = new([one], [one]) }).Check());
+        Assert.Contains("of its own", (count with { Between = new([one], [two]), Participant = one }).Check()!.Reason, StringComparison.Ordinal);
+        Assert.Contains("of its own", (count with { Between = new([one], [two]), Peer = two }).Check()!.Reason, StringComparison.Ordinal);
+        Assert.Contains("each set", (count with { Between = new([], [two]) }).Check()!.Reason, StringComparison.Ordinal);
+        Assert.NotNull((count with { Between = new([one], [new ProcessInstanceId(Guid.Empty)]) }).Check());
+        Assert.NotNull((count with { Between = new([one], [two], (BetweenDirection)99) }).Check());
+
+        // Grouping by peer needs one focus to be relative to, and a peer count needs a process to count from.
+        Assert.NotNull((count with { Between = new([one], [two]), Grouping = LaneGrouping.Peer }).Check());
+        Assert.NotNull((Request(Metric.ActivePeers) with { Between = new([one], [two]) }).Check());
+        Assert.Null((Request(Metric.ActivePeers) with { Between = new([one], [two]), Grouping = LaneGrouping.InstanceOnly }).Check());
+    }
+
     [Fact(DisplayName = "I5: grouped by peer, a focus's counterparts and its unresolved ends partition its total")]
     public void PeerGroupingPartitionsTheFocusTotal()
     {

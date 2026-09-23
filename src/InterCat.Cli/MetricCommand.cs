@@ -162,8 +162,17 @@ internal sealed record MetricSpecificationDocument
     public required string? SenderInstanceId { get; init; }
     public required string? ReceiverInstanceId { get; init; }
     public required string? PeerInstanceId { get; init; }
+    public required MetricBetweenDocument? Between { get; init; }
     public required string EvidencePolicy { get; init; }
     public required MetricIntervalDocument? Interval { get; init; }
+}
+
+/// <summary>A `between(A,B)` filter as requested: both sets of instances and which data between them is kept.</summary>
+internal sealed record MetricBetweenDocument
+{
+    public required IReadOnlyList<string> FirstInstanceIds { get; init; }
+    public required IReadOnlyList<string> SecondInstanceIds { get; init; }
+    public required string Direction { get; init; }
 }
 
 internal sealed record MetricIntervalDocument
@@ -316,6 +325,9 @@ internal static class MetricCommand
         string? senderOption = command.TakeOption("--sender");
         string? receiverOption = command.TakeOption("--receiver");
         string? peerOption = command.TakeOption("--peer");
+        string? betweenOption = command.TakeOption("--between");
+        string? andOption = command.TakeOption("--and");
+        string? directionOption = command.TakeOption("--direction");
         string? outputOption = command.TakeOption("--output");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
@@ -339,6 +351,21 @@ internal static class MetricCommand
                     + $"'{value}' is not one; a PID is not an instance identity.");
                 return InterCatExitCode.InvalidInvocation;
             }
+        }
+
+        if ((betweenOption is null) != (andOption is null) || (directionOption is not null && betweenOption is null))
+        {
+            ConsoleUi.Failure(
+                "A between filter names both sets: --between <ids> --and <ids>, each a comma-separated list of process "
+                + "instance ids. --direction chooses which data between them is kept and needs both.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (!TryParseInstances(betweenOption, "--between", out ProcessInstanceId[]? firstSet, out string? listProblem)
+            || !TryParseInstances(andOption, "--and", out ProcessInstanceId[]? secondSet, out listProblem))
+        {
+            ConsoleUi.Failure(listProblem!);
+            return InterCatExitCode.InvalidInvocation;
         }
 
         if (sessionPath is null || metricOption is null)
@@ -367,6 +394,7 @@ internal static class MetricCommand
             || !TryParseEvidence(evidenceOption, out int evidence, out problem)
             || !TryParseGrouping(groupOption, out LaneGrouping? grouping, out problem)
             || !TryParse(policyOption, EvidencePolicy.IncludeCorrelated, "--evidence-policy", out EvidencePolicy policy, out problem)
+            || !TryParse(directionOption, BetweenDirection.Either, "--direction", out BetweenDirection direction, out problem)
             || !TryParseTop(topOption, out int? top, out problem))
         {
             ConsoleUi.Failure(problem!);
@@ -396,6 +424,7 @@ internal static class MetricCommand
             Sender = Instance(senderOption),
             Receiver = Instance(receiverOption),
             Peer = Instance(peerOption),
+            Between = firstSet is null ? null : new ProcessBetween(firstSet, secondSet!, direction),
             RequestedRows = top,
         };
 
@@ -523,6 +552,30 @@ internal static class MetricCommand
     private static ProcessInstanceId? Instance(string? option) =>
         option is null ? null : new ProcessInstanceId(Guid.Parse(option));
 
+    /// <summary>A comma-separated set of process instance ids, as a between filter names each of its two sides.</summary>
+    private static bool TryParseInstances(string? option, string name, out ProcessInstanceId[]? instances, out string? problem)
+    {
+        instances = null;
+        problem = null;
+        if (option is null)
+        {
+            return true;
+        }
+
+        string[] parts = option.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.FirstOrDefault(part => !Guid.TryParse(part, out _)) is { } bad)
+        {
+            problem =
+                $"{name} requires comma-separated process instance ids, as icat processes or a process-grouped result "
+                + "prints them. "
+                + (bad.Length == 0 ? "It holds an empty entry." : $"'{bad}' is not one; a PID is not an instance identity.");
+            return false;
+        }
+
+        instances = [.. parts.Select(part => new ProcessInstanceId(Guid.Parse(part)))];
+        return true;
+    }
+
     private static MetricDocument Describe(MetricResult result, string path, bool fromLastKnownGood)
     {
         MetricRequest request = result.Request;
@@ -550,6 +603,14 @@ internal static class MetricCommand
                 SenderInstanceId = request.Sender?.ToString(),
                 ReceiverInstanceId = request.Receiver?.ToString(),
                 PeerInstanceId = request.Peer?.ToString(),
+                Between = request.Between is { } between
+                    ? new()
+                    {
+                        FirstInstanceIds = [.. between.First.Select(instance => instance.ToString())],
+                        SecondInstanceIds = [.. between.Second.Select(instance => instance.ToString())],
+                        Direction = between.Direction.ToString(),
+                    }
+                    : null,
                 EvidencePolicy = request.EvidencePolicy.ToString(),
                 Interval = request.Interval is { } interval
                     ? new()
@@ -859,7 +920,23 @@ internal static class MetricCommand
             {
                 ConsoleUi.Field("Other end", $"{peer} only");
             }
+        }
+        else if (request.Between is { } between)
+        {
+            ConsoleUi.Field("First set", string.Join(", ", between.First));
+            ConsoleUi.Field("Second set", string.Join(", ", between.Second));
+            ConsoleUi.Field(
+                "Direction",
+                between.Direction switch
+                {
+                    BetweenDirection.FirstToSecond => "data from the first set to the second",
+                    BetweenDirection.SecondToFirst => "data from the second set to the first",
+                    _ => "either way, with connects and disconnects",
+                });
+        }
 
+        if (request.Focus is not null || request.Between is not null)
+        {
             ConsoleUi.Field("Binding policy", request.EvidencePolicy.ToString());
             ConsoleUi.Field(
                 "Rules",
@@ -963,7 +1040,7 @@ internal static class MetricCommand
         }
 
         rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
-        if (result.Request.Focus is not null)
+        if (result.Request.Focus is not null || result.Request.Between is not null)
         {
             rows.Add(["outside the process filter", ConsoleUi.Count(document.Excluded.ByProcessFilter)]);
             long undecided = document.Excluded.UnresolvedCounterparts.Values.Sum();
@@ -1400,6 +1477,7 @@ internal static class MetricCommand
         ConsoleUi.Line("             [--group-by process|executable|mechanism|peer] [--top <n>]");
         ConsoleUi.Line("             [--evidence-policy <name>] [--peer <process-instance-id>]");
         ConsoleUi.Line("             [--owner|--participant|--sender|--receiver <process-instance-id>]");
+        ConsoleUi.Line("             [--between <ids> --and <ids> [--direction <name>]]");
         ConsoleUi.Line("             [--print-canonical] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat metric --matrix [--json]");
         ConsoleUi.Line("      Answers one metric over a published session, resolving the request against");
@@ -1416,6 +1494,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      --peer narrows a focus to one process at the other end. The other end of a TCP");
         ConsoleUi.Line($"      record is the process holding its mirrored endpoint pair ({TransportRelationIndex.RelationRule});");
         ConsoleUi.Line("      records whose other end is unresolved are counted and disclosed, never guessed.");
+        ConsoleUi.Line("      --between A --and B keeps the records connecting a process of one set with one of");
+        ConsoleUi.Line("      the other (comma-separated instance ids); it replaces a focus. --direction");
+        ConsoleUi.Line("      first-to-second or second-to-first keeps only the data flowing that way.");
         ConsoleUi.Line("      --group-by ranks the total by process instance, executable, mechanism, or peer");
         ConsoleUi.Line("      (the processes at the other end from a focus), with an exact remainder past --top;");
         ConsoleUi.Line("      --evidence-policy include-candidates also attributes the records of reused PIDs,");

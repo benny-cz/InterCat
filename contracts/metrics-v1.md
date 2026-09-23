@@ -31,6 +31,7 @@ A metric request names:
 | `sender` | `sender(P)`: one `ProcessInstanceId` | none |
 | `receiver` | `receiver(P)`: one `ProcessInstanceId` | none |
 | `peer` | `peer(P,Q)`: the `ProcessInstanceId` Q, narrowing the focus P | none |
+| `between` | `between(A,B)`: two nonempty sets of `ProcessInstanceId` and an `EN-BetweenDirection` | none; `Either` when no direction is named |
 | `timeScope` | `EN-TimeScope` | `AnalysisInterval` when an interval is named, otherwise `RetainedCapture` |
 | `grouping` | `EN-Grouping` | none: one total |
 | `interval` | half-open `[start, end)` in the native ticks of the session's clock | none |
@@ -80,6 +81,9 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - More than one process focus - `owner`, `participant`, `sender`, `receiver` - in one request, or an empty instance
   id. A PID is not an instance id.
 - A `peer` with no focus, and a `Peer` grouping with no focus: both are relative to a focused process (§19.1).
+- A `between` with a focus or a `peer`, with an empty set, an empty instance id or a direction §23 does not define.
+  It names the processes at both ends, so it is a process filter of its own: with a focus it would silently intersect
+  two selections (ADR-017).
 - `ActivePeers` with neither a process focus nor a grouping by process or executable, and `ActivePeers` or
   `ActiveChannels` with a focus and any grouping: a count of peers is the count of one process's peers, or each
   process's (§6.1). `ActiveChannels` grouped other than by process or executable: a channel belongs to the processes
@@ -149,8 +153,9 @@ counted first; within it, rows outside the process filter are counted separately
 mechanism projection. These categories do not overlap. The same eligible rows feed an ungrouped answer, its
 evidence listing and every group, so a grouped result partitions its **filtered** total.
 
-A process filter names one focused instance P, never a PID or a header PID, and the role it selects P's records by
-(§19.1). Every binding it relies on must be admitted by the request's evidence policy:
+A process filter names one focused instance P and the role it selects P's records by, or - `between(A,B)` - two sets
+of instances and a direction; never a PID or a header PID (§19.1). Every binding it relies on must be admitted by the
+request's evidence policy:
 
 | Filter | A record is kept when |
 |---|---|
@@ -159,17 +164,24 @@ A process filter names one focused instance P, never a PID or a header PID, and 
 | `sender(P)` | data left P: P made a `Send` record, or P is the other end of a `Receive` record |
 | `receiver(P)` | data reached P: P made a `Receive` record, or P is the other end of a `Send` record |
 | `peer(P,Q)`, with any of the above | and, seen from P, the process at the other end is Q: its other end when P made it, its maker when P is its other end |
+| `between(A,B)`, `Either` | it connects the sets: its maker is a process of one and its other end, under `relations-v1`, a process of the other |
+| `between(A,B)`, `FirstToSecond` | data left a process of A and reached one of B: a process of A made a `Send` record whose other end is in B, or a process of B made a `Receive` record whose other end is in A. `SecondToFirst` is the same with A and B exchanged |
+
+The sets of `between(A,B)` may overlap: a process connected to itself is between any set that holds it and itself.
 
 A record with no data direction - a connect, an accept, a disconnect, a lifecycle record - has no sender and no
-receiver. Unresolved, late-after-exit and policy-excluded candidates remain outside every filter. An instance absent
-from the generation, as the focus or as Q, is `ProcessInstanceNotFound`, not an empty zero.
+receiver, and connects two sets only under `Either`. Unresolved, late-after-exit and policy-excluded candidates remain
+outside every filter. An instance absent from the generation, as the focus, as Q or in either set, is
+`ProcessInstanceNotFound`, not an empty zero.
 
 A filter that relies on a record's other end cannot decide every record. A record outside the filter whose other end
 is unresolved, or resolved at a strength the policy does not admit, might still involve P; it is left out and
 **disclosed**: the result counts such records in scope by reason (`unresolvedCounterparts`). A record P made is never
 counted there, because a process connected to itself holds both ends and both are observed. A record whose other end
 no record in the capture holds (`PeerNotObserved`) is stated apart from one whose other end is present but undecided:
-the first involves P only if P's own records of that connection are missing.
+the first involves P only if P's own records of that connection are missing. For `between(A,B)`, the disclosed records
+are those a process of either set made; a record a process of neither set made cannot connect them, whatever its other
+end.
 
 Ungrouped, a filtered total takes the kept records exactly as a whole-session total takes all of them: the accounting
 decides which end's records are measured. `participant(P)` under `SendSide` is the volume of P's conversations,
@@ -322,7 +334,7 @@ not exist yet and are answered as unavailable today.
 
 | Scenario | Expected |
 |---|---|
-| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end; with the endpoint pair each record names, grouped by process it is A's 100, and `sender(A)` takes it. `participant(B)` keeps both records. `CanonicalOwner`: `NoTransferAssociations`. Logical basis, 1 call: owed, `NoLogicalOperations`. |
+| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end; with the endpoint pair each record names, grouped by process it is A's 100, and `sender(A)` takes it. `participant(B)` keeps both records, and so does `between({A},{B})` either way or `FirstToSecond`; `SecondToFirst` keeps neither. `CanonicalOwner`: `NoTransferAssociations`. Logical basis, 1 call: owed, `NoLogicalOperations`. |
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
 | Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
@@ -332,7 +344,6 @@ not exist yet and are answered as unavailable today.
 
 - Grouping by service, session, host, endpoint, package or channel, each of which needs an entity derivation this
   version does not have.
-- `between(A,B)` over participant sets, and a direction policy for it. `peer(P,Q)` answers one pair.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
 - Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution

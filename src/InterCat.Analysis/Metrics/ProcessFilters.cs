@@ -23,6 +23,31 @@ public enum ProcessRole
 public readonly record struct ProcessFocus(ProcessRole Role, ProcessInstanceId Instance);
 
 /// <summary>
+/// `between(A,B)` (§19.1): two sets of process instances, and which data between them to keep. It is a process filter
+/// of its own, never combined with a focus, because it names both ends rather than one.
+/// </summary>
+public sealed record ProcessBetween(
+    IReadOnlyList<ProcessInstanceId> First,
+    IReadOnlyList<ProcessInstanceId> Second,
+    BetweenDirection Direction = BetweenDirection.Either);
+
+/// <summary>A process filter resolved against a derivation: which rows it keeps, and which it cannot decide.</summary>
+internal interface IRowFilter
+{
+    /// <summary>Whether any row's inclusion depends on its other end, so undecided rows are worth counting.</summary>
+    bool DependsOnOtherEnds { get; }
+
+    /// <summary>Which rows of a segment the filter keeps.</summary>
+    bool[] Mask(SegmentRoles roles);
+
+    /// <summary>
+    /// Rows the filter leaves out only because the record's other end is unresolved, or resolved under a strength the
+    /// policy does not admit: the filtered processes could be that end. They are disclosed, never added (P6).
+    /// </summary>
+    bool[] Undecided(SegmentRoles roles, bool[] mask);
+}
+
+/// <summary>
 /// Who each record of a segment belongs to in every role a filter or grouping can ask about: the process that made it,
 /// the process at its other end, and which way its data flowed. Computed once per segment and shared.
 /// </summary>
@@ -116,8 +141,11 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
 /// One process filter resolved against a derivation: the focused instance, the role it is selected in, the optional
 /// peer it is narrowed to, and the evidence policy every binding it relies on must satisfy.
 /// </summary>
-internal sealed record ProcessFilter(ProcessRole Role, int Focus, int? Peer, EvidencePolicy Policy)
+internal sealed record ProcessFilter(ProcessRole Role, int Focus, int? Peer, EvidencePolicy Policy) : IRowFilter
 {
+    /// <summary>A bare owner filter reads only a record's own binding.</summary>
+    public bool DependsOnOtherEnds => Role != ProcessRole.Owner || Peer is not null;
+
     /// <summary>Which rows of a segment the filter keeps.</summary>
     public bool[] Mask(SegmentRoles roles)
     {
@@ -187,4 +215,67 @@ internal sealed record ProcessFilter(ProcessRole Role, int Focus, int? Peer, Evi
 
     private bool Is(ProcessBinding binding, int instance) =>
         binding.IsBound && binding.Instance == instance && binding.IsAdmittedUnder(Policy);
+}
+
+/// <summary>
+/// `between(A,B)` resolved against a derivation: a record is kept when one of its ends is a process of the first set and
+/// the other a process of the second - its maker and its other end, both bound under the policy - and, under a
+/// direction, when its data flowed that way.
+/// </summary>
+internal sealed record BetweenFilter(
+    IReadOnlySet<int> First,
+    IReadOnlySet<int> Second,
+    BetweenDirection Direction,
+    EvidencePolicy Policy) : IRowFilter
+{
+    public bool DependsOnOtherEnds => true;
+
+    public bool[] Mask(SegmentRoles roles)
+    {
+        var mask = new bool[roles.Owners.Length];
+        for (int row = 0; row < mask.Length; row++)
+        {
+            mask[row] = Includes(roles, row, openPeers: false);
+        }
+
+        return mask;
+    }
+
+    public bool[] Undecided(SegmentRoles roles, bool[] mask)
+    {
+        var undecided = new bool[mask.Length];
+        for (int row = 0; row < mask.Length; row++)
+        {
+            undecided[row] = !mask[row] && Includes(roles, row, openPeers: true);
+        }
+
+        return undecided;
+    }
+
+    private bool Includes(SegmentRoles roles, int row, bool openPeers)
+    {
+        ProcessBinding owner = roles.Owner(row);
+        ProcessBinding peer = roles.Peer(row);
+        sbyte direction = roles.Directions[row];
+        openPeers &= roles.Communicates[row];
+
+        // Made in one set and ended in the other; with open peers, an unresolved other end may be in either set.
+        bool firstToSecondEnds = In(owner, First) && PeerIn(peer, Second, openPeers);
+        bool secondToFirstEnds = In(owner, Second) && PeerIn(peer, First, openPeers);
+        return Direction switch
+        {
+            BetweenDirection.Either => firstToSecondEnds || secondToFirstEnds,
+
+            // A send record's data left its maker; a receive record's data reached it.
+            BetweenDirection.FirstToSecond => (direction > 0 && firstToSecondEnds) || (direction < 0 && secondToFirstEnds),
+            BetweenDirection.SecondToFirst => (direction > 0 && secondToFirstEnds) || (direction < 0 && firstToSecondEnds),
+            _ => false,
+        };
+    }
+
+    private bool PeerIn(ProcessBinding peer, IReadOnlySet<int> set, bool openPeers) =>
+        In(peer, set) || (openPeers && !peer.IsAdmittedUnder(Policy));
+
+    private bool In(ProcessBinding binding, IReadOnlySet<int> set) =>
+        binding.IsBound && binding.IsAdmittedUnder(Policy) && set.Contains(binding.Instance);
 }

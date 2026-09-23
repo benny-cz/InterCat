@@ -366,18 +366,6 @@ public sealed class ProcessInstanceTests
             TestClock,
             [.. SessionSegments.FieldNames(store.Current!).Select(name => SessionSegments.Open(store.Root, store.Current!, name))]);
 
-    private static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
-    {
-        RawStreamId = observation.RawStreamId,
-        RawSourceEpoch = observation.RawSourceEpoch,
-        RawRecordOrdinal = observation.RawRecordOrdinal,
-        FactKey = observation.FactKey,
-        NativeTicks = observation.NativeTicks,
-        Field = code,
-        Value = value,
-        Availability = FieldAvailability.Present,
-    };
-
     private static MetricResult SentByProcess(SessionStore store, EvidencePolicy policy) =>
         SessionMetrics.Evaluate(
             store,

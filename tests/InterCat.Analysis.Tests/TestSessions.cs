@@ -137,6 +137,19 @@ internal static class TestSessions
         TimingQuality = QualityLevel.Proven,
     };
 
+    /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
+    public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
+    {
+        RawStreamId = observation.RawStreamId,
+        RawSourceEpoch = observation.RawSourceEpoch,
+        RawRecordOrdinal = observation.RawRecordOrdinal,
+        FactKey = observation.FactKey,
+        NativeTicks = observation.NativeTicks,
+        Field = code,
+        Value = value,
+        Availability = FieldAvailability.Present,
+    };
+
     /// <summary>Publishes one generation holding these rows, with the admitted journal records they derive from.</summary>
     public static DerivedGenerationResult Publish(
         SessionStore store,

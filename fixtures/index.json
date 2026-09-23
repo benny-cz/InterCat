@@ -370,7 +370,7 @@
     {
       "id": "FX-QUERY-001",
       "title": "The canonical query identity of a metric specification",
-      "scenario": "Sections 10.4 and 10.5: twelve metric specifications over a fixed snapshot, each written in canonical form and hashed. They cover a whole-capture count, an interval, an implied domain, layer and side, a rate, a grouping whose evidence policy cannot matter, a ranked grouping whose rows sit beside the hash, an executable grouping with candidates, and owner, participant-by-peer and sender-with-peer focus.",
+      "scenario": "Sections 10.4 and 10.5: fourteen metric specifications over a fixed snapshot, each written in canonical form and hashed. They cover a whole-capture count, an interval, an implied domain, layer and side, a rate, a grouping whose evidence policy cannot matter, a ranked grouping whose rows sit beside the hash, an executable grouping with candidates, and owner, participant-by-peer and sender-with-peer focus, a between filter written from the first set to the second, and a channel count that names the binding rule and no policy.",
       "milestone": "M1",
       "backlog": [
         "IC-015",
@@ -400,7 +400,7 @@
           "build": "portable",
           "supportTier": "NotApplicable",
           "date": "2026-09-23",
-          "result": "All twelve lines reproduce byte for byte and their hashes match an independent SHA-256. Implicit and written-out defaults hash alike, a policy that cannot change an answer is dropped, requested rows share a hash, and every member, snapshot, role and peer difference is a different identity. Answers carry the identity of their generation, unavailable answers included."
+          "result": "All fourteen lines reproduce byte for byte and their hashes match an independent SHA-256. Implicit and written-out defaults hash alike, a policy that cannot change an answer is dropped, requested rows share a hash, and every member, snapshot, role and peer difference is a different identity. Answers carry the identity of their generation, unavailable answers included. A between filter has one spelling per meaning: either order of an undirected pair, a backward direction and its forward spelling, and a repeated instance all hash alike."
         }
       ],
       "provenance": {
@@ -412,7 +412,8 @@
         "I16: every golden specification canonicalizes to exactly its recorded bytes and identity",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity",
         "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
-        "I16: every answer names the identity of the specification and snapshot it answers"
+        "I16: every answer names the identity of the specification and snapshot it answers",
+        "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query"
       ]
     }
   ],
@@ -442,6 +443,7 @@
         "I12: a rundown and an exit are one instance that was running before the capture",
         "I12: an absent activity id stays absent rather than becoming an empty identifier",
         "I12: equal process keys on different hosts never collide",
+        "I12: every answer that reads a binding knows a process by the identity its start key gives",
         "I12: same-tick exit and reuse bind their lifecycle records by observation identity",
         "I12: source start keys, image paths and a parent's start key survive publication and bind exactly",
         "I12: the same PID and creation on another capture's clock is another instance",
@@ -781,6 +783,7 @@
         "R2: a rate names an additive numerator, and nothing else carries one",
         "R2: an invalid request is refused before it is planned, not answered",
         "R2: an owner never takes a cross-side total, and one request names one process focus",
+        "R2: between(A,B) names both sets, and is a process filter of its own",
         "R2: ranked by peers, each process counts its own, the rows overlap, and an unresolved-only process is unmeasured"
       ],
       "R20": [
@@ -825,6 +828,7 @@
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
+        "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
@@ -907,6 +911,7 @@
         "R9: writing a batch returns every buffer the records held"
       ],
       "R18": [
+        "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"
       ]
     },
