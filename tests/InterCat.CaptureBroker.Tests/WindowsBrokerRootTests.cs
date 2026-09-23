@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.CaptureBroker.Tests;
@@ -6,6 +7,108 @@ namespace InterCat.CaptureBroker.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsBrokerRootTests
 {
+    [Fact(DisplayName = "R16: each capture has an isolated pinned evidence directory with the broker's security")]
+    public void CaptureDirectoriesAreIsolatedAndPinned()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        CaptureId firstId = CaptureId.New();
+        CaptureId secondId = CaptureId.New();
+        using WindowsBrokerRoot first = temporary.Root.OpenCaptureDirectory(firstId);
+        using WindowsBrokerRoot second = temporary.Root.OpenCaptureDirectory(secondId);
+
+        Assert.NotEqual(first.Path, second.Path);
+        Assert.Equal(Path.Combine(temporary.Root.Path, $"capture-{firstId.Value:N}"), first.Path);
+        Assert.Equal(temporary.Root.VolumeSerialNumber, first.VolumeSerialNumber);
+        Assert.Null(temporary.Policy.Approve(
+            BrokerSecurityDescriptorFacts.Parse(first.Report.ObservedSecurityDescriptorSddl),
+            temporary.UserSid));
+        Assert.ThrowsAny<IOException>(() => Directory.Move(first.Path, Path.Combine(temporary.Root.Path, "moved")));
+
+        Write(first, "evidence.icatj", [1, 2, 3]);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(Path.Combine(first.Path, "evidence.icatj")));
+        Assert.Empty(Directory.GetFiles(second.Path));
+        using WindowsBrokerRoot reopened = temporary.Root.OpenCaptureDirectory(firstId);
+        Assert.False(reopened.Report.CreatedByThisBroker);
+        Assert.Equal(first.Path, reopened.Path);
+        Assert.Throws<InvalidOperationException>(() => first.OpenCaptureDirectory(CaptureId.New()));
+    }
+
+    [Fact(DisplayName = "R16: ordinary-integrity viewer can read capture evidence but cannot modify it")]
+    public void OrdinaryIntegrityViewerCannotWriteCaptureDirectory()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        using WindowsBrokerRoot capture = temporary.Root.OpenCaptureDirectory(CaptureId.New());
+        Write(capture, "evidence.icatj", [9, 8, 7]);
+        int lowered = TemporaryBrokerRoot.CurrentIntegrityLevel == BrokerIntegrityLevel.High
+            ? BrokerIntegrityLevel.Medium
+            : BrokerIntegrityLevel.Low;
+        using var token = LoweredIntegrityToken.Create(lowered);
+        byte[]? read = null;
+        Exception? modifyRefusal = null;
+        Exception? createRefusal = null;
+
+        token.Run(() =>
+        {
+            read = File.ReadAllBytes(Path.Combine(capture.Path, "evidence.icatj"));
+            modifyRefusal = Record.Exception(() =>
+                File.OpenWrite(Path.Combine(capture.Path, "evidence.icatj")).Dispose());
+            createRefusal = Record.Exception(() =>
+                File.WriteAllBytes(Path.Combine(capture.Path, "planted.icatj"), [1]));
+        });
+
+        Assert.Equal([9, 8, 7], read);
+        Assert.IsType<UnauthorizedAccessException>(modifyRefusal);
+        Assert.IsType<UnauthorizedAccessException>(createRefusal);
+        Assert.Equal([Path.Combine(capture.Path, "evidence.icatj")], Directory.GetFiles(capture.Path));
+    }
+
+    [Fact(DisplayName = "R16: a substituted capture directory is refused, not followed")]
+    public void CaptureDirectoryJunctionIsRefused()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        string elsewhere = TemporaryBrokerRoot.CreateTemporaryParent();
+        CaptureId captureId = CaptureId.New();
+        string path = Path.Combine(temporary.Root.Path, $"capture-{captureId.Value:N}");
+        try
+        {
+            DirectoryJunction.Create(path, elsewhere);
+
+            IOException refusal = Assert.Throws<IOException>(() => temporary.Root.OpenCaptureDirectory(captureId));
+
+            Assert.Contains("reparse point", refusal.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(Directory.GetFileSystemEntries(elsewhere));
+        }
+        finally
+        {
+            Directory.Delete(path);
+            Directory.Delete(elsewhere, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R16: an existing capture directory with inherited security is not silently adopted")]
+    public void CaptureDirectoryWithWrongSecurityIsRefused()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        CaptureId captureId = CaptureId.New();
+        string path = Path.Combine(temporary.Root.Path, $"capture-{captureId.Value:N}");
+        Directory.CreateDirectory(path);
+
+        UnauthorizedAccessException refusal = Assert.Throws<UnauthorizedAccessException>(() =>
+            temporary.Root.OpenCaptureDirectory(captureId));
+
+        Assert.Contains("required security", refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(path));
+    }
+
+    [Fact(DisplayName = "R16: a capture ID cannot be empty")]
+    public void CaptureDirectoryRequiresIdentity()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+
+        Assert.Throws<ArgumentException>(() => temporary.Root.OpenCaptureDirectory(new CaptureId(Guid.Empty)));
+        Assert.Empty(Directory.GetFileSystemEntries(temporary.Root.Path));
+    }
+
     [Fact(DisplayName = "R16: a provisioned root carries a protected DACL and a no-write-up label")]
     public void ProvisionedRootCarriesProtectedDaclAndMandatoryLabel()
     {

@@ -1,4 +1,5 @@
 using InterCat.Storage;
+using InterCat.Domain;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -105,11 +106,22 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
     private const int ErrorAccessDenied = 5;
 
     private readonly SafeFileHandle handle;
+    private readonly BrokerRootSecurityPolicy policy;
+    private readonly string capturingUserSid;
+    private readonly bool isCaptureDirectory;
     private bool disposed;
 
-    private WindowsBrokerRoot(SafeFileHandle handle, BrokerRootReport report)
+    private WindowsBrokerRoot(
+        SafeFileHandle handle,
+        BrokerRootReport report,
+        BrokerRootSecurityPolicy policy,
+        string capturingUserSid,
+        bool isCaptureDirectory = false)
     {
         this.handle = handle;
+        this.policy = policy;
+        this.capturingUserSid = capturingUserSid;
+        this.isCaptureDirectory = isCaptureDirectory;
         Report = report;
     }
 
@@ -184,11 +196,78 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
                     facts.OwnerSid,
                     policy.MandatoryIntegrityLevel,
                     sddl,
-                    observed));
+                    observed),
+                policy,
+                userSid);
         }
         catch
         {
             rootHandle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates or reopens the isolated evidence directory for one capture. The directory has the
+    /// same protected read-only-to-viewer ACL and no-write-up label as the broker root. An existing
+    /// directory is accepted only when its identity and security already match; unlike the root,
+    /// a capture directory is never repaired in place because it may contain untrusted evidence.
+    /// Hold the returned directory open for the lifetime of its session and dispose it afterwards.
+    /// </summary>
+    public WindowsBrokerRoot OpenCaptureDirectory(CaptureId captureId)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (isCaptureDirectory)
+        {
+            throw new InvalidOperationException("A capture directory cannot contain another capture directory.");
+        }
+
+        if (captureId.Value == Guid.Empty)
+        {
+            throw new ArgumentException("A capture directory requires a non-empty capture ID.", nameof(captureId));
+        }
+
+        string name = $"capture-{captureId.Value:N}";
+        string path = System.IO.Path.Combine(Path, name);
+        string sddl = policy.BuildSecurityDescriptorSddl(capturingUserSid);
+        bool created = CreateRootDirectory(path, sddl);
+        SafeFileHandle directory = OpenDirectory(
+            path,
+            FileGenericRead | FileTraverse | ReadControl,
+            FileShareRead | FileShareWrite);
+        try
+        {
+            BY_HANDLE_FILE_INFORMATION information = ReadFileInformation(directory, path);
+            RequireDirectoryIdentity(directory, information, path, VolumeSerialNumber);
+            string observed = ReadSecurityDescriptor(directory, path);
+            string? problem = policy.Approve(BrokerSecurityDescriptorFacts.Parse(observed), capturingUserSid);
+            if (problem is not null)
+            {
+                throw new UnauthorizedAccessException(
+                    $"The capture directory '{path}' does not carry its required security: {problem}");
+            }
+
+            return new(
+                directory,
+                new(
+                    path,
+                    Path,
+                    Path,
+                    created,
+                    SecurityReapplied: false,
+                    information.VolumeSerialNumber,
+                    Report.OwnerSid,
+                    BrokerSecurityDescriptorFacts.Parse(observed).OwnerSid,
+                    policy.MandatoryIntegrityLevel,
+                    sddl,
+                    observed),
+                policy,
+                capturingUserSid,
+                isCaptureDirectory: true);
+        }
+        catch
+        {
+            directory.Dispose();
             throw;
         }
     }

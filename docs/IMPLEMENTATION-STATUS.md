@@ -1,12 +1,30 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 65
+Plan revision: 66
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: a recording module the broker can reference
+## Latest slice: an isolated evidence directory for each broker capture
+
+The broker root now creates or reopens `capture-<id>` beneath its validated, pinned root. Each capture directory
+receives the same protected ACL and no-write-up label at creation, is checked by open-handle path, volume, reparse
+state and security before use, and stays pinned without delete sharing. A pre-existing capture directory whose
+security drifted is **refused rather than repaired**: unlike an empty root, it may already contain evidence, so
+repairing it could silently adopt untrusted bytes. Ordinary-integrity viewers can read the files but cannot modify
+or plant them. The API returns an `IOwnedDirectory` implementation for the evidence-only `SessionStore`; it does
+not yet start capture or enable the broker executable. Tests cover isolated captures, reopen, pinning, junctions,
+security drift, invalid IDs and the read/no-write boundary.
+
+Verification: all 686 tests pass in Debug and Release.
+
+Next: implement `IBrokerCaptureRuntime` against this directory and `LiveRecorder` without a derivation. Keep the
+executable disabled until runtime start/stop/recovery, quota enforcement, lifecycle persistence and the pipe host
+are composed and exercised together; the ordinary follower then needs a desktop-reachable handoff. Retention on
+an active recording still needs one scheduler for both writers.
+
+## Previous slice: a recording module the broker can reference
 
 The broker's recording path now lives in a module of its own (ADR-028). `InterCat.Capture.Journal` had come to hold
 work that must never run privileged: the ETL parser, the normalizer, re-derivation, the follower and compaction. The
@@ -971,7 +989,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Recommended next slice
 
-1. **Bind the broker to live recording.** A privileged recording can publish evidence only, and `icat follow` derives it in an ordinary process (ADR-027). The evidence-only path is in `InterCat.Capture.Recording`, which the broker may reference (ADR-028). Give each capture a directory in the broker root that the capturing user can read; implement `IBrokerCaptureRuntime` over it and the broker executable; and bring the follower where the desktop can reach it; let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024). §20.1's compaction targets are in (ADR-026); a column-level copy would make a compaction faster than its 200,000 rows per second when a budget needs it. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
+1. **Bind the broker to live recording.** A privileged recording can publish evidence only, and `icat follow` derives it in an ordinary process (ADR-027). The evidence-only path is in `InterCat.Capture.Recording`, which the broker may reference (ADR-028), and each capture now has a protected broker directory. Implement `IBrokerCaptureRuntime` over these, then compose the executable and pipe host; bring the follower where the desktop can reach it. Let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024). §20.1's compaction targets are in (ADR-026); a column-level copy would make a compaction faster than its 200,000 rows per second when a budget needs it. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
 2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Carry the rows of records a retention released across a replacement, with their journal indexes and their own derivation label, so a session can be re-derived after a release (ADR-024). Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.
 3. **Publish §20.2's entity-state checkpoint (IC-016a), once IC-015 exists.** A rolling eviction has to carry the still-live identities, the endpoint bindings, the continuity quality and the pending-operation summaries across the boundary, and an operation open across one has to be censored rather than failed (I20). The retention mechanism beneath it is in; what it can state is what is missing.
 4. **Run the fixture corpus on the retail builds in the matrix.** 25H2 retail (26200) and 24H2 (26100) are listed in §1.3 and neither has been measured; the tiers above rest on a pre-release branch of 25H2. §13.4 asks for the corpus on every supported build, and a second environment row is what makes a tier more than one machine's result.
