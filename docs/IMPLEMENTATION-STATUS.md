@@ -1,12 +1,46 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 85
+Plan revision: 86
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: `icat capture` from an ordinary prompt
+## Latest slice: Desktop one-action Explore and saved-session opening
+
+The Desktop now launches into an **empty, truthful workspace**, with a focused `Start exploring` action (`Ctrl+R`).
+There is no profile or destination dialog. Explore defaults to 10 minutes, a 1 GiB journal cap, 1 GiB free-space
+reserve, metadata-only and live publication. The ordinary-integrity viewer launches the broker through the authenticated
+Windows launcher, presents the broker's effective source/limit/disclosure summary in-pane, then follows published raw
+evidence into an automatically named session under the user's local app data. The broker owns raw evidence; the viewer
+owns its derived session (ADR-027, plan revision 86).
+
+The UI shows the current published generation's real L0-L2 overview: process groups and nodes, admitted paired TCP
+edges, and an all-observations timeline. The ranked table and inspector explicitly say when their totals cover only
+paired TCP, and byte volume remains unknown rather than zero. Live generation updates reject older generations; the
+selected process is preserved where it still exists. `Stop and save` requests broker finalization and follows every
+published chunk. Closing while active asks once, then stops and saves before closing. UAC decline, missing broker,
+prepare refusal and broker failure have in-pane states. `Open saved session` allows offline access even when capture is
+unavailable. An emergency stop is time-bounded; otherwise the broker owner lease bounds the run.
+
+Verification: Desktop compilation, 16 Desktop tests and 13 headless UI tests pass. The headless first-run test checks
+the focused action and absence of synthetic evidence. The ordinary-integrity follower fixture was hardened so its
+destination remains writable when tests run from high-integrity `C:\Windows\Temp`. All 772 tests pass in Debug and
+Release on this host; the Desktop/UAC end-to-end path has not yet been run.
+
+**Not yet the §3.1 exit gate:** the viewer has no real channel, operation or exact-record projection (L3-L5), and a
+generation refresh still resets the rung/viewport. The 3-second useful-feedback budget is unmeasured. The broker is
+not packaged beside the Desktop development output, so an end-to-end Desktop/UAC run is not yet qualified. The
+Desktop's transitive `Capture.Journal` dependency still carries the Windows adapter, even though no privileged work
+runs in the viewer; a follower-only library would make this boundary cleaner. Do not describe this as a fully live
+whole-system viewer.
+
+Next: preserve rung/viewport across generation changes; project channels, operations and evidence from a leased
+generation with the same query identity as the overview; package or explicitly stage the broker beside Desktop and run
+the real UAC/stop/close/reopen qualification. Then measure §3.1's first-feedback budget and the 10-minute close/crash
+case. Wider mechanisms and the remaining plan gates still follow.
+
+## Previous slice: `icat capture` from an ordinary prompt
 
 `icat capture <new-session-dir> [--duration s] [--profile explore|focused-transport --mechanism tcp --pid a,b]
 [--broker exe] [--json]` does the following:
@@ -1401,8 +1435,8 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 - Stopping the diagnostic ETL session reports a degradation on this build: its loss counters cannot be read through WMI at stop (`0x80071069`). The ETL variant's provider loss is therefore unknown rather than zero, and the degradation is recorded in both runs.
 - Existing pre-contract evidence using `{rawRecordId,factIndex}` remains readable. New builders and serialized output use normalizer version plus a deterministic 128-bit fact key. Removing the compatibility reader requires an explicit fixture migration.
 - `contracts/identity-v1.md` constrains canonical ETL import but does not implement it. Source-content identity, equal-time tie handling, collision comparison and multiplicity indexes remain IC-013; I1 and the full I2 claim stay uncovered until then.
-- The capture CLI still runs elevated in process because the broker executable remains deliberately disabled. IC-014 now has transport-independent preparation/dispatch/ownership, but R16's process separation is not real until the OS-authenticated pipe host and broker-owned filesystem boundary replace that path.
-- Broker quotas and retention are frozen into the prepared digest and returned in the effective summary. The evidence runtime enforces duration and an exact journal byte cap, and observes free space at start and every second. Autonomous stop completion has a durable coordinator path, but the disabled executable does not schedule its sweep. The recorder supports quota-safe live chunk rollover, but the broker has no reviewed publication cadence in its prepared summary and currently publishes once on stop. Free-space observation is not a hard write-boundary guarantee, and elevated restart/pipe integration has not been proved.
+- The old in-process `icat record` path remains separate from `icat capture`; the latter launches the enabled broker and follows evidence at ordinary integrity. The real broker boundary is qualified for the four scenarios named in the previous slice, not yet for Desktop/UAC cancellation or every supported Windows build.
+- Broker quotas and retention are frozen into the prepared digest and returned in the effective summary. Live publication has a measured 2-second compiled cadence and write-boundary free-space checks. The tested real-ETW scenarios passed on this one pre-release Windows build; that is not a retail-build support claim.
 - Only TCPv4 loopback is measured. UDP, IPv6, remote peers, reconnect, retransmission under impairment, and flows already open at capture start are unmeasured, so §13.1 scenario 1 is only partly covered.
 - `connid` is admitted but is not used as an identity; it was zero on this build.
 - Named pipes are measured `Unsupported` through `Microsoft-Windows-Kernel-File` on a supported build (ADR-003). That is a measured absence with its control, not a claim that pipes carry no traffic.
@@ -1413,7 +1447,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 - Explore currently means process lifecycle plus TCPv4 metadata on this machine. RPC, ALPC and named-pipe entries remain visible optional requests but are omitted because their capture impact is unmeasured; this is intentionally narrower than the final §9.4 breadth. `icat profiles explore` is the source of truth for the effective set before capture.
 - Focused transport compiles measured TCP. Without PIDs it requests all-process TCP metadata; with PIDs it preserves those PIDs as initial-view focus but blocks until wider collection is accepted, because network delivery is not PID-filtered and lifecycle context remains whole-machine. UDP and RPC are refused without TCP fallback. Content has a bounded request-only preview but cannot start: RPC debug descriptors 10/11 remain denied, their fragment semantics/scope are not production contracts, and no payload-specific impact series exists. Content is not silently mapped to metadata-only capture, inspection consent does not imply collection or export, and `--diagnostic-etl` blocks because the product path does not yet create a separately governed, potentially content-bearing original ETL. Timing and Flight recorder remain unavailable.
 - Four of the ten §12 budgets are measured and six have no stage to measure them. Three measured budgets are met; sustained ingest is the only miss, at roughly a tenth of target in the current call-stack series. Callback admission and its attributed allocation slope are both met; the larger managed-adapter dispatch allocation remains separate IC-019 evidence, not a failed callback-allocation budget.
-- The desktop still displays synthetic data only. The ladder, its breadcrumb and its evidence rung are real but the data under them is not: nothing in the prototype is evidence about Windows capture coverage.
+- The Desktop now starts empty and can show a real published L0-L2 session overview. The deterministic synthetic tour remains only as an explicit test fixture. Real L3-L5 projection, navigation continuity across generations, the 3-second feedback measurement and a broker-beside-Desktop packaging/qualification run remain outstanding.
 - The graph and the timeline do not change with the ladder's rung. At a channel rung the graph still draws the whole machine, which §3.2 does not permit in a finished product; per-level composition needs IC-017's deterministic layout and is recorded as defect 16 in the review.
 - The broker root is refused, not repaired, when an untrusted principal owns it. `%ProgramData%` lets any user create an entry, so an ordinary-integrity process can create `%ProgramData%\InterCat` before the broker first runs and the broker will then refuse to start with that owner named. That is the safe outcome and it is a denial of service until the directory is removed or installation pre-creates it; no installer exists yet.
 - The root's security is validated at provisioning and pinned by an open handle that refuses rename and delete. Nothing re-validates the descriptor afterwards, so an administrator or SYSTEM process can still loosen it while the broker runs. That is inside the trust boundary by construction - both are already broker principals - but it means the guarantee is "validated at open and un-renameable", not "continuously enforced".
@@ -1439,7 +1473,7 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 - Confirmed recovery selects the already-verified last-known-good generation, not the newest orphan manifest. A newer orphan may contain usable evidence, but promoting it without a verified user choice would hide a rollback. Repair preserves it for inspection and skips its generation number on the next publication. A damaged pointer larger than 1 MiB is refused instead of copied without bound.
 - A screen-reader audit has still not been run. The keyboard paths are now asserted in a headless lane with real key delivery, but what a reader announces is untested.
 
-## Recommended next slice
+## Historical recommendation (pre-broker; superseded by the latest slice above)
 
 1. **Finish the broker runtime boundary.** The evidence-only runtime, protected directory, exact-name orphan stop, durable autonomous-completion/persistence-retry paths, quota-aware recorder rollover and restart-verifiable final-publication proof are composed but not enabled. Next make free-space admission a write/finalization-boundary rule with explicit finalization headroom rather than relying on the one-second monitor; then choose, freeze and measure a bounded prepared journal-publication policy before wiring live follow into the broker. After those two storage gates, make the host schedule completion/persistence maintenance and lease sweeps, compose the executable and authenticated pipe host, exercise an elevated protected-root live crash/restart, and deliver the ordinary follower to the desktop (ADR-027/028). Let the broker schedule retention beside a running recorder, whose next commit a retention would otherwise refuse (ADR-024). §20.1's compaction targets are in (ADR-026); a column-level copy would make a compaction faster than its 200,000 rows per second when a budget needs it. **Widen relations.** UDPv4 is related (ADR-020); §13.1's remaining UDP cases - endpoint reuse, multicast and absent receivers - need fixtures of their own, and the overview graph needs mechanism-labelled edges before UDP joins it (IC-017). §19.1's process filters are complete over TCP, and `ActivePeers` and `ActiveChannels` are answered as lower bounds, including the number of channels a process had with each resolved peer. UDP and IPv6 relations need their own orientation measurement before any rule reads them.
 2. **Finish re-derivation compatibility.** Pointer recovery and guarded staging cleanup are explicit and preserve unverified evidence. Carry the rows of records a retention released across a replacement, with their journal indexes and their own derivation label, so a session can be re-derived after a release (ADR-024). Add a legacy-plan migration only where the exact original descriptor interpretation can be proven; extend replacement to multi-capture sessions without dropping another capture's rows. A semantic normalizer change needs a real contract version and stable-raw-identity tests, not an arbitrary bump. Pre-guard unmarked staging cannot be safely deleted automatically and remains for manual review.

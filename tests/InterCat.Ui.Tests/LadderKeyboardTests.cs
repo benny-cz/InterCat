@@ -164,7 +164,7 @@ public sealed class LadderKeyboardTests
 
     private static (Window Window, WorkspaceViewModel ViewModel) Open()
     {
-        var window = new MainWindow();
+        var window = new MainWindow(new WorkspaceViewModel());
         window.Show();
         return (window, (WorkspaceViewModel)window.DataContext!);
     }

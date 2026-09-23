@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/InterCat.Desktop/InterCat.Desktop.csproj" />
+    <ProjectReference Include="../../src/InterCat.CaptureBroker.Protocol/InterCat.CaptureBroker.Protocol.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />

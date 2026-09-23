@@ -15,6 +15,22 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class WindowRenderTests
 {
+    [AvaloniaFact]
+    public void FirstRunShowsEmptyWorkspaceAndFocusedStartAction()
+    {
+        var window = new MainWindow();
+        window.Show();
+        Dispatch();
+
+        var viewModel = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Button start = window.GetControl<Button>("StartExploringButton");
+        Assert.Empty(viewModel.Snapshot.Processes);
+        Assert.Empty(viewModel.Snapshot.Timeline);
+        Assert.True(start.IsFocused);
+        Assert.Equal("Ready to explore", window.GetControl<TextBlock>("CaptureStatus").Text);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a custom workspace header names its session without inventing a capture gap")]
     public void CustomWorkspaceHeaderIsTruthful()
     {
@@ -56,7 +72,7 @@ public sealed class WindowRenderTests
     [MemberData(nameof(Sizes))]
     public async Task EveryRungRenders(int width, int height)
     {
-        var window = new MainWindow { Width = width, Height = height };
+        var window = new MainWindow(new WorkspaceViewModel()) { Width = width, Height = height };
         window.Show();
         var viewModel = (WorkspaceViewModel)window.DataContext!;
         await viewModel.LayoutReady;

@@ -28,7 +28,14 @@ public sealed class SessionOverviewTests
 
         SessionOverviewBundle first = SessionOverviewProjector.Project(session.Store);
         SessionOverviewBundle again = SessionOverviewProjector.Project(session.Store);
+        WorkspaceSnapshot workspace = OverviewWorkspace.From(first);
         Assert.Equal(first.GraphIdentity, again.GraphIdentity);
+        Assert.Equal(first.Nodes, workspace.Processes);
+        Assert.Equal(first.Edges, workspace.Edges);
+        Assert.Equal(first.Timeline, workspace.Timeline);
+        Assert.Empty(workspace.Channels);
+        Assert.Empty(workspace.Operations);
+        Assert.Empty(workspace.Evidence);
         Assert.Equal((3L, 0L, 1L),
             (first.ObservationRows, first.RowsWithoutSessionTime, first.UnresolvedTcpRows));
         Assert.Equal(3, first.Nodes.Count);

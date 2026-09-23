@@ -80,10 +80,24 @@
 
         <Border Grid.Row="3" Margin="0,12,0,0" Padding="10" CornerRadius="8"
                 Background="{DynamicResource Surface.Elevated}">
-          <StackPanel Spacing="4">
-            <TextBlock Text="PROTOTYPE DATA" Classes="eyebrow" />
-            <TextBlock Text="No live capture is running. Values are deterministic synthetic evidence."
+          <StackPanel Spacing="7">
+            <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
+            <TextBlock Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)"
+                    Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
+            <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False"
+                    Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
+            <Button x:Name="OpenSavedSessionButton" Content="Open saved session"
+                    Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
+            <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
+                       TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
+            <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
+                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto">
+              <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
+            </ScrollViewer>
+            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
       </Grid>
@@ -276,7 +290,7 @@
           </Border>
         </StackPanel>
         <TextBlock Grid.Row="4" VerticalAlignment="Bottom" Classes="muted" FontSize="11" TextWrapping="Wrap"
-                   Text="This screen validates interaction and visual hierarchy only. It makes no Windows capture coverage claim." />
+                   Text="{Binding WorkspaceDisclosure}" />
       </Grid>
     </Border>
 

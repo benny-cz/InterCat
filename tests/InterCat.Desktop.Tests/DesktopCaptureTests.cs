@@ -1,0 +1,60 @@
+using InterCat.Application;
+using InterCat.CaptureBroker;
+using InterCat.Desktop;
+using InterCat.Domain;
+using Xunit;
+
+namespace InterCat.Desktop.Tests;
+
+public sealed class DesktopCaptureTests
+{
+    [Fact]
+    public void FirstRunIsEmptyEvidenceNotTheSyntheticTour()
+    {
+        WorkspaceSnapshot empty = OverviewWorkspace.Empty();
+        using var viewModel = new WorkspaceViewModel(empty, "empty-workspace");
+
+        Assert.Empty(empty.Processes);
+        Assert.Empty(empty.Edges);
+        Assert.Empty(empty.Timeline);
+        Assert.Contains("No live capture", viewModel.WorkspaceDisclosure, StringComparison.Ordinal);
+        Assert.DoesNotContain("Synthetic", empty.Title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OneActionExploreUsesBoundedLiveEvidenceOnlyDefaults()
+    {
+        BrokerPrepareCaptureRequest request = DesktopCaptureRunner.ExploreRequest();
+
+        Assert.Equal("explore", request.ProfileId);
+        Assert.Null(request.FocusedMechanism);
+        Assert.Empty(request.FocusedProcessIds);
+        Assert.False(request.AllowBroaderCapture);
+        Assert.False(request.RequestOriginalDiagnosticEtl);
+        Assert.Null(request.Content);
+        Assert.Equal(BrokerJournalPublication.Live, request.Publication);
+        Assert.Equal(600, request.Quota.MaximumDurationSeconds);
+        Assert.Equal(1_024L * 1_024 * 1_024, request.Quota.MaximumJournalBytes);
+        Assert.Equal(1_024L * 1_024 * 1_024, request.Quota.MinimumFreeDiskBytes);
+        Assert.Null(request.Quota.Validate());
+    }
+
+    [Fact]
+    public void EffectiveCaptureReviewStatesSourceScopeAndLimits()
+    {
+        var summary = new BrokerEffectiveCaptureSummary(
+            "explore", "explore", AdmissionMode.MetadataOnly, AdmissionMode.MetadataOnly,
+            null, null, [], [], false, false, false,
+            [new BrokerEffectiveSourceSummary("TCP", ProviderProcessScope.WholeMachineFilterUnavailable, [], false, "System-wide")],
+            "No payload contents.", "Process lifecycle and TCP transport events.",
+            DesktopCaptureRunner.ExploreRequest().Quota, BrokerRetentionPolicy.StopAtLimit, [],
+            BrokerJournalPublication.Live, 2_000);
+
+        string review = DesktopCaptureRunner.Describe(summary);
+        Assert.Contains("TCP", review, StringComparison.Ordinal);
+        Assert.Contains("10 min", review, StringComparison.Ordinal);
+        Assert.Contains($"{1024:N0} MiB", review, StringComparison.Ordinal);
+        Assert.Contains("2 s publication", review, StringComparison.Ordinal);
+        Assert.Contains("No payload contents", review, StringComparison.Ordinal);
+    }
+}

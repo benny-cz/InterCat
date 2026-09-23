@@ -44,10 +44,15 @@ public sealed class BrokerEvidenceFollowTests
 
         string evidencePath = Path.Combine(temporary.Root.Path, $"capture-{captureId.Value:N}");
         string[] evidenceBefore = Snapshot(evidencePath);
-        string sessionPath = Path.Combine(TemporaryBrokerRoot.CreateTemporaryParent(), "session");
         int lowered = TemporaryBrokerRoot.CurrentIntegrityLevel == BrokerIntegrityLevel.High
             ? BrokerIntegrityLevel.Medium
             : BrokerIntegrityLevel.Low;
+        // The test host's temp parent may be high-integrity (for example C:\Windows\Temp). Give the
+        // ordinary follower a separate user-writable, lowered-integrity destination; only the evidence
+        // root should refuse its writes. This keeps the test independent of the runner's temp ACL.
+        using TemporaryBrokerRoot writable = TemporaryBrokerRoot.Create(
+            TemporaryBrokerRoot.PolicyForCurrentProcess() with { MandatoryIntegrityLevel = lowered });
+        string sessionPath = Path.Combine(writable.Root.Path, "session");
         using var token = LoweredIntegrityToken.Create(lowered);
         FollowStep? step = null;
         Exception? failure = null;

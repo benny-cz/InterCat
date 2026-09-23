@@ -6,6 +6,9 @@
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../InterCat.Application/InterCat.Application.csproj" />
+    <ProjectReference Include="../InterCat.Storage/InterCat.Storage.csproj" />
+    <ProjectReference Include="../InterCat.Capture.Journal/InterCat.Capture.Journal.csproj" />
+    <ProjectReference Include="../InterCat.CaptureBroker.Protocol/InterCat.CaptureBroker.Protocol.csproj" />
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />

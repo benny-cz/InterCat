@@ -24,6 +24,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private LadderView view;
     private bool showTables;
     private bool disposed;
+    private readonly string workspaceDisclosure;
+    private readonly bool realOverview;
+    private readonly bool emptyWorkspace;
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -37,6 +40,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
+        realOverview = graphIdentity.StartsWith("session:", StringComparison.Ordinal);
+        emptyWorkspace = graphIdentity == "empty-workspace";
+        workspaceDisclosure = graphIdentity == "synthetic-tour-v1"
+            ? "Synthetic interaction tour; none of these values are Windows capture evidence."
+            : graphIdentity == "empty-workspace"
+                ? "No live capture is running. Start exploring to see published evidence."
+                : "Graph shows admitted paired TCP relationships only. Timeline includes other observed rows; "
+                    + "channel, operation and record rungs are not yet projected in this viewer.";
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -59,6 +70,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public WorkspaceSnapshot Snapshot { get; }
+
+    public string WorkspaceDisclosure => workspaceDisclosure;
 
     /// <summary>Stable graph coordinates, separate from evidence, time scope and the window transform.</summary>
     public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; private set; }
@@ -167,13 +180,20 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         CultureInfo.CurrentCulture,
         $"L{(int)ladder.Current.Level} · {NavigationState.Name(ladder.Current.Level).ToUpperInvariant()}");
 
-    public string LevelSummary => LadderRowBuilder.DescribeTotal(view);
+    public string LevelSummary => LadderRowBuilder.DescribeTotal(view)
+        + (realOverview ? " · admitted paired TCP only; not all session observations" : string.Empty);
 
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
-    public string LevelSummaryShort => LadderRowBuilder.DescribeTotalShort(view);
+    public string LevelSummaryShort => LadderRowBuilder.DescribeTotalShort(view)
+        + (realOverview ? " · paired TCP only" : string.Empty);
 
     /// <summary>Why this rung is empty, naming the source that would supply it. Empty when it has rows.</summary>
-    public string EmptyReason => view.EmptyReason ?? string.Empty;
+    public string EmptyReason => view.EmptyReason is null ? string.Empty
+        : emptyWorkspace ? "No capture is running. Start exploring to publish a live session."
+        : realOverview && ladder.Current.Level >= DetailLevel.ProcessInstance
+            ? "This viewer has not projected channel, operation or record rows yet. "
+                + "The saved session keeps the evidence; use icat session to inspect it."
+            : view.EmptyReason;
 
     public bool IsEmptyRung => view.EmptyReason is not null;
 
@@ -315,6 +335,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 .Where(edge => edge.SourceId == selectedProcess.Id || edge.TargetId == selectedProcess.Id)
                 .ToArray();
             long observations = edges.Sum(edge => edge.ObservationCount);
+            if (realOverview)
+            {
+                return edges.Length == 0
+                    ? "No admitted paired TCP relationship for this process. Other activity may be present."
+                    : $"{observations:N0} paired TCP observations · bytes unknown";
+            }
             long knownBytes = edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value);
             return $"{observations:N0} observations · {knownBytes / 1_000_000m:N2} MB known";
         }
