@@ -31,6 +31,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -114,6 +115,10 @@ static void PrintHelp()
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");
     ConsoleUi.Line("      Only digest-bound --confirm re-points current; it preserves damaged bytes and orphans.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat staging <directory> [--confirm --expect-set <digest>] [--json]");
+    ConsoleUi.Line("      Previews staged files and cleans only reviewed abandoned files with released owners.");
+    ConsoleUi.Line("      Active writers and unmarked legacy staging are kept for manual review.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
     ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");

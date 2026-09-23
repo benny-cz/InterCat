@@ -418,6 +418,105 @@ public sealed class SessionStoreTests
         Assert.Equal(1, reopened.Current!.Generation);
     }
 
+    [Fact(DisplayName = "I15: staging cleanup defers an active owner and removes it after abandonment")]
+    public void StagingCleanupRequiresReleasedOwner()
+    {
+        using var session = new TemporarySession();
+        StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "unfinished");
+        _ = staged.Complete();
+
+        StagingCleanupReport preview = session.Store.PreviewStagingCleanup();
+        Assert.Contains(staged.StagingName, preview.ActiveFiles);
+        Assert.Empty(preview.AbandonedFiles);
+        Assert.Empty(session.Store.CleanupAbandonedStaging().RemovedFiles);
+        Assert.True(File.Exists(Path.Combine(session.Path, staged.StagingName)));
+
+        staged.Dispose();
+        StagingCleanupReport abandoned = session.Store.PreviewStagingCleanup();
+        Assert.Contains(staged.StagingName, abandoned.AbandonedFiles);
+        StagingCleanupReport removed = session.Store.CleanupAbandonedStaging(abandoned.CandidateDigest);
+        Assert.Contains(staged.StagingName, removed.RemovedFiles);
+        Assert.Contains(staged.OwnershipName, removed.RemovedFiles);
+        Assert.False(File.Exists(Path.Combine(session.Path, staged.StagingName)));
+        Assert.False(File.Exists(Path.Combine(session.Path, staged.OwnershipName)));
+    }
+
+    [Fact(DisplayName = "I15: staging cleanup refuses a preview whose candidate set changed")]
+    public void StagingCleanupBindsTheReviewedSet()
+    {
+        using var session = new TemporarySession();
+        StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "first");
+        _ = staged.Complete();
+        StagingCleanupReport before = session.Store.PreviewStagingCleanup();
+        Assert.Empty(before.AbandonedFiles);
+        staged.Dispose();
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            session.Store.CleanupAbandonedStaging(before.CandidateDigest));
+
+        Assert.Contains("changed after the preview", refusal.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(session.Path, staged.StagingName)));
+        Assert.True(File.Exists(Path.Combine(session.Path, staged.OwnershipName)));
+    }
+
+    [Fact(DisplayName = "I15: published staging clears its ownership marker")]
+    public void PublishedStagingLeavesNoOwnershipMarker()
+    {
+        using var session = new TemporarySession();
+        using StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "first");
+        _ = staged.Complete();
+        _ = session.Store.Commit([staged], CommittedBoundary.None, Committed);
+
+        Assert.False(File.Exists(Path.Combine(session.Path, staged.OwnershipName)));
+        Assert.Empty(session.Store.PreviewStagingCleanup().MarkerOnlyFiles);
+        Assert.Empty(session.Reopen().Recovery.OrphanFiles);
+    }
+
+    [Fact(DisplayName = "I15: staging cleanup leaves unmarked legacy files for manual review")]
+    public void StagingCleanupSkipsUnmarkedLegacyFile()
+    {
+        using var session = new TemporarySession();
+        string staging = $"{SessionStore.StagingPrefix}{Guid.NewGuid():N}{SessionStore.StagingSuffix}";
+        session.WriteRaw(staging, "legacy");
+
+        StagingCleanupReport report = session.Store.CleanupAbandonedStaging();
+
+        Assert.Contains(staging, report.UnmarkedFiles);
+        Assert.Empty(report.RemovedFiles);
+        Assert.True(File.Exists(Path.Combine(session.Path, staging)));
+    }
+
+    [Fact(DisplayName = "I15: marker-only cleanup keeps an interrupted published dependency")]
+    public void MarkerOnlyCleanupKeepsPublishedOrphan()
+    {
+        using var session = new TemporarySession();
+        StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "first");
+        _ = staged.Complete();
+        session.Store.Root.ReplaceOwnedFile(staged.StagingName, staged.PublishedName);
+        staged.Dispose();
+
+        StagingCleanupReport report = session.Store.CleanupAbandonedStaging();
+
+        Assert.Contains(staged.OwnershipName, report.MarkerOnlyFiles);
+        Assert.Contains(staged.OwnershipName, report.RemovedFiles);
+        Assert.True(File.Exists(Path.Combine(session.Path, staged.PublishedName)));
+    }
+
+    [Fact(DisplayName = "I15: disposed staging cannot publish after abandoning its ownership")]
+    public void DisposedStagingCannotPublish()
+    {
+        using var session = new TemporarySession();
+        StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "first");
+        _ = staged.Complete();
+        staged.Dispose();
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            session.Store.Commit([staged], CommittedBoundary.None, Committed));
+
+        Assert.Contains("no longer has an active owner", refusal.Message, StringComparison.Ordinal);
+        Assert.Null(session.Store.Current);
+    }
+
     [Fact(DisplayName = "I15: an orphan is reported on open and removed only when that is asked for")]
     public void AnOrphanIsReportedOnOpenAndRemovedOnlyWhenAsked()
     {

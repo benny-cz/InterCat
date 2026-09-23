@@ -30,6 +30,15 @@ public sealed record PointerRepairOutcome(
     string? RollbackReason,
     string? DamagedPointerBackup);
 
+/// <summary>Staging files proved abandoned by an unlockable ownership marker, and files not safe to clean.</summary>
+public sealed record StagingCleanupReport(
+    IReadOnlyList<string> AbandonedFiles,
+    IReadOnlyList<string> ActiveFiles,
+    IReadOnlyList<string> UnmarkedFiles,
+    IReadOnlyList<string> MarkerOnlyFiles,
+    IReadOnlyList<string> RemovedFiles,
+    string CandidateDigest);
+
 /// <summary>
 /// One file staged for a generation. It is written under a unique staging name, flushed to the device
 /// and measured; publication renames it. Until then it is not part of any generation, and a crash
@@ -38,23 +47,34 @@ public sealed record PointerRepairOutcome(
 /// </summary>
 public sealed class StoreStagingFile : IDisposable
 {
+    private readonly IOwnedDirectory directory;
     private readonly FileStream stream;
+    private readonly FileStream ownership;
     private bool completed;
     private bool disposed;
+    private bool published;
 
     internal StoreStagingFile(
         string stagingName,
+        string ownershipName,
         string publishedName,
         StoreDependencyKind kind,
-        FileStream stream)
+        IOwnedDirectory directory,
+        FileStream stream,
+        FileStream ownership)
     {
         StagingName = stagingName;
+        OwnershipName = ownershipName;
         PublishedName = publishedName;
         Kind = kind;
+        this.directory = directory;
         this.stream = stream;
+        this.ownership = ownership;
     }
 
     public string StagingName { get; }
+
+    public string OwnershipName { get; }
 
     public string PublishedName { get; }
 
@@ -72,6 +92,8 @@ public sealed class StoreStagingFile : IDisposable
     }
 
     internal StoreDependency? Dependency { get; private set; }
+
+    internal bool IsDisposed => disposed;
 
     /// <summary>Flushes to the device and measures what was written. A staged file is published only after this.</summary>
     public StoreDependency Complete()
@@ -104,9 +126,36 @@ public sealed class StoreStagingFile : IDisposable
         }
 
         disposed = true;
-        if (!completed)
+        try
         {
-            stream.Dispose();
+            if (!completed)
+            {
+                stream.Dispose();
+            }
+        }
+        finally
+        {
+            ownership.Dispose();
+        }
+    }
+
+    internal void MarkPublished()
+    {
+        if (published)
+        {
+            return;
+        }
+
+        published = true;
+        ownership.Dispose();
+        try
+        {
+            _ = directory.RemoveOwnedFile(OwnershipName);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Publication already succeeded. An orphaned ownership marker is recoverable cleanup,
+            // not a reason to tell the caller its committed generation failed.
         }
     }
 }
@@ -130,6 +179,8 @@ public sealed class SessionStore
     public const string StagingPrefix = "stg-";
 
     public const string StagingSuffix = ".tmp";
+
+    public const string StagingOwnershipSuffix = ".lease";
 
     /// <summary>How many files one generation may publish at once.</summary>
     public const int MaximumStagedFiles = 4_096;
@@ -275,16 +326,24 @@ public sealed class SessionStore
                 nameof(publishedName));
         }
 
-        string stagingName = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{StagingPrefix}{Guid.NewGuid():N}{StagingSuffix}");
-        FileStream stream = directory.OpenOwnedFile(
-            stagingName,
-            FileMode.CreateNew,
-            FileAccess.ReadWrite,
-            FileShare.None,
-            FileOptions.WriteThrough);
-        return new(stagingName, publishedName, kind, stream);
+        string prefix = string.Create(CultureInfo.InvariantCulture, $"{StagingPrefix}{Guid.NewGuid():N}");
+        string stagingName = prefix + StagingSuffix;
+        string ownershipName = prefix + StagingOwnershipSuffix;
+        FileStream ownership = directory.OpenOwnedFile(
+            ownershipName, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, FileOptions.None);
+        try
+        {
+            FileStream stream = directory.OpenOwnedFile(
+                stagingName, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
+                FileOptions.WriteThrough);
+            return new(stagingName, ownershipName, publishedName, kind, directory, stream, ownership);
+        }
+        catch
+        {
+            ownership.Dispose();
+            _ = directory.RemoveOwnedFile(ownershipName);
+            throw;
+        }
     }
 
     /// <summary>
@@ -405,6 +464,13 @@ public sealed class SessionStore
             var published = new List<StoreDependency>(staged.Count);
             foreach (StoreStagingFile file in staged)
             {
+                if (file.IsDisposed)
+                {
+                    throw new InvalidOperationException(
+                        $"Staged file '{file.PublishedName}' no longer has an active owner. "
+                        + "Disposed staging cannot be published after cleanup may have claimed it.");
+                }
+
                 RequireUnpublishedTarget(file.PublishedName);
                 StoreDependency dependency = file.Dependency
                     ?? throw new InvalidOperationException(
@@ -451,6 +517,11 @@ public sealed class SessionStore
             Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
             current = manifest;
             publicationBaseline = manifest;
+            foreach (StoreStagingFile file in staged)
+            {
+                file.MarkPublished();
+            }
+
             return new(manifest, [.. published.Select(dependency => dependency.Name)], previousGeneration);
         }
     }
@@ -661,6 +732,11 @@ public sealed class SessionStore
                 ?? throw new InvalidOperationException(
                     "The retained journal was not completed, so its contents are not durable and it cannot "
                     + "be published.");
+            if (retainedJournal.IsDisposed)
+            {
+                throw new InvalidOperationException(
+                    "The retained journal no longer has an active staging owner and cannot be published.");
+            }
 
             long nextGeneration = NextAvailableGeneration();
             if (!retainedJournal.PublishedName.Equals(
@@ -674,7 +750,7 @@ public sealed class SessionStore
             RequireUnpublishedTarget(retainedJournal.PublishedName);
             RequireUnpublishedTarget(SessionManifestV1.FileNameFor(nextGeneration));
             directory.ReplaceOwnedFile(retainedJournal.StagingName, retainedJournal.PublishedName);
-            return Publish(
+            RetentionOutcome outcome = Publish(
                 manifest,
                 [.. manifest.Dependencies.Where(dependency => dependency != previous), retained],
                 boundary,
@@ -683,6 +759,8 @@ public sealed class SessionStore
                 [previous],
                 now,
                 nextGeneration);
+            retainedJournal.MarkPublished();
+            return outcome;
         }
     }
 
@@ -723,6 +801,48 @@ public sealed class SessionStore
             }
 
             return removed;
+        }
+    }
+
+    /// <summary>Inspects staging without changing it. A preview is advisory; cleanup repeats every check.</summary>
+    public StagingCleanupReport PreviewStagingCleanup()
+    {
+        lock (gate)
+        {
+            return InspectStaging(remove: false, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// Removes only staging whose ownership marker can be held while deleting. Unmarked legacy files
+    /// and files an active writer still owns remain untouched.
+    /// </summary>
+    public StagingCleanupReport CleanupAbandonedStaging(
+        string? expectedCandidateDigest = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
+            if (expectedCandidateDigest is null)
+            {
+                return InspectStaging(remove: true, cancellationToken);
+            }
+
+            StagingCleanupReport preview = InspectStaging(remove: false, cancellationToken);
+            if (!string.Equals(preview.CandidateDigest, expectedCandidateDigest, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The abandoned staging set changed after the preview. Review it again before confirming "
+                    + "cleanup; newly abandoned files are never added to an older decision.");
+            }
+
+            var reviewed = new HashSet<string>(
+                preview.AbandonedFiles.Concat(preview.MarkerOnlyFiles),
+                StringComparer.OrdinalIgnoreCase);
+            return InspectStaging(remove: true, cancellationToken, reviewed);
         }
     }
 
@@ -868,6 +988,115 @@ public sealed class SessionStore
 
     private bool IsLeased(string name, DateTimeOffset now) =>
         leases.Values.Any(lease => lease.Holds(name, now));
+
+    private StagingCleanupReport InspectStaging(
+        bool remove,
+        CancellationToken cancellationToken,
+        HashSet<string>? reviewed = null)
+    {
+        IReadOnlyList<string> files = List(directory);
+        var names = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
+        var abandoned = new List<string>();
+        var active = new List<string>();
+        var unmarked = new List<string>();
+        var markerOnly = new List<string>();
+        var removed = new List<string>();
+
+        foreach (string name in files.Where(IsManagedStagingFile))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string markerName = name[..^StagingSuffix.Length] + StagingOwnershipSuffix;
+            if (!names.Contains(markerName))
+            {
+                unmarked.Add(name);
+                continue;
+            }
+
+            using FileStream? marker = TryOpenStagingMarker(markerName);
+            if (marker is null)
+            {
+                active.Add(name);
+                continue;
+            }
+
+            abandoned.Add(name);
+            if (remove && (reviewed is null || reviewed.Contains(name)))
+            {
+                if (directory.RemoveOwnedFile(name))
+                {
+                    removed.Add(name);
+                }
+
+                if (directory.RemoveOwnedFile(markerName))
+                {
+                    removed.Add(markerName);
+                }
+            }
+        }
+
+        foreach (string name in files.Where(IsManagedStagingMarker))
+        {
+            string stagedName = name[..^StagingOwnershipSuffix.Length] + StagingSuffix;
+            if (names.Contains(stagedName))
+            {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            using FileStream? marker = TryOpenStagingMarker(name);
+            if (marker is null)
+            {
+                active.Add(name);
+                continue;
+            }
+
+            markerOnly.Add(name);
+            if (remove && (reviewed is null || reviewed.Contains(name)) && directory.RemoveOwnedFile(name))
+            {
+                removed.Add(name);
+            }
+        }
+
+        return new(abandoned, active, unmarked, markerOnly, removed,
+            CandidateDigest(abandoned.Concat(markerOnly)));
+    }
+
+    private static string CandidateDigest(IEnumerable<string> names)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData("InterCat.Store.StagingCleanup.v1\n"u8);
+        foreach (string name in names.Order(StringComparer.OrdinalIgnoreCase))
+        {
+            hash.AppendData(Encoding.ASCII.GetBytes(name.ToLowerInvariant()));
+            hash.AppendData("\n"u8);
+        }
+
+        return "sha256:" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private FileStream? TryOpenStagingMarker(string name)
+    {
+        try
+        {
+            return directory.OpenOwnedFile(
+                name, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, FileOptions.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsManagedStagingFile(string name) => IsManagedStagingName(name, StagingSuffix);
+
+    private static bool IsManagedStagingMarker(string name) => IsManagedStagingName(name, StagingOwnershipSuffix);
+
+    private static bool IsManagedStagingName(string name, string suffix) =>
+        name.StartsWith(StagingPrefix, StringComparison.OrdinalIgnoreCase)
+        && name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+        && name.Length == StagingPrefix.Length + 32 + suffix.Length
+        && Guid.TryParseExact(name.AsSpan(StagingPrefix.Length, 32), "N", out _);
 
     private long NextAvailableGeneration()
     {
@@ -1048,7 +1277,9 @@ public sealed class SessionStore
     private static IEnumerable<string> Orphans(IOwnedDirectory directory, SessionManifestV1? manifest)
     {
         HashSet<string> referenced = Referenced(directory, manifest);
-        return List(directory).Where(name => !IsStaging(name) && !referenced.Contains(name));
+        return List(directory).Where(name => !IsStaging(name)
+            && !IsManagedStagingMarker(name)
+            && !referenced.Contains(name));
     }
 
     /// <summary>

@@ -30,6 +30,7 @@ Names are ASCII letters, digits, `.`, `-` and `_`, at most 64 characters, no lea
 | `session-evidence-lease.lock` | Persistent shared-reader/exclusive-deletion guard. |
 | `recovery-pointer-<32 hex>.json` | Preserved bytes of a damaged current pointer after confirmed repair. |
 | `stg-<32 hex>.tmp` | A file being staged. Unreferenced by construction. |
+| `stg-<same 32 hex>.lease` | The staging owner's OS-held marker; never a published dependency. |
 | anything else | A published dependency, named by the generation that published it. |
 
 ## 3. A manifest
@@ -110,8 +111,21 @@ Opening **reports and keeps** every unreferenced file, including `stg-` files. A
 completed a staged file and not yet committed it, so opening cannot infer that a staging name was
 abandoned. Ordinary orphans are not removed automatically either: one may belong to a generation whose
 publication was interrupted. `RemoveOrphans` removes non-staging orphans only when asked, under the
-publication lock and after a fresh-pointer check. Staging cleanup requires explicit coordination that
-establishes no writer still owns those files; no automatic staging cleanup is implemented.
+publication lock and after a fresh-pointer check. It skips both staging data and ownership markers.
+
+A writer creates `stg-<id>.lease` before the matching `.tmp` and holds it without sharing until the
+staged file is committed or abandoned. Completing the data file closes its content stream but does not
+release ownership. A disposed staged file cannot later publish. After successful pointer publication,
+the owner marker is closed and removed; an interruption can leave it for cleanup.
+
+`icat staging <directory>` previews three distinct states without changing the root: marker-owned files
+whose handle is no longer held (eligible abandoned staging), active locked owners (kept), and unmarked
+legacy staging (kept because abandonment cannot be proved). A marker with no `.tmp` may be left by an
+interruption after a file was renamed to its published name; only that marker is eligible, never the
+published file. The preview returns a digest of eligible names and a copyable confirmation command.
+`--confirm --expect-set <digest>` rechecks under the publication lock and removes only reviewed entries
+whose marker can still be held; a changed candidate set is refused and newly abandoned entries are not
+silently added. Ordinary open, orphan removal and pointer recovery never delete staging.
 
 A session is never opened as another session: a manifest naming a different session ID is refused.
 

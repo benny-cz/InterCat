@@ -315,7 +315,8 @@ internal static class SessionCommand
             {
                 notes.Add(
                     "Staging files are also kept: another process may have completed them and not yet committed. "
-                    + "Do not delete them until every writer of this session has stopped.");
+                    + "Use icat staging to preview ownership and clean only files whose owner has let go. "
+                    + "Unmarked legacy files still need manual review.");
             }
         }
 
@@ -642,6 +643,11 @@ internal static class SessionCommand
             ConsoleUi.Count(document.Recovery.OrphanFiles.Count(name =>
                 name.StartsWith(SessionStore.StagingPrefix, StringComparison.OrdinalIgnoreCase)
                 && name.EndsWith(SessionStore.StagingSuffix, StringComparison.OrdinalIgnoreCase))));
+        ConsoleUi.Field(
+            "Staging owner markers",
+            ConsoleUi.Count(document.Recovery.OrphanFiles.Count(name =>
+                name.StartsWith(SessionStore.StagingPrefix, StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(SessionStore.StagingOwnershipSuffix, StringComparison.OrdinalIgnoreCase))));
         ConsoleUi.Field(
             "Unreferenced files",
             document.Recovery.OrphanFiles.Count == 0
