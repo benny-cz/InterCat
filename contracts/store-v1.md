@@ -78,6 +78,18 @@ declares no boundary is distinct from one that declares zero.
 5. The manifest is written through a staging name and a replacing rename. The existing pointer is copied
    to `previous-generation.json`, and the new pointer is written the same way.
 
+**What re-measuring does (ADR-025).**
+
+- Every dependency is opened and its length checked each time.
+- Its bytes are hashed unless the same store instance already hashed that file, under the same name, length and
+  digest, and the file's last-write time has not moved since. A published file is immutable, so any write sends it
+  back to be hashed.
+- Opening a session creates a fresh instance, which hashes everything once.
+
+Without this rule a commit hashed the whole session twice. On a 120-chunk, 742 MiB recording, a commit took 1.95 s
+and a writer's lease 0.97 s; with it, they take 148 ms and 38 ms. Corruption that leaves a file's length and time
+alone is found by the next fresh instance, and by the checksums a reader meets when it reads.
+
 Publication and retention take an exclusive root-owned `session-publication.lock` file handle. Under that
 lock, a writer re-reads and verifies the on-disk current pointer and manifest against the generation it
 opened; a stale writer, a pointer that needs last-known-good rollback, an existing dependency target or

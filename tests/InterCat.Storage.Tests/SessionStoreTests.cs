@@ -385,6 +385,45 @@ public sealed class SessionStoreTests
         Assert.Contains("computes", reopened.Recovery.RollbackReason!, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a writer re-hashes a dependency whose file was written after it measured it")]
+    public void AWriterReHashesAFileWrittenSinceItMeasuredIt()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+
+        // This writer hashed both files when it published them. A write since - the same length, so only the digest
+        // can tell - moves the file's last-write time, and that is what sends it back to be hashed.
+        string path = Path.Combine(session.Path, "segment-0002.icats");
+        DateTime measured = File.GetLastWriteTimeUtc(path);
+        session.WriteRaw("segment-0002.icats", "SECOND");
+        File.SetLastWriteTimeUtc(path, measured.AddSeconds(1));
+
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
+            Publish(session.Store, ("segment-0003.icats", "third")));
+        Assert.Contains("failed verification", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(2, session.ManifestOf(2).Generation);
+        Assert.False(File.Exists(Path.Combine(session.Path, SessionManifestV1.FileNameFor(3))));
+    }
+
+    [Fact(DisplayName = "I15: a fresh reader hashes every dependency, so a change that kept a file's length and time is found")]
+    public void AFreshReaderHashesEveryDependency()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        string path = Path.Combine(session.Path, "segment-0002.icats");
+        DateTime measured = File.GetLastWriteTimeUtc(path);
+        session.WriteRaw("segment-0002.icats", "SECOND");
+        File.SetLastWriteTimeUtc(path, measured);
+
+        // Nothing this reader holds says the file was measured, so its bytes are hashed and the change is found.
+        SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.True(reader.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(1, reader.Current!.Generation);
+        Assert.Contains("computes", reader.Recovery.RollbackReason!, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I15: a manifest whose contents no longer match its digest is refused")]
     public void AManifestThatDoesNotMatchItsDigestIsRefused()
     {

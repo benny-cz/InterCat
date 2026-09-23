@@ -1,12 +1,36 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 61
+Plan revision: 62
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: releasing a live recording's oldest chunks
+## Latest slice: hashing each dependency once
+
+A long live recording could not keep up with its own publications (ADR-025). `store-v1` re-measures every dependency
+before a generation names it and whenever a reader acquires one, and re-measuring hashed every byte each time. A
+recording carries every earlier chunk, so each publication hashed the whole session, twice: once to check that the
+current generation had not changed under the writer, and once for the new manifest.
+
+Measured with a benchmark that publishes 120 chunks of 20,000 records through the public store API:
+
+| At | Session | Commit before | Commit after | Writer's lease before | after | Fresh reader's open |
+|---:|---:|---:|---:|---:|---:|---:|
+| chunk 1 | 6.2 MiB | 158 ms | 154 ms | 24 ms | 17 ms | 8 ms |
+| chunk 30 | 185.6 MiB | 556 ms | 100 ms | 267 ms | 12 ms | 248-263 ms |
+| chunk 120 | 742.2 MiB | 1,951 ms | 148 ms | 972 ms | 38 ms | 942-977 ms |
+
+- Every dependency is still opened and its length checked.
+- Its bytes are hashed unless the same instance already hashed that file and its last-write time has not moved.
+  Any write to an immutable file moves that time.
+- A fresh instance hashes everything once. A CLI command therefore now hashes a session once instead of twice, when
+  it opens the session and again when it takes its lease.
+- Two store tests pin the rule:
+  - a writer re-hashes a file written since it measured it, and refuses to publish on top of it;
+  - a fresh reader finds a change that kept the file's length and time.
+
+## Previous slice: releasing a live recording's oldest chunks
 
 `icat retain` now works on a live recording (ADR-024). A long recording could not shed its oldest evidence, because
 journal-prefix retention read one journal and refused a chunk sequence.
@@ -736,8 +760,8 @@ Results verified on 2026-09-23 (capture cost re-measured on 2026-09-23; the 2026
 - revision 51 focused validation: 15 Application tests (including three published-session overview regressions), 12 headless UI tests and 5 Architecture tests pass in Debug; `InterCat.Application` builds with zero warnings. The full solution remains blocked by concurrent coverage-ledger interface work, so these are not a full-suite result;
 - revision 50 focused validation: 12 Application, 13 Desktop, 12 headless UI and 5 Architecture tests pass in Debug. The full solution build remains blocked by the concurrent coverage-ledger interface change described below; no full-suite claim is made for this revision;
 - revision 49 focused validation: all 82 Analysis tests and all 5 Architecture tests pass in Debug; the CLI builds with 0 warnings. The full solution build is temporarily blocked by concurrent, uncommitted coverage-ledger work changing `IAdmittedEventSink` before `InterCat.CaptureComparison` implements its new members. The revision 48 full-suite result below is the last complete baseline, not a claimed result for this worktree;
-- build: revision 61 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
-- tests: revision 61 passed 673 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 28 Capture.Journal, 139 Storage, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
+- build: revision 62 passed in Debug and Release with 0 warnings and 0 errors across 26 projects;
+- tests: revision 62 passed 675 in both Debug and Release, 0 failed (96 Analysis, 59 Capture.Windows, 28 Capture.Journal, 141 Storage, and every other project as before); FX-UDP-001's evidence is registered in `fixtures/index.json` beside FX-TCP-001's, and both re-evaluate to their tiers in the suite;
 - FX-UDP-001 UDP datagrams, measured: `fixtures/FX-UDP-001/evidence/verification.json`, fixture-scoped. 71 truth records and 64 observations of the workload's two processes and four loopback flows; nothing else on the machine was written (P16). One builder test keeps a UDP receive's delivered endpoints while reading it as its owner's flow, with a TCP receive owner-first on the same values. One evaluator test names a mirrored-only match as an orientation gap;
 - IC-015 between filters: 3 tests. Between the client-server fixture's two processes, 6 records passed either way, with the evidence listed by reading. Two records were disclosed: the client's send to an endpoint nothing held and its record with no endpoint pair. The third process's send was not disclosed, because its maker is in neither set. `BytesSent` was 100 B from the client to the server and 40 B back. The 100 B measured at the receiver was the same, and the one-way record count was the send and its receive. Adding the unconnected third process to a set changed nothing. No record passed between that process and the server, and its one unresolved send was disclosed. The client and server pair had 1 channel with no unknown. An absent instance was `ProcessInstanceNotFound`. A focus, a peer, an empty set, an empty id, an undefined direction, a peer grouping and an ungrouped peer count beside it were refused. A set may overlap the other, and a grouped peer count was accepted. With start keys published, the ids a process list derives found 6 records between the pair and 7 for the server's participant filter, and ranked the client's channels. The unfocused channel count's identity named both rules and no policy. Restoring the old loading rule failed that test;
 - IC-015 channel counts: 3 tests. The client-server fixture counted 3 channels. The connection was one at both its ends, and two sends to unheld endpoints were one-sided channels, over 8 records. The record with no endpoint pair was the one unknown, making the count "at least 3". The client had 2 channels and the server 1. Ranked by process, the rows overlapped and did not partition a total of 3, and a mechanism grouping was refused. A reused port with both connections witnessed counted 2 channels with no unknown. Two witnessed client connections against a server end with no lifecycle counted at least 2, with the server's 2 records as the undecided unknown part. A lone record with no endpoint pair was `NothingMeasured`, never zero;
@@ -788,6 +812,9 @@ Curated evidence is `fixtures/FX-TCP-001/evidence/` (truth log, scoped observati
 
 ## Known limitations and cautions
 
+- A reader following a recording should keep one `SessionStore` and acquire leases from it. Opening afresh hashes the
+  whole session each time: 0.94 s at 742 MiB (ADR-025). One open per dependency per commit still grows with a
+  recording, which §20.1's compaction targets bound.
 - A session cannot be re-derived after a journal-prefix release. The release keeps the released records' rows, and a
   replacement can carry none of them yet, so `icat rederive` refuses rather than dropping them (ADR-024). A
   retention published while `icat record` is still running makes the recorder's next commit fail. Retain from a

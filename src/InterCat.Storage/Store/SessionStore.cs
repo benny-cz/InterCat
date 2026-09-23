@@ -5,6 +5,40 @@ using System.Text.Json;
 
 namespace InterCat.Storage;
 
+/// <summary>
+/// The dependencies one store instance has read back and hashed. A published file is immutable, so a dependency this
+/// instance already measured - the same name, length and digest, unchanged in last-write time since - is not hashed
+/// again. Any other file, or one another instance published, is. A fresh instance hashes everything once, which is
+/// where corruption that leaves a file's length and time alone is found (store-v1 §3).
+/// </summary>
+internal sealed class DependencyMeasurements
+{
+    private readonly Lock gate = new();
+    private readonly Dictionary<string, (long Length, string Digest, long LastWriteTicks)> measured =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether this dependency's bytes were hashed here and its file has not been written since.</summary>
+    public bool Holds(StoreDependency dependency, long lastWriteTicks)
+    {
+        lock (gate)
+        {
+            return measured.TryGetValue(dependency.Name, out (long Length, string Digest, long LastWriteTicks) known)
+                && known.Length == dependency.LengthBytes
+                && known.LastWriteTicks == lastWriteTicks
+                && string.Equals(known.Digest, dependency.Digest, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>Records a dependency whose bytes were just hashed and matched.</summary>
+    public void Record(StoreDependency dependency, long lastWriteTicks)
+    {
+        lock (gate)
+        {
+            measured[dependency.Name] = (dependency.LengthBytes, dependency.Digest, lastWriteTicks);
+        }
+    }
+}
+
 /// <summary>What opening a session found. The legacy removed-staging field stays empty: open is read-only.</summary>
 public sealed record StoreRecoveryReport(
     long Generation,
@@ -188,6 +222,9 @@ public sealed class SessionStore
     private readonly IOwnedDirectory directory;
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, EvidenceLease> leases = [];
+
+    /// <summary>What this instance has read back and hashed, so an unchanged immutable file is hashed once.</summary>
+    private readonly DependencyMeasurements measurements;
     private SessionManifestV1? current;
     private SessionManifestV1? publicationBaseline;
 
@@ -196,7 +233,8 @@ public sealed class SessionStore
         Guid sessionId,
         string sourceIdentity,
         SessionManifestV1? current,
-        StoreRecoveryReport recovery)
+        StoreRecoveryReport recovery,
+        DependencyMeasurements measurements)
     {
         this.directory = directory;
         SessionId = sessionId;
@@ -204,6 +242,7 @@ public sealed class SessionStore
         this.current = current;
         publicationBaseline = current;
         Recovery = recovery;
+        this.measurements = measurements;
     }
 
     public Guid SessionId { get; }
@@ -236,7 +275,8 @@ public sealed class SessionStore
             throw new ArgumentException("A session store needs the session it belongs to.", nameof(sessionId));
         }
 
-        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory);
+        var measurements = new DependencyMeasurements();
+        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory, measurements);
         if (manifest is not null && manifest.SessionId != sessionId)
         {
             throw new InvalidDataException(
@@ -251,7 +291,8 @@ public sealed class SessionStore
             sessionId,
             sourceIdentity,
             manifest,
-            new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes));
+            new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes),
+            measurements);
     }
 
     /// <summary>
@@ -280,7 +321,8 @@ public sealed class SessionStore
     public static SessionStore OpenExisting(IOwnedDirectory directory)
     {
         ArgumentNullException.ThrowIfNull(directory);
-        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory);
+        var measurements = new DependencyMeasurements();
+        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory, measurements);
         (IReadOnlyList<string> removed, IReadOnlyList<string> orphans, long orphanBytes) =
             Sweep(directory, manifest);
         return new(
@@ -288,7 +330,8 @@ public sealed class SessionStore
             manifest?.SessionId ?? Guid.Empty,
             manifest?.SourceIdentity ?? string.Empty,
             manifest,
-            new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes));
+            new(manifest?.Generation ?? 0, rolledBack, reason, removed, orphans, orphanBytes),
+            measurements);
     }
 
     /// <summary>Opens a file for a generation that has not been published yet.</summary>
@@ -507,7 +550,7 @@ public sealed class SessionStore
 
             // The manifest may reference only durable dependencies, so every one of them is read back
             // and measured before it is named. A rename is not a power-failure guarantee (§20.1).
-            string? unverifiable = VerifyDependencies(directory, manifest);
+            string? unverifiable = VerifyDependencies(directory, manifest, measurements);
             if (unverifiable is not null)
             {
                 throw new IOException(
@@ -553,7 +596,7 @@ public sealed class SessionStore
             FileStream hold = AcquireEvidenceReadHold();
             try
             {
-                (SessionManifestV1? disk, _, _) = Acquire(directory);
+                (SessionManifestV1? disk, _, _) = Acquire(directory, measurements);
                 SessionManifestV1 manifest = disk
                     ?? throw new InvalidOperationException(
                         "This session has published no generation, so there is nothing to acquire. An empty "
@@ -964,7 +1007,7 @@ public sealed class SessionStore
         lock (gate)
         {
             using FileStream publicationLock = AcquirePublicationLock();
-            (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory);
+            (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory, measurements);
             if (manifest is null || manifest.SessionId != SessionId)
             {
                 throw new InvalidDataException("Pointer repair needs a verified generation of this session.");
@@ -1007,7 +1050,7 @@ public sealed class SessionStore
 
             cancellationToken.ThrowIfCancellationRequested();
             Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
-            string? verificationProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? repaired);
+            string? verificationProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? repaired, measurements);
             if (verificationProblem is not null || repaired?.Digest != manifest.Digest)
             {
                 throw new IOException(
@@ -1047,7 +1090,7 @@ public sealed class SessionStore
             boundary,
             dependencies,
             record);
-        string? unverifiable = VerifyDependencies(directory, manifest);
+        string? unverifiable = VerifyDependencies(directory, manifest, measurements);
         if (unverifiable is not null)
         {
             throw new IOException($"Generation {manifest.Generation} was not published: {unverifiable}");
@@ -1243,15 +1286,17 @@ public sealed class SessionStore
         }
     }
 
-    private static (SessionManifestV1? Manifest, bool RolledBack, string? Reason) Acquire(IOwnedDirectory directory)
+    private static (SessionManifestV1? Manifest, bool RolledBack, string? Reason) Acquire(
+        IOwnedDirectory directory,
+        DependencyMeasurements? measurements)
     {
-        string? currentProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? manifest);
+        string? currentProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements);
         if (currentProblem is null)
         {
             return (manifest, false, null);
         }
 
-        string? previousProblem = TryAcquire(directory, SessionPointerV1.PreviousFileName, out manifest);
+        string? previousProblem = TryAcquire(directory, SessionPointerV1.PreviousFileName, out manifest, measurements);
         if (previousProblem is null && manifest is not null)
         {
             return (manifest, true, currentProblem);
@@ -1269,7 +1314,8 @@ public sealed class SessionStore
     private static string? TryAcquire(
         IOwnedDirectory directory,
         string pointerName,
-        out SessionManifestV1? manifest)
+        out SessionManifestV1? manifest,
+        DependencyMeasurements? measurements)
     {
         manifest = null;
         SessionPointerV1? pointer = Read<SessionPointerV1>(directory, pointerName);
@@ -1309,7 +1355,7 @@ public sealed class SessionStore
                 + $"generation {candidate.Generation}";
         }
 
-        problem = VerifyDependencies(directory, candidate);
+        problem = VerifyDependencies(directory, candidate, measurements);
         if (problem is not null)
         {
             return problem;
@@ -1319,7 +1365,16 @@ public sealed class SessionStore
         return null;
     }
 
-    private static string? VerifyDependencies(IOwnedDirectory directory, SessionManifestV1 manifest)
+    /// <summary>
+    /// Re-measures every dependency a generation names: each file is opened and its length checked, and its bytes are
+    /// hashed unless these measurements already hashed the same immutable file, unchanged in length and last-write
+    /// time since. Without that, every commit and every lease would hash the whole session, and a long live recording
+    /// would spend more time hashing than recording (store-v1 §3).
+    /// </summary>
+    private static string? VerifyDependencies(
+        IOwnedDirectory directory,
+        SessionManifestV1 manifest,
+        DependencyMeasurements? measurements)
     {
         foreach (StoreDependency dependency in manifest.Dependencies)
         {
@@ -1337,12 +1392,20 @@ public sealed class SessionStore
                         + $"{manifest.Generation} recorded {dependency.LengthBytes}";
                 }
 
+                long lastWrite = File.GetLastWriteTimeUtc(stream.SafeFileHandle).Ticks;
+                if (measurements?.Holds(dependency, lastWrite) == true)
+                {
+                    continue;
+                }
+
                 string digest = string.Concat("sha256:", Convert.ToHexStringLower(SHA256.HashData(stream)));
                 if (!string.Equals(digest, dependency.Digest, StringComparison.Ordinal))
                 {
                     return $"dependency '{dependency.Name}' computes {digest} where generation "
                         + $"{manifest.Generation} recorded {dependency.Digest}";
                 }
+
+                measurements?.Record(dependency, lastWrite);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
@@ -1533,7 +1596,7 @@ public sealed class SessionStore
 
     private void RequireFreshCurrent()
     {
-        (SessionManifestV1? disk, bool rolledBack, _) = Acquire(directory);
+        (SessionManifestV1? disk, bool rolledBack, _) = Acquire(directory, measurements);
         if (rolledBack)
         {
             throw new InvalidOperationException(
