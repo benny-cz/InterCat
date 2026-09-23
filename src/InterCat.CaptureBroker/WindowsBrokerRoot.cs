@@ -648,10 +648,11 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
 
         if (created)
         {
+            // What was created is not what was asked for: either something changed it before validation, or the
+            // system assigned part of the descriptor (an owner the policy did not name comes from the token default).
             return (
                 observed,
-                $"{problem} The broker applied '{sddl}' when it created the directory, so the result was "
-                + "changed between creation and validation.",
+                $"{problem} The broker created the directory with '{sddl}' and read back '{observed}'.",
                 false);
         }
 

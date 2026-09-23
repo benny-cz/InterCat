@@ -367,6 +367,14 @@ public sealed record BrokerRootSecurityPolicy
 
     public required IReadOnlyList<string> TrustedOwnerSids { get; init; }
 
+    /// <summary>
+    /// The owner written into the descriptor a new root or capture directory is created with, or null for the
+    /// creating token's default owner. Production names Administrators: an elevated administrator's default owner is
+    /// the user themself under Windows' default "object creator" setting, so relying on the token default made the
+    /// broker refuse the root it had just created (found by the first elevated qualification run).
+    /// </summary>
+    public string? CreationOwnerSid { get; init; }
+
     public required int MandatoryIntegrityLevel { get; init; }
 
     /// <summary>Production requires the broker's own token to be elevated before it provisions a root.</summary>
@@ -383,6 +391,7 @@ public sealed record BrokerRootSecurityPolicy
     {
         BrokerPrincipalSids = [LocalSystemSid, AdministratorsSid],
         TrustedOwnerSids = [LocalSystemSid, AdministratorsSid],
+        CreationOwnerSid = AdministratorsSid,
         MandatoryIntegrityLevel = BrokerIntegrityLevel.High,
         RequireElevatedBroker = true,
         RequireTrustedParentOwner = true,
@@ -408,6 +417,11 @@ public sealed record BrokerRootSecurityPolicy
             }
         }
 
+        if (CreationOwnerSid is not null && !IsTrustedOwner(CreationOwnerSid))
+        {
+            return $"The creation owner {CreationOwnerSid} must be one of the policy's trusted owners.";
+        }
+
         return BrokerPrincipalSids.Distinct(StringComparer.OrdinalIgnoreCase).Count() != BrokerPrincipalSids.Count
             ? "A broker root policy names each broker principal once."
             : null;
@@ -426,7 +440,8 @@ public sealed record BrokerRootSecurityPolicy
         IEnumerable<string> aces = ExpectedDiscretionaryAces(capturingUserSid)
             .Select(ace => $"(A;OICI;0x{ace.Mask:x};;;{ace.Sid})");
         string label = BrokerIntegrityLevel.ToSid(MandatoryIntegrityLevel);
-        return $"D:P{string.Concat(aces)}S:(ML;OICI;0x{NoWriteUpMask:x};;;{label})";
+        string owner = CreationOwnerSid is null ? string.Empty : $"O:{CreationOwnerSid.ToUpperInvariant()}";
+        return $"{owner}D:P{string.Concat(aces)}S:(ML;OICI;0x{NoWriteUpMask:x};;;{label})";
     }
 
     /// <summary>

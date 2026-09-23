@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/InterCat.Domain/InterCat.Domain.csproj" />
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <ProjectReference Include="../../src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />
+  </ItemGroup>
+</Project>

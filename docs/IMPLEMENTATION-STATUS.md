@@ -1,12 +1,44 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 80
+Plan revision: 81
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: composed broker host behind an explicit opt-in
+## Latest slice: elevated real-ETW broker qualification
+
+`tools/InterCat.BrokerQualification run --output <dir>` launches the production broker composition as a separate
+process (real `TraceEventSessionHost`, TDH plan source, file ownership log, evidence runtime and authenticated pipe).
+The only declared deviation is that the root's parent is a qualification directory. The tool connects the way a
+client must, through the new `WindowsBrokerPipeClient`, which refuses a pipe served by any process other than the
+broker it launched before sending a byte. It then runs two scenarios with loopback TCP traffic under the explore
+profile and live publication.
+
+- Clean stop: prepare 248 ms, start 257 ms, stop 962 ms; fully finalized; 2,022 records in 3 journal chunks
+  (2 s cadence); broker idle-exit code 0.
+- Killed broker: one orphaned `InterCat-b-*` session after `Kill`. The successor listened 303 ms after launch with
+  the orphan already gone (`RestartedActiveCaptureStopRequested`). Status reports providers stopped, callback drain
+  and journal finality unproven, with the reason. The 595 published records replay, and the exit code is 1 (partial).
+- No InterCat session leaked. Evidence: `bench/results/broker-qualification-20260923T202851Z/report.json`.
+
+The first run failed and found a production defect. An elevated administrator's objects are owned by the user under
+Windows' default "object creator" setting, so the broker refused the root it had just created as untrusted; the
+unelevated fixtures trust the current user and so could not see it. `BrokerRootSecurityPolicy.CreationOwnerSid` now
+writes an explicit Administrators owner into the root and capture-directory descriptors. The refusal message now shows
+the descriptor that was applied and the one read back, instead of claiming that something changed the directory.
+
+New tests cover the client refusing a squatter's pipe (the squatter reads nothing) and a creation owner outside the
+trusted owners. The end-to-end host test now uses the production client. All 757 tests pass in Debug and Release.
+
+Found by the run and next in order (plan revision 81): an interrupted capture leaves `stg-*.tmp`/`.lease` behind and
+stays `Stopping` forever, retried by every later broker start without any possible progress. Recovery must close it
+terminally as interrupted: keep and verify the published prefix, salvage a readable tail prefix, release the staging
+files, and report what was kept. After that: measure capture impact at the compiled live cadence, then remove the
+opt-in and build the client launch (ShellExecute `runas` with a retained handle) and the UI's start and permission
+states.
+
+## Previous slice: composed broker host behind an explicit opt-in
 
 The broker executable is now composed. `BrokerProcess` provisions the protected root, opens the file-backed ownership
 log, builds the evidence runtime and coordinators, and runs `BrokerHost`. The host runs recovery to completion before

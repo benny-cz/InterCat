@@ -14,6 +14,7 @@
     <Project Path="src/InterCat.TestWorkloads/InterCat.TestWorkloads.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/InterCat.BrokerQualification/InterCat.BrokerQualification.csproj" />
     <Project Path="tools/InterCat.CaptureComparison/InterCat.CaptureComparison.csproj" />
     <Project Path="tools/InterCat.JournalProbe/InterCat.JournalProbe.csproj" />
     <Project Path="tools/InterCat.ThemeReport/InterCat.ThemeReport.csproj" />

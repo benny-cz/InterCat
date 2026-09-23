@@ -78,3 +78,17 @@ the machine, so they are gitignored and stay local (P16). The single-point runs 
 truth logs, because they are the independent expected result those runs are scored against; a series'
 per-level truth logs are gitignored instead, because its high levels reach tens of megabytes and every
 one of them is reproducible from the recorded seed and level.
+
+## Broker qualification
+
+Elevated only. Launches the production broker composition as a child process with real ETW over a
+qualification root beneath `--output`, drives it through `WindowsBrokerPipeClient`, and runs a clean stop and
+a killed-broker restart. It stops every session it started and fails if any `InterCat-b-*` session leaks.
+
+```powershell
+dotnet run --project tools/InterCat.BrokerQualification/InterCat.BrokerQualification.csproj -c Release -- `
+  run --output <new scratch directory>
+```
+
+Only `report.json` is committed, as `bench/results/broker-qualification-<started UTC>/report.json`; the
+qualification root holds machine-wide journals and stays local (P16).

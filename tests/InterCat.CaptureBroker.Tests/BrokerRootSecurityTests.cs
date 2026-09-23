@@ -15,7 +15,8 @@ public sealed class BrokerRootSecurityTests
         BrokerSecurityDescriptorFacts facts = BrokerSecurityDescriptorFacts.Parse(sddl);
         BrokerSecurityAce viewer = Assert.Single(facts.DiscretionaryAces, ace => ace.Sid == UserSid);
 
-        Assert.StartsWith("D:P", sddl, StringComparison.Ordinal);
+        Assert.StartsWith("O:S-1-5-32-544D:P", sddl, StringComparison.Ordinal);
+        Assert.Equal(BrokerRootSecurityPolicy.AdministratorsSid, facts.OwnerSid);
         Assert.True(facts.DiscretionaryAclProtected);
         Assert.Equal(3, facts.DiscretionaryAces.Count);
         Assert.Equal(BrokerRootSecurityPolicy.ViewerReadMask, viewer.Mask);
@@ -140,6 +141,15 @@ public sealed class BrokerRootSecurityTests
         var policy = BrokerRootSecurityPolicy.Production with { BrokerPrincipalSids = ["SY"] };
 
         Assert.Contains("not a SID literal", policy.Validate(), StringComparison.OrdinalIgnoreCase);
+        Assert.Throws<InvalidOperationException>(() => policy.BuildSecurityDescriptorSddl(UserSid));
+    }
+
+    [Fact(DisplayName = "R16: a creation owner outside the trusted owners is refused before a root is created")]
+    public void PolicyCreatingWithAnUntrustedOwnerIsRefused()
+    {
+        var policy = BrokerRootSecurityPolicy.Production with { CreationOwnerSid = UserSid };
+
+        Assert.Contains("trusted owners", policy.Validate(), StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => policy.BuildSecurityDescriptorSddl(UserSid));
     }
 

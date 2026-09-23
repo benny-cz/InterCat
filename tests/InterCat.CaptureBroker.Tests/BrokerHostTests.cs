@@ -100,9 +100,18 @@ public sealed class BrokerHostTests
         }
 
         // The same pipe instance serves the next client: the name is never released between connections.
-        await using (PipeClient second = await PipeClient.ConnectAsync(pipeName))
+        // The production client, which also checks that the pipe is served by the broker process (here: this one).
+        await using (WindowsBrokerPipeClient second = await WindowsBrokerPipeClient.ConnectAsync(
+            pipeName,
+            Environment.ProcessId,
+            TimeSpan.FromSeconds(10)))
         {
-            await second.HelloAsync();
+            Assert.IsType<BrokerHelloResponse>(await second.SendAsync(new BrokerHelloRequest(
+                Guid.NewGuid(),
+                1,
+                1,
+                BrokerHelloNegotiator.SupportedFeatures,
+                BrokerProtocolFeature.PreparedPlanDigest)));
             var status = Assert.IsType<BrokerCaptureStatusResponse>(await second.SendAsync(new BrokerGetStatusRequest(leftRecording)));
             Assert.Equal(CaptureLifecycle.Recording, status.State);
         }
@@ -262,6 +271,29 @@ public sealed class BrokerHostTests
         {
             Assert.Equal(2, events.Count(entry => entry.Kind == BrokerHostEventKind.ClientRefused));
         }
+    }
+
+    [Fact(DisplayName = "R16: a client refuses a pipe served by any process but the broker it launched")]
+    public async Task ClientRefusesAPipeServedByAnotherProcessBeforeSendingAnything()
+    {
+        string pipeName = $"InterCat.Broker.v1.{Guid.NewGuid():N}";
+        await using var squatter = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous);
+        Task accepted = squatter.WaitForConnectionAsync();
+        int launchedBroker = Environment.ProcessId == int.MaxValue ? 1 : Environment.ProcessId + 1;
+
+        BrokerServerIdentityException refused = await Assert.ThrowsAsync<BrokerServerIdentityException>(() =>
+            WindowsBrokerPipeClient.ConnectAsync(pipeName, launchedBroker, TimeSpan.FromSeconds(10)));
+        await accepted;
+
+        Assert.Contains($"process {Environment.ProcessId}", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("nothing was sent", refused.Message, StringComparison.Ordinal);
+        byte[] buffer = new byte[1];
+        Assert.Equal(0, await squatter.ReadAsync(buffer).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     private static BrokerHostSettings Settings(BrokerOwnerIdentity owner, TimeSpan idle) => new()

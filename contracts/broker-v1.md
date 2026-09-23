@@ -273,8 +273,10 @@ policy. Disconnect alone is neither successful stop nor authorization to take ow
 The broker writes only beneath one validated root. `WindowsBrokerRoot.Provision` creates it with
 `CreateDirectoryW` and a security descriptor supplied at creation, so no permissive directory exists at
 any instant. The production descriptor is
-`D:P(A;OICI;0x1f01ff;;;S-1-5-18)(A;OICI;0x1f01ff;;;S-1-5-32-544)(A;OICI;0x1200a9;;;<capturing user>)S:(ML;OICI;0x1;;;S-1-16-12288)`:
-full control for Local System and Administrators, `FILE_GENERIC_READ | FILE_TRAVERSE` for the capturing
+`O:S-1-5-32-544D:P(A;OICI;0x1f01ff;;;S-1-5-18)(A;OICI;0x1f01ff;;;S-1-5-32-544)(A;OICI;0x1200a9;;;<capturing user>)S:(ML;OICI;0x1;;;S-1-16-12288)`:
+an explicit Administrators owner (an elevated administrator's default owner is the user under Windows'
+default "object creator" setting, which the broker would then refuse as untrusted), full control for
+Local System and Administrators, `FILE_GENERIC_READ | FILE_TRAVERSE` for the capturing
 user, and a high-integrity `no-write-up` mandatory label. A capturing user who is already a broker
 principal keeps that single full-control entry; the label, not a second weaker ACE, is what refuses
 their ordinary-integrity writes.
@@ -341,7 +343,7 @@ stops every active capture with a durable `HostShutdownStop` request (kind 6) be
 | 3 | Not `serve`, not opted in, root refused (not elevated, untrusted owner) or pipe name already taken |
 | 4 | Ownership log unreadable; left untouched |
 
-**Client obligation (not yet implemented):** first-instance creation protects the broker from joining a
+**Client obligation** (`WindowsBrokerPipeClient`): first-instance creation protects the broker from joining a
 squatter's pipe, not the client from connecting to one, and an elevated process's command line is
 readable at ordinary integrity. The client launches the broker keeping its process handle and, after
 connecting, requires `GetNamedPipeServerProcessId` to equal that process before sending Hello.
@@ -359,8 +361,10 @@ foreign session stop requests, arbitrary paths and provider/body settings not pr
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
 There is no retention rule yet for ownership and request records that outlive their usefulness inside
-the store's count bounds. The composed executable is exercised end to end over a real pipe, protected root,
-file-backed ownership log and evidence runtime, but with a scripted ETW host; it has not yet run real ETW
-through an elevated crash/restart. Until it has, and until capture impact is measured at the compiled live
-cadence, serving requires `--enable-unqualified-live-capture` and no shipped client passes it. The client
-side of server authentication (section 5.5) is not implemented, because no client launches the broker yet.
+the store's count bounds. The composed executable is exercised in fixtures over a real pipe, protected root,
+file-backed ownership log and evidence runtime with a scripted ETW host. It has also been qualified once
+with real ETW, elevated (`tools/InterCat.BrokerQualification`, `bench/results/broker-qualification-*`):
+a clean stop finalizes live chunks, and a killed broker's orphaned session is reclaimed by its successor
+before the pipe exists. Capture impact at the compiled live cadence is not yet measured, and an
+interrupted capture is not yet closed terminally or cleaned of its staging files. Until both are done,
+serving requires `--enable-unqualified-live-capture` and no shipped client passes it.
