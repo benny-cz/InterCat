@@ -662,7 +662,8 @@
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
-        "P6: reusable values never resolve an instance without lifecycle evidence"
+        "P6: reusable values never resolve an instance without lifecycle evidence",
+        "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
       ],
       "P7": [
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
@@ -818,6 +819,7 @@
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
+        "R22: a port reused by a later connection is another connection, paired with its own other end",
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",

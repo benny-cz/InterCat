@@ -1,13 +1,14 @@
 # InterCat relations v1
 
-Status: **implemented** as `tcp-endpoint-relation-v1`, for TCP over IPv4. Every other mechanism is outside every
-relation rule at this version and says so (§8).
+Status: **implemented** as `tcp-endpoint-relation-v2`, for TCP over IPv4. `tcp-endpoint-relation-v1` scoped each end
+to the whole capture; v2 divides an end into the connection incarnations its lifecycle records witness (§3, ADR-016).
+Every other mechanism is outside every relation rule at this version and says so (§9).
 
 This contract fixes how the other end of a record is found: §7.4's network correlator, with the join key, lifecycle
 scope, cardinality and ambiguity policy §7.4 requires every correlator to state before it is implemented. It owns no
 bytes: a derivation is computed from the `observation-v1` segments a generation names and from the process instances
 `contracts/entities-v1.md` derives over them, and it changes neither (R1, R20). How a filter or a grouping uses it is
-`contracts/metrics-v1.md` §5 and §6. ADR-014 records the decisions.
+`contracts/metrics-v1.md` §5 and §6. ADR-014 and ADR-016 record the decisions.
 
 ## 1. Scope
 
@@ -33,26 +34,48 @@ missing or zero address or port names no end. The **other end** of an end is its
 connection. Whether an address is a loopback address is not used: a mirrored end observed with a local holder is a
 local connection whatever its address.
 
-## 3. Holders
+## 3. Incarnations and holders
 
-Each end has a **holder** when every record of it that binds to a process instance, at any strength, binds to the
-same instance, and every record of it that names a PID names that instance's PID. An end whose records bind to two
-instances, or name two PIDs, is **ambiguous**; one whose records bind to no instance is **unbound**. A record whose
-PID binds to nothing still names its PID, so a second process at the same end is noticed even when it cannot be
-bound.
+A 4-tuple carries one connection at a time, and a port reused by a later connection is another connection. So an
+end's records, in canonical order - native reading, raw locator, fact key - are divided into **incarnations** by the
+lifecycle records the capture holds for that end: a `Connect` or an `Accept` begins one with itself, and a
+`Disconnect` is the last record of the one it closes. Records before the first boundary, after the last, or between
+a disconnect and the next open belong to the incarnation their position implies. An incarnation's **lifetime** runs
+from the open that began it, or from the preceding boundary, to the disconnect that closed it, or to the next boundary;
+with no boundary on a side it is unbounded on that side. An incarnation with no records - the gap between a disconnect
+and the next open - takes no part in anything below.
 
-The scope of an end is the whole capture: an end reused by a second instance - a port reused after the first
-connection closed, a socket handle shared by two processes - is ambiguous for all of its records, never split by
-time (§6).
+Each incarnation has a **holder** when every record of it that binds to a process instance, at any strength, binds to
+the same instance, and every record of it that names a PID names that instance's PID. One whose records bind to two
+instances, or name two PIDs, is **ambiguous**; one whose records bind to no instance is **unbound**. A record whose PID
+binds to nothing still names its PID, so a second process at the same end is noticed even when it cannot be bound.
+
+An end whose lifecycle the capture did not witness is one incarnation, as under v1. A reused port whose connects and
+disconnects were lost therefore stays ambiguous rather than being split at a guessed moment (§6).
+
+## 3a. Pairing incarnations
+
+The incarnations of an end pair with those of its mirror:
+
+1. When both ends have the same number of incarnations with records, they pair **in order** - one connection at a time
+   per tuple - provided each pair's lifetimes overlap, or each end has exactly one.
+2. Otherwise an incarnation pairs with the one mirror incarnation whose lifetime overlaps its own, when that mirror
+   incarnation overlaps no other incarnation of this end.
+3. An incarnation with no overlapping mirror incarnation is **not observed** at the other end; one with several, or
+   whose candidate overlaps several of this end's, is **undecided**.
+
+Pairing is decided by witnessed lifecycle and the one-connection-per-tuple rule, never by the distance between two
+readings.
 
 ## 4. Binding a record's other end
 
 | The record | Its other end | Strength |
 |---|---|---|
-| A TCP record whose end's mirror has a holder | the mirror's holder | `Correlated`, or `Candidate` when any record of the mirror binds to its holder only as a candidate |
-| Its end's mirror is ambiguous | — | `Unresolved`, `PeerAmbiguous` |
-| Its end's mirror is unbound | — | `Unresolved`, `PeerUnbound` |
-| No record in the capture holds its end's mirror | — | `Unresolved`, `PeerNotObserved` |
+| A TCP record whose incarnation is paired with a held mirror incarnation | that incarnation's holder | `Correlated`, or `Candidate` when any record of the partner binds to its holder only as a candidate |
+| Its incarnation is undecided, and every candidate has the same one holder | that holder | the weakest of the candidates' |
+| Its incarnation is undecided otherwise, or its partner is ambiguous | — | `Unresolved`, `PeerAmbiguous` |
+| Its partner is unbound | — | `Unresolved`, `PeerUnbound` |
+| No record in the capture holds its end's mirror, or no mirror incarnation overlaps its own | — | `Unresolved`, `PeerNotObserved` |
 | It names no end | — | `Unresolved`, `PeerEndpointIncomplete` |
 | Any other mechanism | — | `Unresolved`, `NoRelationRule` |
 
@@ -63,15 +86,16 @@ records on that connection the capture does not hold. It is never read as "remot
 
 ## 5. Relations
 
-A **relation** is two mirrored ends that each have a holder: the two holders, the endpoint each holds, the weaker of
-the two ends' binding strengths, the earliest and latest reading of any record at either end, and how many records the
-two ends hold. A process connected to itself is a relation with itself. Relations are listed by the end whose key
-sorts first.
+A **relation** is two paired incarnations that each have a holder: the two holders, the endpoint each holds, the weaker
+of the two incarnations' binding strengths, the earliest and latest reading of any record of either, how many records
+they hold, and whether each end's open and close were witnessed. A process connected to itself is a relation with
+itself. Relations are listed by the end whose key sorts first, then by incarnation.
 
 ## 6. What is not inferred
 
-- **Time proximity.** Two records are never paired because they are close in time, and an ambiguous end is never
-  resolved by picking the holder nearest a record's reading (P6).
+- **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is
+  never resolved by picking the holder nearest a record's reading (P6). Lifetimes decide pairing only through the
+  lifecycle records that bound them.
 - **Connection identifiers.** The provider's `connid` is admitted as a source field and never used: it was zero on
   the measured build and is reusable (R22).
 - **Addresses alone.** An endpoint pair with no local holder at its other end is not attributed to anything; an
@@ -85,17 +109,19 @@ The orientation of §2 holds for the six admitted TCPv4 descriptors on the measu
 orientation is not measured is not a TCP descriptor this rule reads correctly, and admitting one is a catalog change
 that requires re-measuring it. No session publishes a coverage ledger yet, so an other end that is `PeerNotObserved`
 may be a lost record rather than a remote peer, and a result that needs other ends discloses how many it could not
-decide rather than asserting they involve nothing.
+decide rather than asserting they involve nothing. Incarnations rest on the lifecycle records the capture holds: a lost
+connect, accept or disconnect merges two incarnations of an end into one, which can leave a reused port undecided,
+but never splits one connection in two.
 
 ## 8. Identity of a derivation
 
-A derivation is identified by `tcp-endpoint-relation-v1`, the `process-binding-v2` derivation it rests on, and the
-generation it was derived from. A change to what an end is, what holds it, how strongly, or when it is left
-unresolved is a new rule identity (§24 `entityRevision`); a result names the rule it used.
+A derivation is identified by `tcp-endpoint-relation-v2`, the `process-binding-v2` derivation it rests on, and the
+generation it was derived from. A change to what an end or an incarnation is, what holds it, how incarnations pair, how
+strongly, or when an end is left unresolved is a new rule identity (§24 `correlationRevision`); a result names the rule
+it used. v1 differed from v2 only in scoping every end to the whole capture.
 
 ## 9. Not defined at this version
 
 - Relations for UDP, IPv6, named pipes, RPC, ALPC and shared sections.
-- Time-scoped ends, which would split an end reused by a second instance at the first one's disconnect.
 - Per-transfer associations and the canonical owner they enable.
 - Persisting relations as a published table. They are computed from the segments on demand; IC-017 owns caching them.

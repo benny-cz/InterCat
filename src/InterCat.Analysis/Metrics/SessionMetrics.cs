@@ -641,7 +641,7 @@ public static partial class SessionMetrics
                     .Distinct()
                     .Select(capture => new SnapshotEntry(capture, manifest.Generation, manifest.Digest)),
             ],
-            segments.Select(segment => segment.Reader.Derivation).MaxBy(derivation => derivation.Value));
+            AnalysisAxes.Current(segments.Select(segment => segment.Reader.Derivation).MaxBy(derivation => derivation.Value)));
 
     private static List<(string Name, SegmentReaderV1 Reader)>? OpenSegments(
         SessionStore store,
@@ -782,10 +782,10 @@ public static partial class SessionMetrics
                 generation,
                 MetricUnavailableReason.NoEntityBindings,
                 "ActiveChannels counts distinct connection incarnations, and a connection is only an instance with a "
-                + "lifetime: an endpoint pair reused by a later connection is another channel. Relations here span the "
-                + "whole capture, and counting address and port pairs instead would establish identity from reusable "
-                + "values, which R22 forbids. It needs time-scoped connection ends. ActivePeers counts processes, which "
-                + "are instances, and is available.");
+                + "lifetime: an endpoint pair reused by a later connection is another channel. Counting address and "
+                + "port pairs instead would establish identity from reusable values, which R22 forbids. The relation "
+                + "rule divides ends into time-scoped incarnations, but this metrics contract does not yet define how "
+                + "they are counted as channels. ActivePeers counts processes, which are instances, and is available.");
         }
 
         if (effective == Metric.Errors)

@@ -280,6 +280,76 @@ public sealed class RelationTests
             PeerIdentities(split.Store, splitProcesses, splitRelations));
     }
 
+    [Fact(DisplayName = "R22: a port reused by a later connection is another connection, paired with its own other end")]
+    public void AReusedPortIsAnotherConnection()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            // The first connection on the tuple: 100 connects to 200 and sends 10 bytes, and both ends disconnect.
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 200, 4).Between(ServerEnd, ClientEnd),
+            Transfer(30, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 5).Between(ClientEnd, ServerEnd),
+            Transfer(31, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 6).Between(ServerEnd, ClientEnd),
+
+            // Later, 300 reuses the same local port to reach 400 on the same server port.
+            Transfer(100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 7).Between(ClientEnd, ServerEnd),
+            Transfer(101, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 8).Between(ServerEnd, ClientEnd),
+            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 7, 300, 9).Between(ClientEnd, ServerEnd),
+            Transfer(111, ObservationKind.Receive, AccountingSide.ReceiveSide, 7, 400, 10).Between(ServerEnd, ClientEnd),
+            Transfer(130, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 11).Between(ClientEnd, ServerEnd),
+            Transfer(131, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 400, 12).Between(ServerEnd, ClientEnd),
+        ]);
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = Derive(session.Store);
+        int Pid(ProcessBinding binding) => processes.Instances[binding.Instance].ProcessId;
+
+        // Whole-capture ends would hold two processes each and leave both connections without a peer.
+        Assert.Equal(
+            [(200, 100), (400, 300)],
+            relations.Relations.Select(relation => (relation.First.ProcessId, relation.Second.ProcessId)).Order());
+        Assert.All(relations.Relations, relation => Assert.True(relation.OpenWitnessed && relation.CloseWitnessed));
+        Assert.Equal([6L, 6L], relations.Relations.Select(relation => relation.Records));
+
+        Dictionary<long, ProcessBinding> peers = PeersByReading(Assert.Single(Segments(session.Store)), relations);
+        Assert.Equal((200, 100, 400, 300), (Pid(peers[20]), Pid(peers[21]), Pid(peers[110]), Pid(peers[111])));
+        Assert.Equal((200, 100), (Pid(peers[30]), Pid(peers[31])));
+
+        ProcessInstanceId laterServer = processes.Instances.Single(instance => instance.ProcessId == 400).Id;
+        Assert.Equal(7, SessionMetrics.Evaluate(session.Store,
+            Request(Metric.BytesReceived, ByteDomain.TransportObserved, AccountingSide.SendSide) with { Receiver = laterServer }).Value);
+    }
+
+    [Fact(DisplayName = "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named")]
+    public void UndecidedIncarnationsNameOnlyAnAgreedPeer()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            // Two connections from the same port, by two processes, each opened and closed; the server end has no
+            // lifecycle records, so it is one incarnation both could be paired with.
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 2).Between(ClientEnd, ServerEnd),
+            Transfer(30, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between(ClientEnd, ServerEnd),
+            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 7, 300, 5).Between(ClientEnd, ServerEnd),
+            Transfer(130, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 6).Between(ClientEnd, ServerEnd),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 200, 7).Between(ServerEnd, ClientEnd),
+            Transfer(111, ObservationKind.Receive, AccountingSide.ReceiveSide, 7, 200, 8).Between(ServerEnd, ClientEnd),
+        ]);
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = Derive(session.Store);
+        Dictionary<long, ProcessBinding> peers = PeersByReading(Assert.Single(Segments(session.Store)), relations);
+
+        // Whichever server incarnation each client connection pairs with, the server is 200, so the clients' other end
+        // is named; the server's other end could be 100 or 300, and stays ambiguous.
+        Assert.Equal(200, processes.Instances[peers[20].Instance].ProcessId);
+        Assert.Equal(200, processes.Instances[peers[110].Instance].ProcessId);
+        Assert.Equal(ProcessBindingReason.PeerAmbiguous, peers[21].Reason);
+        Assert.Equal(ProcessBindingReason.PeerAmbiguous, peers[111].Reason);
+        Assert.Empty(relations.Relations);
+    }
+
     [Fact(DisplayName = "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve")]
     public void APeerCountIsALowerBoundOnProcessInstances()
     {

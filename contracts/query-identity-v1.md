@@ -72,7 +72,7 @@ answers.
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
 | `entityRevision` | the process binding rule, e.g. `process-binding-v2` | when any record is bound to a process |
-| `correlationRevision` | the relation rule, e.g. `tcp-endpoint-relation-v1` | when the answer uses records' other ends |
+| `correlationRevision` | the relation rule, e.g. `tcp-endpoint-relation-v2` | when the answer uses records' other ends |
 | `metricsContract` | `metrics-v1` | always |
 
 Entity and correlation revisions are named by their rule while derivations are computed on demand from one generation:
@@ -81,8 +81,11 @@ persisted (IC-017), the revision they record replaces the rule name, under a new
 
 A total that binds no record to a process does not depend on the binding rule, and naming it would split one query
 into two identities; the same holds for the relation rule. The answer depends on a relation rule when it has a
-process focus other than a bare owner, a peer narrowing, a peer grouping, or a sent or received total grouped by
-process or executable (`metrics-v1` §5, §6).
+process focus other than a bare owner, a peer narrowing, a peer grouping, a count of peers, or a sent or received
+total grouped by process or executable (`metrics-v1` §5, §6).
+
+The axis values are an input to the form, not part of it: a new binding or relation rule changes the identities of the
+requests that depend on it, as §24 requires, and changes no rule of this contract.
 
 ## 5. Terms that change nothing are dropped
 
@@ -120,8 +123,9 @@ canonical specification and identity without answering.
 canonical bytes and identities, one line each: name, identity token, canonical specification. It covers every rule
 above: a whole-capture count, an interval, an implied domain, an implied layer, an implied side, a rate, a grouping
 that drops the policy, a grouping by process with rows outside the hash, an executable grouping with candidates, and
-owner, participant-by-peer and sender-with-peer focus. The test recomputes each line and each hash; a change to this
-file is a new canonicalization version or an ADR, never a test update.
+owner, participant-by-peer and sender-with-peer focus. The corpus fixes the axis values as well as the snapshot, so it
+pins the form alone: a new rule changes what the CLI prints, never these bytes. The test recomputes each line and each
+hash; a change to this file is a new canonicalization version or an ADR, never a test update.
 
 ## 9. Not defined at this version
 

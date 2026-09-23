@@ -590,6 +590,6 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      received. A PID is never an identity on its own: a reused PID is two instances.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
         ConsoleUi.Line("      takes, its image path and parent, and what it sent to and received from each");
-        ConsoleUi.Line("      process at the other end (tcp-endpoint-relation-v1).");
+        ConsoleUi.Line($"      process at the other end ({TransportRelationIndex.RelationRule}).");
     }
 }

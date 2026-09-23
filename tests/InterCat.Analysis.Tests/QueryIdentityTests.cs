@@ -17,6 +17,10 @@ public sealed class QueryIdentityTests
 {
     private static readonly ProcessInstanceId Focus = new(Guid.Parse("7f0c5b3d-914a-42e8-b0d6-1c2fa3845e19"));
     private static readonly ProcessInstanceId Counterpart = new(Guid.Parse("2b8e4f6a-1c3d-4e5f-9a7b-8c9d0e1f2a3b"));
+    // The corpus fixes the axis values as well as the snapshot, so it pins the form: a new binding or relation rule
+    // changes what the CLI prints, never these bytes.
+    private static readonly AnalysisAxes Axes = new(1, "process-binding-v2", "tcp-endpoint-relation-v1", "metrics-v1");
+
     private static readonly SnapshotEntry[] Snapshot =
     [
         new(new CaptureId(Guid.Parse("9f1c4e0a-7b2d-4f11-a3c6-e58d90b7a412")), 84, "sha256:" + string.Concat(Enumerable.Repeat("0123456789abcdef", 4))),
@@ -27,7 +31,7 @@ public sealed class QueryIdentityTests
     {
         string produced = string.Concat(Corpus().Select(entry =>
         {
-            QueryIdentity identity = AnalysisSpecification.IdentityOf(entry.Request, Snapshot, NormalizerContractVersion.V1);
+            QueryIdentity identity = AnalysisSpecification.IdentityOf(entry.Request, Snapshot, Axes);
             return string.Create(CultureInfo.InvariantCulture, $"{entry.Name}\t{identity.Token}\t{identity.CanonicalSpecification}\n");
         }));
         string path = GoldenPath();
@@ -73,8 +77,8 @@ public sealed class QueryIdentityTests
             Identity(Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly }));
 
         // Requested rows cut one aggregation: the hash is shared, and the identity keeps the cut beside it.
-        QueryIdentity top5 = AnalysisSpecification.IdentityOf(Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly, RequestedRows = 5 }, Snapshot, NormalizerContractVersion.V1);
-        QueryIdentity top20 = AnalysisSpecification.IdentityOf(Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly, RequestedRows = 20 }, Snapshot, NormalizerContractVersion.V1);
+        QueryIdentity top5 = AnalysisSpecification.IdentityOf(Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly, RequestedRows = 5 }, Snapshot, Axes);
+        QueryIdentity top20 = AnalysisSpecification.IdentityOf(Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly, RequestedRows = 20 }, Snapshot, Axes);
         Assert.Equal(top5.Hash, top20.Hash);
         Assert.NotEqual(top5, top20);
     }
@@ -177,7 +181,7 @@ public sealed class QueryIdentityTests
     ];
 
     private static string Identity(MetricRequest request, SnapshotEntry[]? snapshot = null) =>
-        AnalysisSpecification.IdentityOf(request, snapshot ?? Snapshot, NormalizerContractVersion.V1).Token;
+        AnalysisSpecification.IdentityOf(request, snapshot ?? Snapshot, Axes).Token;
 
     private static MetricRequest Request(
         Metric metric,

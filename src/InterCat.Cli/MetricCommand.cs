@@ -1409,7 +1409,7 @@ internal static class MetricCommand
         ConsoleUi.Line("        --sender       the records in which data left it, measured at either end");
         ConsoleUi.Line("        --receiver     the records in which data reached it, measured at either end");
         ConsoleUi.Line("      --peer narrows a focus to one process at the other end. The other end of a TCP");
-        ConsoleUi.Line("      record is the process holding its mirrored endpoint pair (tcp-endpoint-relation-v1);");
+        ConsoleUi.Line($"      record is the process holding its mirrored endpoint pair ({TransportRelationIndex.RelationRule});");
         ConsoleUi.Line("      records whose other end is unresolved are counted and disclosed, never guessed.");
         ConsoleUi.Line("      --group-by ranks the total by process instance, executable, mechanism, or peer");
         ConsoleUi.Line("      (the processes at the other end from a focus), with an exact remainder past --top;");

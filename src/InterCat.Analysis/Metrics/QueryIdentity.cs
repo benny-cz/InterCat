@@ -10,6 +10,20 @@ namespace InterCat.Analysis;
 public sealed record SnapshotEntry(CaptureId CaptureId, long Generation, string ManifestDigest);
 
 /// <summary>
+/// The values of the §24 version axes a metric answer can depend on, as the canonical form writes them. The form is a
+/// function of these values, so a new binding or relation rule changes identities without changing the form.
+/// </summary>
+public sealed record AnalysisAxes(uint NormalizerContract, string EntityRevision, string CorrelationRevision, string MetricsContract)
+{
+    /// <summary>The axes this build answers under, over segments derived by the given normalizer contract.</summary>
+    public static AnalysisAxes Current(NormalizerContractVersion normalizer) => new(
+        normalizer.Value,
+        ProcessInstanceIndex.BindingRule,
+        TransportRelationIndex.RelationRule,
+        AnalysisSpecification.MetricsContract);
+}
+
+/// <summary>
 /// §10.4's `QueryIdentity` for a metric request: the canonicalization version, the SHA-256 of the canonical
 /// specification, and the requested rows, which cut a result without changing what it aggregates
 /// (`contracts/query-identity-v1.md`).
@@ -58,16 +72,17 @@ public static class AnalysisSpecification
     public static QueryIdentity IdentityOf(
         MetricRequest request,
         IReadOnlyList<SnapshotEntry> snapshot,
-        NormalizerContractVersion normalizer)
+        AnalysisAxes axes)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(axes);
         if (request.Check() is { } rejection)
         {
             throw new ArgumentException($"A refused request has no identity: {rejection.Reason}", nameof(request));
         }
 
-        string canonical = Canonicalize(request.Materialized(), snapshot, normalizer);
+        string canonical = Canonicalize(request.Materialized(), snapshot, axes);
         return new()
         {
             CanonicalSpecification = canonical,
@@ -76,7 +91,7 @@ public static class AnalysisSpecification
         };
     }
 
-    private static string Canonicalize(MetricRequest request, IReadOnlyList<SnapshotEntry> snapshot, NormalizerContractVersion normalizer)
+    private static string Canonicalize(MetricRequest request, IReadOnlyList<SnapshotEntry> snapshot, AnalysisAxes axes)
     {
         var json = new CanonicalWriter();
         json.BeginObject();
@@ -99,18 +114,18 @@ public static class AnalysisSpecification
         bool bindsProcesses = request.Focus is not null
             || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
         json.BeginObject("versions");
-        json.Number("normalizerContract", normalizer.Value);
+        json.Number("normalizerContract", axes.NormalizerContract);
         if (bindsProcesses)
         {
-            json.Token("entityRevision", ProcessInstanceIndex.BindingRule);
+            json.Token("entityRevision", axes.EntityRevision);
         }
 
         if (UsesRelations(request))
         {
-            json.Token("correlationRevision", TransportRelationIndex.RelationRule);
+            json.Token("correlationRevision", axes.CorrelationRevision);
         }
 
-        json.Token("metricsContract", MetricsContract);
+        json.Token("metricsContract", axes.MetricsContract);
         json.EndObject();
 
         json.Token("basis", request.Basis.ToString());
