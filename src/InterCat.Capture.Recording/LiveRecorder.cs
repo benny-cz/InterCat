@@ -72,6 +72,10 @@ public static class LiveRecorder
     /// <param name="derive">
     /// Creates the derivation once the capture's clock is known, or null to publish admitted evidence alone.
     /// </param>
+    /// <param name="onReady">
+    /// Called once after ETW and the journal writer are running, before waiting for the capture to end. It is not
+    /// called if startup is refused; inspect the completed result for that refusal.
+    /// </param>
     public static async Task<LiveCaptureResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -81,6 +85,7 @@ public static class LiveRecorder
         DerivedGenerationOptions? options = null,
         TimeSpan? publishEvery = null,
         Func<SourceClockDescriptor, ILiveRecordingDerivation>? derive = null,
+        Action<CaptureStartResult>? onReady = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -123,8 +128,13 @@ public static class LiveRecorder
             derive?.Invoke(clock.Descriptor));
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
+        var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<long> writer = Task.Factory.StartNew(
-            chunks.Drain,
+            () =>
+            {
+                writerReady.TrySetResult();
+                return chunks.Drain();
+            },
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
@@ -142,6 +152,10 @@ public static class LiveRecorder
         long journaled;
         try
         {
+            // A broker may acknowledge Start only after ETW, the source clock and the single journal
+            // writer are ready. Startup refusal never calls this hook; the completed result carries it.
+            await writerReady.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            onReady?.Invoke(start);
             try
             {
                 await recordUntil(recording.Token).ConfigureAwait(false);

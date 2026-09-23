@@ -1,12 +1,22 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 68
+Plan revision: 69
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: complete durable ETW ownership identity
+## Latest slice: the evidence recorder signals when it is ready
+
+`LiveRecorder.RecordAsync` now offers a one-shot `onReady` callback for an asynchronous broker start. It fires only
+after the ETW session has started, the source clock and first journal stage are ready, and the dedicated writer
+thread has entered its run. A refused startup never calls it; the final result still says whether the capture
+published and what it lost. The elevated `icat record` path is unchanged apart from binding its cancellation token
+by name. A scripted test checks readiness before the recording wait and no signal on refused startup.
+
+Verification: all 691 tests pass in Debug and Release.
+
+## Previous slice: complete durable ETW ownership identity
 
 The broker's session name previously truncated its 128-bit ownership token to 15 hex digits to fit the 64-character
 ETW name limit. New names are 60 characters: `InterCat-b-`, 16 capture-ID hex digits and all 32 token hex digits.

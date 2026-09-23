@@ -455,6 +455,55 @@ public sealed class LiveSessionRecorderTests
     /// <summary>What identifies a dependency's bytes, whatever name each session gives it.</summary>
     private static (long Length, string Digest) Measured(StoreDependency dependency) => (dependency.LengthBytes, dependency.Digest);
 
+    [Fact]
+    public async Task EvidenceRecorderSignalsReadyOnlyAfterItsWriterStarts()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "ready-test");
+        var host = new ScriptedHost();
+        host.Admit(new AdmittedEvent
+        {
+            SourceIndex = 0,
+            EventId = 10,
+            Version = 0,
+            TimestampQpc = Stopwatch.GetTimestamp(),
+            RecordOrdinal = 1,
+        });
+        int readyCount = 0;
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            _ =>
+            {
+                Assert.Equal(1, readyCount);
+                return host.Delivered.Task;
+            },
+            DateTimeOffset.UtcNow,
+            onReady: start =>
+            {
+                Assert.True(start.Started);
+                Assert.Null(store.Current);
+                readyCount++;
+            });
+
+        Assert.Equal(1, readyCount);
+        Assert.True(result.Start.Started);
+        Assert.NotNull(result.Generation);
+        Assert.Equal(1, result.JournaledRecords);
+
+        using var refusedDirectory = new TemporaryDirectory();
+        SessionStore refusedStore = SessionStore.Open(
+            LocalOwnedDirectory.Open(refusedDirectory.Path), Guid.NewGuid(), "ready-refusal-test");
+        LiveCaptureResult refused = await LiveRecorder.RecordAsync(
+            Plan(), new ScriptedHost { FailCreate = true }, refusedStore,
+            _ => Task.CompletedTask, DateTimeOffset.UtcNow,
+            onReady: _ => readyCount++);
+        Assert.False(refused.Start.Started);
+        Assert.Equal(1, readyCount);
+    }
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {

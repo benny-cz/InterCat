@@ -113,7 +113,7 @@ public static class LiveSessionRecorder
             output == LiveRecordingOutput.Session
                 ? clock => derivation = new RowDerivation(clock, store, bounds, compaction ?? CompactionOptions.Default)
                 : null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         return new()
         {
             Start = captured.Start,
