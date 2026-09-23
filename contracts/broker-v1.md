@@ -366,8 +366,12 @@ file-backed ownership log and evidence runtime with a scripted ETW host. It has 
 with real ETW, elevated (`tools/InterCat.BrokerQualification`, `bench/results/broker-qualification-*`):
 a clean stop finalizes live chunks, and a killed broker's orphaned session is reclaimed by its successor
 before the pipe exists, and the interrupted capture closes with its published prefix kept and its
-staging released. Capture impact at the compiled live cadence is not yet measured; until it is,
-serving requires `--enable-unqualified-live-capture` and no shipped client passes it.
+staging released. Capture impact at the compiled live cadence is measured
+(`bench/results/broker-impact-*`): zero throughput regression, the broker's own CPU about 0.3
+core-seconds more per 13 s under `Live` than `OnStop`, and machine-level impact within the 5 pp target
+but not decision-grade on the noisy development host. Serving still requires
+`--enable-unqualified-live-capture`; the flag is removed together with the first client that launches
+the broker.
 
 An interrupted capture (its recording process gone, its ETW session proven stopped) is closed rather
 than retried: the runtime returns a terminal outcome after releasing staging whose ownership marker

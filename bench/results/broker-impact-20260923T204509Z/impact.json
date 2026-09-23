@@ -1,0 +1,243 @@
+{
+  "Schema": "intercat.broker-capture-impact.v1",
+  "CompletedUtc": "2026-09-23T20:45:09.114016+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "BrokerVersion": "1.0.0\u002B21c8c6f2508a173a045e854fdde224b80236e089",
+  "Workload": "tcp-loopback seed 20260923, 4 connections x 768 messages, \u003C= 4096 bytes, 15 ms pacing, concurrency 4",
+  "Profile": "explore",
+  "PublicationIntervalMilliseconds": 2000,
+  "Triplets": 5,
+  "Trials": [
+    {
+      "Triplet": 1,
+      "Variant": "NoCapture",
+      "MachineBusyPercentage": 10.135508849557523,
+      "BrokerProcessorMilliseconds": 31.25,
+      "WorkloadMilliseconds": 13134.2436,
+      "MessagesPerSecond": 233.8924184412112,
+      "PublicationIntervalMilliseconds": null,
+      "FullyFinalized": false,
+      "JournaledRecords": 0,
+      "JournalChunks": 0
+    },
+    {
+      "Triplet": 1,
+      "Variant": "BrokerOnStop",
+      "MachineBusyPercentage": 9.343771586460973,
+      "BrokerProcessorMilliseconds": 703.125,
+      "WorkloadMilliseconds": 13130.3098,
+      "MessagesPerSecond": 233.9624918827125,
+      "PublicationIntervalMilliseconds": 0,
+      "FullyFinalized": true,
+      "JournaledRecords": 17469,
+      "JournalChunks": 1
+    },
+    {
+      "Triplet": 1,
+      "Variant": "BrokerLive",
+      "MachineBusyPercentage": 7.814814814814815,
+      "BrokerProcessorMilliseconds": 796.875,
+      "WorkloadMilliseconds": 13057.0324,
+      "MessagesPerSecond": 235.2755132935107,
+      "PublicationIntervalMilliseconds": 2000,
+      "FullyFinalized": true,
+      "JournaledRecords": 15464,
+      "JournalChunks": 7
+    },
+    {
+      "Triplet": 2,
+      "Variant": "BrokerOnStop",
+      "MachineBusyPercentage": 11.157562244518767,
+      "BrokerProcessorMilliseconds": 421.875,
+      "WorkloadMilliseconds": 13003.3284,
+      "MessagesPerSecond": 236.24720575387454,
+      "PublicationIntervalMilliseconds": 0,
+      "FullyFinalized": true,
+      "JournaledRecords": 16700,
+      "JournalChunks": 1
+    },
+    {
+      "Triplet": 2,
+      "Variant": "BrokerLive",
+      "MachineBusyPercentage": 9.120415449529373,
+      "BrokerProcessorMilliseconds": 468.75,
+      "WorkloadMilliseconds": 13044.5156,
+      "MessagesPerSecond": 235.50127074093882,
+      "PublicationIntervalMilliseconds": 2000,
+      "FullyFinalized": true,
+      "JournaledRecords": 16577,
+      "JournalChunks": 7
+    },
+    {
+      "Triplet": 2,
+      "Variant": "NoCapture",
+      "MachineBusyPercentage": 6.9208454206382095,
+      "BrokerProcessorMilliseconds": 62.5,
+      "WorkloadMilliseconds": 13124.7017,
+      "MessagesPerSecond": 234.06246253962482,
+      "PublicationIntervalMilliseconds": null,
+      "FullyFinalized": false,
+      "JournaledRecords": 0,
+      "JournalChunks": 0
+    },
+    {
+      "Triplet": 3,
+      "Variant": "BrokerLive",
+      "MachineBusyPercentage": 6.337082812572328,
+      "BrokerProcessorMilliseconds": 468.75,
+      "WorkloadMilliseconds": 13050.2455,
+      "MessagesPerSecond": 235.39787048450543,
+      "PublicationIntervalMilliseconds": 2000,
+      "FullyFinalized": true,
+      "JournaledRecords": 16141,
+      "JournalChunks": 7
+    },
+    {
+      "Triplet": 3,
+      "Variant": "NoCapture",
+      "MachineBusyPercentage": 12.560022596742304,
+      "BrokerProcessorMilliseconds": 0,
+      "WorkloadMilliseconds": 12830.336,
+      "MessagesPerSecond": 239.43254486866127,
+      "PublicationIntervalMilliseconds": null,
+      "FullyFinalized": false,
+      "JournaledRecords": 0,
+      "JournalChunks": 0
+    },
+    {
+      "Triplet": 3,
+      "Variant": "BrokerOnStop",
+      "MachineBusyPercentage": 8.128954782689021,
+      "BrokerProcessorMilliseconds": 62.5,
+      "WorkloadMilliseconds": 13093.561,
+      "MessagesPerSecond": 234.6191383688517,
+      "PublicationIntervalMilliseconds": 0,
+      "FullyFinalized": true,
+      "JournaledRecords": 16217,
+      "JournalChunks": 1
+    },
+    {
+      "Triplet": 4,
+      "Variant": "NoCapture",
+      "MachineBusyPercentage": 11.752701637215342,
+      "BrokerProcessorMilliseconds": 15.625,
+      "WorkloadMilliseconds": 13036.2842,
+      "MessagesPerSecond": 235.64997148497267,
+      "PublicationIntervalMilliseconds": null,
+      "FullyFinalized": false,
+      "JournaledRecords": 0,
+      "JournalChunks": 0
+    },
+    {
+      "Triplet": 4,
+      "Variant": "BrokerOnStop",
+      "MachineBusyPercentage": 7.126938434395023,
+      "BrokerProcessorMilliseconds": 62.5,
+      "WorkloadMilliseconds": 13014.2925,
+      "MessagesPerSecond": 236.0481754962861,
+      "PublicationIntervalMilliseconds": 0,
+      "FullyFinalized": true,
+      "JournaledRecords": 16373,
+      "JournalChunks": 1
+    },
+    {
+      "Triplet": 4,
+      "Variant": "BrokerLive",
+      "MachineBusyPercentage": 14.17948837861853,
+      "BrokerProcessorMilliseconds": 281.25,
+      "WorkloadMilliseconds": 12909.7423,
+      "MessagesPerSecond": 237.9598235667338,
+      "PublicationIntervalMilliseconds": 2000,
+      "FullyFinalized": true,
+      "JournaledRecords": 16701,
+      "JournalChunks": 7
+    },
+    {
+      "Triplet": 5,
+      "Variant": "BrokerOnStop",
+      "MachineBusyPercentage": 7.611912689604144,
+      "BrokerProcessorMilliseconds": 109.375,
+      "WorkloadMilliseconds": 13058.7074,
+      "MessagesPerSecond": 235.24533523126493,
+      "PublicationIntervalMilliseconds": 0,
+      "FullyFinalized": true,
+      "JournaledRecords": 16623,
+      "JournalChunks": 1
+    },
+    {
+      "Triplet": 5,
+      "Variant": "BrokerLive",
+      "MachineBusyPercentage": 13.56085229324666,
+      "BrokerProcessorMilliseconds": 500,
+      "WorkloadMilliseconds": 13401.8694,
+      "MessagesPerSecond": 229.22175319810233,
+      "PublicationIntervalMilliseconds": 2000,
+      "FullyFinalized": true,
+      "JournaledRecords": 22258,
+      "JournalChunks": 8
+    },
+    {
+      "Triplet": 5,
+      "Variant": "NoCapture",
+      "MachineBusyPercentage": 7.104452920362116,
+      "BrokerProcessorMilliseconds": 0,
+      "WorkloadMilliseconds": 13165.8085,
+      "MessagesPerSecond": 233.33166360425187,
+      "PublicationIntervalMilliseconds": null,
+      "FullyFinalized": false,
+      "JournaledRecords": 0,
+      "JournalChunks": 0
+    }
+  ],
+  "LiveVersusNoCapture": {
+    "Measured": "BrokerLive",
+    "Reference": "NoCapture",
+    "Pairs": 5,
+    "MedianObservedCpuDifferencePercentagePoints": 2.1995700288911637,
+    "MedianCpuImpactPercentagePoints": 2.1995700288911637,
+    "MedianObservedThroughputRegressionPercent": -0.5913380440106689,
+    "MedianThroughputRegressionPercent": 0
+  },
+  "OnStopVersusNoCapture": {
+    "Measured": "BrokerOnStop",
+    "Reference": "NoCapture",
+    "Pairs": 5,
+    "MedianObservedCpuDifferencePercentagePoints": -0.7917372630965502,
+    "MedianCpuImpactPercentagePoints": 0,
+    "MedianObservedThroughputRegressionPercent": -0.1689811413106061,
+    "MedianThroughputRegressionPercent": 0
+  },
+  "LiveVersusOnStop": {
+    "Measured": "BrokerLive",
+    "Reference": "BrokerOnStop",
+    "Pairs": 5,
+    "MedianObservedCpuDifferencePercentagePoints": -1.5289567716461576,
+    "MedianCpuImpactPercentagePoints": 0,
+    "MedianObservedThroughputRegressionPercent": -0.3319132961904654,
+    "MedianThroughputRegressionPercent": 0
+  },
+  "LiveOverhead": "Moderate",
+  "LeakedSessions": [],
+  "EvidenceValid": true,
+  "Failure": null,
+  "TargetsMet": true,
+  "Notes": [
+    "Total-machine CPU is the GetSystemTimes busy share over the workload plus a one-second grace; the broker, ETW and the workload are all inside it.",
+    "Paired figures compare trials within one triplet; trial order rotates across triplets. Every trial is kept.",
+    "Signed differences are kept; only the classification input is clamped at zero, as in the IC-010a impact artifact.",
+    "No benchmark can prove the machine was otherwise quiet; this ran on the development machine, not an isolated lab host."
+  ]
+}

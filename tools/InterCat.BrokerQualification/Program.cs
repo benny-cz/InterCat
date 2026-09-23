@@ -29,11 +29,12 @@ return args.FirstOrDefault() switch
 {
     "serve-child" => await Qualification.ServeChildAsync(args, cancellation.Token),
     "run" => await Qualification.RunAsync(args, cancellation.Token),
+    "impact" => await Qualification.ImpactAsync(args, cancellation.Token),
     _ => Qualification.Usage(),
 };
 
 [SupportedOSPlatform("windows")]
-internal static class Qualification
+internal static partial class Qualification
 {
     private const string RootName = "InterCat";
     private static readonly TimeSpan ListenTimeout = TimeSpan.FromSeconds(60);
@@ -42,6 +43,7 @@ internal static class Qualification
     public static int Usage()
     {
         Console.Error.WriteLine("Usage: InterCat.BrokerQualification run --output <new directory> [--traffic-seconds <2-60>]");
+        Console.Error.WriteLine("       InterCat.BrokerQualification impact --output <new directory> [--triplets <1-15>]");
         Console.Error.WriteLine("Runs elevated. Starts real ETW sessions in a broker child process and stops every one it started.");
         return 2;
     }
@@ -367,7 +369,7 @@ internal static class Qualification
         args[index] == "--parent" || (index > 0 && args[index - 1] == "--parent");
 
     /// <summary>One broker child process, launched the way a client must: keeping its handle to check the pipe server.</summary>
-    private sealed class BrokerChild : IAsyncDisposable
+    internal sealed class BrokerChild : IAsyncDisposable
     {
         private readonly Process process;
         private readonly string pipeName;
@@ -445,6 +447,15 @@ internal static class Qualification
                 + string.Join(" | ", child.Diagnostics);
             process.Dispose();
             throw new InvalidOperationException(failure);
+        }
+
+        public TimeSpan ProcessorTime
+        {
+            get
+            {
+                process.Refresh();
+                return process.TotalProcessorTime;
+            }
         }
 
         public Task<WindowsBrokerPipeClient> ConnectAsync(CancellationToken cancellationToken) =>

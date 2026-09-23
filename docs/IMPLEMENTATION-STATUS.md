@@ -1,12 +1,44 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 82
+Plan revision: 83
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: interrupted captures close terminally
+## Latest slice: broker capture impact at the compiled live cadence
+
+`InterCat.BrokerQualification impact --output <dir> [--triplets N]` (elevated) keeps one broker child running. It
+drives the seeded TCP workload (4 × 768 messages, about 13 s) under three variants: no capture, a broker `OnStop`
+capture, and a broker `Live` capture. Order rotates within each triplet. It measures machine busy share (GetSystemTimes)
+and the broker process's own CPU over the workload plus one second, and workload throughput. Every capture must stop
+fully finalized with journaled records, and no session may leak.
+
+Results (`bench/results/broker-impact-20260923T204509Z`, `-204914Z`, 5 triplets each, 24 logical processors):
+
+| | Run 1 | Run 2 |
+|---|---:|---:|
+| Live vs no capture, machine CPU (median pp) | 2.20 | 0.00 (observed -0.19) |
+| Live vs OnStop, machine CPU (median observed pp) | -1.53 | 2.76 |
+| Throughput regression, every comparison | 0% | 0% |
+| Broker CPU per window, Live / OnStop (median ms) | ~470 / ~110 | 469 / 172 |
+| Broker CPU of Live as pp of machine | - | 0.14 |
+| Live chunks per capture (2 s cadence) | 7-8 | 7-8 |
+
+Reading: the cadence's own cost is about 0.3 core-seconds per 13 s, and throughput is untouched. Machine-wide CPU on
+this development host varies by ±3 pp with no capture at all. A first three-triplet run showed 6.3 pp from two noisy
+trials, which is why broker CPU is now attributed directly. Live overhead classifies Low-to-Moderate against the 5 pp
+target. A quiet-host rerun stays an M5 obligation before any published overhead claim.
+
+With this, the gates recorded in plan revisions 79-82 are met. The opt-in is kept until the first client launches the
+broker, because no client passes it today and removing it alone changes nothing for a user.
+
+Next: the client launch path in a library the Desktop and CLI can share. It launches with ShellExecuteEx `runas`
+(retaining the process handle), passes the caller's SID and logon-session LUID, and waits for the pipe with the
+server-PID check, backed by designed permission states for UAC declined, an untrusted root owner and a taken pipe
+name. The CLI command (`icat capture` over the broker) and removal of the opt-in come with it.
+
+## Previous slice: interrupted captures close terminally
 
 A capture whose broker was killed used to stay `Stopping` forever and was re-stopped, pointlessly, at every broker
 start; its dead writer's `stg-*` staging files were never removed. Now, once recovery has proven the owned ETW session

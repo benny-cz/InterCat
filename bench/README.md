@@ -92,3 +92,9 @@ dotnet run --project tools/InterCat.BrokerQualification/InterCat.BrokerQualifica
 
 Only `report.json` is committed, as `bench/results/broker-qualification-<started UTC>/report.json`; the
 qualification root holds machine-wide journals and stays local (P16).
+
+`impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
+compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`
+capture, rotating order within each triplet. It reports machine CPU and the broker process's own CPU,
+because on a shared host the machine figure is noisy. Only `impact.json` is committed, as
+`bench/results/broker-impact-<completed UTC>/impact.json`.
