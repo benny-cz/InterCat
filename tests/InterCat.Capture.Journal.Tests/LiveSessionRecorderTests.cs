@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;

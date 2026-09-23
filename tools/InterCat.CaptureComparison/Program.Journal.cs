@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using InterCat.Analysis;
 using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;

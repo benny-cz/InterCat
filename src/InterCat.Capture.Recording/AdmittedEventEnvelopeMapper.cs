@@ -4,7 +4,7 @@ using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
 
-namespace InterCat.Capture.Journal;
+namespace InterCat.Capture.Recording;
 
 /// <summary>
 /// Maps one admitted callback record into a journal-v1 envelope: the bounded field projection as an

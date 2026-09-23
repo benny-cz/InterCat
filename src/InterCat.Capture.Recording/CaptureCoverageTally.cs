@@ -2,7 +2,7 @@ using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
 
-namespace InterCat.Capture.Journal;
+namespace InterCat.Capture.Recording;
 
 /// <summary>
 /// What each descriptor delivered during one capture or replay and what became of it, for the coverage ledger

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;

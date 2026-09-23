@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using InterCat.Capture.Windows;
 using InterCat.Storage;
 
-namespace InterCat.Capture.Journal;
+namespace InterCat.Capture.Recording;
 
 /// <summary>
 /// The exact descriptor interpretation retained beside a session's admitted journal. A schema fingerprint
