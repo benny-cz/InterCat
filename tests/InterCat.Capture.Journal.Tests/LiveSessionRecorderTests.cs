@@ -539,6 +539,62 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(result.Coverage);
     }
 
+    [Fact(DisplayName = "R16: bounded live chunks remain followable without crossing their aggregate journal quota")]
+    public async Task JournalQuotaReservesNextChunkForLivePublication()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "quota-follow-test");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        host.Admit(new AdmittedEvent
+        {
+            SourceIndex = 0,
+            EventId = 10,
+            Version = 0,
+            TimestampQpc = now,
+            RecordOrdinal = 1,
+        });
+        host.Pause(TimeSpan.FromSeconds(2));
+        for (int index = 1; index < 10_000; index++)
+        {
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), host, store,
+            async token =>
+            {
+                DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(1);
+                while (store.Current is null && DateTimeOffset.UtcNow < deadline)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), token);
+                }
+
+                Assert.NotNull(SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current);
+                Assert.False(host.Delivered.Task.IsCompleted);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            },
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(20),
+            maximumJournalBytes: 1_048_576);
+
+        Assert.True(result.JournalQuotaReached);
+        Assert.NotNull(result.Generation);
+        Assert.True(result.Publications >= 2);
+        StoreDependency[] journals = [.. result.Generation.Manifest.Dependencies
+            .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
+        Assert.Equal(result.Publications, journals.Length);
+        Assert.InRange(journals.Sum(dependency => dependency.LengthBytes), 1, 1_048_576);
+        Assert.NotNull(result.Coverage);
+    }
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {

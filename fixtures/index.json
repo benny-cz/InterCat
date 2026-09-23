@@ -792,6 +792,7 @@
         "R16: a bound one frame cannot fit is a named refusal, not a silent compaction loop",
         "R16: a broker below the requested label refuses to provision instead of labelling lower",
         "R16: a broker session name carries its complete ownership token and capture binding",
+        "R16: bounded live chunks remain followable without crossing their aggregate journal quota",
         "R16: a capture ID cannot be empty",
         "R16: a capture attempt without elevation creates nothing and says why",
         "R16: a substituted capture directory is refused, not followed",

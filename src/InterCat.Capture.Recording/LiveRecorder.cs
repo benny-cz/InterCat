@@ -106,13 +106,6 @@ public static class LiveRecorder
             throw new ArgumentOutOfRangeException(nameof(maximumJournalBytes), "The journal quota is at least 1 MiB.");
         }
 
-        if (maximumJournalBytes is not null && publishEvery is not null)
-        {
-            throw new ArgumentException(
-                "A byte-bounded live journal must publish once on stop until chunk rollover can reserve its final ledger.",
-                nameof(publishEvery));
-        }
-
         if (maximumJournalBytes is not null && derive is not null)
         {
             throw new ArgumentException(
@@ -261,6 +254,9 @@ public static class LiveRecorder
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
+        private readonly long emptyChunkBytes;
+        private long publishedJournalBytes;
+        private bool rolloverBlocked;
         private ulong recordsInChunk;
         private long journaled;
 
@@ -288,6 +284,7 @@ public static class LiveRecorder
             this.onJournalQuotaReached = onJournalQuotaReached;
             mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
             builder = BeginChunk(stagePlan: true);
+            emptyChunkBytes = builder.Journal.ProjectedCompleteLength;
         }
 
         public int Publications { get; private set; }
@@ -332,14 +329,32 @@ public static class LiveRecorder
             }
 
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
+            publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);
             Publications++;
             return derivation?.Published(published, last: true) ?? published;
         }
 
         public void Dispose() => builder.Dispose();
 
-        private bool Due() =>
-            publishEvery is { } interval && recordsInChunk > 0 && sincePublished.Elapsed >= interval;
+        private bool Due()
+        {
+            if (JournalQuotaReached || rolloverBlocked || publishEvery is not { } interval
+                || recordsInChunk == 0 || sincePublished.Elapsed < interval)
+            {
+                return false;
+            }
+
+            // A live publication must leave enough allowance for a complete next journal even if
+            // Stop arrives immediately. Once that cannot fit, keep this chunk open for finalization.
+            if (maximumJournalBytes is { } maximum
+                && checked(publishedJournalBytes + builder.Journal.ProjectedCompleteLength + emptyChunkBytes) > maximum)
+            {
+                rolloverBlocked = true;
+                return false;
+            }
+
+            return true;
+        }
 
         private void Write(in AdmittedEvent admitted)
         {
@@ -361,7 +376,7 @@ public static class LiveRecorder
             derivation?.Derive(envelope, descriptor, (ulong)journaled, builder);
             if (maximumJournalBytes is { } maximum)
             {
-                if (!builder.Journal.TryAppendWithin(envelope, maximum))
+                if (!builder.Journal.TryAppendWithin(envelope, maximum - publishedJournalBytes))
                 {
                     envelope.Dispose();
                     JournalQuotaReached = true;
@@ -387,11 +402,13 @@ public static class LiveRecorder
             ThrowIfClockRefused(session);
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
+            publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);
             Publications++;
 
             // Whatever the derivation publishes after a chunk takes a generation before the next chunk does.
             _ = derivation?.Published(published, last: false);
             builder = BeginChunk(stagePlan: false);
+            rolloverBlocked = false;
         }
 
         private DerivedGenerationBuilder BeginChunk(bool stagePlan)
@@ -421,7 +438,7 @@ public static class LiveRecorder
 
                 next.Journal.WriteSchemas(mapper.Schemas);
                 if (maximumJournalBytes is { } maximum
-                    && next.Journal.ProjectedCompleteLength > maximum)
+                    && next.Journal.ProjectedCompleteLength > maximum - publishedJournalBytes)
                 {
                     throw new InvalidDataException(
                         "The journal header and schema table alone exceed the configured journal byte allowance.");
@@ -441,7 +458,7 @@ public static class LiveRecorder
         /// <summary>Waits for more records, or until the next chunk is due; false when the capture has closed the queue.</summary>
         private bool WaitForRecords()
         {
-            if (publishEvery is not { } interval || recordsInChunk == 0)
+            if (publishEvery is not { } interval || recordsInChunk == 0 || rolloverBlocked)
             {
                 return session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
             }
