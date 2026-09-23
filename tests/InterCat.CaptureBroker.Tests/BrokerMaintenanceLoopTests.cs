@@ -124,6 +124,34 @@ public sealed class BrokerMaintenanceLoopTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new BrokerMaintenanceLoop(coordinator, interval: TimeSpan.FromHours(1)));
     }
 
+    [Fact(DisplayName = "R16: a terminal partial stop closes the capture, and later recovery leaves it alone")]
+    public async Task TerminalPartialStopClosesAndIsNotRetried()
+    {
+        var clock = new ManualTimeProvider(StartTime);
+        var partial = new BrokerStopMilestones(true, true, false, false, true);
+        var runtime = new BrokerFakeRuntime
+        {
+            StopOutcome = new(partial, "Interrupted: fixture.", Terminal: true),
+        };
+        var store = new InMemoryBrokerLifecycleStore();
+        var registry = new PreparedPlanRegistry(clock);
+        using var coordinator = new BrokerLifecycleCoordinator(registry, store, runtime, clock);
+        CaptureId captureId = await Start(coordinator, registry);
+
+        BrokerStopOutcome stopped = await coordinator.StopAsync(captureId, Guid.NewGuid(), OwnerA);
+        BrokerRecoveryReport recovery = await coordinator.RecoverAsync();
+
+        Assert.Equal(BrokerOperationCode.StopPartial, stopped.Code);
+        Assert.Equal(CaptureLifecycle.Closed, stopped.State);
+        Assert.Equal(partial, stopped.Milestones);
+        Assert.Empty(recovery.Items);
+        Assert.False(await coordinator.HasActiveCapturesAsync());
+        Assert.Equal(1, runtime.StopCount);
+        BrokerCaptureOwnership closed = (await store.FindCaptureAsync(captureId, CancellationToken.None))!;
+        Assert.Equal(partial, closed.StopMilestones);
+        Assert.StartsWith("Interrupted:", closed.FailureReason, StringComparison.Ordinal);
+    }
+
     private static async Task<CaptureId> Start(BrokerLifecycleCoordinator coordinator, PreparedPlanRegistry registry)
     {
         PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);

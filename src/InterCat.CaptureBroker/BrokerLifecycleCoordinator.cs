@@ -494,7 +494,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
 
                 BrokerRuntimeStopOutcome runtimeStop = await StopForRecoveryAsync(ownership).ConfigureAwait(false);
                 BrokerStopMilestones milestones = runtimeStop.Milestones with { Requested = true };
-                CaptureLifecycle state = ResolveStopState(milestones, ownership.State);
+                CaptureLifecycle state = ResolveStopState(milestones, ownership.State, runtimeStop.Terminal);
                 string? runtimeFailure = BoundReason(runtimeStop.FailureReason);
                 BrokerCaptureOwnership updated = ownership with
                 {
@@ -814,7 +814,10 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                 : BrokerOperationCode.StopPartial;
         }
 
-        CaptureLifecycle completedState = ResolveStopState(runtimeOutcome.Milestones, ownership.State);
+        CaptureLifecycle completedState = ResolveStopState(
+            runtimeOutcome.Milestones,
+            ownership.State,
+            runtimeOutcome.Terminal);
         string? failure = BoundReason(runtimeOutcome.FailureReason);
         BrokerStopOutcome outcome = new(
             code,
@@ -972,9 +975,11 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
 
     private static CaptureLifecycle ResolveStopState(
         BrokerStopMilestones milestones,
-        CaptureLifecycle previousState)
+        CaptureLifecycle previousState,
+        bool terminal)
     {
-        if (previousState == CaptureLifecycle.Closed || milestones.FullyFinalized)
+        // A terminal partial stop closes with its partial milestones: the milestones, not the state, say what is proven.
+        if (previousState == CaptureLifecycle.Closed || milestones.FullyFinalized || terminal)
         {
             return CaptureLifecycle.Closed;
         }

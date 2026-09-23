@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.Versioning;
 using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
@@ -340,7 +341,59 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
             problems.Add(journalProblem ?? "Final journal publication is not proven.");
         }
 
+        // With the session proven stopped and its process gone, nothing a later stop does can prove more. Release the
+        // dead writer's staging and close the capture as interrupted rather than retrying it at every broker start.
+        // A provider stop that failed stays retryable: stopping the session later is real progress.
+        if (providerStopped && TryReleaseInterruptedCapture(ownership, out string summary))
+        {
+            problems.Insert(0, summary);
+            return new(milestones, string.Join(" ", problems), Terminal: true);
+        }
+
         return new(milestones, string.Join(" ", problems));
+    }
+
+    /// <summary>
+    /// Removes the staging files the interrupted writer abandoned and states what evidence remains. Returns false when
+    /// staging could not be released (it is still owned, or the store cannot be opened), so the capture stays retryable.
+    /// </summary>
+    private bool TryReleaseInterruptedCapture(BrokerCaptureOwnership ownership, out string summary)
+    {
+        const string Interrupted = "Interrupted: the broker recording this capture ended before finalizing it.";
+        if (!Directory.Exists(System.IO.Path.Combine(root.Path, $"capture-{ownership.CaptureId.Value:N}")))
+        {
+            summary = $"{Interrupted} No evidence had been published.";
+            return true;
+        }
+
+        try
+        {
+            using WindowsBrokerRoot captureRoot = root.OpenExistingCaptureDirectory(ownership.CaptureId);
+            SessionStore store = SessionStore.Open(captureRoot, ownership.CaptureId.Value, ownership.PlanDigest);
+            StagingCleanupReport cleanup = store.CleanupAbandonedStaging();
+            if (cleanup.ActiveFiles.Count > 0)
+            {
+                summary = string.Empty;
+                return false;
+            }
+
+            StoreDependency[] journals = store.Current?.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                .ToArray() ?? [];
+            string kept = journals.Length == 0
+                ? "No evidence had been published."
+                : $"The published prefix is kept: {journals.Length} journal chunk(s), "
+                    + $"{journals.Sum(journal => journal.LengthBytes).ToString("N0", CultureInfo.InvariantCulture)} bytes, "
+                    + $"generation {store.Current!.Generation}; records after the last publication were lost.";
+            summary = $"{Interrupted} {kept} Released {cleanup.RemovedFiles.Count} abandoned staging file(s).";
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or InvalidDataException or InvalidOperationException)
+        {
+            summary = string.Empty;
+            return false;
+        }
     }
 
     /// <summary>

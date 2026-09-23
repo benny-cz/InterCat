@@ -169,7 +169,7 @@ internal static class Qualification
         result.Evidence = ReadEvidence(parent, self, captureId);
         result.Passed = result.FinalMilestones?.FullyFinalized == true
             && result.BrokerExitCode == 0
-            && result.Evidence is { Finalized: true, JournaledRecords: > 0 };
+            && result.Evidence is { Finalized: true, JournaledRecords: > 0, StagingFilesLeft: 0 };
         result.Diagnostics = child.Diagnostics;
         return result;
     }
@@ -214,13 +214,16 @@ internal static class Qualification
         result.Evidence = ReadEvidence(parent, self, captureId);
         result.Diagnostics = [.. result.Diagnostics, .. second.Diagnostics];
 
-        // A killed broker cannot prove its journal final: the honest result is providers stopped, journal unproven,
-        // the published prefix still readable, and exit 1 (partial) from the broker that recovered it.
+        // A killed broker cannot prove its journal final. The honest result: providers stopped, journal unproven, the
+        // capture closed as interrupted (not retried forever), the published prefix readable, the dead writer's staging
+        // released, and exit 1 (partial) from the broker that recovered it.
         result.Passed = result.OrphanedSessionsAfterKill.Count == 1
             && result.OrphanedSessionsWhenListening.Count == 0
+            && result.FinalState == nameof(CaptureLifecycle.Closed)
             && result.FinalMilestones is { Requested: true, ProvidersStopped: true, JournalFinalized: false }
+            && result.FailureReason?.StartsWith("Interrupted:", StringComparison.Ordinal) == true
             && result.BrokerExitCode == 1
-            && result.Evidence is { Finalized: false, JournaledRecords: > 0 };
+            && result.Evidence is { Finalized: false, JournaledRecords: > 0, StagingFilesLeft: 0 };
         return result;
     }
 
@@ -335,6 +338,7 @@ internal static class Qualification
 
         return new()
         {
+            StagingFilesLeft = Directory.GetFiles(evidence.Path, SessionStore.StagingPrefix + "*").Length,
             Generation = current?.Generation,
             JournalChunks = journals.Length,
             JournaledRecords = records,
@@ -514,6 +518,7 @@ internal sealed class ScenarioResult
 internal sealed class EvidenceResult
 {
     public long? Generation { get; init; }
+    public int StagingFilesLeft { get; init; }
     public int JournalChunks { get; init; }
     public long JournaledRecords { get; init; }
     public long JournalBytes { get; init; }

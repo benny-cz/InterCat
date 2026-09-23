@@ -54,6 +54,8 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.Empty(host.Active);
         Assert.Equal([ownership.Session.SessionName], host.Reclaimed);
         Assert.False(Directory.Exists(Path.Combine(temporary.Root.Path, $"capture-{ownership.CaptureId.Value:N}")));
+        Assert.True(stopped.Terminal);
+        Assert.Contains("No evidence had been published", stopped.FailureReason, StringComparison.Ordinal);
 
         BrokerCaptureOwnership wrong = ownership with { Session = new("InterCat-unrelated", Guid.NewGuid()) };
         BrokerRuntimeStopOutcome refused = await runtime.StopAsync(wrong, CancellationToken.None);
@@ -118,6 +120,57 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.False(damaged.Milestones.JournalFinalized);
         Assert.False(damaged.Milestones.CallbacksDrained);
         Assert.Contains("could not be verified", damaged.FailureReason, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R16: an interrupted capture closes with its published prefix and the dead writer's staging released")]
+    public async Task InterruptedCaptureReleasesAbandonedStagingAndIsTerminal()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedEtwHost();
+        await using var recovery = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
+        BrokerCaptureOwnership ownership = Ownership(SmallPlan());
+        CommitSyntheticEvidence(temporary.Root, ownership, marker: null);
+        string abandoned = $"stg-{Guid.NewGuid():N}";
+        using (WindowsBrokerRoot directory = temporary.Root.OpenCaptureDirectory(ownership.CaptureId))
+        {
+            // What a killed writer leaves: its staged tail and an ownership marker nobody holds any more.
+            foreach (string suffix in new[] { ".tmp", ".lease" })
+            {
+                using FileStream file = directory.OpenOwnedFile(
+                    abandoned + suffix, FileMode.CreateNew, FileAccess.Write, FileShare.None, FileOptions.None);
+                file.Write("tail"u8);
+            }
+        }
+
+        BrokerRuntimeStopOutcome stopped = await recovery.StopAsync(ownership, CancellationToken.None);
+
+        Assert.True(stopped.Terminal, stopped.FailureReason);
+        Assert.True(stopped.Milestones.ProvidersStopped);
+        Assert.False(stopped.Milestones.JournalFinalized);
+        Assert.StartsWith("Interrupted:", stopped.FailureReason, StringComparison.Ordinal);
+        Assert.Contains("1 journal chunk(s)", stopped.FailureReason, StringComparison.Ordinal);
+        string captureDirectory = Path.Combine(temporary.Root.Path, $"capture-{ownership.CaptureId.Value:N}");
+        Assert.Empty(Directory.GetFiles(captureDirectory, "stg-*"));
+        Assert.NotEmpty(Directory.GetFiles(captureDirectory, "journal-*"));
+    }
+
+    [Fact(DisplayName = "R16: staging a live writer still owns keeps an interrupted capture retryable")]
+    public async Task StagingStillOwnedKeepsTheCaptureRetryable()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedEtwHost();
+        await using var recovery = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
+        BrokerCaptureOwnership ownership = Ownership(SmallPlan());
+        CommitSyntheticEvidence(temporary.Root, ownership, marker: null);
+        using WindowsBrokerRoot directory = temporary.Root.OpenCaptureDirectory(ownership.CaptureId);
+        SessionStore store = SessionStore.Open(directory, ownership.CaptureId.Value, ownership.PlanDigest);
+        using StoreStagingFile owned = store.Stage("journal-0000000002.icatj", StoreDependencyKind.Journal);
+
+        BrokerRuntimeStopOutcome stopped = await recovery.StopAsync(ownership, CancellationToken.None);
+
+        Assert.False(stopped.Terminal);
+        Assert.True(stopped.Milestones.ProvidersStopped);
+        Assert.NotEmpty(Directory.GetFiles(directory.Path, "stg-*"));
     }
 
     [Fact(DisplayName = "R16: restart keeps milestones the previous process already made durable")]

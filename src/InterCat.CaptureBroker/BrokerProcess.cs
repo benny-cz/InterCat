@@ -198,10 +198,11 @@ public static class BrokerProcess
                     return (int)InterCatExitCode.CorruptedInput;
                 }
 
+                // An interrupted capture is closed but not finalized; the milestones, not the state, decide.
                 bool partial = result.Recovery.Items
-                    .Select(item => item.State)
-                    .Concat(result.ShutdownStops.Select(stop => stop.State))
-                    .Any(state => state != CaptureLifecycle.Closed);
+                    .Select(item => item.Milestones)
+                    .Concat(result.ShutdownStops.Select(stop => stop.Milestones))
+                    .Any(milestones => !milestones.FullyFinalized);
                 return partial
                     ? (int)InterCatExitCode.PartialResultSuccess
                     : (int)InterCatExitCode.Success;

@@ -91,7 +91,15 @@ public sealed record BrokerRecoveryReport(IReadOnlyList<BrokerRecoveryItem> Item
 
 public sealed record BrokerRuntimeStartOutcome(bool Started, string? FailureReason = null);
 
-public sealed record BrokerRuntimeStopOutcome(BrokerStopMilestones Milestones, string? FailureReason = null);
+/// <param name="Terminal">
+/// No later stop can prove more: the owned ETW session is proven stopped, the process that could have drained callbacks
+/// and finalized the journal is gone, and its staging files are released. The capture closes with these milestones as
+/// an interrupted capture instead of being retried by every later broker start.
+/// </param>
+public sealed record BrokerRuntimeStopOutcome(
+    BrokerStopMilestones Milestones,
+    string? FailureReason = null,
+    bool Terminal = false);
 
 /// <summary>
 /// Name plus unguessable proof for exactly one broker-created session. A matching name without the

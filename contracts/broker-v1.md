@@ -365,6 +365,13 @@ the store's count bounds. The composed executable is exercised in fixtures over 
 file-backed ownership log and evidence runtime with a scripted ETW host. It has also been qualified once
 with real ETW, elevated (`tools/InterCat.BrokerQualification`, `bench/results/broker-qualification-*`):
 a clean stop finalizes live chunks, and a killed broker's orphaned session is reclaimed by its successor
-before the pipe exists. Capture impact at the compiled live cadence is not yet measured, and an
-interrupted capture is not yet closed terminally or cleaned of its staging files. Until both are done,
+before the pipe exists, and the interrupted capture closes with its published prefix kept and its
+staging released. Capture impact at the compiled live cadence is not yet measured; until it is,
 serving requires `--enable-unqualified-live-capture` and no shipped client passes it.
+
+An interrupted capture (its recording process gone, its ETW session proven stopped) is closed rather
+than retried: the runtime returns a terminal outcome after releasing staging whose ownership marker
+nobody holds, and the ownership record becomes `Closed` with the partial milestones, code `StopPartial`
+and a reason beginning `Interrupted:` that states the kept prefix. Staging a live writer still owns, or
+an ETW stop that failed, keeps it retryable. The unpublished tail is not salvaged; under `OnStop`
+publication a killed broker therefore keeps no evidence, which a client must say before start.

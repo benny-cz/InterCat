@@ -1,12 +1,40 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 81
+Plan revision: 82
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: elevated real-ETW broker qualification
+## Latest slice: interrupted captures close terminally
+
+A capture whose broker was killed used to stay `Stopping` forever and was re-stopped, pointlessly, at every broker
+start; its dead writer's `stg-*` staging files were never removed. Now, once recovery has proven the owned ETW session
+stopped, `BrokerEvidenceCaptureRuntime` releases the abandoned staging through `SessionStore.CleanupAbandonedStaging`.
+That call removes only files whose ownership marker nobody holds. The runtime then returns a terminal outcome whose
+reason begins `Interrupted:` and states what was kept (chunks, bytes, generation, and that the unpublished tail was
+lost). The coordinator closes such a capture with its partial milestones (`Closed`, `StopPartial`), later recoveries
+leave it alone, and it no longer counts as active. Staging a live writer still owns, or a failed ETW stop, keeps the
+capture retryable. The broker's exit code is now decided by milestones, so an interrupted capture still exits 1.
+
+The unpublished tail is not salvaged; that is deferred with its reason in plan revision 82. Under `Live` the loss is at
+most one publication interval. Under `OnStop` a killed broker keeps nothing, so an interactive client should prepare
+`Live` and say this before start.
+
+Tests: an interrupted capture with a published chunk and planted abandoned staging closes terminally, keeps the
+journal and removes the staging. Staging still owned by a live writer keeps the capture retryable. A capture killed
+before any publication reports that nothing was published. In the coordinator, a terminal partial stop closes and is
+not retried by recovery. All 760 tests pass in Debug and Release.
+
+Real-ETW qualification (`bench/results/broker-qualification-20260923T203512Z`): a clean stop finalized 778 records in 3
+chunks. The killed capture closed as `Interrupted` with its 653 published records replaying, no staging file left and
+no session leaked. The successor listened 311 ms after launch.
+
+Next: measure capture impact at the compiled live cadence (the 2 s floor and the 1,024-chunk cap are still engineering
+bounds), using the existing capture-impact comparison against the broker path. Then remove the opt-in and build the
+client launch and the UI's start and permission states.
+
+## Previous slice: elevated real-ETW broker qualification
 
 `tools/InterCat.BrokerQualification run --output <dir>` launches the production broker composition as a separate
 process (real `TraceEventSessionHost`, TDH plan source, file ownership log, evidence runtime and authenticated pipe).
