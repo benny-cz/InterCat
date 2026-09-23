@@ -1,12 +1,47 @@
 # InterCat implementation status
 
 Last updated: 2026-09-23
-Plan revision: 79
+Plan revision: 80
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: broker maintenance loop
+## Latest slice: composed broker host behind an explicit opt-in
+
+The broker executable is now composed. `BrokerProcess` provisions the protected root, opens the file-backed ownership
+log, builds the evidence runtime and coordinators, and runs `BrokerHost`. The host runs recovery to completion before
+the pipe exists, then serves one authenticated client at a time on a single first-instance pipe that it keeps for its
+whole lifetime. After each client it disconnects and waits again on the same handle, so the name is never free for
+another process to claim. The maintenance loop runs alongside. A client with the wrong user or logon session is
+disconnected and the host keeps serving. The host exits after an idle period (default 5 minutes) with no client and
+no `Starting`/`Recording` capture. A partial stop does not keep it alive, and an unreadable store counts as active.
+On Ctrl+C, console close, logoff or shutdown it stops the active captures with a durable `HostShutdownStop` request
+(kind 6), so the next broker is not left an orphan with only partial evidence.
+
+Launch contract: `serve --owner-sid --owner-logon-session --instance` plus `--enable-unqualified-live-capture`. Without
+the opt-in, or without `serve`, the executable still fails closed (exit 3), and its message says the broker is
+started by InterCat rather than run directly. Stdout carries one `listening <pipe>` line; stderr carries diagnostics
+(IDs, states, reasons). Exit codes follow §20.4: 1 means a capture was left partially stopped, and 4 means the
+ownership log is unreadable and was left untouched.
+
+Plan review found a trust gap, recorded in revision 80 and in contract §5.5. The broker authenticated its clients, but
+nothing made the client authenticate the broker. First-instance creation only stops the broker from joining a
+squatter's pipe. The client must keep the launched process handle and require `GetNamedPipeServerProcessId` to equal
+it before sending Hello. That is owed by the first client that launches the broker.
+
+Tests: launch-argument parsing and refusals; fail-closed exits that create nothing; an end-to-end process over a
+real pipe, protected temporary root, file ownership log and evidence runtime (scripted ETW). In that run one capture
+is stopped by the client and one left recording is finalized at shutdown, both evidence stores reopen, and a second
+client is served on the same instance. Also covered: restart recovery reclaiming a predecessor's ETW session before
+the pipe exists (exit 1, because that evidence was never finalized); idle exit waiting for the last recording to stop;
+and refused clients disconnected while the host keeps serving. All 755 tests pass in Debug and Release.
+
+This machine's shell is elevated, which makes the real gate runnable here. Next: an elevated, opt-in integration run
+with real `TraceEventSessionHost` ETW and a real plan source. It must cover start, stop, a killed-broker restart that
+reclaims the session, and a capture-impact benchmark at the compiled live cadence. Then comes the client half: launch
+with a retained handle, server-PID check, and the UI's start/permission states.
+
+## Previous slice: broker maintenance loop
 
 `BrokerMaintenanceLoop` is the no-client half of the future broker host. `RecoverAsync` must finish before the pipe
 accepts commands. `RunAsync` then runs a pass every second by default (at most one minute): it makes autonomous stops

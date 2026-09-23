@@ -4,7 +4,7 @@ using System.Text;
 namespace InterCat.CaptureBroker;
 
 /// <summary>
-/// Per-connection, transport-independent command state. The future pipe host must construct this only
+/// Per-connection, transport-independent command state. A host must construct this only
 /// after deriving <see cref="BrokerClientIdentity"/> from the connected process token.
 /// </summary>
 public sealed class BrokerConnectionDispatcher

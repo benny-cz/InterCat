@@ -15,7 +15,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task StartStopPublishesEvidenceOnly()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         PreparedCapturePlan plan = SmallPlan();
         BrokerCaptureOwnership ownership = Ownership(plan);
@@ -40,7 +40,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task RecoveryStopIsHonestAboutInterruptedJournal()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         BrokerCaptureOwnership ownership = Ownership(SmallPlan());
         host.Active.Add(ownership.Session.SessionName);
@@ -65,7 +65,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task RestartVerifiesCommittedFinalPublication()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         PreparedCapturePlan plan = SmallPlan(seconds: 1);
         BrokerCaptureOwnership ownership = Ownership(plan) with { State = CaptureLifecycle.Recording };
 
@@ -90,7 +90,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task RestartRefusesUnfinalizedOrForeignEvidence()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var recovery = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         PreparedCapturePlan plan = SmallPlan();
 
@@ -124,7 +124,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task RestartKeepsDurableMilestones()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var recovery = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         BrokerCaptureOwnership ownership = Ownership(SmallPlan()) with
         {
@@ -144,7 +144,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task StartRefusesWithoutRoomToFinish()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         PreparedCapturePlan plan = SmallPlan();
         long reserve = plan.Quota.MinimumFreeDiskBytes;
         await using var runtime = new BrokerEvidenceCaptureRuntime(
@@ -164,7 +164,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task IdleFreeSpaceLossStopsCapture()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         PreparedCapturePlan plan = SmallPlan();
         long free = 1L << 40;
         await using var runtime = new BrokerEvidenceCaptureRuntime(
@@ -190,7 +190,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task StartRefusesPreExistingEvidenceDirectory()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         PreparedCapturePlan plan = SmallPlan();
         BrokerCaptureOwnership ownership = Ownership(plan);
@@ -207,7 +207,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task DurationExpiryCanBeReconciledByStop()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         PreparedCapturePlan plan = SmallPlan(seconds: 1);
         BrokerCaptureOwnership ownership = Ownership(plan);
@@ -225,7 +225,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     public async Task DurationStopIsPersistedThroughCoordinator()
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
-        var host = new ScriptedHost();
+        var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         using var store = new FileBrokerLifecycleStore(temporary.Root);
         var registry = new PreparedPlanRegistry();
@@ -320,60 +320,5 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
             LeaseExpiresAtUtc = now.AddMinutes(1),
             StopMilestones = BrokerStopMilestones.None,
         };
-    }
-
-    private sealed class ScriptedHost : IEtwSessionHost, IEtwSessionReclaimer
-    {
-        public List<string> Active { get; } = [];
-        public List<string> Created { get; } = [];
-        public List<string> Reclaimed { get; } = [];
-        public bool? IsElevated => true;
-
-        public IReadOnlyList<string> ListActiveSessionNames() => Active;
-
-        public IOwnedEtwSession CreateExclusive(OwnedSessionPlan plan)
-        {
-            if (Active.Contains(plan.Identity.SessionName, StringComparer.Ordinal))
-            {
-                throw new EtwSessionException("The exact session already exists.");
-            }
-
-            Active.Add(plan.Identity.SessionName);
-            Created.Add(plan.Identity.SessionName);
-            return new Session(this, plan.Identity.SessionName);
-        }
-
-        public bool StopPreviouslyOwnedSession(string sessionName, Guid ownershipToken)
-        {
-            Assert.EndsWith(ownershipToken.ToString("N"), sessionName, StringComparison.Ordinal);
-            Reclaimed.Add(sessionName);
-            return Active.Remove(sessionName);
-        }
-
-        private sealed class Session(ScriptedHost host, string name) : IOwnedEtwSession
-        {
-            private volatile bool stop;
-            public string SessionName => name;
-            public ProviderEnablementResult Enable(ProviderEnablementRequest request) =>
-                new(request.SourceId, true, null);
-            public bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason)
-            {
-                failureReason = null;
-                return true;
-            }
-
-            public void Pump(EventAdmissionTable table, IAdmittedEventSink sink, CancellationToken token)
-            {
-                while (!stop && !token.IsCancellationRequested)
-                {
-                    Thread.Sleep(1);
-                }
-            }
-
-            public void RequestStopProcessing() => stop = true;
-            public SourceLossReading ReadLoss() => new(0, 0);
-            public void StopSession() => host.Active.Remove(name);
-            public void Dispose() { }
-        }
     }
 }

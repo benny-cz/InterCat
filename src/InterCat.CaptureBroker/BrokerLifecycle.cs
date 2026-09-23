@@ -27,6 +27,9 @@ public enum BrokerRequestKind
     ExpiredLeaseStop = 3,
     RecoveryStop = 4,
     AutonomousStop = 5,
+
+    /// <summary>The broker host is exiting and stops what it still records rather than leaving an orphan.</summary>
+    HostShutdownStop = 6,
 }
 
 /// <summary>Stop progress is never collapsed into one optimistic success flag.</summary>

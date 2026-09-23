@@ -160,6 +160,25 @@ public sealed partial class WindowsBrokerPipeServerInstance : IDisposable, IAsyn
         return new(identity, clientProcessId);
     }
 
+    /// <summary>
+    /// Ends the current client so the same instance can wait for the next one. The broker keeps this one handle for its
+    /// lifetime, so the pipe name is never free for another process to claim between clients.
+    /// </summary>
+    public void DisconnectClient()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        try
+        {
+            // A client that already closed leaves the instance broken rather than disconnected; Disconnect is the
+            // only way back to listening in both cases.
+            stream.Disconnect();
+        }
+        catch (InvalidOperationException)
+        {
+            // Never connected, or already disconnected.
+        }
+    }
+
     public void Dispose()
     {
         if (!disposed)

@@ -4,7 +4,7 @@ namespace InterCat.CaptureBroker;
 
 /// <summary>
 /// Transport-independent ownership coordinator. It records an operation intent before touching the
-/// capture runtime and records the completion before returning success. The future pipe host supplies
+/// capture runtime and records the completion before returning success. The pipe host (<see cref="BrokerHost"/>) supplies
 /// an OS-authenticated <see cref="BrokerClientIdentity"/>; this class never accepts a PID as identity.
 /// </summary>
 public sealed class BrokerLifecycleCoordinator : IDisposable
@@ -596,6 +596,65 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             gate.Release();
         }
     }
+
+    /// <summary>
+    /// Whether any capture still holds, or may be acquiring, an ETW session. A partial stop does not count: it is
+    /// retried by the next broker's recovery and must not keep an otherwise idle broker running forever.
+    /// </summary>
+    public async Task<bool> HasActiveCapturesAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            return snapshot.Captures.Any(IsActive);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stops every active capture because the host is exiting. The process cannot hand its ETW sessions to a successor,
+    /// so a clean stop with finalized evidence is better than an orphan the next broker reclaims with partial evidence.
+    /// Queued stop completions are retried first; a capture whose stop stays partial remains retryable at recovery.
+    /// </summary>
+    public async Task<IReadOnlyList<BrokerStopOutcome>> StopActiveCapturesForShutdownAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var outcomes = new List<BrokerStopOutcome>();
+            outcomes.AddRange(await RetryPendingStopCompletionsCoreAsync().ConfigureAwait(false));
+            BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            foreach (BrokerCaptureOwnership ownership in snapshot.Captures
+                .Where(IsActive)
+                .OrderBy(capture => capture.CreatedAtUtc))
+            {
+                outcomes.Add(await StopOwnedAsync(
+                        ownership.CaptureId,
+                        Guid.NewGuid(),
+                        BrokerRequestKind.HostShutdownStop,
+                        ownership.Owner,
+                        verifyOwner: false,
+                        CancellationToken.None)
+                    .ConfigureAwait(false));
+            }
+
+            return outcomes;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static bool IsActive(BrokerCaptureOwnership capture) =>
+        capture.State is CaptureLifecycle.Starting or CaptureLifecycle.Recording;
 
     /// <summary>Stops every expired interactive owner lease. A partial stop remains retryable.</summary>
     public async Task<IReadOnlyList<BrokerStopOutcome>> StopExpiredLeasesAsync(

@@ -8,8 +8,8 @@ namespace InterCat.CaptureBroker;
 
 /// <summary>
 /// Privileged, evidence-only capture runtime. It never derives rows or adopts an existing evidence directory.
-/// The executable is still disabled: its host must run the completion/lease maintenance loop and prove the full pipe/restart
-/// sequence before this runtime can serve users.
+/// <see cref="BrokerHost"/> serves it only behind an explicit unqualified-capture opt-in until real ETW has been exercised
+/// through an elevated crash/restart.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe, IAsyncDisposable

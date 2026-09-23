@@ -1,10 +1,10 @@
 # InterCat broker protocol v1
 
-Status: **prepare, ownership/recovery and compaction, bounded dispatch, the OS-authenticated pipe boundary and the broker-owned filesystem root implemented; live capture commands not yet enabled**.
+Status: **prepare, ownership/recovery and compaction, bounded dispatch, the OS-authenticated pipe boundary, the broker-owned filesystem root and the composed host implemented; serving requires an explicit unqualified-capture opt-in**.
 
 This contract freezes the first IC-014 boundary: the privileged broker can turn a locally compiled,
 startable effective capture plan into a deep-frozen prepared plan with a deterministic identity. The
-current executable still refuses to run as a service and exposes no start command. Nothing in this
+executable serves only when launched with `serve` and `--enable-unqualified-live-capture` (section 5.5). Nothing in this
 document makes the prepared-plan digest an authorization credential.
 
 ## 1. Trust boundary
@@ -260,8 +260,7 @@ as diagnostic data and never participates in authorization.
 The authenticated connection processor reads only the bounded v1 frame codec, writes one correlated
 response at a time and closes a connection after at most 4,096 commands. Windows fixtures exercise the
 real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
-refusal and a complete Hello exchange. The broker executable remains fail-closed: it does not start this
-listener until the real ETW/journal runtime and its cleanup boundary are also composed.
+refusal and a complete Hello exchange. The composed host (section 5.5) reuses one instance for its lifetime.
 
 Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
 session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
@@ -310,6 +309,43 @@ parent, a rename attempt against the held handle, a pre-existing directory with 
 repaired and revalidated, and a token duplicated and lowered to prove that an ordinary-integrity caller
 still reads the evidence and is refused every write.
 
+### 5.5 Composed broker host
+
+```text
+InterCat.CaptureBroker serve --owner-sid <SID> --owner-logon-session <LUID> --instance <GUID>
+                             --enable-unqualified-live-capture [--idle-exit-seconds <10-86400>]
+```
+
+The launching client supplies its own SID, its own token's logon-session LUID and a fresh instance GUID.
+They select whom the pipe admits and where it listens; each connection is still authenticated from the
+impersonated token. The LUID is the client's, not the elevated broker's: elevation always creates a
+different logon session and may use a different account. The root's viewer ACE names the same SID.
+
+Order of operations: provision the root (production parent `%ProgramData%`, refused unelevated), open
+the ownership log, compose the evidence runtime and coordinators, run recovery to completion, create the
+pipe, write `listening \\.\pipe\InterCat.Broker.v1.<GUID:N>` to stdout, then serve. Diagnostics go to
+stderr and contain IDs, states and reasons only. The host keeps one pipe instance for its lifetime and
+disconnects each finished or refused client on that handle, so the name is never released. One client
+is served at a time.
+
+The host exits after the idle period with no connected client and no `Starting`/`Recording` capture
+(a partial stop does not keep it alive; the next recovery retries it; an unreadable store counts as
+active). On Ctrl+C, console close, logoff or shutdown it stops serving, stops the maintenance loop, then
+stops every active capture with a durable `HostShutdownStop` request (kind 6) before exiting.
+
+| Exit | Meaning |
+|---:|---|
+| 0 | Served and exited idle or on request; every capture it touched is closed |
+| 1 | Exited normally, but recovery or shutdown left a capture partially stopped |
+| 2 | Malformed `serve` invocation |
+| 3 | Not `serve`, not opted in, root refused (not elevated, untrusted owner) or pipe name already taken |
+| 4 | Ownership log unreadable; left untouched |
+
+**Client obligation (not yet implemented):** first-instance creation protects the broker from joining a
+squatter's pipe, not the client from connecting to one, and an elevated process's command line is
+readable at ordinary integrity. The client launches the broker keeping its process handle and, after
+connecting, requires `GetNamedPipeServerProcessId` to equal that process before sending Hello.
+
 ## 6. Threat model and current non-capabilities
 
 Assets are the elevated provider/session controls, admitted event data, broker-owned output directory,
@@ -322,10 +358,9 @@ oversized frames, expired/wrong-owner tokens, duplicate starts that would create
 foreign session stop requests, arbitrary paths and provider/body settings not produced by the broker's
 allowlisted compiler. Imported archives never invoke this protocol merely by being opened.
 
-The current slice has no ETW/journal runtime binding, and no retention rule for ownership and request
-records that outlive their usefulness inside the store's count bounds.
-`InterCat.CaptureBroker` returns a failure exit code when launched. Decoded requests, prepared tokens and
-durable lifecycle/recovery operations are connected through real authenticated pipe fixtures but still
-use a fake capture runtime. Those
-absences are deliberate: a live UI control must not appear until authentication, directory security and
-real cleanup behavior are implemented and tested together.
+There is no retention rule yet for ownership and request records that outlive their usefulness inside
+the store's count bounds. The composed executable is exercised end to end over a real pipe, protected root,
+file-backed ownership log and evidence runtime, but with a scripted ETW host; it has not yet run real ETW
+through an elevated crash/restart. Until it has, and until capture impact is measured at the compiled live
+cadence, serving requires `--enable-unqualified-live-capture` and no shipped client passes it. The client
+side of server authentication (section 5.5) is not implemented, because no client launches the broker yet.
