@@ -35,6 +35,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "compact" => await CompactCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "follow" => await FollowCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -132,6 +133,10 @@ static void PrintHelp()
     ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal would give up, and");
     ConsoleUi.Line("      performs it only with --confirm and a stated reason (ADR-010).");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--json]");
+    ConsoleUi.Line("      Derives a session, in this ordinary process, from what icat record --evidence-only");
+    ConsoleUi.Line("      publishes: chunks copied byte for byte and checked, rows derived here (ADR-027).");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat compact <directory> [--check] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Coalesces small publications into bounded segments, keeping every row (§20.1).");

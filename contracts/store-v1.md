@@ -207,6 +207,18 @@ same row re-derived agree. The coverage ledger is published with the last genera
 recording interrupted between publications leaves the chunks already published and staging files for the rest.
 Journal-prefix retention releases a recording's oldest chunks whole (§8).
 
+A privileged recording can publish an **evidence session** instead (ADR-027). It holds the same journal chunks, plan
+and ledger, with no rows and no segments, so nothing privileged derives, reads back or compacts. An ordinary process
+follows it into a session directory of its own:
+
+- each committed chunk is copied byte for byte, its length and digest checked against the evidence manifest;
+- its rows are derived there, with the capture-wide journal index an in-process recording uses;
+- the plan comes with the first chunk and the ledger with the last.
+
+The derived session takes the evidence session's identity and is an ordinary session. A follower resumes from what the
+derived session holds. It refuses evidence whose chunks are not the ones it mirrored, a session that already has its
+rows, and an evidence session that has published nothing.
+
 The formats themselves are `contracts/segment-v1.md`. This contract does not read inside them: to it a
 segment is a named file with a length and a digest, which is what lets a future format arrive without
 changing the commit sequence.

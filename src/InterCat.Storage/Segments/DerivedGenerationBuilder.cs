@@ -87,6 +87,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private readonly JournalV1Writer? journal;
     private readonly CommittedBoundary? retainedBoundary;
     private readonly bool compacting;
+    private readonly bool mirroring;
+    private long? mirroredRecords;
     private readonly List<StoreStagingFile> staged = [];
     private readonly List<PendingSegment> segments = [];
     private readonly List<PendingSegment> fieldSegments = [];
@@ -107,7 +109,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
         JournalV1Writer? journal,
         CommittedBoundary? retainedBoundary = null,
         long? sourceGeneration = null,
-        bool compacting = false)
+        bool compacting = false,
+        bool mirroring = false)
     {
         this.store = store;
         this.identity = identity;
@@ -118,13 +121,16 @@ public sealed class DerivedGenerationBuilder : IDisposable
         this.retainedBoundary = retainedBoundary;
         this.sourceGeneration = sourceGeneration;
         this.compacting = compacting;
+        this.mirroring = mirroring;
         open = new(identity, 0);
         openFields = new(identity, 0);
     }
 
     /// <summary>The journal this generation derives from. A caller appends the admitted envelopes it keyed.</summary>
     public JournalV1Writer Journal => journal
-        ?? throw new InvalidOperationException("A re-derivation reads the retained journal; it does not write a new one.");
+        ?? throw new InvalidOperationException(
+            "This generation derives from admitted evidence it did not write - a retained, mirrored or compacted "
+            + "journal - so it has no journal to append to.");
 
     /// <summary>The capture, clock and derivation every segment of this generation names.</summary>
     public SegmentIdentityV1 Identity => identity;
@@ -172,6 +178,23 @@ public sealed class DerivedGenerationBuilder : IDisposable
         ledgerStaged = true;
     }
 
+    /// <summary>
+    /// Retains a coverage ledger exactly as another session published it, so a mirrored session names the same bytes.
+    /// The bytes are decoded first: a ledger that does not read is refused rather than carried.
+    /// </summary>
+    public void StageCoverageLedger(ReadOnlySpan<byte> bytes)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || ledgerStaged)
+        {
+            throw new InvalidOperationException("A generation stages its coverage ledger once, before publication.");
+        }
+
+        _ = CoverageLedgerV1.Decode(bytes);
+        Stage(CoverageLedgerFileName(generation), StoreDependencyKind.CoverageLedger, bytes.ToArray());
+        ledgerStaged = true;
+    }
+
     /// <summary>The published name of a generation's coverage ledger.</summary>
     public static string CoverageLedgerFileName(long generation) => $"coverage-{generation:D10}.json";
 
@@ -216,6 +239,56 @@ public sealed class DerivedGenerationBuilder : IDisposable
                 createdUtc,
                 bounds.JournalBatchRecords);
             return new(store, identity, bounds, generation, journalFile, journal);
+        }
+        catch
+        {
+            journalFile.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Begins a generation whose journal is an exact copy of admitted evidence published elsewhere: a live recording's
+    /// chunk that a privileged recorder published into its evidence session, mirrored by an unprivileged follower
+    /// (ADR-027). The bytes are copied and made durable before any row is staged, as §20.1's first step requires, and
+    /// the published journal is measured like any other; the caller derives this generation's rows from the same bytes.
+    /// </summary>
+    public static DerivedGenerationBuilder BeginMirror(
+        SessionStore store,
+        SegmentIdentityV1 identity,
+        SourceClockDescriptor sourceClock,
+        Stream journalBytes,
+        DerivedGenerationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(journalBytes);
+        DerivedGenerationOptions bounds = options ?? DerivedGenerationOptions.Default;
+        if (bounds.Validate() is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(options));
+        }
+
+        if (sourceClock.Id != identity.ClockId)
+        {
+            throw new ArgumentException(
+                "A generation's segments and its journal name one clock. Deriving rows against a clock the "
+                + "journal does not describe would make their instants unreadable (I8).",
+                nameof(sourceClock));
+        }
+
+        long generation = store.NextGeneration;
+        StoreStagingFile journalFile = store.Stage(SegmentFormatV1.JournalFileName(generation), StoreDependencyKind.Journal);
+        try
+        {
+            journalBytes.Position = 0;
+            journalBytes.CopyTo(journalFile.Content);
+            if (journalFile.Content is FileStream file)
+            {
+                file.Flush(flushToDisk: true);
+            }
+
+            return new(store, identity, bounds, generation, journalFile, journal: null, mirroring: true);
         }
         catch
         {
@@ -290,6 +363,25 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
         return new(store, identity, bounds, store.NextGeneration, journalFile: null, journal: null,
             retainedBoundary: null, sourceGeneration, compacting: true);
+    }
+
+    /// <summary>
+    /// Publishes a mirrored generation (see <see cref="BeginMirror"/>). Its committed boundary names the copied journal
+    /// and the records the caller replayed from it, which it knows only once the replay is done.
+    /// </summary>
+    public DerivedGenerationResult CompleteMirror(
+        long journalRecords,
+        DateTimeOffset committedUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(journalRecords);
+        if (!mirroring)
+        {
+            throw new InvalidOperationException("This builder is not mirroring a journal.");
+        }
+
+        mirroredRecords = journalRecords;
+        return Complete(committedUtc, cancellationToken);
     }
 
     /// <summary>
@@ -489,6 +581,12 @@ public sealed class DerivedGenerationBuilder : IDisposable
             throw new InvalidOperationException("A compaction publishes through CompleteCompaction.");
         }
 
+        if (mirroring && mirroredRecords is null)
+        {
+            throw new InvalidOperationException(
+                "A mirrored generation publishes through CompleteMirror, with the record count its replay found.");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         journal?.Complete();
         FlushSegment();
@@ -506,7 +604,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
             boundary = new(
                 journalDependency.Name,
                 journalDependency.LengthBytes,
-                journal!.RecordsWritten,
+                journal?.RecordsWritten ?? mirroredRecords!.Value,
                 journalDependency.Digest);
 
             // The journal is published first, so the rename order matches the commit sequence.

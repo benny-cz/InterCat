@@ -318,6 +318,142 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(SessionSegments.CoverageLedger(reopened.Root, manifest));
     }
 
+    [Fact(DisplayName = "R16: a privileged recording publishes evidence only, and a follower derives the session from it")]
+    public async Task AFollowerDerivesEvidenceOnlyRecordings()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        LiveRecordingResult recorded = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2, 3, 4]);
+
+        // The recorder derived nothing: its generations hold journal chunks, the plan and the ledger, and no rows.
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        SessionManifestV1 source = evidence.Current!;
+        Assert.Equal(0, recorded.Compactions);
+        Assert.Empty(SessionSegments.Names(source));
+        Assert.Empty(SessionSegments.FieldNames(source));
+        StoreDependency[] sourceChunks = ChunksOf(source);
+        Assert.Equal(recorded.Publications, sourceChunks.Length);
+        Assert.InRange(sourceChunks.Length, 2, 3);
+
+        // A follower mirrors every chunk and derives what an in-process recording derives.
+        SessionStore derived = SessionStore.Open(LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        LiveSessionFollower follower = LiveSessionFollower.Open(evidence, derived);
+        FollowStep step = follower.CatchUp();
+        Assert.True(step.Finished);
+        Assert.Equal((sourceChunks.Length, 4L, sourceChunks.Length, sourceChunks.Length), (step.MirroredChunks, step.DerivedRecords, step.DerivedChunks, step.EvidenceChunks));
+
+        // Byte for byte: every chunk, the plan and the ledger are the evidence session's own.
+        SessionManifestV1 mirror = derived.Current!;
+        Assert.Equal(sourceChunks.Select(Measured), ChunksOf(mirror).Select(Measured));
+        Assert.Equal(
+            Measured(source.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan)),
+            Measured(mirror.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan)));
+        Assert.Equal(
+            Measured(source.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger)),
+            Measured(mirror.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger)));
+
+        // Its rows are the rows a recording that derives in-process publishes, compacted when the capture stopped.
+        (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) rows = RowsOf(derived, mirror);
+        Assert.Single(SessionSegments.Names(mirror));
+        Assert.Equal([0UL, 1UL, 2UL, 3UL], rows.Rows.Select(row => row.JournalRecordIndex!.Value));
+        Assert.Equal([100L, 200L, 300L, 400L], rows.Rows.Select(row => row.ByteValue!.Value));
+        Assert.Equal([0x7000L, 0x7001L, 0x7002L, 0x7003L], rows.Fields.Select(field => field.Value!.Value));
+        JournalRederivationVerification replay = JournalRederivation.Verify(derived);
+        Assert.Equal((4L, sourceChunks.Length), (replay.ObservationRows, replay.JournalChunks));
+
+        // Following a finished capture again mirrors nothing.
+        Assert.Equal((0, true), (follower.CatchUp().MirroredChunks, follower.CatchUp().Finished));
+    }
+
+    [Fact(DisplayName = "R16: a follower resumes where its session ends, and refuses what it does not mirror")]
+    public async Task AFollowerResumesAndRefusesOtherEvidence()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var otherDirectory = new TemporaryDirectory();
+        using var sessionDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        _ = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2, 3, 4]);
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        SessionManifestV1 source = evidence.Current!;
+
+        // One chunk now, the rest from a fresh follower that reads what the session already mirrored.
+        SessionStore derived = SessionStore.Open(LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        FollowStep first = LiveSessionFollower.Open(evidence, derived).CatchUp(maximumChunks: 1);
+        Assert.Equal((1, false), (first.MirroredChunks, first.Finished));
+        SessionStore reopened = SessionStore.Open(LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        FollowStep rest = LiveSessionFollower.Open(evidence, reopened).CatchUp();
+        Assert.True(rest.Finished);
+        Assert.Equal(4, rest.DerivedRecords);
+        Assert.Equal([0UL, 1UL, 2UL, 3UL], RowsOf(reopened, reopened.Current!).Rows.Select(row => row.JournalRecordIndex!.Value));
+
+        // Another capture's evidence is not what this session mirrors, so following it is refused.
+        _ = await RecordEvidence(otherDirectory.Path, ordinals: [1, 2, 3, 4]);
+        SessionStore other = SessionStore.OpenExisting(LocalOwnedDirectory.Open(otherDirectory.Path));
+        Assert.Contains(
+            "is not the evidence session's",
+            Assert.Throws<InvalidDataException>(() => LiveSessionFollower.Open(other, reopened).CatchUp()).Message,
+            StringComparison.Ordinal);
+
+        // An ordinary session already has its rows, and an empty directory has published nothing to follow.
+        SessionStore ordinary = SessionStore.Open(LocalOwnedDirectory.Open(sessionDirectory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        host.Admit(new AdmittedEvent { SourceIndex = 0, EventId = 10, Version = 0, TimestampQpc = Stopwatch.GetTimestamp(), RecordOrdinal = 1 });
+        _ = await LiveSessionRecorder.RecordAsync(Plan(), host, ordinary, _ => host.Delivered.Task, DateTimeOffset.UtcNow);
+        using var emptyDirectory = new TemporaryDirectory();
+        SessionStore empty = SessionStore.Open(LocalOwnedDirectory.Open(emptyDirectory.Path), Guid.NewGuid(), "live-tests");
+        Assert.Throws<InvalidOperationException>(() => LiveSessionFollower.Open(
+            SessionStore.OpenExisting(LocalOwnedDirectory.Open(sessionDirectory.Path)), empty).CatchUp());
+        Assert.Throws<ArgumentException>(() => LiveSessionFollower.Open(
+            SessionStore.OpenExisting(LocalOwnedDirectory.Open(emptyDirectory.Path)), empty));
+    }
+
+    /// <summary>Records bursts of records 400 ms apart as evidence only, publishing every 100 ms.</summary>
+    private static async Task<LiveRecordingResult> RecordEvidence(string directory, int[] ordinals)
+    {
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < ordinals.Length; index++)
+        {
+            if (index == 2)
+            {
+                host.Pause(TimeSpan.FromMilliseconds(400));
+            }
+
+            var admitted = new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = ordinals[index],
+            };
+            admitted.SetSlot(0, 100 * (index + 1));
+            admitted.SetSlot(1, 0x7000 + index);
+            host.Admit(admitted);
+        }
+
+        return await LiveSessionRecorder.RecordAsync(
+            Plan(withFields: true),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100),
+            output: LiveRecordingOutput.EvidenceOnly);
+    }
+
+    private static StoreDependency[] ChunksOf(SessionManifestV1 manifest) =>
+    [
+        .. manifest.Dependencies
+            .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+            .OrderBy(dependency => dependency.Name, StringComparer.Ordinal),
+    ];
+
+    /// <summary>What identifies a dependency's bytes, whatever name each session gives it.</summary>
+    private static (long Length, string Digest) Measured(StoreDependency dependency) => (dependency.LengthBytes, dependency.Digest);
+
     [Fact(DisplayName = "R21: a live capture that cannot start publishes nothing and leaves its session empty")]
     public async Task ACaptureThatCannotStartPublishesNothing()
     {

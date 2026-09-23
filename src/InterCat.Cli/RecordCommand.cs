@@ -21,6 +21,9 @@ internal sealed record RecordingDocument
     public required long JournaledRecords { get; init; }
     public required int Publications { get; init; }
 
+    /// <summary>Whether only admitted evidence was published, for `icat follow` to derive (ADR-027).</summary>
+    public required bool EvidenceOnly { get; init; }
+
     /// <summary>How many compaction generations coalesced the recording's small publications (ADR-026).</summary>
     public required int Compactions { get; init; }
 
@@ -56,6 +59,7 @@ internal static class RecordCommand
         string? mechanismOption = command.TakeOption("--mechanism");
         string? durationOption = command.TakeOption("--duration");
         string? publishOption = command.TakeOption("--publish-every");
+        bool evidenceOnly = command.TryTakeFlag("--evidence-only");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
@@ -188,6 +192,7 @@ internal static class RecordCommand
             until => Task.Delay(TimeSpan.FromSeconds(seconds), until),
             DateTimeOffset.UtcNow,
             publishEvery: publishSeconds > 0 ? TimeSpan.FromSeconds(publishSeconds) : null,
+            output: evidenceOnly ? LiveRecordingOutput.EvidenceOnly : LiveRecordingOutput.Session,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Start.Started)
         {
@@ -211,6 +216,7 @@ internal static class RecordCommand
             Generation = result.Generation?.Manifest.Generation,
             JournaledRecords = result.JournaledRecords,
             Publications = result.Publications,
+            EvidenceOnly = evidenceOnly,
             Compactions = result.Compactions,
             CompactionFailure = result.CompactionFailure,
             PublishEverySeconds = publishSeconds > 0 ? publishSeconds : null,
@@ -273,6 +279,12 @@ internal static class RecordCommand
             ConsoleUi.Warn(
                 $"A compaction was not published ({failure}). The recording is whole; run icat compact to coalesce it.");
         }
+
+        if (document.EvidenceOnly)
+        {
+            ConsoleUi.Field("Derived", "nothing: this elevated process published the admitted evidence alone");
+        }
+
         if (document.Health is { } health)
         {
             ConsoleUi.Field("Delivered", ConsoleUi.Count(health.ObservedRecords));
@@ -310,14 +322,18 @@ internal static class RecordCommand
         }
 
         ConsoleUi.Line();
-        ConsoleUi.Note($"icat session \"{document.Path}\" shows what it holds; icat processes and icat metric read it.");
+        ConsoleUi.Note(
+            document.EvidenceOnly
+                ? $"icat follow \"{document.Path}\" <session-dir> derives the session from it in an ordinary shell, and can "
+                    + "run while a recording records; icat processes and icat metric then read that session."
+                : $"icat session \"{document.Path}\" shows what it holds; icat processes and icat metric read it.");
         ConsoleUi.Success($"Recorded {ConsoleUi.Count(document.JournaledRecords)} records.");
     }
 
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
-        ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--json]");
+        ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");
         ConsoleUi.Line($"  for --duration seconds (default {DefaultSeconds}, at most {MaximumSeconds:N0}) or until Ctrl+C, which keeps what");
@@ -327,5 +343,7 @@ internal static class RecordCommand
         ConsoleUi.Line($"  --publish-every (default {DefaultPublishSeconds} s) publishes what was recorded so far as a new generation, one");
         ConsoleUi.Line("  journal chunk each, so session, processes and metric can read the capture while it records; 0");
         ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
+        ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks, plan and ledger - and");
+        ConsoleUi.Line("  derives nothing in the elevated process; icat follow derives the session from it (ADR-027).");
     }
 }

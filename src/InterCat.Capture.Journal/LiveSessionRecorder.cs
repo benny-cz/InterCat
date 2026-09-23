@@ -5,6 +5,19 @@ using InterCat.Storage;
 
 namespace InterCat.Capture.Journal;
 
+/// <summary>What a live recording publishes.</summary>
+public enum LiveRecordingOutput
+{
+    /// <summary>Admitted evidence and the rows derived from it: a session every command reads.</summary>
+    Session = 1,
+
+    /// <summary>
+    /// Admitted evidence only: journal chunks, the normalizer plan and the coverage ledger, with no rows. A privileged
+    /// recorder publishes this, and an unprivileged follower mirrors it and derives the rows (§9, ADR-027).
+    /// </summary>
+    EvidenceOnly = 2,
+}
+
 /// <summary>What one live recording captured and published into its session.</summary>
 public sealed record LiveRecordingResult
 {
@@ -63,6 +76,9 @@ public static class LiveSessionRecorder
     /// When small publications are coalesced; §20.1's targets by default. A step while recording rewrites at most one
     /// segment's worth of rows, so the writer is held up for a bounded time.
     /// </param>
+    /// <param name="output">
+    /// Whether the session gets rows, or only the admitted evidence an unprivileged follower derives them from.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -72,6 +88,7 @@ public static class LiveSessionRecorder
         DerivedGenerationOptions? options = null,
         TimeSpan? publishEvery = null,
         CompactionOptions? compaction = null,
+        LiveRecordingOutput output = LiveRecordingOutput.Session,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -86,6 +103,11 @@ public static class LiveSessionRecorder
         if (compaction?.Validate() is { } compactionProblem)
         {
             throw new ArgumentException(compactionProblem, nameof(compaction));
+        }
+
+        if (!Enum.IsDefined(output))
+        {
+            throw new ArgumentOutOfRangeException(nameof(output), output, "A recording publishes a session or evidence only.");
         }
 
         if (store.Current is not null)
@@ -116,7 +138,8 @@ public static class LiveSessionRecorder
             committedUtc,
             options ?? DerivedGenerationOptions.Default,
             publishEvery,
-            compaction ?? CompactionOptions.Default);
+            compaction ?? CompactionOptions.Default,
+            output == LiveRecordingOutput.Session);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         Task<long> writer = Task.Factory.StartNew(
@@ -213,6 +236,7 @@ public static class LiveSessionRecorder
         private readonly DerivedGenerationOptions options;
         private readonly TimeSpan? publishEvery;
         private readonly CompactionOptions compaction;
+        private readonly bool deriveRows;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly ObservationNormalizerV1 normalizer;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
@@ -229,7 +253,8 @@ public static class LiveSessionRecorder
             DateTimeOffset createdUtc,
             DerivedGenerationOptions options,
             TimeSpan? publishEvery,
-            CompactionOptions compaction)
+            CompactionOptions compaction,
+            bool deriveRows)
         {
             this.session = session;
             this.plan = plan;
@@ -239,6 +264,7 @@ public static class LiveSessionRecorder
             this.options = options;
             this.publishEvery = publishEvery;
             this.compaction = compaction;
+            this.deriveRows = deriveRows;
             mapper = new AdmittedEventEnvelopeMapper(plan.Sources, clock.Id);
             normalizer = new ObservationNormalizerV1(clock);
             builder = BeginChunk(stagePlan: true);
@@ -290,7 +316,7 @@ public static class LiveSessionRecorder
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             Publications++;
             Count(published);
-            return Compact(compaction with { RowBudget = 0 })?.Generation ?? published;
+            return deriveRows ? Compact(compaction with { RowBudget = 0 })?.Generation ?? published : published;
         }
 
         public void Dispose() => builder.Dispose();
@@ -310,11 +336,14 @@ public static class LiveSessionRecorder
 
             // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
             RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
-            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, (ulong)journaled);
-            builder.AddRow(row);
-            foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+            if (deriveRows)
             {
-                builder.AddFieldRow(field);
+                ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, (ulong)journaled);
+                builder.AddRow(row);
+                foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+                {
+                    builder.AddFieldRow(field);
+                }
             }
 
             builder.Journal.Append(envelope);
