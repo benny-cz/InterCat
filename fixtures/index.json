@@ -799,6 +799,7 @@
       ],
       "R21": [
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
+        "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
         "R21: a journal that names no clock is refused, never read against an assumed one",
@@ -812,6 +813,7 @@
         "R21: an item with a declared size but no data is counted, not read at a guess",
         "R21: an unmeasured stage total reads as unknown rather than as zero",
         "R21: overhead stays unmeasured until something measures it",
+        "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
         "R21: total-machine processor time is readable or explicitly unavailable"
@@ -832,6 +834,7 @@
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
+        "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"

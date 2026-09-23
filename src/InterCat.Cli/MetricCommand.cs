@@ -1122,7 +1122,8 @@ internal static class MetricCommand
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "process" : "processes")} at the other end",
             Metric.ActiveChannels when result.Request.Grouping is not null =>
-                $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")} in scope",
+                (result.UnknownContributions > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")} in scope",
             Metric.ActiveChannels =>
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")}",
@@ -1493,12 +1494,14 @@ internal static class MetricCommand
         ConsoleUi.Line("        --receiver     the records in which data reached it, measured at either end");
         ConsoleUi.Line("      --peer narrows a focus to one process at the other end. The other end of a TCP");
         ConsoleUi.Line($"      record is the process holding its mirrored endpoint pair ({TransportRelationIndex.RelationRule});");
-        ConsoleUi.Line("      records whose other end is unresolved are counted and disclosed, never guessed.");
+        ConsoleUi.Line("      records whose other end is unresolved stay disclosed, never guessed.");
         ConsoleUi.Line("      --between A --and B keeps the records connecting a process of one set with one of");
         ConsoleUi.Line("      the other (comma-separated instance ids); it replaces a focus. --direction");
         ConsoleUi.Line("      first-to-second or second-to-first keeps only the data flowing that way.");
         ConsoleUi.Line("      --group-by ranks the total by process instance, executable, mechanism, or peer");
         ConsoleUi.Line("      (the processes at the other end from a focus), with an exact remainder past --top;");
+        ConsoleUi.Line("      active-channels by peer counts distinct connections with each peer, keeping");
+        ConsoleUi.Line("      unresolved peers separate; unknown channels make the focused count a lower bound;");
         ConsoleUi.Line("      --evidence-policy include-candidates also attributes the records of reused PIDs,");
         ConsoleUi.Line("      labelled as candidates.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");

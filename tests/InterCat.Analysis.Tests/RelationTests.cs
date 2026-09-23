@@ -534,6 +534,110 @@ public sealed class RelationTests
         Assert.Equal(2, atLeastTwo.UnknownCounterparts[ProcessBindingReason.PeerAmbiguous]);
     }
 
+    [Fact(DisplayName = "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound")]
+    public void PerPeerChannelsDiscloseWhatTheyCannotAttribute()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ConnectedSession());
+        (ProcessInstanceId client, ProcessInstanceId server, _) = Instances(session.Store);
+
+        MetricResult ranked = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Participant = client, Grouping = LaneGrouping.Peer });
+        Assert.Equal(2, ranked.Value);
+        Assert.Equal(1, ranked.UnknownContributions);
+        Assert.False(ranked.GroupsPartitionTotal);
+        MetricGroup known = Assert.Single(ranked.Groups);
+        Assert.Equal((server, 1L, 6L), (known.Process!.Id, known.Value!.Value, known.KnownContributions));
+        Assert.Equal(
+            [(ProcessBindingReason.PeerEndpointIncomplete, (long?)null, 1L),
+                (ProcessBindingReason.PeerNotObserved, 1L, 0L)],
+            ranked.Unattributed.Select(group => (group.Reason!.Value, group.Value, group.UnknownContributions)));
+        Assert.Contains(ranked.Caveats, caveat => caveat.Contains("no peer is guessed", StringComparison.Ordinal));
+
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Sender = client, Grouping = LaneGrouping.Peer }).Groups.Single().Value);
+        Assert.Equal(1, SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Receiver = client, Grouping = LaneGrouping.Peer }).Groups.Single().Value);
+        Assert.NotNull((Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.Peer }).Check());
+        Assert.NotNull((Request(Metric.ActiveChannels) with { Participant = client, Grouping = LaneGrouping.InstanceOnly }).Check());
+    }
+
+    [Fact(DisplayName = "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings")]
+    public void PerPeerChannelsRespectEvidencePolicy()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 200, 1),
+            Lifecycle(20, ObservationKind.Exit, 200, 2),
+            Lifecycle(30, ObservationKind.Create, 200, 3),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 4).Between(ClientEnd, ServerEnd),
+            Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 5).Between(ServerEnd, ClientEnd),
+        ]);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(Segments(session.Store), TestClock);
+        ProcessInstanceId client = processes.Instances.Single(instance => instance.ProcessId == 100).Id;
+        ProcessInstanceId laterServer = processes.Instances
+            .Where(instance => instance.ProcessId == 200)
+            .OrderBy(instance => instance.CreatedNativeTicks).Last().Id;
+        MetricRequest request = Request(Metric.ActiveChannels) with
+        {
+            Participant = client,
+            Grouping = LaneGrouping.Peer,
+        };
+
+        MetricResult conservative = SessionMetrics.Evaluate(session.Store, request);
+        Assert.Equal(1, conservative.Value);
+        Assert.Empty(conservative.Groups);
+        Assert.Contains(conservative.Unattributed, group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
+
+        MetricResult accepted = SessionMetrics.Evaluate(session.Store, request with
+        {
+            EvidencePolicy = EvidencePolicy.IncludeCandidates,
+        });
+        Assert.Equal(1, accepted.Value);
+        Assert.Equal(laterServer, Assert.Single(accepted.Groups).Process!.Id);
+        Assert.Empty(accepted.Unattributed);
+    }
+
+    [Fact(DisplayName = "R22: per-peer channel counts use connection incarnations and a remainder unions their identities")]
+    public void PerPeerChannelRemainderCountsIncarnations()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(30, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 4).Between(ClientEnd, ServerEnd),
+            Transfer(31, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 5).Between(ServerEnd, ClientEnd),
+            Transfer(100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 6).Between(ClientEnd, ServerEnd),
+            Transfer(101, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 7).Between(ServerEnd, ClientEnd),
+            Transfer(120, ObservationKind.Send, AccountingSide.SendSide, 7, 100, 8).Between(ClientEnd, ServerEnd),
+            Transfer(130, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 9).Between(ClientEnd, ServerEnd),
+            Transfer(131, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 10).Between(ServerEnd, ClientEnd),
+            Transfer(200, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 11)
+                .Between("127.0.0.1:50003", "127.0.0.1:9090"),
+            Transfer(201, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 12)
+                .Between("127.0.0.1:9090", "127.0.0.1:50003"),
+            Transfer(220, ObservationKind.Send, AccountingSide.SendSide, 5, 100, 13)
+                .Between("127.0.0.1:50003", "127.0.0.1:9090"),
+        ]);
+        (ProcessInstanceId client, ProcessInstanceId server, ProcessInstanceId other) = Instances(session.Store);
+        MetricRequest request = Request(Metric.ActiveChannels) with { Participant = client, Grouping = LaneGrouping.Peer };
+
+        MetricResult ranked = SessionMetrics.Evaluate(session.Store, request);
+        Assert.Equal(3, ranked.Value);
+        Assert.Equal([(server, 2L), (other, 1L)],
+            ranked.Groups.Select(group => (group.Process!.Id, group.Value!.Value)));
+        Assert.Empty(ranked.Unattributed);
+
+        MetricResult top = SessionMetrics.Evaluate(session.Store, request with { RequestedRows = 1 });
+        Assert.Equal((server, 2L), (Assert.Single(top.Groups).Process!.Id, top.Groups[0].Value!.Value));
+        Assert.Equal((1L, 1), (top.Remainder!.Value!.Value, top.Remainder.GroupsMerged));
+        Assert.Equal(3, SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Owner = client, Grouping = LaneGrouping.Peer }).Value);
+    }
+
     [Fact(DisplayName = "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve")]
     public void APeerCountIsALowerBoundOnProcessInstances()
     {

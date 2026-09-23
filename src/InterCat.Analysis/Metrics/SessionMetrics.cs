@@ -189,19 +189,28 @@ public sealed record MetricRequest
                 []);
         }
 
-        if (Metric is Metric.ActivePeers or Metric.ActiveChannels && focuses > 0 && Grouping is not null)
+        if (Metric == Metric.ActivePeers && focuses > 0 && Grouping is not null)
         {
             return new(
-                $"{Metric} with a process focus is one count. To rank processes, group by process or executable without "
-                + "a focus; to see the processes at the other end themselves, count observations grouped by peer.",
+                "ActivePeers with a process focus is one count. To rank processes, group by process or executable "
+                + "without a focus; to see the processes at the other end themselves, count observations grouped by peer.",
                 []);
         }
 
-        if (Metric == Metric.ActiveChannels && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        if (Metric == Metric.ActiveChannels && focuses > 0 && Grouping is not null and not LaneGrouping.Peer)
         {
             return new(
-                "ActiveChannels is counted in total, for one process focus, or for each process or executable. A channel "
-                + "belongs to the processes at its two ends, so no other grouping divides it.",
+                "ActiveChannels with a process focus is one count, or it can rank that focus's channels by peer. "
+                + "To rank all processes, group by process or executable without a focus.",
+                []);
+        }
+
+        if (Metric == Metric.ActiveChannels && focuses == 0
+            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        {
+            return new(
+                "ActiveChannels is counted in total, for one process focus, or for each process or executable. "
+                + "To rank one process's channels by peer, name that process focus.",
                 []);
         }
 
@@ -791,8 +800,18 @@ public static partial class SessionMetrics
                     + "the capture's clock scopes, and this session does not describe its clock (identity-v1).");
             }
 
+            if (materialized.Grouping is not null && bounds.EvidenceLimit > 0)
+            {
+                throw new ArgumentException(
+                    "Evidence lists the records of one total. Ask for it without a grouping, projected onto the "
+                    + "group whose records you want to see.", nameof(bounds));
+            }
+
             return materialized.Grouping is { } byProcess
-                ? WhatGroupingNeeds(materialized, manifest.Generation, clock) ?? GroupedDistinct(context, byProcess, cancellationToken)
+                ? WhatGroupingNeeds(materialized, manifest.Generation, clock)
+                    ?? (byProcess == LaneGrouping.Peer
+                        ? GroupedChannelsByPeer(context, cancellationToken)
+                        : GroupedDistinct(context, byProcess, cancellationToken))
                 : DistinctCount(context, cancellationToken);
         }
 

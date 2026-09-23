@@ -84,10 +84,11 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - A `between` with a focus or a `peer`, with an empty set, an empty instance id or a direction §23 does not define.
   It names the processes at both ends, so it is a process filter of its own: with a focus it would silently intersect
   two selections (ADR-017).
-- `ActivePeers` with neither a process focus nor a grouping by process or executable, and `ActivePeers` or
-  `ActiveChannels` with a focus and any grouping: a count of peers is the count of one process's peers, or each
-  process's (§6.1). `ActiveChannels` grouped other than by process or executable: a channel belongs to the processes
-  at its two ends, so no other grouping divides it.
+- `ActivePeers` with neither a process focus nor a grouping by process or executable, and `ActivePeers` with a
+  focus and any grouping: a count of peers is the count of one process's peers, or each process's (§6.1).
+  `ActiveChannels` with a focus and a grouping other than `Peer`, or without a focus and a grouping other than
+  process or executable. A focused `Peer` grouping counts the distinct channels with each resolved counterpart;
+  an unresolved counterpart stays unattributed rather than being presented as a peer.
 - **An `owner` with a cross-side byte total.** `owner(P)` selects the records P made; `BytesSent` under
   `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
   `sender` and `receiver`, which select those records.
@@ -260,11 +261,17 @@ groups. A grouped peer count therefore does **not** partition its total, and say
 distinct processes with at least one resolved peer, and a remainder is the distinct count over the union of the
 groups it merges.
 
-`ActiveChannels` counts **connection incarnations** under `relations-v1` §5a: the two ends of one connection are one
+`ActiveChannels` counts **connection incarnations** under `relations-v1` §5a and its
+`tcp-endpoint-relation-v2` rule: the two ends of one connection are one
 channel, a port reused by a later connection is another, and a connection whose other end no record holds is a
 one-sided channel. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the
 records the focus keeps, and grouped by process or executable each group's channels, overlapping as peers do; the
-grouped total is every distinct channel in scope. A record of a mechanism no relation rule covers, a record with no
+grouped total is every distinct channel in scope. With one process focus and `Peer` grouping, each peer row is the
+distinct count of connection incarnations with that peer. Known channels whose other process cannot be resolved
+remain in unattributed reason rows and in the global count, but never in a guessed peer row. Peer rows are not
+claimed to partition the global count while other ends remain unresolved; a top-N remainder is the distinct union
+of the hidden peer rows' channels, not the sum of record counts. A record of a mechanism no relation rule covers, a
+record with no
 endpoint pair, and a record of an undecided connection on the side whose incarnations are not counted identify no
 channel: they are unknown contributions with their reason, and the count is a lower bound beside them. Where the
 capture lost a connect, accept or disconnect, two connections on one port are one channel.

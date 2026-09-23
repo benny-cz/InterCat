@@ -365,6 +365,145 @@ public static partial class SessionMetrics
         }
     }
 
+    /// <summary>
+    /// Ranks the connection incarnations of one focused process by the process at their other end. The global count
+    /// is the same one an ungrouped request returns; a channel with no resolved peer stays in an unattributed bucket
+    /// rather than disappearing or becoming a made-up remote process.
+    /// </summary>
+    private static MetricResult GroupedChannelsByPeer(Context context, CancellationToken cancellationToken)
+    {
+        MetricRequest request = context.Request;
+        ProcessFilter filter = context.Filter
+            ?? throw new InvalidOperationException("A peer channel grouping needs one process focus.");
+        MetricResult total = DistinctCount(context, cancellationToken);
+        ProcessRoles roles = context.Roles!;
+        ProcessInstanceIndex processes = roles.Processes;
+        var peers = new Dictionary<int, DistinctTally>();
+        var unattributed = new Dictionary<ProcessBindingReason, DistinctTally>();
+
+        foreach ((string _, SegmentReaderV1 reader) in context.Segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            bool[] inScope = SegmentMeasurement.RowsInScope(
+                reader, request.Layer, request.Mechanism, request.Interval);
+            bool[]? kept = context.ProcessMasks.GetValueOrDefault(reader);
+            SegmentRoles segmentRoles = roles.For(reader);
+            ChannelBinding[] channels = roles.Relations!.ChannelsOf(reader);
+            for (int row = 0; row < reader.RowCount; row++)
+            {
+                if (!inScope[row] || (kept is not null && !kept[row]) || !segmentRoles.Communicates[row])
+                {
+                    continue;
+                }
+
+                ProcessBinding counterpart = filter.Counterpart(segmentRoles, row);
+                DistinctTally tally;
+                if (counterpart.IsAdmittedUnder(request.EvidencePolicy))
+                {
+                    if (!peers.TryGetValue(counterpart.Instance, out tally!))
+                    {
+                        ProcessInstance process = processes.Instances[counterpart.Instance];
+                        tally = new(process.Id.ToString(), process, executable: null);
+                        peers[counterpart.Instance] = tally;
+                    }
+                }
+                else
+                {
+                    ProcessBindingReason reason = UnknownReason(counterpart);
+                    if (!unattributed.TryGetValue(reason, out tally!))
+                    {
+                        tally = new(reason.ToString(), process: null, executable: null);
+                        unattributed[reason] = tally;
+                    }
+                }
+
+                ChannelBinding channel = channels[row];
+                if (channel.IsKnown)
+                {
+                    tally.Elements.Add(channel.Channel);
+                    tally.Known++;
+                    if (counterpart.IsAdmittedUnder(request.EvidencePolicy))
+                    {
+                        tally.Bindings[counterpart.Strength] =
+                            tally.Bindings.GetValueOrDefault(counterpart.Strength) + 1;
+                    }
+                }
+                else
+                {
+                    tally.UnknownReasons[channel.Reason] = tally.UnknownReasons.GetValueOrDefault(channel.Reason) + 1;
+                }
+            }
+        }
+
+        List<DistinctTally> ranked =
+        [
+            .. peers.Values.Where(tally => tally.Elements.Count > 0)
+                .OrderByDescending(tally => tally.Elements.Count)
+                .ThenBy(tally => tally.StableKey, StringComparer.Ordinal),
+            .. peers.Values.Where(tally => tally.Elements.Count == 0)
+                .OrderBy(tally => tally.StableKey, StringComparer.Ordinal),
+        ];
+        List<MetricGroup> groups =
+        [
+            .. ranked.Select((tally, index) => tally.ToGroup() with
+            {
+                Rank = tally.Elements.Count > 0 ? index + 1 : null,
+            }),
+        ];
+
+        MetricGroup? remainder = null;
+        if (request.RequestedRows is { } rows && groups.Count > rows)
+        {
+            DistinctTally[] rest = [.. ranked.Skip(rows)];
+            var restChannels = new HashSet<int>(rest.SelectMany(tally => tally.Elements));
+            long unknown = rest.Sum(tally => tally.UnknownReasons.Values.Sum());
+            remainder = new MetricGroup
+            {
+                Kind = MetricGroupKind.Remainder,
+                Value = restChannels.Count > 0 ? restChannels.Count : null,
+                KnownContributions = rest.Sum(tally => tally.Known),
+                UnknownContributions = unknown,
+                GroupsMerged = rest.Length,
+            };
+            groups = [.. groups.Take(rows)];
+        }
+
+        MetricGroup[] missing =
+        [
+            .. unattributed.OrderBy(entry => entry.Key).Select(entry => new MetricGroup
+            {
+                Kind = MetricGroupKind.Unattributed,
+                Reason = entry.Key,
+                Value = entry.Value.Elements.Count > 0 ? entry.Value.Elements.Count : null,
+                KnownContributions = entry.Value.Known,
+                UnknownContributions = entry.Value.UnknownReasons.Values.Sum(),
+            }),
+        ];
+        var caveats = new List<string>(total.Caveats)
+        {
+            "Each peer row counts distinct connection incarnations with that process at the other end; it is not a "
+            + "sum of records. The global channel count is shown separately, and peer rows are not claimed to "
+            + "partition it when an end is unresolved.",
+        };
+        if (missing.Length > 0)
+        {
+            caveats.Add(
+                "Channels whose other process is unresolved stay under an unattributed reason. They remain in the "
+                + "global lower bound when their channel identity is known, but no peer is guessed for them.");
+        }
+
+        return total with
+        {
+            Groups = groups,
+            Remainder = remainder,
+            Unattributed = missing,
+            GroupsPartitionTotal = false,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            RelationRule = TransportRelationIndex.RelationRule,
+            Caveats = caveats,
+        };
+    }
+
     private static (int? Element, ProcessBindingReason Reason) PeerElement(ProcessBinding counterpart, EvidencePolicy policy) =>
         counterpart.IsAdmittedUnder(policy) ? (counterpart.Instance, ProcessBindingReason.Bound) : (null, UnknownReason(counterpart));
 
