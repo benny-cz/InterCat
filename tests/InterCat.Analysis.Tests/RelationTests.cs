@@ -28,6 +28,9 @@ public sealed class RelationTests
         TransportRelation relation = Assert.Single(relations.Relations);
         Assert.Equal((server.Id, ServerEnd, client.Id, ClientEnd), (relation.First.Id, relation.FirstEndpoint, relation.Second.Id, relation.SecondEndpoint));
         Assert.Equal(RelationStrength.Correlated, relation.Strength);
+        SegmentReaderV1 relatedSegment = Assert.Single(Segments(session.Store));
+        ChannelBinding[] relatedChannels = relations.ChannelsOf(relatedSegment);
+        Assert.Equal(6, relatedChannels.Count(channel => channel.Channel == relation.Channel));
         Assert.Equal((6L, 20L, 41L), (relation.Records, relation.FirstNativeTicks, relation.LastNativeTicks));
 
         SegmentReaderV1 segment = Assert.Single(Segments(session.Store));

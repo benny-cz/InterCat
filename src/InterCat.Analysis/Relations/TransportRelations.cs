@@ -13,6 +13,12 @@ public sealed record TransportRelation
 {
     public required Mechanism Mechanism { get; init; }
 
+    /// <summary>
+    /// The channel number this paired incarnation and every record at either end share within this derivation.
+    /// It is a join key for one relation index, not a stable cross-generation identity.
+    /// </summary>
+    public required int Channel { get; init; }
+
     /// <summary>The instance holding the end whose endpoint sorts first.</summary>
     public required ProcessInstance First { get; init; }
 
@@ -77,8 +83,8 @@ public sealed class TransportRelationIndex
     private TransportRelationIndex(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
     {
         this.ends = ends;
-        Relations = BuildRelations(processes, ends);
         Channels = NumberChannels(ends);
+        Relations = BuildRelations(processes, ends);
     }
 
     /// <summary>How many distinct connection incarnations the capture's TCP records establish.</summary>
@@ -362,6 +368,7 @@ public sealed class TransportRelationIndex
                 relations.Add(new()
                 {
                     Mechanism = Mechanism.Tcp,
+                    Channel = incarnation.Channel,
                     First = processes.Instances[incarnation.Holder],
                     FirstEndpoint = key.LocalEndpoint,
                     Second = processes.Instances[other.Holder],

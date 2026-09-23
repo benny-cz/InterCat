@@ -7,7 +7,8 @@ namespace InterCat.Application;
 /// <summary>
 /// One immutable, evidence-bounded overview. Its edges are only paired TCP relationships whose two process instances
 /// are admitted under the requested policy; they are not a total of all traffic. The timeline counts all observations
-/// with a usable session time but claims no coverage until a ledger is projected with it.
+/// with a usable session time but claims no coverage until a ledger is projected with it. The separate graph-eligible
+/// timeline uses only the exact channel IDs of the displayed relations, so a caller cannot confuse the two scopes.
 /// </summary>
 public sealed record SessionOverviewBundle(
     string GraphIdentity,
@@ -18,8 +19,11 @@ public sealed record SessionOverviewBundle(
     IReadOnlyList<ProcessNode> Nodes,
     IReadOnlyList<CommunicationEdge> Edges,
     IReadOnlyList<TimelineBucket> Timeline,
+    IReadOnlyList<TimelineBucket> GraphEligibleTimeline,
     long ObservationRows,
     long RowsWithoutSessionTime,
+    long GraphEligibleRows,
+    long GraphRowsWithoutSessionTime,
     long UnresolvedTcpRows,
     long RelationshipsNotAdmitted,
     IReadOnlyList<string> Caveats);
@@ -102,8 +106,16 @@ public static class SessionOverviewProjector
                 + "omitting relationships would make the graph and its table disagree with the evidence.");
         }
 
-        (TimeRange? extent, TimelineBucket[] timeline, long rows, long withoutTime, long unresolved) =
-            Timeline(segments, relations, policy, cancellationToken);
+        HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
+        (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline,
+            long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
+            Timeline(segments, relations, eligibleChannels, policy, cancellationToken);
+        if (edges.Sum(edge => edge.ObservationCount) != graphRows)
+        {
+            throw new InvalidDataException(
+                "The relation index's paired-record counts disagree with the channel rows selected for the "
+                + "graph-eligible timeline. Publishing either would mix two different evidence sets.");
+        }
         string[] caveats =
         [
             "Graph edges show paired TCP connection incarnations whose two process instances are admitted. "
@@ -112,10 +124,14 @@ public static class SessionOverviewProjector
                 + "Edge record counts include observations from both ends and are not whole-session totals.",
             "The timeline counts observed rows only. Its coverage is unknown until the capture coverage ledger "
                 + "is included in the projection; an empty interval is not proof of inactivity.",
+            "The graph-eligible timeline uses precisely the displayed relations' channel rows on the same time axis. "
+                + "It is narrower than the all-observations timeline and does not silently replace it.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
                 + $"{(withoutTime == 1 ? "is" : "are")} absent from the timeline; "
                 + $"{unresolved:N0} TCP rows have no admitted peer; {notAdmitted:N0} paired relationships "
                 + "were withheld by the evidence policy.",
+            $"{graphRows:N0} rows belong to displayed graph edges; {graphWithoutTime:N0} of them have no usable "
+                + "session time and are absent from the graph-eligible timeline.",
             "Byte totals, channels, operations and evidence drill-down are not in this overview bundle.",
         ];
         return new(
@@ -127,17 +143,22 @@ public static class SessionOverviewProjector
             Array.AsReadOnly(nodes),
             Array.AsReadOnly(edges),
             Array.AsReadOnly(timeline),
+            Array.AsReadOnly(graphTimeline),
             rows,
             withoutTime,
+            graphRows,
+            graphWithoutTime,
             unresolved,
             notAdmitted,
             Array.AsReadOnly(caveats));
     }
 
-    private static (TimeRange? Extent, TimelineBucket[] Buckets, long Rows, long WithoutTime, long Unresolved)
+    private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets,
+        long Rows, long WithoutTime, long GraphRows, long GraphWithoutTime, long Unresolved)
         Timeline(
             IReadOnlyList<SegmentReaderV1> segments,
             TransportRelationIndex relations,
+            HashSet<int> eligibleChannels,
             EvidencePolicy policy,
             CancellationToken cancellationToken)
     {
@@ -176,24 +197,50 @@ public static class SessionOverviewProjector
 
         if (minimum == long.MaxValue)
         {
-            return (null, [], rows, withoutTime, unresolved);
+            long allGraphRows = 0;
+            foreach (SegmentReaderV1 segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ChannelBinding[] channels = relations.ChannelsOf(segment);
+                for (int row = 0; row < channels.Length; row++)
+                {
+                    if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if (channels[row].IsKnown && eligibleChannels.Contains(channels[row].Channel))
+                    {
+                        allGraphRows++;
+                    }
+                }
+            }
+
+            return (null, [], [], rows, withoutTime, allGraphRows, allGraphRows, unresolved);
         }
 
         var extent = new TimeRange(minimum, maximum + 1);
         long width = extent.EndTicks - extent.StartTicks;
         int bucketCount = (int)Math.Min(MaximumTimelineBuckets, width);
         var counts = new int[bucketCount];
+        var graphCounts = new int[bucketCount];
         var mechanismsByBucket = new Dictionary<Mechanism, int>[bucketCount];
         for (int index = 0; index < bucketCount; index++) mechanismsByBucket[index] = [];
+        long graphRows = 0;
+        long graphWithoutTime = 0;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            ChannelBinding[] channels = relations.ChannelsOf(segment);
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (times.SignedAt(row) is not { } nanoseconds) continue;
+                bool graphEligible = channels[row].IsKnown && eligibleChannels.Contains(channels[row].Channel);
+                if (graphEligible) graphRows++;
+                if (times.SignedAt(row) is not { } nanoseconds)
+                {
+                    if (graphEligible) graphWithoutTime++;
+                    continue;
+                }
+
                 long tick = nanoseconds / 100;
                 int bucket = (int)Math.Min(bucketCount - 1,
                     (long)(((Int128)(tick - minimum) * bucketCount) / width));
@@ -205,6 +252,16 @@ public static class SessionOverviewProjector
                 }
 
                 counts[bucket]++;
+                if (graphEligible)
+                {
+                    if (graphCounts[bucket] == int.MaxValue)
+                    {
+                        throw new InvalidOperationException("One graph-eligible timeline bucket exceeds its count bound.");
+                    }
+
+                    graphCounts[bucket]++;
+                }
+
                 Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
                 Dictionary<Mechanism, int> tally = mechanismsByBucket[bucket];
                 if (tally.GetValueOrDefault(mechanism) == int.MaxValue)
@@ -225,7 +282,13 @@ public static class SessionOverviewProjector
             mechanismsByBucket[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
                 .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
             CoverageState.UnknownCoverage))];
-        return (extent, result, rows, withoutTime, unresolved);
+        TimelineBucket[] graphResult = [.. Enumerable.Range(0, bucketCount).Select(index => new TimelineBucket(
+            result[index].Interval,
+            graphCounts[index],
+            null,
+            graphCounts[index] > 0 ? Mechanism.Tcp : Mechanism.UnknownMechanism,
+            CoverageState.UnknownCoverage))];
+        return (extent, result, graphResult, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
     }
 
     private static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch

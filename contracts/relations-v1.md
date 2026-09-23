@@ -106,6 +106,9 @@ order, by end and then by incarnation:
 
 A record identifies its incarnation's channel; a record with no end, and one of a mechanism no rule covers, identifies
 none.
+The relation between two paired incarnations exposes that same channel number, so a projection can join its displayed
+edge to exactly the records at both ends. The number is deterministic within one derivation, not a cross-generation
+identity: another relation rule can number channels differently.
 
 ## 6. What is not inferred
 

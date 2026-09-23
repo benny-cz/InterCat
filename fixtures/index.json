@@ -802,6 +802,7 @@
       ],
       "R21": [
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
+        "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: an unresolved connection and a reading without session time are disclosed, not graphed",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
         "R21: a descriptor the schema does not declare is refused with a reason",
@@ -884,7 +885,7 @@
       ],
       "R7": [
         "R7: a disposed scheduler cannot publish its in-flight layout",
-        "R7: one leased generation yields a stable graph and timed observed-only timeline",
+        "R7: one leased generation yields a stable graph and exact graph-eligible timeline",
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a worker result naming another graph identity is refused",
