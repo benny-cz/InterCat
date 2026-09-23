@@ -72,7 +72,7 @@ answers.
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
 | `entityRevision` | the process binding rule, e.g. `process-binding-v2` | when the answer reads a process binding: a process filter, a process or peer grouping, or a relation |
-| `correlationRevision` | the relation rule, e.g. `tcp-endpoint-relation-v2` | when the answer uses records' other ends |
+| `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v3` | when the answer uses records' other ends |
 | `metricsContract` | `metrics-v1` | always |
 
 Entity and correlation revisions are named by their rule while derivations are computed on demand from one generation:

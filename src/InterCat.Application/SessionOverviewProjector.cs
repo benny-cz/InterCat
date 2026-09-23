@@ -87,8 +87,11 @@ public static class SessionOverviewProjector
             0.5 + 0.38 * Math.Sin(2 * Math.PI * index / Math.Max(1, ordered.Length)),
             CoverageState.UnknownCoverage))];
 
-        TransportRelation[] admitted = [.. relations.Relations.Where(relation => Admitted(relation.Strength, policy))];
-        long notAdmitted = relations.Relations.Count - admitted.Length;
+        // The overview graph shows TCP relationships; UDP datagram flows are related too, and join the graph when its edges
+        // and timeline carry a mechanism of their own rather than a TCP label.
+        TransportRelation[] tcp = [.. relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp)];
+        TransportRelation[] admitted = [.. tcp.Where(relation => Admitted(relation.Strength, policy))];
+        long notAdmitted = tcp.Length - admitted.Length;
         CommunicationEdge[] edges = [.. admitted
             .GroupBy(relation => Pair(relation.First.Id, relation.Second.Id))
             .OrderBy(group => group.Key.First.ToString(), StringComparer.Ordinal)

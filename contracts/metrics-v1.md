@@ -262,9 +262,10 @@ distinct processes with at least one resolved peer, and a remainder is the disti
 groups it merges.
 
 `ActiveChannels` counts **connection incarnations** under `relations-v1` §5a and its
-`tcp-endpoint-relation-v2` rule: the two ends of one connection are one
+`transport-endpoint-relation-v3` rule: the two ends of one connection are one
 channel, a port reused by a later connection is another, and a connection whose other end no record holds is a
-one-sided channel. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the
+one-sided channel. A UDP datagram flow between two ends, which has no connection lifecycle, is one channel for the
+capture. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the
 records the focus keeps, and grouped by process or executable each group's channels, overlapping as peers do; the
 grouped total is every distinct channel in scope. With one process focus and `Peer` grouping, each peer row is the
 distinct count of connection incarnations with that peer. Known channels whose other process cannot be resolved

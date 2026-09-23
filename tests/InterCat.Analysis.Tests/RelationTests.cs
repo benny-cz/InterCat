@@ -45,6 +45,61 @@ public sealed class RelationTests
         Assert.Equal(ProcessBindingReason.NoRelationRule, peers[10].Reason);
     }
 
+    [Fact(DisplayName = "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation")]
+    public void UdpDatagramsRelateThroughTheirMeasuredOrientation()
+    {
+        const string ClientUdp = "127.0.0.1:5000";
+        const string ServerUdp = "127.0.0.1:6000";
+        static ObservationRowV1 Udp(ObservationRowV1 row) => row with { Mechanism = Mechanism.Udp };
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(5, ObservationKind.Inventory, 100, 1),
+            Lifecycle(6, ObservationKind.Inventory, 200, 2),
+            Lifecycle(7, ObservationKind.Inventory, 300, 3),
+            Lifecycle(8, ObservationKind.Inventory, 400, 4),
+
+            // A datagram and its reply, each stored as the source names it: a send names its owner first, a receive the
+            // datagram's sender first (ADR-019).
+            Udp(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 5).Between(ClientUdp, ServerUdp)),
+            Udp(Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 6).Between(ClientUdp, ServerUdp)),
+            Udp(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 200, 7).Between(ServerUdp, ClientUdp)),
+            Udp(Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 100, 8).Between(ServerUdp, ClientUdp)),
+
+            // A TCP connection on the same port numbers between two other processes: another protocol, another end.
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 30, 300, 9).Between(ClientUdp, ServerUdp),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, 400, 10).Between(ServerUdp, ClientUdp),
+
+            // A datagram from a sender no record of the capture holds.
+            Udp(Transfer(30, ObservationKind.Receive, AccountingSide.ReceiveSide, 5, 200, 11).Between("10.0.0.9:53", ServerUdp)),
+        ]);
+
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = Derive(session.Store);
+        ProcessInstanceId Instance(int pid) => processes.Instances.Single(instance => instance.ProcessId == pid).Id;
+        Assert.Equal(
+            [
+                (10L, Instance(200)), (11L, Instance(100)), (12L, Instance(100)), (13L, Instance(200)),
+                (20L, Instance(400)), (21L, Instance(300)),
+            ],
+            PeerIdentities(session.Store, processes, relations)
+                .Where(entry => entry.Peer is not null)
+                .Select(entry => (entry.Reading, entry.Peer!.Value)));
+        Assert.Equal(
+            ProcessBindingReason.PeerNotObserved,
+            PeerIdentities(session.Store, processes, relations).Single(entry => entry.Reading == 30).Reason);
+
+        // One relation per protocol, never one across them; the unheld sender is a one-sided flow of its own.
+        Assert.Equal(
+            [(Mechanism.Tcp, 300, 400, 2L), (Mechanism.Udp, 100, 200, 4L)],
+            relations.Relations.Select(relation => (relation.Mechanism, relation.First.ProcessId, relation.Second.ProcessId, relation.Records)));
+        Assert.Equal(3, relations.Channels);
+        Assert.Equal("transport-endpoint-relation-v3", TransportRelationIndex.RelationRule);
+
+        MetricResult serverChannels = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.ActiveChannels) with { Participant = Instance(200) });
+        Assert.Equal(2, serverChannels.Value);
+    }
+
     [Fact(DisplayName = "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved")]
     public void AmbiguousOrUnboundEndsAreNeverGuessed()
     {

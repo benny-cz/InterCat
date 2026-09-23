@@ -891,6 +891,7 @@
         "R21: total-machine processor time is readable or explicitly unavailable"
       ],
       "R22": [
+        "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a call to another interface is scope, not a match",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",

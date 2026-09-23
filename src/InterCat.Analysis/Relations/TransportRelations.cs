@@ -59,13 +59,15 @@ public readonly record struct ChannelBinding(int Channel, ProcessBindingReason R
 }
 
 /// <summary>
-/// Derives the other end of every transport record of one capture (`tcp-endpoint-relation-v2`). A record names its own
-/// endpoint first and the remote one second, on every admitted TCP descriptor, so the records holding the mirrored pair
-/// are the other end of the same connection. An end's records are divided into **incarnations** by the connection
-/// lifecycle the capture witnessed - a connect or an accept opens one, a disconnect closes one - because a port reused by
-/// a later connection is another connection. Where every record of the paired incarnation at the other end binds to one
-/// process instance, that instance is the record's peer. Nothing is paired by time proximity, by address alone or by
-/// the nearest holder (§7.4, P6).
+/// Derives the other end of every TCP and UDP record of one capture (`transport-endpoint-relation-v3`). A record's own
+/// end is read through its descriptor's measured orientation - every TCP descriptor and a UDP send name the owner's own
+/// endpoint first, a UDP receive names the datagram's sender first (ADR-019) - so the records holding the mirrored pair
+/// of the same protocol are the other end of the same connection or datagram flow. A TCP end's records are divided into
+/// **incarnations** by the connection lifecycle the capture witnessed - a connect or an accept opens one, a disconnect
+/// closes one - because a port reused by a later connection is another connection. A UDP end has no lifecycle, so it is
+/// one incarnation for the capture. Where every record of the paired incarnation at the other end binds to one process
+/// instance, that instance is the record's peer. Nothing is paired by time proximity, by address alone or by the nearest
+/// holder (§7.4, P6).
 /// </summary>
 /// <remarks>
 /// It reads every segment twice: once for the lifecycle boundaries of each end, once to learn who holds each
@@ -76,7 +78,7 @@ public readonly record struct ChannelBinding(int Channel, ProcessBindingReason R
 public sealed class TransportRelationIndex
 {
     /// <summary>The rule identity a result names when it used these relations (§24 `correlationRevision`).</summary>
-    public const string RelationRule = "tcp-endpoint-relation-v2";
+    public const string RelationRule = "transport-endpoint-relation-v3";
 
     private readonly Dictionary<EndKey, EndTimeline> ends;
 
@@ -87,11 +89,14 @@ public sealed class TransportRelationIndex
         Relations = BuildRelations(processes, ends);
     }
 
-    /// <summary>How many distinct connection incarnations the capture's TCP records establish.</summary>
+    /// <summary>How many distinct connection incarnations and datagram flows the capture's transport records establish.</summary>
     public int Channels { get; }
 
     /// <summary>Every connection incarnation whose two ends each have one holder, in a stable order.</summary>
     public IReadOnlyList<TransportRelation> Relations { get; }
+
+    /// <summary>Whether this rule reads a mechanism's records: the transports whose orientation was measured.</summary>
+    public static bool Relates(Mechanism mechanism) => mechanism is Mechanism.Tcp or Mechanism.Udp;
 
     /// <summary>Derives the relations of the segments <paramref name="processes"/> was derived from.</summary>
     public static TransportRelationIndex Derive(
@@ -188,7 +193,7 @@ public sealed class TransportRelationIndex
         var peers = new ProcessBinding[segment.RowCount];
         for (int row = 0; row < segment.RowCount; row++)
         {
-            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Tcp)
+            if (!Relates((Mechanism)mechanisms.UnsignedAt(row)!.Value))
             {
                 peers[row] = ProcessBinding.Unresolved(ProcessBindingReason.NoRelationRule);
                 continue;
@@ -215,7 +220,7 @@ public sealed class TransportRelationIndex
         var channels = new ChannelBinding[segment.RowCount];
         for (int row = 0; row < segment.RowCount; row++)
         {
-            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Tcp)
+            if (!Relates((Mechanism)mechanisms.UnsignedAt(row)!.Value))
             {
                 channels[row] = ChannelBinding.Unknown(ProcessBindingReason.NoRelationRule);
                 continue;
@@ -291,12 +296,15 @@ public sealed class TransportRelationIndex
     }
 
     /// <summary>
-    /// The end each row describes: its own endpoint, then the remote one, as every admitted TCP descriptor names them.
-    /// A row of another mechanism, or with a missing or zero address or port, has none.
+    /// The end each row describes: its protocol, its own endpoint and the remote one. The endpoints are read through the
+    /// descriptor's measured orientation, because a UDP receive names the datagram's sender first where every other
+    /// admitted transport descriptor names the owner's own endpoint first. A row of another mechanism, or with a missing
+    /// or zero address or port, has none.
     /// </summary>
     private static EndKey?[] KeysOf(SegmentReaderV1 segment)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
         SegmentColumnSlice families = segment.Slice(SegmentColumnId.EndpointAddressFamily);
         SegmentColumnSlice localAddresses = segment.Slice(SegmentColumnId.SourceEndpointAddress);
         SegmentColumnSlice localPorts = segment.Slice(SegmentColumnId.SourceEndpointPort);
@@ -306,17 +314,21 @@ public sealed class TransportRelationIndex
         for (int row = 0; row < segment.RowCount; row++)
         {
             // An unavailable address is not zero, and a zero one names no endpoint: neither can find the other end.
-            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Tcp
+            var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+            if (!Relates(mechanism)
                 || families.UnsignedAt(row) is not { } family
-                || localAddresses.UnsignedAt(row) is not ({ } localAddress and not 0UL)
-                || localPorts.UnsignedAt(row) is not ({ } localPort and not 0UL)
-                || remoteAddresses.UnsignedAt(row) is not ({ } remoteAddress and not 0UL)
-                || remotePorts.UnsignedAt(row) is not ({ } remotePort and not 0UL))
+                || localAddresses.UnsignedAt(row) is not ({ } firstAddress and not 0UL)
+                || localPorts.UnsignedAt(row) is not ({ } firstPort and not 0UL)
+                || remoteAddresses.UnsignedAt(row) is not ({ } secondAddress and not 0UL)
+                || remotePorts.UnsignedAt(row) is not ({ } secondPort and not 0UL))
             {
                 continue;
             }
 
-            keys[row] = new((byte)family, (uint)localAddress, (ushort)localPort, (uint)remoteAddress, (ushort)remotePort);
+            var named = new EndKey((byte)mechanism, (byte)family, (uint)firstAddress, (ushort)firstPort, (uint)secondAddress, (ushort)secondPort);
+            keys[row] = TransportEndpoints.OrientationOf(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value) == EndpointOrientation.OwnerFirst
+                ? named
+                : named.Mirror();
         }
 
         return keys;
@@ -367,7 +379,7 @@ public sealed class TransportRelationIndex
 
                 relations.Add(new()
                 {
-                    Mechanism = Mechanism.Tcp,
+                    Mechanism = (Mechanism)key.Protocol,
                     Channel = incarnation.Channel,
                     First = processes.Instances[incarnation.Holder],
                     FirstEndpoint = key.LocalEndpoint,
@@ -431,17 +443,21 @@ public sealed class TransportRelationIndex
         }
     }
 
-    /// <summary>One connection end: an address family, the end's own endpoint and the remote endpoint it names.</summary>
-    private readonly record struct EndKey(byte Family, uint LocalAddress, ushort LocalPort, uint RemoteAddress, ushort RemotePort)
+    /// <summary>
+    /// One connection or datagram-flow end: its protocol, an address family, the end's own endpoint and the remote endpoint
+    /// it names. TCP port 5000 and UDP port 5000 are different ends, so the protocol is part of the key.
+    /// </summary>
+    private readonly record struct EndKey(byte Protocol, byte Family, uint LocalAddress, ushort LocalPort, uint RemoteAddress, ushort RemotePort)
         : IComparable<EndKey>
     {
         public string LocalEndpoint => Format(LocalAddress, LocalPort);
 
-        public EndKey Mirror() => new(Family, RemoteAddress, RemotePort, LocalAddress, LocalPort);
+        public EndKey Mirror() => new(Protocol, Family, RemoteAddress, RemotePort, LocalAddress, LocalPort);
 
         public int CompareTo(EndKey other)
         {
-            int compared = Family.CompareTo(other.Family);
+            int compared = Protocol.CompareTo(other.Protocol);
+            compared = compared != 0 ? compared : Family.CompareTo(other.Family);
             compared = compared != 0 ? compared : LocalAddress.CompareTo(other.LocalAddress);
             compared = compared != 0 ? compared : LocalPort.CompareTo(other.LocalPort);
             compared = compared != 0 ? compared : RemoteAddress.CompareTo(other.RemoteAddress);
