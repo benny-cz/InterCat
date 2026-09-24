@@ -128,17 +128,17 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             SessionEvidencePage page = await Task.Run(() => SessionEvidenceQuery.Read(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), channelKey, interval,
                 ownerProcess, pageSize: SessionEvidenceQuery.DefaultPageSize, cursor: cursor,
-                cancellationToken: token), token);
+                resolveOwners: true, cancellationToken: token), token);
             if (closed) return;
             if (page.RestartRequired || page.SessionId != expectedSessionId
-                || page.Generation != expectedGeneration)
+                || page.Generation < expectedGeneration)
             {
                 currentRows = [];
                 rows.ItemsSource = Array.Empty<string>();
                 detail.Text = string.Empty;
                 nextCursor = null;
-                status.Text = "The session has published a newer generation or the query changed. "
-                    + "Close this inspector and reopen it from the current workspace; no page was shifted.";
+                status.Text = (page.RestartReason ?? "This directory no longer holds the session the workspace shows.")
+                    + " Close this inspector and reopen it from the current workspace; no page was shifted.";
                 return;
             }
 
@@ -151,7 +151,10 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             status.Text = currentRows.Count == 0
                 ? "No admitted source row is in this exact scope. This is not proof of inactivity."
                 : $"Generation {page.Generation:N0} · {currentRows.Count:N0} rows on this page"
-                    + (nextCursor is null ? " · end of result" : " · more rows available");
+                    + (nextCursor is null ? " · end of result" : " · more rows available")
+                    + (page.ContinuedFromGeneration is { } earlier
+                        ? $" · continued from generation {earlier:N0}; rows published since that sort earlier are not inserted"
+                        : string.Empty);
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -185,8 +188,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
     {
         int index = rows.SelectedIndex;
         if (loading || index < 0 || index >= currentRows.Count) return;
-        using var inspector = new SessionRawRecordWindow(path, expectedSessionId,
-            expectedGeneration, currentRows[index]);
+        using var inspector = new SessionRawRecordWindow(path, expectedSessionId, currentRows[index]);
         original.IsEnabled = false;
         try
         {
@@ -202,14 +204,9 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
         }
     }
 
-    private static string DescribeBriefly(SessionEvidenceRecord record)
-    {
-        ObservationRowV1 row = record.Observation;
-        return string.Create(CultureInfo.InvariantCulture,
-            $"{row.SessionRelativeTicks?.ToString(CultureInfo.InvariantCulture) ?? "untimed"} ns · "
-            + $"{row.Mechanism}/{row.Kind} · owner PID {row.OwnerProcessId?.ToString(CultureInfo.InvariantCulture) ?? "?"} "
-            + $"· event {row.EventId} · raw ordinal {row.RawRecordOrdinal}");
-    }
+    private static string DescribeBriefly(SessionEvidenceRecord record) =>
+        EvidenceRowText.Summary(record, CultureInfo.CurrentCulture) + " · "
+        + EvidenceRowText.Owner(record, CultureInfo.CurrentCulture);
 
     private static string Describe(SessionEvidenceRecord record)
     {
@@ -220,7 +217,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             $"Schema fingerprint: {row.SchemaFingerprint}",
             $"Native reading: {row.NativeTicks} · session relative: {row.SessionRelativeTicks?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"} ns",
             $"Mechanism/layer/kind/direction: {row.Mechanism} / {row.Layer} / {row.Kind} / {row.Direction}",
-            $"Owner PID: {row.OwnerProcessId?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"} · header PID/TID: {row.HeaderProcessId}/{row.HeaderThreadId}",
+            $"Canonical owner: {EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)} · header PID/TID: {row.HeaderProcessId}/{row.HeaderThreadId}",
             $"Source endpoint fields: family {row.EndpointAddressFamily?.ToString(CultureInfo.InvariantCulture) ?? "?"}, {row.SourceEndpointAddress?.ToString(CultureInfo.InvariantCulture) ?? "?"}:{row.SourceEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"} → {row.DestinationEndpointAddress?.ToString(CultureInfo.InvariantCulture) ?? "?"}:{row.DestinationEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"}",
             $"Resource name: {row.ResourceName ?? "unavailable"} · source identifier: {row.SourceIdentifier?.ToString() ?? "unavailable"}",
             $"Bytes: {row.ByteValue?.ToString(CultureInfo.InvariantCulture) ?? row.ByteAvailability.ToString()} · domain/side/unit: {row.ByteDomain?.ToString() ?? "?"}/{row.AccountingSide?.ToString() ?? "?"}/{row.MeasurementUnit?.ToString() ?? "?"}",

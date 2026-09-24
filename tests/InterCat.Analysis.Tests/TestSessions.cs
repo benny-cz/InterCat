@@ -160,7 +160,8 @@ internal static class TestSessions
         SourceClockDescriptor? clock = null,
         IReadOnlyList<SourceFieldRowV1>? fields = null,
         CoverageLedgerV1? coverage = null,
-        Func<ObservationRowV1, BodyV1>? bodyForRow = null)
+        Func<ObservationRowV1, BodyV1>? bodyForRow = null,
+        int journalBatchRecords = 4_096)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -175,7 +176,7 @@ internal static class TestSessions
             },
             sourceClock,
             Committed,
-            new() { RowsPerSegment = rowsPerSegment });
+            new() { RowsPerSegment = rowsPerSegment, JournalBatchRecords = journalBatchRecords });
         var schemas = new JournalV1SchemaTable();
         var references = new Dictionary<(Guid, ushort, byte, string), uint>();
         foreach (ObservationRowV1 row in rows)

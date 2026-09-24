@@ -1,12 +1,54 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 94
-Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
+Plan revision: 95
+Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
+work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
+capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: headless original-record parity
+## Latest slice: evidence paging that survives live publication
+
+Evidence pages now continue by row, not by position. A v2 cursor names the last row returned, in `segment-v1` §4's
+canonical order, plus what the query means: session, captures, derivations, policy, relation and binding rules, channel,
+owner set and interval. It no longer binds the manifest digest, which made paging impossible while a live capture
+publishes every 2 s. A following page continues strictly after that row in the current generation and reports
+`ContinuedFromGeneration`. Rows published later that sort before the cursor are not inserted; the first page includes
+them. A changed query, rule or derivation restarts; a v1 cursor restarts with a reason; a generation that names one row
+twice is refused. Pages merge segments in canonical order, which fixes out-of-order paging over overlapping live
+segments. An owner scope accepts a set of instances (the Group rung), and `resolveOwners` returns each row's canonical
+owner: instance and executable, a candidate named as one, or the reason there is none. Process and relation derivations
+are now computed once per manifest digest and shared by the overview, channel and evidence queries.
+
+`SessionRawRecordQuery.ReadRetained` resolves a row read from an earlier generation of the same session by its raw
+identity and checks the envelope against the row's descriptor, reading and schema. It uses the new
+`JournalV1Reader.FindRecord`, which skips batches whose declared ordinals cannot hold the record. Journal-v1 does not
+promise ordinal-ordered storage (our writers provide it), so absence is reported only after an exhaustive search agrees;
+the contract now states this. The Desktop's original-record dialog uses the identity lookup and no longer fails once a
+live publication supersedes its row. The source-row dialog continues across generations and shows readable rows.
+
+`EvidenceRowText` gives the viewer and CLI one description of a row, for example `+4.750045 s · TCP receive · 1,148 B ·
+127.0.0.1:60569 ← 127.0.0.1:60571`, owned by `InterCat.TestWorkloads.exe · PID 85984`. `icat evidence` prints it,
+accepts repeated `--owner-process`, says when a page continued across generations, reads its options before the
+directory, and emits `evidence-page-v2` JSON.
+
+Verification on a real 60-second Explore session recorded here (elevated, with TCP workloads; 94,694 records in 29
+journal chunks): unscoped page 0.89 s and channel page 1.1 s wall time including process start. `icat raw` for a late
+row went from 0.97 s to 0.59 s, which is also the first persisted-session qualification of `icat raw`. 797 tests pass
+in Debug and Release (+10): cross-generation continuation, canonical merge over overlapping segments, group scope,
+owner resolution, legacy and foreign cursor restarts, identity lookup across generations with a forged row refused,
+row text, and skipping versus exhaustive journal lookups. Plan revision 95.
+
+Not done: the in-ladder L5 rung in the Desktop (next), L4 operations, the §3.1 first-feedback measurement and a real
+Desktop/UAC run. Channel pages keep generation-bound cursors; their stable-key order would allow a keyset form later.
+
+Next: make L5 a real rung of the Desktop ladder for published sessions. `E` or a descent reaches the rung's own scope
+(machine, group, process, channel and a deliberate time brush), rows load off the UI thread with "load more", the
+inspector shows the selected row, `Enter` opens its original record, and the view holds its generation while evidence is
+inspected. Recording continues and the newer generation is offered.
+
+## Previous slice: headless original-record parity
 
 `icat raw <session-dir> --session-id <guid> --generation <n> --segment <name> --row <n> [--reveal-bytes]
 [--json]` now resolves the same original journal envelope as Desktop. `icat evidence` prints the SessionId and an

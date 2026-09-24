@@ -7,16 +7,31 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
+/// <summary>
+/// The canonical owner of one evidence row under <c>process-binding-v2</c>, resolved when its page was read. An
+/// unresolved row names its reason, and a candidate stays a candidate rather than being promoted (I12).
+/// </summary>
+public sealed record SessionEvidenceOwner(
+    ProcessInstanceId? Instance,
+    int? ProcessId,
+    string? ImageName,
+    RelationStrength Strength,
+    ProcessBindingReason Reason,
+    bool AdmittedUnderPolicy);
+
 /// <summary>One materialized observation-v1 row, with both its stable source identity and its location in this generation.</summary>
 public sealed record SessionEvidenceRecord(
     ObservationId ObservationId,
     string SegmentName,
     int SegmentRow,
-    ObservationRowV1 Observation);
+    ObservationRowV1 Observation,
+    SessionEvidenceOwner? Owner = null);
 
 /// <summary>
-/// A bounded exact-row page. A cursor is tied to the manifest digest and query semantics; on a new generation the
-/// caller gets an explicit restart, never a shifted page. These are admitted normalized rows, not raw payload bytes.
+/// A bounded exact-row page in the canonical row order of <c>segment-v1</c> §4. A cursor names the last row it
+/// returned and the query's meaning, not a position in one generation, so a following page continues after that row
+/// in whatever generation is current. A changed scope, policy, rule or derivation returns an explicit restart instead.
+/// These are admitted normalized rows, not raw payload bytes.
 /// </summary>
 public sealed record SessionEvidencePage(
     string QueryIdentity,
@@ -29,19 +44,35 @@ public sealed record SessionEvidencePage(
     string? NextCursor,
     bool RestartRequired,
     string? RestartReason,
-    string Caveat);
+    string Caveat)
+{
+    /// <summary>Every canonical-owner instance the page is scoped to, sorted; empty when it is not owner-scoped.</summary>
+    public IReadOnlyList<ProcessInstanceId> OwnerProcesses { get; init; } = [];
+
+    /// <summary>
+    /// The generation the cursor was issued in, when this page continued it in a newer one. Rows published later that
+    /// sort before the cursor are not inserted into a list already under way; the first page includes them.
+    /// </summary>
+    public long? ContinuedFromGeneration { get; init; }
+}
 
 public static class SessionEvidenceQuery
 {
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 200;
 
+    /// <summary>A group scope names its members; more than a graph can hold is refused, not truncated.</summary>
+    public const int MaximumOwnerProcesses = GraphLayout.MaximumNodes;
+
+    private const string CursorVersion = "v2";
+    private const int MaximumCursorLength = 256;
+
     private const string Caveat = "These are exact admitted observation-v1 rows with provider, descriptor, native "
-        + "reading and raw-record locator. They are normalized facts, not a replay of original payload bytes. "
-        + "A channel page includes only the admitted paired TCP incarnation; an owner-process page includes only "
-        + "rows canonically bound to that process as owner, not possible peer rows. One-sided and ambiguous rows "
-        + "remain available in unscoped evidence. This page does not infer completeness from observed rows; consult the "
-        + "session's coverage ledger.";
+        + "reading and raw-record locator, in native-reading order. They are normalized facts, not a replay of "
+        + "original payload bytes. A channel page includes only the admitted paired TCP incarnation; an owner-process "
+        + "page includes only rows canonically bound to those processes as owner, not possible peer rows. One-sided "
+        + "and ambiguous rows remain available in unscoped evidence. This page does not infer completeness from "
+        + "observed rows; consult the session's coverage ledger.";
 
     public static SessionEvidencePage Read(
         SessionStore store,
@@ -51,6 +82,8 @@ public static class SessionEvidenceQuery
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         int pageSize = DefaultPageSize,
         string? cursor = null,
+        IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
+        bool resolveOwners = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -58,48 +91,70 @@ public static class SessionEvidenceQuery
             throw new ArgumentException("A channel key cannot be empty.", nameof(channelKey));
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        if (ownerProcessScope is not null && ownerProcesses is not null)
+            throw new ArgumentException("Name one owner process or a set of them, not both.", nameof(ownerProcesses));
+        ProcessInstanceId[] owners = ownerProcesses is not null
+            ? [.. ownerProcesses.Distinct().OrderBy(id => id.Value.ToString("N"), StringComparer.Ordinal)]
+            : ownerProcessScope is { } single ? [single] : [];
+        if (ownerProcesses is not null && owners.Length == 0)
+            throw new ArgumentException("An owner-process set needs at least one member.", nameof(ownerProcesses));
+        if (owners.Length > MaximumOwnerProcesses)
+            throw new ArgumentException(
+                $"An owner-process set is limited to {MaximumOwnerProcesses:N0} members.", nameof(ownerProcesses));
+        if (owners.Any(owner => owner.Value == Guid.Empty))
+            throw new ArgumentException("An owner process needs a non-empty instance ID.", nameof(ownerProcesses));
+        EvidenceCursor? position = ParseCursor(cursor);
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        string identity = Identity(manifest, channelKey, interval, ownerProcessScope, policy);
-        (string suppliedIdentity, int startSegment, int startRow) = ParseCursor(cursor);
-        if (cursor is not null && suppliedIdentity != identity)
-        {
-            return new(identity, manifest.SessionId, manifest.Generation, channelKey, ownerProcessScope, interval, [], null, true,
-                "This evidence cursor names another generation or query. Restart from the first page; no rows "
-                + "were silently shifted.", Caveat);
-        }
-
         string[] names = [.. SessionSegments.Names(manifest)];
         SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store.Root, manifest, name))];
-        if (cursor is not null && (startSegment >= segments.Length || startRow >= segments[startSegment].RowCount))
-            throw new ArgumentException("The cursor points outside this generation's observation rows.", nameof(cursor));
-
-        int? selectedChannel = null;
-        int? selectedOwner = null;
-        TransportRelationIndex? relations = null;
-        ProcessInstanceIndex? processes = null;
-        if (channelKey is not null || ownerProcessScope is not null)
-        {
-            SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
-                ?? throw new InvalidDataException("This generation has no source clock for process binding.");
-            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-                .Select(name => SessionSegments.Open(store.Root, manifest, name))];
-            processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
-            if (ownerProcessScope is { } ownerScope)
+        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy);
+        SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
+            string? reason, long? continuedFrom) =>
+            new(identity, manifest.SessionId, manifest.Generation, channelKey,
+                owners.Length == 1 ? owners[0] : null, interval, records, next, restart, reason, Caveat)
             {
-                selectedOwner = processes.Instances
-                    .Select((instance, index) => (instance, index))
-                    .Where(item => item.instance.Id == ownerScope)
-                    .Select(item => (int?)item.index).SingleOrDefault();
-                if (selectedOwner is null)
-                    throw new InvalidOperationException("The selected process instance is not in this generation. "
-                        + "Return to the overview and select it again.");
-            }
+                OwnerProcesses = Array.AsReadOnly(owners),
+                ContinuedFromGeneration = continuedFrom,
+            };
+
+        if (position is { Legacy: true })
+            return Page([], null, true, "This cursor was issued by an earlier InterCat version. Restart from the "
+                + "first page; no rows were silently shifted.", null);
+        if (position is not null && position.Identity != identity)
+            return Page([], null, true, "This evidence cursor names another session, query, scope or derivation. "
+                + "Restart from the first page; no rows were silently shifted.", null);
+
+        SessionDerivation? derivation = null;
+        SourceClockDescriptor clock = default;
+        SegmentReaderV1[] fields = [];
+        if (channelKey is not null || owners.Length > 0 || (resolveOwners && segments.Length > 0))
+        {
+            clock = SessionSegments.SourceClock(store.Root, manifest)
+                ?? throw new InvalidDataException("This generation has no source clock for process binding.");
+            fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            derivation = SessionDerivationCache.For(manifest);
         }
+
+        ProcessInstanceIndex? processes = derivation?.Processes(segments, clock, fields, cancellationToken);
+        HashSet<int> selectedOwners = [];
+        foreach (ProcessInstanceId owner in owners)
+        {
+            int index = IndexOf(processes!, owner);
+            if (index < 0)
+                throw new InvalidOperationException(owners.Length == 1
+                    ? "The selected process instance is not in this generation. Return to the overview and select it again."
+                    : "A process instance of this group is not in this generation. Return to the overview and select "
+                        + "the group again.");
+            selectedOwners.Add(index);
+        }
+
+        TransportRelationIndex? relations = null;
+        int? selectedChannel = null;
         if (channelKey is not null)
         {
-            relations = TransportRelationIndex.Derive(segments, processes!, cancellationToken);
+            relations = derivation!.Relations(segments, clock, fields, cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(relation =>
                 relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
                 && SessionOverviewProjector.Admitted(relation.Strength, policy))];
@@ -109,68 +164,197 @@ public static class SessionEvidenceQuery
             selectedChannel = matching[0].Channel;
         }
 
-        var records = new List<SessionEvidenceRecord>(pageSize);
-        for (int segmentIndex = startSegment; segmentIndex < segments.Length; segmentIndex++)
+        var cursors = new SegmentCursor[segments.Length];
+        var queue = new PriorityQueue<int, RowKey>(segments.Length, RowKeyComparer.Instance);
+        for (int index = 0; index < segments.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = segments[segmentIndex];
-            ChannelBinding[]? bindings = relations?.ChannelsOf(segment);
-            ProcessBinding[]? owners = selectedOwner is not null ? processes!.OwnersOf(segment) : null;
-            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            int first = segmentIndex == startSegment ? startRow : 0;
-            for (int row = first; row < segment.RowCount; row++)
-            {
-                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (selectedChannel is { } channel && bindings![row].Channel != channel) continue;
-                if (selectedOwner is { } owner
-                    && (owners![row].Instance != owner || !owners[row].IsAdmittedUnder(policy))) continue;
-                if (interval is { } range
-                    && (times.SignedAt(row) is not { } nanoseconds
-                        || !range.Contains(nanoseconds / 100))) continue;
-                if (records.Count == pageSize)
-                {
-                    return new(identity, manifest.SessionId, manifest.Generation, channelKey, ownerProcessScope, interval, records.AsReadOnly(),
-                        Cursor(identity, segmentIndex, row), false, null, Caveat);
-                }
-
-                ObservationRowV1 observation = segment.Row(row);
-                records.Add(new(observation.ObservationIdIn(segment.CaptureId, segment.Derivation),
-                    names[segmentIndex], row, observation));
-            }
+            var segmentCursor = new SegmentCursor(segments[index], names[index]);
+            int first = position is null ? 0 : segmentCursor.FirstAfter(position.Key);
+            cursors[index] = segmentCursor;
+            if (segmentCursor.Seek(first))
+                queue.Enqueue(index, segmentCursor.Key);
         }
 
-        return new(identity, manifest.SessionId, manifest.Generation, channelKey, ownerProcessScope, interval,
-            records.AsReadOnly(), null, false, null, Caveat);
+        var records = new List<SessionEvidenceRecord>(pageSize);
+        bool needOwners = processes is not null && (selectedOwners.Count > 0 || resolveOwners);
+        RowKey? lastReturned = null;
+        RowKey? previous = null;
+        bool more = false;
+        long visited = 0;
+        while (queue.TryDequeue(out int index, out RowKey key))
+        {
+            if ((++visited & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (previous is { } prior && RowKeyComparer.Instance.Compare(prior, key) == 0)
+                throw new InvalidDataException("Two published rows share one canonical row identity. Refusing to "
+                    + "page a generation that names a row twice.");
+            previous = key;
+            SegmentCursor segment = cursors[index];
+            int row = segment.Row;
+            if (segment.Seek(row + 1))
+                queue.Enqueue(index, segment.Key);
+
+            if (interval is { } range
+                && (segment.Reader.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is not { } nanoseconds
+                    || !range.Contains(nanoseconds / 100))) continue;
+            if (selectedChannel is { } channel && segment.ChannelOf(row, relations!) != channel) continue;
+            ProcessBinding? binding = needOwners ? segment.OwnerOf(row, processes!) : null;
+            if (selectedOwners.Count > 0
+                && (!selectedOwners.Contains(binding!.Value.Instance) || !binding.Value.IsAdmittedUnder(policy))) continue;
+            if (records.Count == pageSize)
+            {
+                more = true;
+                break;
+            }
+
+            ObservationRowV1 observation = segment.Reader.Row(row);
+            records.Add(new(observation.ObservationIdIn(segment.Reader.CaptureId, segment.Reader.Derivation),
+                segment.Name, row, observation, binding is { } owner ? Owner(owner, processes!, policy) : null));
+            lastReturned = key;
+        }
+
+        long? continuedFrom = position is not null && position.Generation != manifest.Generation ? position.Generation : null;
+        return Page(records.AsReadOnly(),
+            more && lastReturned is { } last ? Cursor(identity, manifest.Generation, last) : null,
+            false, null, continuedFrom);
     }
 
-    private static string Identity(SessionManifestV1 manifest, string? channelKey, TimeRange? interval,
-        ProcessInstanceId? ownerProcessScope,
-        EvidencePolicy policy)
+    private static int IndexOf(ProcessInstanceIndex processes, ProcessInstanceId id)
+    {
+        for (int index = 0; index < processes.Instances.Count; index++)
+        {
+            if (processes.Instances[index].Id == id) return index;
+        }
+
+        return -1;
+    }
+
+    private static SessionEvidenceOwner Owner(ProcessBinding binding, ProcessInstanceIndex processes, EvidencePolicy policy)
+    {
+        if (!binding.IsBound) return new(null, null, null, binding.Strength, binding.Reason, false);
+        ProcessInstance instance = processes.Instances[binding.Instance];
+        return new(instance.Id, instance.ProcessId, instance.ImageName, binding.Strength, binding.Reason,
+            binding.IsAdmittedUnder(policy));
+    }
+
+    private static string Identity(Guid sessionId, IReadOnlyList<SegmentReaderV1> segments, string? channelKey,
+        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy)
     {
         string timeScope = interval is { } range
             ? string.Create(CultureInfo.InvariantCulture, $"{range.StartTicks}:{range.EndTicks}")
             : "all-time";
         string relationRule = channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule;
-        string bindingRule = ownerProcessScope is null ? "unscoped" : ProcessInstanceIndex.BindingRule;
+        string bindingRule = owners.Length == 0 ? "unscoped" : ProcessInstanceIndex.BindingRule;
+        string captures = string.Join(",", segments.Select(segment => segment.CaptureId.Value.ToString("N"))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+        string derivations = string.Join(",", segments.Select(segment => segment.Derivation.Value)
+            .Distinct().Order());
+        string ownerSet = string.Join(",", owners.Select(owner => owner.Value.ToString("N")));
         string canonical = string.Create(CultureInfo.InvariantCulture,
-            $"evidence-page-v1|{manifest.SessionId:N}|{manifest.Generation}|{manifest.Digest}|{policy}|"
-            + $"{relationRule}|{bindingRule}|{channelKey?.Length ?? 0}:{channelKey}|{ownerProcessScope}|{timeScope}");
+            $"evidence-page-v2|{sessionId:N}|{captures}|{derivations}|{policy}|{relationRule}|{bindingRule}|"
+            + $"{channelKey?.Length ?? 0}:{channelKey}|{ownerSet}|{timeScope}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
-    private static string Cursor(string identity, int segment, int row) =>
-        string.Create(CultureInfo.InvariantCulture, $"v1.{identity}.{segment}.{row}");
+    private static string Cursor(string identity, long generation, RowKey key) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"{CursorVersion}.{identity}.{generation}.{key.NativeTicks}.{key.Stream}.{key.Epoch}.{key.Ordinal}."
+            + $"{key.FactHigh:x16}{key.FactLow:x16}");
 
-    private static (string Identity, int Segment, int Row) ParseCursor(string? cursor)
+    private static EvidenceCursor? ParseCursor(string? cursor)
     {
-        if (cursor is null) return (string.Empty, 0, 0);
-        if (cursor.Length > 128) throw new ArgumentException("The evidence cursor is too long.", nameof(cursor));
+        if (cursor is null) return null;
+        if (cursor.Length > MaximumCursorLength)
+            throw new ArgumentException("The evidence cursor is too long.", nameof(cursor));
+        if (cursor.StartsWith("v1.", StringComparison.Ordinal))
+            return new(true, string.Empty, 0, default);
         string[] parts = cursor.Split('.');
-        if (parts.Length != 4 || parts[0] != "v1" || parts[1].Length != 64
-            || !parts[1].All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f')
-            || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int segment)
-            || !int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out int row))
+        if (parts.Length != 8 || parts[0] != CursorVersion || !IsHex(parts[1], 64) || !IsHex(parts[7], 32)
+            || !long.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out long generation)
+            || !long.TryParse(parts[3], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long ticks)
+            || !uint.TryParse(parts[4], NumberStyles.None, CultureInfo.InvariantCulture, out uint stream)
+            || !uint.TryParse(parts[5], NumberStyles.None, CultureInfo.InvariantCulture, out uint epoch)
+            || !ulong.TryParse(parts[6], NumberStyles.None, CultureInfo.InvariantCulture, out ulong ordinal))
             throw new ArgumentException("The evidence cursor is malformed; restart from the first page.", nameof(cursor));
-        return (parts[1], segment, row);
+        ulong high = ulong.Parse(parts[7].AsSpan(0, 16), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        ulong low = ulong.Parse(parts[7].AsSpan(16), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        return new(false, parts[1], generation, new(ticks, stream, epoch, ordinal, high, low));
+    }
+
+    private static bool IsHex(string text, int length) =>
+        text.Length == length && text.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private sealed record EvidenceCursor(bool Legacy, string Identity, long Generation, RowKey Key);
+
+    /// <summary>The <c>segment-v1</c> §4 row order: native reading, then the raw locator, then the fact key.</summary>
+    private readonly record struct RowKey(long NativeTicks, uint Stream, uint Epoch, ulong Ordinal, ulong FactHigh, ulong FactLow);
+
+    private sealed class RowKeyComparer : IComparer<RowKey>
+    {
+        public static RowKeyComparer Instance { get; } = new();
+
+        public int Compare(RowKey left, RowKey right)
+        {
+            int order = left.NativeTicks.CompareTo(right.NativeTicks);
+            order = order != 0 ? order : left.Stream.CompareTo(right.Stream);
+            order = order != 0 ? order : left.Epoch.CompareTo(right.Epoch);
+            order = order != 0 ? order : left.Ordinal.CompareTo(right.Ordinal);
+            order = order != 0 ? order : left.FactHigh.CompareTo(right.FactHigh);
+            return order != 0 ? order : left.FactLow.CompareTo(right.FactLow);
+        }
+    }
+
+    /// <summary>
+    /// One segment's position in the merge. A segment is sorted by the row key (the reader verified it), so its first
+    /// row after a cursor is found by search, and bindings are computed only for a segment the merge reaches.
+    /// </summary>
+    private sealed class SegmentCursor(SegmentReaderV1 reader, string name)
+    {
+        private ChannelBinding[]? channels;
+        private ProcessBinding[]? owners;
+
+        public SegmentReaderV1 Reader { get; } = reader;
+
+        public string Name { get; } = name;
+
+        public int Row { get; private set; }
+
+        public RowKey Key { get; private set; }
+
+        public bool Seek(int row)
+        {
+            Row = row;
+            if (row >= Reader.RowCount) return false;
+            Key = KeyAt(row);
+            return true;
+        }
+
+        public int FirstAfter(RowKey cursor)
+        {
+            int low = 0;
+            int high = Reader.RowCount;
+            while (low < high)
+            {
+                int middle = low + ((high - low) >> 1);
+                if (RowKeyComparer.Instance.Compare(KeyAt(middle), cursor) <= 0) low = middle + 1;
+                else high = middle;
+            }
+
+            return low;
+        }
+
+        public int ChannelOf(int row, TransportRelationIndex relations) =>
+            (channels ??= relations.ChannelsOf(Reader))[row].Channel;
+
+        public ProcessBinding OwnerOf(int row, ProcessInstanceIndex processes) =>
+            (owners ??= processes.OwnersOf(Reader))[row];
+
+        private RowKey KeyAt(int row) => new(
+            Reader.SignedValue(SegmentColumnId.NativeTicks, row)!.Value,
+            (uint)Reader.UnsignedValue(SegmentColumnId.RawStreamId, row)!.Value,
+            (uint)Reader.UnsignedValue(SegmentColumnId.RawSourceEpoch, row)!.Value,
+            Reader.UnsignedValue(SegmentColumnId.RawRecordOrdinal, row)!.Value,
+            Reader.UnsignedValue(SegmentColumnId.FactKeyHigh, row)!.Value,
+            Reader.UnsignedValue(SegmentColumnId.FactKeyLow, row)!.Value);
     }
 }

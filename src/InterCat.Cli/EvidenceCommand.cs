@@ -6,7 +6,7 @@ using InterCat.Storage;
 
 namespace InterCat.Cli;
 
-/// <summary>Read-only, manifest-bound pages of exact normalized source observations.</summary>
+/// <summary>Read-only pages of exact normalized source observations, continued by row rather than by position.</summary>
 internal static class EvidenceCommand
 {
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
@@ -20,21 +20,23 @@ internal static class EvidenceCommand
             return InterCatExitCode.Success;
         }
 
-        string? directory = command.TakePositional();
+        // Options are taken before the positional directory, so a value such as a channel key is never mistaken
+        // for the directory when options come first.
         string? channel = command.TakeOption("--channel");
-        string? ownerProcessText = command.TakeOption("--owner-process");
+        var ownerTexts = new List<string>();
+        while (command.TakeOption("--owner-process") is { } ownerText) ownerTexts.Add(ownerText);
         string? cursor = command.TakeOption("--cursor");
         string? intervalText = command.TakeOption("--interval");
         string? size = command.TakeOption("--page-size");
+        bool json = command.TryTakeFlag("--json");
+        string? directory = command.TakePositional();
         int pageSize = SessionEvidenceQuery.DefaultPageSize;
         bool invalidSize = size is not null &&
             (!int.TryParse(size, NumberStyles.None, CultureInfo.InvariantCulture, out pageSize)
                 || pageSize is < 1 or > SessionEvidenceQuery.MaximumPageSize);
-        bool json = command.TryTakeFlag("--json");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         bool invalidInterval = !TryParseInterval(intervalText, out TimeRange? interval);
-        bool invalidOwner = ownerProcessText is not null
-            && (!Guid.TryParse(ownerProcessText, out Guid ownerId) || ownerId == Guid.Empty);
+        bool invalidOwner = ownerTexts.Any(text => !Guid.TryParse(text, out Guid ownerId) || ownerId == Guid.Empty);
         if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
@@ -53,12 +55,13 @@ internal static class EvidenceCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        ProcessInstanceId? ownerScope = ownerProcessText is null ? null : new(Guid.Parse(ownerProcessText));
+        ProcessInstanceId[] owners = [.. ownerTexts.Select(text => new ProcessInstanceId(Guid.Parse(text)))];
         SessionEvidencePage page;
         try
         {
             page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
-                channel, interval, ownerScope, pageSize: pageSize, cursor: cursor,
+                channel, interval, pageSize: pageSize, cursor: cursor,
+                ownerProcesses: owners.Length == 0 ? null : owners, resolveOwners: true,
                 cancellationToken: cancellationToken);
         }
         catch (ArgumentException exception)
@@ -76,7 +79,7 @@ internal static class EvidenceCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "evidence-page-v1", SessionPath = path, Page = page,
+                Contract = "evidence-page-v2", SessionPath = path, Page = page,
             }, JsonContracts.Indented));
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
         }
@@ -87,7 +90,8 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (channel is not null) ConsoleUi.Field("Paired TCP channel", channel);
-        if (ownerScope is not null) ConsoleUi.Field("Canonical owner process", ownerScope.ToString()!);
+        foreach (ProcessInstanceId owner in page.OwnerProcesses)
+            ConsoleUi.Field("Canonical owner process", owner.ToString()!);
         if (interval is { } range)
             ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks");
         if (page.RestartRequired)
@@ -96,14 +100,16 @@ internal static class EvidenceCommand
             return InterCatExitCode.PartialResultSuccess;
         }
 
+        if (page.ContinuedFromGeneration is { } earlier)
+            ConsoleUi.Note($"Continued from generation {ConsoleUi.Count(earlier)} after its last row. Rows published "
+                + "since then that sort before this page are not inserted; start again without --cursor to include them.");
         foreach (SessionEvidenceRecord record in page.Records)
         {
             ObservationRowV1 row = record.Observation;
-            ConsoleUi.Line($"  {row.NativeTicks.ToString(CultureInfo.InvariantCulture)} · "
-                + $"{row.Mechanism}/{row.Kind} · owner PID {row.OwnerProcessId?.ToString(CultureInfo.InvariantCulture) ?? "?"} "
-                + $"· {row.ProviderId:N} event {row.EventId} v{row.DescriptorVersion} "
-                + $"· raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} "
-                + $"fact {row.FactKey} · {record.SegmentName} row {record.SegmentRow.ToString(CultureInfo.InvariantCulture)}");
+            ConsoleUi.Line("  " + EvidenceRowText.Summary(record, CultureInfo.CurrentCulture));
+            ConsoleUi.Note($"    {EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)} · {row.ProviderId:N} event {row.EventId} "
+                + $"v{row.DescriptorVersion} · raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} "
+                + $"· {record.SegmentName} row {record.SegmentRow.ToString(CultureInfo.InvariantCulture)}");
         }
 
         ConsoleUi.Note(page.Caveat);
@@ -115,20 +121,22 @@ internal static class EvidenceCommand
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat evidence <directory> --cursor {page.NextCursor}"
                 + (channel is null ? string.Empty : $" --channel {channel}")
-                + (ownerScope is null ? string.Empty : $" --owner-process {ownerScope}")
+                + string.Concat(page.OwnerProcesses.Select(owner => $" --owner-process {owner}"))
                 + (interval is { } scope ? $" --interval {scope.StartTicks}:{scope.EndTicks}" : string.Empty));
         return InterCatExitCode.Success;
     }
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
+        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid> ...]");
         ConsoleUi.Line("              [--interval <start:end>]");
         ConsoleUi.Line("              [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
-        ConsoleUi.Line("  Read-only pages of admitted normalized source rows, tied to one manifest and query.");
-        ConsoleUi.Line("  A stale cursor requests an explicit restart; --channel uses an overview channel key.");
-        ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows.");
+        ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
+        ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
+        ConsoleUi.Line("  or derivation asks for an explicit restart. --channel uses an overview channel key.");
+        ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
+        ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");
     }

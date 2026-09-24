@@ -326,25 +326,38 @@ public sealed class SessionOverviewTests
     }
 
     [Fact]
-    public void EvidenceCursorDoesNotShiftOntoAReplacementGeneration()
+    public void EvidenceCursorContinuesAfterItsRowInANewerGenerationAndNeverRepeatsOne()
     {
         using var session = new TemporarySession();
-        Publish(session.Store,
+        ObservationRowV1[] published =
         [
             Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
             Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
-        ]);
+        ];
+        Publish(session.Store, published);
         SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store, pageSize: 1);
         Assert.NotNull(first.NextCursor);
+        Assert.Null(first.ContinuedFromGeneration);
 
+        // A live capture's next generation carries every earlier segment and adds what it recorded since, including
+        // a late record whose reading sorts before the cursor. The list continues after its row; the late one is
+        // not inserted into a list already under way.
         Publish(session.Store,
         [
-            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(5, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 4).Between(ClientEnd, ServerEnd),
         ]);
-        SessionEvidencePage changed = SessionEvidenceQuery.Read(session.Store, cursor: first.NextCursor);
-        Assert.True(changed.RestartRequired);
-        Assert.Empty(changed.Records);
-        Assert.True(changed.Generation > first.Generation);
+        SessionEvidencePage second = SessionEvidenceQuery.Read(session.Store, pageSize: 1, cursor: first.NextCursor);
+        SessionEvidencePage third = SessionEvidenceQuery.Read(session.Store, pageSize: 1, cursor: second.NextCursor);
+        Assert.False(second.RestartRequired);
+        Assert.True(second.Generation > first.Generation);
+        Assert.Equal(first.Generation, second.ContinuedFromGeneration);
+        Assert.Equal(first.QueryIdentity, second.QueryIdentity);
+        Assert.Equal([11L, 20L], new[] { second, third }.Select(page => page.Records.Single().Observation.NativeTicks));
+        Assert.Null(third.NextCursor);
+        Assert.Null(third.ContinuedFromGeneration);
+        Assert.Equal([5L, 10L, 11L, 20L],
+            SessionEvidenceQuery.Read(session.Store).Records.Select(record => record.Observation.NativeTicks));
     }
 
     [Fact]

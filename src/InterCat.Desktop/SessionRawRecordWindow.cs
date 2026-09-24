@@ -8,12 +8,14 @@ using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
-/// <summary>An exact original-envelope view. Body bytes remain hidden until the user requests a bounded preview.</summary>
+/// <summary>
+/// An exact original-envelope view. Body bytes remain hidden until the user requests a bounded preview. The record is
+/// found by its stable raw identity, so it stays reachable while a live capture publishes newer generations.
+/// </summary>
 internal sealed class SessionRawRecordWindow : Window, IDisposable
 {
     private readonly string path;
     private readonly Guid expectedSessionId;
-    private readonly long expectedGeneration;
     private readonly SessionEvidenceRecord selected;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
@@ -25,12 +27,10 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     private bool disposed;
     private bool revealed;
 
-    public SessionRawRecordWindow(string path, Guid expectedSessionId, long expectedGeneration,
-        SessionEvidenceRecord selected)
+    public SessionRawRecordWindow(string path, Guid expectedSessionId, SessionEvidenceRecord selected)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
-        this.expectedGeneration = expectedGeneration;
         this.selected = selected;
         Title = "InterCat · Original journal record";
         Width = 850;
@@ -101,9 +101,11 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         try
         {
             CancellationToken token = lifetime.Token;
-            SessionRawRecordDetail result = await Task.Run(() => SessionRawRecordQuery.Read(
+            // The row's raw identity is stable across generations, so a live publication since the row was read
+            // does not strand it: the current generation's retained journals are searched and checked against it.
+            SessionRawRecordDetail result = await Task.Run(() => SessionRawRecordQuery.ReadRetained(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), expectedSessionId,
-                expectedGeneration, selected, revealBytes, cancellationToken: token), token);
+                selected, revealBytes, cancellationToken: token), token);
             if (closed) return;
             if (!result.Available)
             {

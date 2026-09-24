@@ -381,6 +381,147 @@ public static class JournalV1Reader
         return records;
     }
 
+    /// <summary>
+    /// Finds one record by its raw identity. The header, clock and schema frames are verified as a replay verifies
+    /// them, and a batch that is read is verified, decoded and checked against its declaration as usual. Unless
+    /// <paramref name="exhaustive"/> is set, a batch whose declared first and last ordinals do not bracket the
+    /// target's is skipped unread. That is exact for a journal stored in acquisition order, which is how the live
+    /// recorder and the importer write one: a single admission counter numbers every stream's records in the order
+    /// they are stored. The contract does not promise that order, so a skipping search can only find a record faster;
+    /// a caller must not report a record absent until an exhaustive search agrees. The envelope is valid only during
+    /// <paramref name="onFound"/>; its pooled buffers are released afterwards.
+    /// </summary>
+    /// <returns>Whether the record was found. A journal of another capture holds none of its records.</returns>
+    public static bool FindRecord(
+        Stream stream,
+        RawRecordId target,
+        Action<SourceClockDescriptor, JournalV1SchemaTable, RecordEnvelopeV1> onFound,
+        bool exhaustive = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(onFound);
+        if (!stream.CanRead || !stream.CanSeek)
+        {
+            throw new ArgumentException("A journal lookup needs a readable, seekable owned file.", nameof(stream));
+        }
+
+        stream.Position = 0;
+        byte[] header = new byte[JournalV1Codec.HeaderLength];
+        ReadFramePart(stream, header);
+        (CaptureId capture, _) = JournalV1Codec.DecodeHeader(header);
+        if (capture != target.CaptureId)
+        {
+            return false;
+        }
+
+        const int Declaration = sizeof(int) + (2 * (sizeof(uint) + sizeof(uint) + sizeof(ulong)));
+        SourceClockDescriptor? clock = null;
+        JournalV1SchemaTable? schemas = null;
+        byte[] frameHeader = new byte[8];
+        byte[] declaration = new byte[Declaration];
+        byte[] digest = new byte[32];
+        Span<byte> measured = stackalloc byte[32];
+        while (stream.Position < stream.Length)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadFramePart(stream, frameHeader);
+            JournalFrameKind kind = (JournalFrameKind)BinaryPrimitives.ReadUInt32LittleEndian(frameHeader);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(frameHeader.AsSpan(4));
+            if (length < 0 || length > JournalV1Codec.MaximumFrameBytes)
+            {
+                throw new InvalidDataException("A journal-v1 lookup frame length is outside its bound.");
+            }
+
+            if (kind == JournalFrameKind.RecordBatch && clock is not null && schemas is not null)
+            {
+                if (length < Declaration)
+                {
+                    throw new InvalidDataException("A journal-v1 batch is shorter than its identity declaration.");
+                }
+
+                ReadFramePart(stream, declaration);
+                ulong firstOrdinal = BinaryPrimitives.ReadUInt64LittleEndian(declaration.AsSpan(12));
+                ulong lastOrdinal = BinaryPrimitives.ReadUInt64LittleEndian(declaration.AsSpan(28));
+                bool mayHold = exhaustive
+                    || (target.RecordOrdinal >= firstOrdinal && target.RecordOrdinal <= lastOrdinal);
+                long remaining = (long)length - Declaration + digest.Length;
+                if (!mayHold)
+                {
+                    if (stream.Position + remaining > stream.Length)
+                    {
+                        throw new InvalidDataException("A journal-v1 lookup ends inside a frame.");
+                    }
+
+                    stream.Seek(remaining, SeekOrigin.Current);
+                    continue;
+                }
+
+                byte[] batchPayload = new byte[length];
+                declaration.CopyTo(batchPayload, 0);
+                try
+                {
+                    stream.ReadExactly(batchPayload, Declaration, length - Declaration);
+                }
+                catch (EndOfStreamException exception)
+                {
+                    throw new InvalidDataException("A journal-v1 lookup ends inside a frame.", exception);
+                }
+
+                ReadFramePart(stream, digest);
+                System.Security.Cryptography.SHA256.HashData(batchPayload, measured);
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(measured, digest))
+                {
+                    throw new InvalidDataException("A journal-v1 lookup RecordBatch frame fails its checksum.");
+                }
+
+                using JournalBatchV1 batch = JournalV1Codec.DecodeBatch(batchPayload, capture);
+                foreach (RecordEnvelopeV1 envelope in batch.Records)
+                {
+                    if (envelope.Id == target)
+                    {
+                        onFound(clock.Value, schemas, envelope);
+                        return true;
+                    }
+                }
+
+                continue;
+            }
+
+            byte[] payload = new byte[length];
+            ReadFramePart(stream, payload);
+            ReadFramePart(stream, digest);
+            System.Security.Cryptography.SHA256.HashData(payload, measured);
+            if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(measured, digest))
+            {
+                throw new InvalidDataException($"A journal-v1 lookup {kind} frame fails its checksum.");
+            }
+
+            switch (kind)
+            {
+                case JournalFrameKind.SourceClock when clock is null:
+                    clock = JournalV1Codec.DecodeClock(payload);
+                    break;
+                case JournalFrameKind.SchemaTable when schemas is null:
+                    schemas = JournalV1Codec.DecodeSchemaTable(payload);
+                    break;
+                case JournalFrameKind.Terminal:
+                    if (stream.Position != stream.Length)
+                    {
+                        throw new InvalidDataException("A journal-v1 lookup has bytes after its terminal frame.");
+                    }
+
+                    return false;
+                default:
+                    throw new InvalidDataException(
+                        $"A journal-v1 lookup has an unknown, repeated or out-of-order {kind} frame.");
+            }
+        }
+
+        throw new InvalidDataException(
+            "A journal-v1 lookup needs one source clock, one schema table and a complete terminal frame.");
+    }
+
     private static void ReadFramePart(Stream stream, byte[] buffer)
     {
         try

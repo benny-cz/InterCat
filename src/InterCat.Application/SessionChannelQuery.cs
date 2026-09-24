@@ -59,11 +59,12 @@ public static class SessionChannelQuery
             .Select(name => SessionSegments.Open(store.Root, manifest, name))];
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation has no source clock for channel binding.");
-        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
         if (processScope is { } scope && !processes.Instances.Any(instance => instance.Id == scope))
             throw new InvalidOperationException("The selected process instance is not in this generation. "
                 + "Return to the overview and select it again.");
-        TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+        TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
         TransportRelation[] admitted = [.. relations.Relations.Where(relation =>
                 relation.Mechanism == Mechanism.Tcp
                 && SessionOverviewProjector.Admitted(relation.Strength, policy)

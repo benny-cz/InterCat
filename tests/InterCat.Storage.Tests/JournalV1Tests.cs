@@ -319,6 +319,107 @@ public sealed class JournalV1Tests
         Assert.Equal(0x62A8AB43u, Crc32C.Compute(ones));
     }
 
+    [Fact(DisplayName = "§20.1: a lookup by raw identity decodes only a batch whose declaration can hold it")]
+    public void FindRecordUsesBatchDeclarations()
+    {
+        byte[] file = BuildJournal(batchCapacity: 2, [.. Enumerable.Range(1, 7).Select(ordinal => (1u, (ulong)ordinal))]);
+
+        foreach (ulong ordinal in new ulong[] { 1, 4, 7 })
+        {
+            RawRecordId target = new(Capture, 1, 1, ordinal);
+            RawRecordId? found = null;
+            byte[]? body = null;
+            using var stream = new MemoryStream(file, writable: false);
+            Assert.True(JournalV1Reader.FindRecord(stream, target, (clock, schemas, envelope) =>
+            {
+                Assert.Equal(Clock(), clock);
+                Assert.NotNull(schemas.FindPolicy(envelope.AdmissionPolicyReference));
+                found = envelope.Id;
+                body = envelope.Body.Bytes.ToArray();
+            }));
+            Assert.Equal(target, found);
+            Assert.Equal([(byte)ordinal], body!);
+        }
+
+        using var missing = new MemoryStream(file, writable: false);
+        Assert.False(JournalV1Reader.FindRecord(missing, new RawRecordId(Capture, 1, 1, 99), (_, _, _) =>
+            Assert.Fail("An absent record was reported.")));
+        using var otherCapture = new MemoryStream(file, writable: false);
+        Assert.False(JournalV1Reader.FindRecord(otherCapture,
+            new RawRecordId(new CaptureId(Guid.NewGuid()), 1, 1, 4), (_, _, _) => Assert.Fail("Wrong capture.")));
+
+        // Damage inside the batch that holds the target is refused; the lookup never returns an unverified record.
+        byte[] damaged = (byte[])file.Clone();
+        damaged[BatchOffset(damaged, firstOrdinal: 3) + 48] ^= 0xFF;
+        using var corrupt = new MemoryStream(damaged, writable: false);
+        Assert.Throws<InvalidDataException>(() => JournalV1Reader.FindRecord(corrupt,
+            new RawRecordId(Capture, 1, 1, 4), (_, _, _) => { }));
+    }
+
+    [Fact(DisplayName = "§20.1: a record outside its batch's declared ordinals is found only by an exhaustive search")]
+    public void FindRecordSkipsOnlyOnDeclaredOrdinals()
+    {
+        // Interleaved streams stored in acquisition order are found by the skipping search.
+        byte[] interleaved = BuildJournal(batchCapacity: 3, [(1u, 1ul), (2u, 2ul), (1u, 3ul), (2u, 4ul)]);
+        RawRecordId other = new(Capture, 2, 1, 2);
+        RawRecordId? found = null;
+        using (var stream = new MemoryStream(interleaved, writable: false))
+            Assert.True(JournalV1Reader.FindRecord(stream, other, (_, _, envelope) => found = envelope.Id));
+        Assert.Equal(other, found);
+
+        // A journal not stored in ordinal order can hide a record from the skipping search, which is why a caller
+        // reports absence only when the exhaustive search agrees.
+        byte[] unordered = BuildJournal(batchCapacity: 3, [(1u, 1ul), (1u, 9ul), (1u, 2ul)]);
+        RawRecordId hidden = new(Capture, 1, 1, 9);
+        using (var stream = new MemoryStream(unordered, writable: false))
+            Assert.False(JournalV1Reader.FindRecord(stream, hidden, (_, _, _) => { }));
+        using (var stream = new MemoryStream(unordered, writable: false))
+            Assert.True(JournalV1Reader.FindRecord(stream, hidden, (_, _, envelope) => found = envelope.Id,
+                exhaustive: true));
+        Assert.Equal(hidden, found);
+    }
+
+    private static byte[] BuildJournal(int batchCapacity, IReadOnlyList<(uint Stream, ulong Ordinal)> records)
+    {
+        var schemas = new JournalV1SchemaTable();
+        uint schema = schemas.Intern(Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), 10, 2, "provider/10/v2/8");
+        uint policy = schemas.InternPolicy("metadata-only-v1");
+        using var stream = new MemoryStream();
+        using (JournalV1Writer writer = JournalV1Writer.Create(stream, Capture, Clock(), Created, batchCapacity))
+        {
+            writer.WriteSchemas(schemas);
+            foreach ((uint streamId, ulong ordinal) in records)
+            {
+                writer.Append(Record(ordinal, body: [(byte)ordinal], schemaReference: schema, policyReference: policy)
+                    with { StreamId = streamId });
+            }
+
+            writer.Complete();
+        }
+
+        return stream.ToArray();
+    }
+
+    /// <summary>The file offset of the record-batch frame whose declared first record has this ordinal.</summary>
+    private static int BatchOffset(byte[] file, ulong firstOrdinal)
+    {
+        int position = JournalV1Codec.HeaderLength;
+        while (position < file.Length)
+        {
+            uint kind = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(position));
+            int length = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(position + 4));
+            if (kind == (uint)JournalFrameKind.RecordBatch
+                && System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(file.AsSpan(position + 8 + 12)) == firstOrdinal)
+            {
+                return position;
+            }
+
+            position += 8 + length + 32;
+        }
+
+        throw new InvalidOperationException("No batch starts with that ordinal.");
+    }
+
     /// <summary>
     /// The corpus. Every value is fixed, so the bytes this produces are the contract: a change to the
     /// format changes this file, and changing this file is a deliberate act.

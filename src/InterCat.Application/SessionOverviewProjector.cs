@@ -66,8 +66,9 @@ public static class SessionOverviewProjector
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
             .Select(name => SessionSegments.Open(store.Root, manifest, name))];
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
-        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
-        TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
+        ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
 
         if (processes.Instances.Count > GraphLayout.MaximumNodes)
         {

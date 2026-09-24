@@ -117,6 +117,12 @@ records[recordCount]
 The first and last identities let a reader say what a batch covers without decoding it (§20.1). They are
 checked against the records on read; a batch whose declaration disagrees with its contents is refused.
 
+They bound a batch's other records only when the file is stored in ordinal order. InterCat's writers store it
+that way: one admission counter numbers every stream's records in acquisition order, and an import keeps that
+order. This format does not require it, so a reader that skips batches on their declarations may use the skip
+to find a record faster, but must read every batch before it reports a record absent
+(`JournalV1Reader.FindRecord`, plan revision 95).
+
 ### Record
 
 ```text
