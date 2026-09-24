@@ -13,7 +13,8 @@ public sealed record SessionExportRequest(
     TimeRange? Interval,
     bool Evidence,
     ExportFormat Format,
-    int EvidenceLimit = SessionExport.DefaultEvidenceLimit);
+    int EvidenceLimit = SessionExport.DefaultEvidenceLimit,
+    bool Redacted = false);
 
 /// <summary>The exported text, the snapshot it names, and how many rows or records it holds.</summary>
 public sealed record SessionExportResult(string Content, ExportContext Context, int Rows);
@@ -73,7 +74,10 @@ public static class SessionExport
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.SessionDisclosure, exportedUtc);
             IReadOnlyList<LadderRow> rows = LadderProjection.Project(snapshot, ladder.Current).Rows;
-            return new(WorkspaceExport.Ranking(request.Format, ranked, rows), ranked, rows.Count);
+            string content = request.Redacted
+                ? RedactedShareExport.Ranking(request.Format, ranked, rows)
+                : WorkspaceExport.Ranking(request.Format, ranked, rows);
+            return new(content, ranked, rows.Count);
         }
 
         if (!ladder.TryDescend(LadderProjection.EvidenceDescentFor(ladder.Current, request.Interval ?? ladder.Current.Viewport),
@@ -97,7 +101,10 @@ public static class SessionExport
             string.Create(CultureInfo.InvariantCulture,
                 $"Only the first {records.Count:N0} records of this scope are included; raise --limit for the rest."),
             exportedUtc);
-        return new(WorkspaceExport.Evidence(request.Format, context, records), context, records.Count);
+        string evidenceContent = request.Redacted
+            ? RedactedShareExport.Evidence(request.Format, context, records)
+            : WorkspaceExport.Evidence(request.Format, context, records);
+        return new(evidenceContent, context, records.Count);
     }
 
     /// <summary>

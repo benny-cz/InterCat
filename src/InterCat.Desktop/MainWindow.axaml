@@ -361,6 +361,8 @@
                       AutomationProperties.Name="Browse all admitted paired TCP channels" />
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
                       AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
+              <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
+                      AutomationProperties.Name="Share a pseudonymized metadata report without original sources or raw record locators" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

@@ -1279,7 +1279,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// records out. <c>icat export</c> builds the same file through the same contract (R18).
     /// </summary>
     public async Task<SessionExportResult> ExportAsync(
-        ExportFormat format, DateTimeOffset exportedUtc, CancellationToken cancellationToken = default)
+        ExportFormat format, DateTimeOffset exportedUtc, bool redacted = false,
+        CancellationToken cancellationToken = default)
     {
         if (IsEvidenceRung && evidence is { Problem: null } list && evidenceSource is { } source)
         {
@@ -1289,11 +1290,17 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 string.Create(CultureInfo.InvariantCulture,
                     $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
                 exportedUtc);
-            return new(WorkspaceExport.Evidence(format, context, read.Records), context, read.Records.Count);
+            string content = redacted
+                ? RedactedShareExport.Evidence(format, context, read.Records)
+                : WorkspaceExport.Evidence(format, context, read.Records);
+            return new(content, context, read.Records.Count);
         }
 
         ExportContext ranked = DescribeExport(exportedUtc);
-        return new(WorkspaceExport.Ranking(format, ranked, view.Rows), ranked, view.Rows.Count);
+        string rankedContent = redacted
+            ? RedactedShareExport.Ranking(format, ranked, view.Rows)
+            : WorkspaceExport.Ranking(format, ranked, view.Rows);
+        return new(rankedContent, ranked, view.Rows.Count);
     }
 
     /// <summary>Whether the rung shows anything to export: ranked rows, or a readable evidence scope that holds records.</summary>

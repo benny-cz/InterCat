@@ -27,6 +27,7 @@ internal static class ExportCommand
         string? formatText = command.TakeOption("--format");
         string? limitText = command.TakeOption("--limit");
         bool evidence = command.TryTakeFlag("--evidence");
+        bool redacted = command.TryTakeFlag("--share-redacted");
         bool overwrite = command.TryTakeFlag("--overwrite");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -77,7 +78,7 @@ internal static class ExportCommand
         {
             result = SessionExport.Build(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(session)),
-                new(path, interval, evidence, format!.Value, limit),
+                new(path, interval, evidence, format!.Value, limit, redacted),
                 DateTimeOffset.UtcNow,
                 cancellationToken);
         }
@@ -92,38 +93,26 @@ internal static class ExportCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
-        await PublishAsync(destination, result.Content, overwrite, cancellationToken).ConfigureAwait(false);
+        await ExportFileWriter.WriteAsync(destination, result.Content, overwrite, cancellationToken).ConfigureAwait(false);
         ConsoleUi.Heading("Export");
         ConsoleUi.Field("Written to", destination);
-        ConsoleUi.Field("Contract", WorkspaceExport.Contract);
+        ConsoleUi.Field("Contract", redacted ? RedactedShareExport.Contract : WorkspaceExport.Contract);
         ConsoleUi.Field("Rung", NavigationState.Name(result.Context.Rung));
-        ConsoleUi.Field("Breadcrumb", result.Context.Breadcrumb);
-        ConsoleUi.Field("Scope", result.Context.Scope);
+        if (!redacted)
+        {
+            ConsoleUi.Field("Breadcrumb", result.Context.Breadcrumb);
+            ConsoleUi.Field("Scope", result.Context.Scope);
+        }
         ConsoleUi.Field(evidence ? "Records" : "Rows", ConsoleUi.Count(result.Rows));
         ConsoleUi.Field("Complete", result.Context.Complete ? "yes" : "no");
-        foreach (string caveat in result.Context.Caveats.Skip(1)) ConsoleUi.Note(caveat);
-        if (evidence) ConsoleUi.Note("Normalized metadata and raw locators only: no body or extended-data bytes are exported.");
+        if (redacted)
+            ConsoleUi.Note("Metadata-only pseudonymized report; no original sources or raw locators. Counts, times and patterns can still identify a workload. Review before sharing.");
+        else
+        {
+            foreach (string caveat in result.Context.Caveats.Skip(1)) ConsoleUi.Note(caveat);
+            if (evidence) ConsoleUi.Note("Normalized metadata and raw locators only: no body or extended-data bytes are exported.");
+        }
         return result.Context.Complete ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
-    }
-
-    /// <summary>
-    /// Writes the export beside its destination and moves it into place, so a cancelled or failed write never leaves a
-    /// partial file under the name asked for (§20.4).
-    /// </summary>
-    private static async Task PublishAsync(string destination, string content, bool overwrite, CancellationToken cancellationToken)
-    {
-        string folder = Path.GetDirectoryName(destination) ?? Directory.GetCurrentDirectory();
-        Directory.CreateDirectory(folder);
-        string staged = Path.Combine(folder, $".{Path.GetFileName(destination)}.{Guid.NewGuid():N}.partial");
-        try
-        {
-            await File.WriteAllTextAsync(staged, content, cancellationToken).ConfigureAwait(false);
-            File.Move(staged, destination, overwrite);
-        }
-        finally
-        {
-            if (File.Exists(staged)) File.Delete(staged);
-        }
     }
 
     private static TimeRange? ParseInterval(string? raw)
@@ -140,11 +129,13 @@ internal static class ExportCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat export <session-directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
-        ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--overwrite]");
-        ConsoleUi.Line("  Exports one rung of the Desktop's ladder in the intercat-export-v1 contract. Each --at descends");
+        ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
+        ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
         ConsoleUi.Line("  --interval ranks within [start,end) in 100-nanosecond session ticks. --evidence exports the");
         ConsoleUi.Line("  rung's source records instead of its rows, up to --limit (100,000 by default); an export that");
         ConsoleUi.Line("  stops short says so and exits with the partial-result code. CSV neutralizes formula-like text.");
+        ConsoleUi.Line("  --share-redacted writes an allowlisted, pseudonymized report without raw IDs, names, addresses,");
+        ConsoleUi.Line("  source files or record locators. This report is not anonymous or a reopenable session.");
     }
 }

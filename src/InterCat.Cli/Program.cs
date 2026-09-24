@@ -156,9 +156,10 @@ static void PrintHelp()
     ConsoleUi.Line("      as the Desktop draws a zoomed viewport. Empty buckets stay coverage-unknown.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
-    ConsoleUi.Line("              [--evidence [--limit <n>]] [--format json|csv] [--overwrite]");
-    ConsoleUi.Line("      The Desktop's export of one ladder rung, in the same intercat-export-v1 contract: ranked");
-    ConsoleUi.Line("      rows, or with --evidence its source records' metadata. Written staged, never partly.");
+    ConsoleUi.Line("              [--evidence [--limit <n>]] [--format json|csv] [--share-redacted] [--overwrite]");
+    ConsoleUi.Line("      Detailed export of one ladder rung; --evidence writes source-record metadata.");
+    ConsoleUi.Line("      --share-redacted writes a separate pseudonymized report, not a reopenable session.");
+    ConsoleUi.Line("      Both formats are staged, never left partly written.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

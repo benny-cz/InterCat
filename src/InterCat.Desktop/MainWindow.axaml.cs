@@ -198,11 +198,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ExportView(object? sender, RoutedEventArgs eventArgs) => ExportView();
 
+    private void ShareRedactedView(object? sender, RoutedEventArgs eventArgs) => ExportView(redacted: true);
+
     /// <summary>
     /// Exports the applied view (§6.4, §6.7 Ctrl+E): the rung's ranked rows or its evidence scope's records, named by
     /// session, generation, rung, filters and interval. The user chooses the file; nothing is written anywhere else.
     /// </summary>
-    private async void ExportView()
+    private async void ExportView(bool redacted = false)
     {
         if (exporting || !workspace.CanExport)
         {
@@ -213,11 +215,14 @@ public sealed partial class MainWindow : Window, IDisposable
         exporting = true;
         try
         {
+            if (redacted && !await ConfirmRedactedShareAsync()) return;
             ExportContext context = workspace.DescribeExport(DateTimeOffset.UtcNow);
             Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
             {
-                Title = "Export this view",
-                SuggestedFileName = WorkspaceExport.SuggestedName(context, "json"),
+                Title = redacted ? "Save redacted sharing report" : "Export this view",
+                SuggestedFileName = redacted
+                    ? RedactedShareExport.SuggestedName("json")
+                    : WorkspaceExport.SuggestedName(context, "json"),
                 DefaultExtension = "json",
                 FileTypeChoices =
                 [
@@ -228,13 +233,13 @@ public sealed partial class MainWindow : Window, IDisposable
             if (file is null || closed) return;
             string path = file.Path.LocalPath;
             ExportFormat format = path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExportFormat.Csv : ExportFormat.Json;
-            SessionExportResult written = await WriteExportAsync(path, format);
+            SessionExportResult written = await WriteExportAsync(path, format, redacted);
             if (!closed)
             {
                 string what = written.Context.Rung == DetailLevel.Evidence ? "records" : "rows";
                 CaptureDetail.Text = written.Context.Complete
-                    ? $"Exported {written.Rows:N0} {what} (complete) to {path}."
-                    : $"Exported the first {written.Rows:N0} {what} of the scope to {path}; the file says what it leaves out.";
+                    ? $"{(redacted ? "Saved redacted report with" : "Exported")} {written.Rows:N0} {what} (complete) to {path}."
+                    : $"{(redacted ? "Saved redacted report with" : "Exported the first")} {written.Rows:N0} {what} of the scope to {path}; the file says what it leaves out.";
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
@@ -249,11 +254,53 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>Writes the applied view to a chosen path: ranked rows as shown, or the evidence scope read in one pass.</summary>
-    internal async Task<SessionExportResult> WriteExportAsync(string path, ExportFormat format)
+    internal async Task<SessionExportResult> WriteExportAsync(string path, ExportFormat format, bool redacted = false)
     {
-        SessionExportResult result = await workspace.ExportAsync(format, DateTimeOffset.UtcNow);
-        await File.WriteAllTextAsync(path, result.Content, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        SessionExportResult result = await workspace.ExportAsync(format, DateTimeOffset.UtcNow,
+            redacted: redacted);
+        await ExportFileWriter.WriteAsync(path, result.Content, overwrite: true);
         return result;
+    }
+
+    private async Task<bool> ConfirmRedactedShareAsync()
+    {
+        var prompt = new Window
+        {
+            Title = "Share a redacted report?", Width = 540, Height = 360,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Content = "Cancel" };
+        var proceed = new Button { Content = "Choose report file" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "This creates a metadata-only, pseudonymized report; it cannot reopen a session.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Included: relative times, counts, sizes, status, quality, and random relationship tokens consistent only within this file.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Omitted: capture and session IDs, process and resource names, addresses, ports, original files, raw record locators, and content bytes.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "This is not anonymous: timing and workload patterns can still identify a system. Review the saved file before sharing.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
+            },
+        };
+        return await prompt.ShowDialog<bool>(this);
     }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();

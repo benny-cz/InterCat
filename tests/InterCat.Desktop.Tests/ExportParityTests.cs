@@ -3,6 +3,7 @@ using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Domain;
 using InterCat.Storage;
+using System.Text.Json;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 
@@ -57,6 +58,25 @@ public sealed class ExportParityTests
             SessionExportResult desktop = await workspace.ExportAsync(format, Exported);
             Assert.Equal(150, desktop.Rows);
             Assert.Equal(desktop.Content, SessionExport.Build(session.Store, new(path, null, true, format), Exported).Content);
+
+            SessionExportResult shared = await workspace.ExportAsync(format, Exported, redacted: true);
+            SessionExportResult headlessShare = SessionExport.Build(session.Store,
+                new(path, null, true, format, Redacted: true), Exported);
+            Assert.Equal(desktop.Rows, shared.Rows);
+            Assert.Equal(shared.Rows, headlessShare.Rows);
+            Assert.Equal(shared.Context.Rung, headlessShare.Context.Rung);
+            Assert.Contains(RedactedShareExport.Contract, shared.Content, StringComparison.Ordinal);
+            Assert.Contains(RedactedShareExport.Contract, headlessShare.Content, StringComparison.Ordinal);
+            Assert.DoesNotContain(ClientEnd, shared.Content, StringComparison.Ordinal);
+            Assert.DoesNotContain(ServerEnd, shared.Content, StringComparison.Ordinal);
+            Assert.DoesNotContain(overview.SessionId.ToString(), shared.Content, StringComparison.OrdinalIgnoreCase);
+            if (format == ExportFormat.Json)
+            {
+                using JsonDocument desktopReport = JsonDocument.Parse(shared.Content);
+                using JsonDocument cliReport = JsonDocument.Parse(headlessShare.Content);
+                Assert.Equal(150, desktopReport.RootElement.GetProperty("records").GetArrayLength());
+                Assert.Equal(150, cliReport.RootElement.GetProperty("records").GetArrayLength());
+            }
         }
     }
 
