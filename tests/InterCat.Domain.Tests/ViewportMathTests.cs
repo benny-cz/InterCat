@@ -36,6 +36,16 @@ public sealed class ViewportMathTests
         Assert.InRange(Math.Abs(restored.EndTicks - viewport.EndTicks), 0, 1);
     }
 
+    [Fact(DisplayName = "R10: a retained extent shorter than the minimum span zooms to itself rather than failing")]
+    public void ShortExtentZoomsToItself()
+    {
+        var extent = new TimeRange(10, 210);
+
+        TimeRange zoomed = ViewportMath.ZoomAtPixel(extent, 500, 1_000, 1.25m, extent, minimumSpanTicks: 100_000);
+
+        Assert.Equal(extent, zoomed);
+    }
+
     [Fact(DisplayName = "R10: panning cannot escape the retained extent")]
     public void PanClampsToRetainedExtent()
     {

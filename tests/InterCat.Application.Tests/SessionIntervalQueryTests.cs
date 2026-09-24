@@ -70,6 +70,8 @@ public sealed class SessionIntervalQueryTests
         Assert.Equal("1.0 – 3.0 µs", WorkspaceTime.FormatRange(new(10, 30), invariant));
         Assert.Equal("300.0 s", WorkspaceTime.FormatDuration(300 * Second, invariant));
         Assert.Equal("0.020 ms", WorkspaceTime.FormatDuration(200, invariant));
+        Assert.Equal("12.3 s", WorkspaceTime.FormatInstant(123 * Second / 10, 60 * Second, invariant));
+        Assert.Equal("1.5 µs", WorkspaceTime.FormatInstant(15, 20, invariant));
     }
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

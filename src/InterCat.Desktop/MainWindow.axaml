@@ -50,6 +50,8 @@
                          AutomationProperties.Name="Newer evidence is published" />
               <Button Content="Update to newest (F5)" Click="UpdateHeldGeneration"
                       AutomationProperties.Name="Show the newest published generation" />
+              <Button x:Name="HeldFollowButton" Content="Follow live (F)" Click="ToggleFollow" IsVisible="False"
+                      AutomationProperties.Name="Resume following each new publication" />
             </StackPanel>
           </Border>
         </StackPanel>
@@ -115,6 +117,9 @@
                     Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
             <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False"
                     Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
+            <!-- Pausing the view is not pausing the capture: recording continues and the newest view is offered (§6.2). -->
+            <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False"
+                    Click="ToggleFollow" AutomationProperties.Name="Pause or resume following the live capture" />
             <Button x:Name="OpenSavedSessionButton" Content="Open saved session"
                     Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
@@ -264,10 +269,10 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel>
                 <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
-                <TextBlock Text="Observed records · drag to brush a time range · unknown stays unknown"
+                <TextBlock Text="Observed records · Shift+drag brushes a range · unknown stays unknown"
                            Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <TextBlock Grid.Column="1" Text="Wheel to zoom · arrows to pan · Home and End for the extent"
+              <TextBlock Grid.Column="1" Text="Wheel zooms · drag or arrows pan · Home, End · 0 fits the scope"
                          Classes="muted" FontSize="11" VerticalAlignment="Center"
                          TextTrimming="CharacterEllipsis" />
             </Grid>
@@ -423,15 +428,22 @@
     <Border Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="3" Padding="16,0"
             Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
-        <TextBlock Text="●" Foreground="{DynamicResource Family.Alpc.Ink}" />
-        <TextBlock x:Name="WorkspaceTitleText" Grid.Column="1" Margin="6,0,18,0" MaxWidth="270" TextTrimming="CharacterEllipsis"
+      <!-- Health strip: capture state and whether the view follows it, the generation shown, coverage, the loss the
+           capture has stated, and how recent its last publication is (§3.1 step 3, §20.6). -->
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+        <TextBlock x:Name="HealthDot" Text="●" Foreground="{DynamicResource Ink.Muted}" />
+        <TextBlock x:Name="HealthStateText" Grid.Column="1" Margin="6,0,16,0" Text="Ready" FontSize="11"
+                   Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Capture and view state" />
+        <TextBlock x:Name="WorkspaceTitleText" Grid.Column="2" Margin="0,0,16,0" MaxWidth="220" TextTrimming="CharacterEllipsis"
                    Text="{Binding Snapshot.Title}" ToolTip.Tip="{Binding Snapshot.Title}"
-                   Foreground="{DynamicResource Ink.Body}" FontSize="11" />
-        <TextBlock x:Name="CoverageSummaryText" Grid.Column="2" Text="{Binding CoverageSummary}"
+                   Classes="muted" FontSize="11" />
+        <TextBlock x:Name="CoverageSummaryText" Grid.Column="3" Text="{Binding CoverageSummary}"
                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CoverageSummary}"
                    Foreground="{DynamicResource Family.RemoteCall.Ink}" FontSize="11" />
-        <TextBlock Grid.Column="3" Text="Workspace preview" Classes="muted" FontSize="11" />
+        <TextBlock x:Name="HealthLossText" Grid.Column="4" Margin="16,0,0,0" FontSize="11"
+                   Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Loss the capture has stated" />
+        <TextBlock x:Name="HealthFreshnessText" Grid.Column="5" Margin="16,0,0,0" Classes="muted" FontSize="11"
+                   AutomationProperties.Name="How recent the last publication is" />
       </Grid>
     </Border>
   </Grid>

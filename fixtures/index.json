@@ -745,6 +745,7 @@
         "R1: source fields round-trip with their observation identity and deterministic order"
       ],
       "R10": [
+        "R10: a retained extent shorter than the minimum span zooms to itself rather than failing",
         "R10: inverse zoom restores the viewport within rounding tolerance",
         "R10: no sequence of pans escapes the retained extent",
         "R10: panning and back restores the viewport",
@@ -782,9 +783,10 @@
         "R14: every ink token clears 4.5 to 1 against every surface it can land on"
       ],
       "R15": [
+        "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
         "R15: a custom workspace header names its session without inventing a capture gap",
+        "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard",
         "R15: a published session's channel and evidence rungs render at every supported size",
-        "R15: dragging across the timeline brushes a range and the ranking counts only that range",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the table toggle is reachable by keyboard while a list has focus",
         "R15: the window renders at its minimum size and at a review size",
@@ -1026,6 +1028,7 @@
         "R7: a worker result naming another graph identity is refused",
         "R7: caller cancellation propagates instead of looking like a superseded query",
         "R7: one leased generation yields a stable graph and exact graph-eligible timeline",
+        "R7: pausing the live view holds its generation while recording continues, and F resumes it",
         "R7: records hold the view still; a newer generation is offered, and applied on leaving"
       ],
       "R8": [

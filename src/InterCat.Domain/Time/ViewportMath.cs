@@ -47,9 +47,12 @@ public static class ViewportMath
         long focusTick = TickAtPixel(viewport, focusPixel, width);
         decimal focusRatio = decimal.CreateChecked(focusTick - viewport.StartTicks) / viewport.SpanTicks;
         decimal desiredSpan = decimal.CreateChecked(viewport.SpanTicks) / zoomFactor;
+
+        // A retained extent shorter than the minimum span is itself the narrowest view: zooming it changes nothing rather
+        // than failing on an inverted clamp.
         long newSpan = Math.Clamp(
             decimal.ToInt64(decimal.Round(desiredSpan, 0, MidpointRounding.AwayFromZero)),
-            minimumSpanTicks,
+            Math.Min(minimumSpanTicks, retainedExtent.SpanTicks),
             retainedExtent.SpanTicks);
 
         long leftTicks = decimal.ToInt64(decimal.Round(newSpan * focusRatio, 0, MidpointRounding.AwayFromZero));

@@ -25,9 +25,15 @@ public sealed class TimelineView : Control
     private const double BrushThreshold = 4;
 
     private TimeRange? viewport;
+
+    /// <summary>The visible time range: the retained extent until the user zooms or pans (presentation only, §6.4).</summary>
+    public TimeRange Viewport => viewport ?? (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
     private long? brushAnchor;
     private long? brushEnd;
     private double pressX;
+    private bool brushing;
+    private bool moved;
+    private TimeRange panOrigin;
 
     public override void Render(DrawingContext context)
     {
@@ -88,8 +94,9 @@ public sealed class TimelineView : Control
 
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
-        DrawText(context, $"{visible.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(left, bottom + 7));
-        DrawText(context, $"{visible.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(right - 38, bottom + 7));
+        DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
+        string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
+        DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
         DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
     }
 
@@ -203,20 +210,24 @@ public sealed class TimelineView : Control
     }
 
     /// <summary>
-    /// Pressing starts a brush; dragging past a few pixels brushes a time range and releasing makes it the analysis
-    /// interval. A press without a drag selects the bucket under it, as before. There is no drag-pan to conflict with:
-    /// the wheel zooms and the arrow keys pan (plan §6.2).
+    /// The §6.7 gestures: a drag pans the viewport, Shift+drag or a middle-button drag brushes a time range that becomes
+    /// the analysis interval, and a press that does not move selects the bucket under it. Pan and brush never conflict,
+    /// and every one has a keyboard equivalent (arrows, Home/End, 0) or a table equivalent (T).
     /// </summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         Focus();
-        if (DataContext is not WorkspaceViewModel)
+        if (DataContext is not WorkspaceViewModel viewModel)
         {
             return;
         }
 
-        pressX = e.GetPosition(this).X;
+        PointerPoint point = e.GetCurrentPoint(this);
+        pressX = point.Position.X;
+        brushing = e.KeyModifiers.HasFlag(KeyModifiers.Shift) || point.Properties.IsMiddleButtonPressed;
+        moved = false;
+        panOrigin = viewport ?? viewModel.Snapshot.Extent;
         brushAnchor = TickAt(pressX);
         brushEnd = null;
         e.Pointer.Capture(this);
@@ -226,17 +237,30 @@ public sealed class TimelineView : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (brushAnchor is null)
+        if (brushAnchor is null || DataContext is not WorkspaceViewModel viewModel)
         {
             return;
         }
 
         double x = e.GetPosition(this).X;
-        if (brushEnd is not null || Math.Abs(x - pressX) >= BrushThreshold)
+        if (!moved && Math.Abs(x - pressX) < BrushThreshold)
+        {
+            return;
+        }
+
+        moved = true;
+        if (brushing)
         {
             brushEnd = TickAt(x);
-            InvalidateVisual();
         }
+        else
+        {
+            // Pan from the viewport the drag began with, so one continuous drag accumulates no rounding drift (§6.7).
+            double plotWidth = Math.Max(1, Bounds.Width - 52);
+            viewport = ViewportMath.PanByFraction(panOrigin, (decimal)(-(x - pressX) / plotWidth), viewModel.Snapshot.Extent);
+        }
+
+        InvalidateVisual();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -248,11 +272,13 @@ public sealed class TimelineView : Control
         }
 
         long? end = brushEnd;
+        bool wasBrushing = brushing && moved;
+        bool wasClick = !moved;
         brushAnchor = null;
         brushEnd = null;
         e.Pointer.Capture(null);
         TimeRange extent = viewModel.Snapshot.Extent;
-        if (end is { } dragged)
+        if (wasBrushing && end is { } dragged)
         {
             long start = Math.Max(extent.StartTicks, Math.Min(anchor, dragged));
             long stop = Math.Min(extent.EndTicks, Math.Max(anchor, dragged) + 1);
@@ -261,7 +287,8 @@ public sealed class TimelineView : Control
                 viewModel.SelectInterval(new TimeRange(start, stop));
             }
         }
-        else if (viewModel.Snapshot.Timeline.FirstOrDefault(candidate => candidate.Interval.Contains(anchor)) is { } bucket)
+        else if (wasClick
+            && viewModel.Snapshot.Timeline.FirstOrDefault(candidate => candidate.Interval.Contains(anchor)) is { } bucket)
         {
             viewModel.SelectInterval(bucket.Interval);
         }
@@ -294,8 +321,20 @@ public sealed class TimelineView : Control
         }
 
         TimeRange current = viewport ?? viewModel.Snapshot.Extent;
+        TimeRange extent = viewModel.Snapshot.Extent;
         switch (e.Key)
         {
+            case Key.Home:
+                viewport = new TimeRange(extent.StartTicks, extent.StartTicks + current.SpanTicks).ClampInside(extent);
+                break;
+            case Key.End:
+                viewport = new TimeRange(extent.EndTicks - current.SpanTicks, extent.EndTicks).ClampInside(extent);
+                break;
+            case Key.D0:
+            case Key.NumPad0:
+                // Fit the analysis scope: the brushed interval when there is one, else the retained extent (§6.7).
+                viewport = viewModel.SelectedInterval is { } scope ? scope.ClampInside(extent) : null;
+                break;
             case Key.Left:
                 viewport = ViewportMath.PanByFraction(current, -0.1m, viewModel.Snapshot.Extent);
                 break;

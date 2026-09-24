@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -29,6 +30,17 @@ public sealed partial class MainWindow : Window, IDisposable
     /// and selection stay still. It is applied on F5 or when the user leaves the evidence rung.
     /// </summary>
     private CaptureUiUpdate? heldUpdate;
+
+    /// <summary>
+    /// Whether the view follows each new publication of a live capture. Pausing the view never stops recording (§6.2);
+    /// a paused view keeps its generation and offers the newest one, as the evidence rung does.
+    /// </summary>
+    private bool followLatest = true;
+
+    private CaptureUiPhase phase = CaptureUiPhase.Complete;
+    private SessionOverviewBundle? displayedOverview;
+    private DateTimeOffset? lastPublicationUtc;
+    private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainWindow() : this(new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace"))
     {
@@ -57,6 +69,8 @@ public sealed partial class MainWindow : Window, IDisposable
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
         Opened += (_, _) => StartExploringButton.Focus();
+        healthClock.Tick += (_, _) => UpdateHealthStrip();
+        healthClock.Start();
         Closing += OnClosing;
         Closed += (_, _) =>
         {
@@ -109,6 +123,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 break;
             case Key.F5:
                 e.Handled = ApplyHeldUpdate();
+                break;
+            case Key.F when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = ToggleFollowLatest();
                 break;
             case Key.Escape:
                 _ = viewModel.Ascend();
@@ -285,6 +302,9 @@ public sealed partial class MainWindow : Window, IDisposable
         displayedGeneration = -1;
         currentSessionPath = null;
         heldUpdate = null;
+        followLatest = true;
+        displayedOverview = null;
+        lastPublicationUtc = null;
         UpdateHeldBanner();
         UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
@@ -319,6 +339,7 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     internal void ApplyCaptureUpdate(CaptureUiUpdate update, bool forceOverview = false)
     {
+        phase = update.Phase;
         CaptureStatus.Text = update.Headline;
         CaptureDetail.Text = update.Detail;
         CaptureLatency.Text = Freshness(update.Milestones);
@@ -330,21 +351,57 @@ public sealed partial class MainWindow : Window, IDisposable
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
             && captureStop?.IsCancellationRequested != true;
+        FollowButton.IsVisible = IsLive;
+        if (update.Overview is not null && !forceOverview && IsLive)
+        {
+            lastPublicationUtc = DateTimeOffset.UtcNow;
+        }
 
         if (update.Overview is { } overview
             && (forceOverview || overview.SessionId != displayedSessionId
                 || overview.Generation > displayedGeneration))
         {
-            if (!forceOverview && overview.SessionId == displayedSessionId && workspace.HoldsGeneration)
+            if (!forceOverview && overview.SessionId == displayedSessionId
+                && (workspace.HoldsGeneration || !followLatest))
             {
-                // The user is reading records of this generation: keep them still and offer the newer one.
+                // The user is reading records of this generation, or paused the view: keep it still and offer the newer one.
                 heldUpdate = update;
                 UpdateHeldBanner();
+                UpdateHealthStrip();
                 return;
             }
 
             ReplaceWorkspace(update, overview, forceOverview);
         }
+
+        UpdateHealthStrip();
+    }
+
+    /// <summary>Whether a live capture is being followed, as opposed to a saved session or nothing.</summary>
+    private bool IsLive => phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
+
+    private void ToggleFollow(object? sender, RoutedEventArgs eventArgs) => _ = ToggleFollowLatest();
+
+    /// <summary>
+    /// Pauses or resumes following a live capture's publications. Resuming shows the newest generation at once, unless
+    /// the user is reading evidence, which keeps its own hold until they leave it. False when nothing is live.
+    /// </summary>
+    private bool ToggleFollowLatest()
+    {
+        if (!IsLive)
+        {
+            return false;
+        }
+
+        followLatest = !followLatest;
+        if (followLatest && !workspace.HoldsGeneration)
+        {
+            _ = ApplyHeldUpdate();
+        }
+
+        UpdateHeldBanner();
+        UpdateHealthStrip();
+        return true;
     }
 
     private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview)
@@ -354,6 +411,7 @@ public sealed partial class MainWindow : Window, IDisposable
         heldUpdate = null;
         displayedSessionId = overview.SessionId;
         displayedGeneration = overview.Generation;
+        displayedOverview = overview;
         currentSessionPath = update.SessionPath ?? currentSessionPath;
         SessionEvidenceSource? evidence = currentSessionPath is { } path
             ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
@@ -397,10 +455,66 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         bool held = heldUpdate?.Overview is not null;
         HeldBanner.IsVisible = held;
-        HeldBannerText.Text = held
-            ? $"Showing generation {displayedGeneration:N0} while you read records. Generation "
-                + $"{heldUpdate!.Overview!.Generation:N0} is published; recording continues."
+        HeldFollowButton.IsVisible = held && !followLatest;
+        HeldBannerText.Text = !held ? string.Empty
+            : (followLatest
+                ? $"Showing generation {displayedGeneration:N0} while you read records. "
+                : $"View paused at generation {displayedGeneration:N0}. ")
+                + $"Generation {heldUpdate!.Overview!.Generation:N0} is published; recording continues.";
+        FollowButton.Content = followLatest ? "Pause view (F)" : "Follow live (F)";
+    }
+
+    /// <summary>
+    /// The health strip: what the capture is doing, whether the view follows it, what loss is known, and how recent the
+    /// last publication is. A loss that is not yet stated reads as not stated, never as none (§20.6, R21).
+    /// </summary>
+    private void UpdateHealthStrip()
+    {
+        bool paused = IsLive && (!followLatest || heldUpdate is not null);
+        HealthStateText.Text = phase switch
+        {
+            CaptureUiPhase.Starting => "Starting capture",
+            CaptureUiPhase.Recording when paused && workspace.HoldsGeneration => "Recording · view held while you read records",
+            CaptureUiPhase.Recording when paused => "Recording · view paused",
+            CaptureUiPhase.Recording => "Recording · following live",
+            CaptureUiPhase.Finishing => "Stopping and saving",
+            CaptureUiPhase.Unavailable => "Capture unavailable",
+            _ => displayedOverview is null ? "Ready" : "Saved session",
+        };
+        HealthDot.Foreground = (this.TryFindResource(
+            phase == CaptureUiPhase.Recording && !paused ? "Family.Alpc.Ink"
+                : IsLive ? "Family.RemoteCall.Ink" : "Ink.Muted", out object? brush) ? brush : null) as Avalonia.Media.IBrush;
+        HealthLossText.Text = LossStatement();
+        HealthFreshnessText.Text = IsLive && lastPublicationUtc is { } last
+            ? $"last publication {Math.Max(0, (DateTimeOffset.UtcNow - last).TotalSeconds):0} s ago"
             : string.Empty;
+    }
+
+    private string LossStatement()
+    {
+        if (displayedOverview is not { } overview)
+        {
+            return string.Empty;
+        }
+
+        if (!overview.CoverageLedgerPublished)
+        {
+            return IsLive ? "Loss is stated when recording stops" : "No coverage ledger · loss unknown";
+        }
+
+        MechanismCoverage[] collected = [.. overview.MechanismCoverage
+            .Where(entry => entry.State != CoverageState.NotCollected)];
+        MechanismCoverage[] affected = [.. collected.Where(entry => entry.State != CoverageState.Covered)];
+        return collected.Length == 0 ? "No mechanism was collected"
+            : affected.Length == 0 ? "No loss reported"
+            : string.Join(" · ", affected.Select(entry => $"{EvidenceRowText.MechanismName(entry.Mechanism)} {Describe(entry.State)}"));
+
+        static string Describe(CoverageState state) => state switch
+        {
+            CoverageState.PartialGap => "has a coverage gap",
+            CoverageState.ReducedFidelity => "has reduced fidelity",
+            _ => "coverage unknown",
+        };
     }
 
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
@@ -408,8 +522,13 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration))
+        {
+            UpdateHealthStrip();
+        }
+
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration) && !workspace.HoldsGeneration
-            && heldUpdate is not null)
+            && heldUpdate is not null && followLatest)
         {
             // Leaving the evidence rung releases the hold; apply after this change has finished notifying.
             Dispatcher.UIThread.Post(() =>
@@ -506,6 +625,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     public void Dispose()
     {
+        healthClock.Stop();
         captureStop?.Cancel();
         captureStop?.Dispose();
         workspace.PropertyChanged -= OnWorkspaceChanged;

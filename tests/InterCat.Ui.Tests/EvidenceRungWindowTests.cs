@@ -98,7 +98,7 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
-    [AvaloniaFact(DisplayName = "R15: dragging across the timeline brushes a range and the ranking counts only that range")]
+    [AvaloniaFact(DisplayName = "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range")]
     public async Task DraggingTheTimelineBrushesARangeAndReRanks()
     {
         using var session = new TemporarySession();
@@ -116,10 +116,10 @@ public sealed class EvidenceRungWindowTests
         double plot = timeline.Bounds.Width - 52;
         Avalonia.Point from = timeline.TranslatePoint(new(38 + (0.10 * plot), timeline.Bounds.Height / 2), window)!.Value;
         Avalonia.Point to = timeline.TranslatePoint(new(38 + (0.40 * plot), timeline.Bounds.Height / 2), window)!.Value;
-        window.MouseDown(from, MouseButton.Left);
-        window.MouseMove(new(from.X + 20, from.Y));
-        window.MouseMove(to);
-        window.MouseUp(to, MouseButton.Left);
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.Shift);
+        window.MouseMove(new(from.X + 20, from.Y), RawInputModifiers.Shift);
+        window.MouseMove(to, RawInputModifiers.Shift);
+        window.MouseUp(to, MouseButton.Left, RawInputModifiers.Shift);
         Dispatch();
 
         TimeRange brushed = Assert.IsType<TimeRange>(workspace.SelectedInterval);
@@ -137,6 +137,92 @@ public sealed class EvidenceRungWindowTests
         window.MouseUp(from, MouseButton.Left);
         Dispatch();
         Assert.Contains(workspace.Snapshot.Timeline, bucket => bucket.Interval == workspace.SelectedInterval);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
+    public void APlainDragPansAndKeysMoveTheViewport()
+    {
+        using var session = new TemporarySession();
+        // Exchanges 50 ms apart, so the session spans seconds and there is room to zoom and pan.
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        timeline.Focus();
+
+        // Zoom in first so there is room to pan; a drag then moves the viewport and selects nothing.
+        for (int step = 0; step < 4; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        TimeRange zoomed = timeline.Viewport;
+        Assert.True(zoomed.SpanTicks < workspace.Snapshot.Extent.SpanTicks);
+        window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        Assert.Equal(workspace.Snapshot.Extent.StartTicks, timeline.Viewport.StartTicks);
+
+        double plot = timeline.Bounds.Width - 52;
+        Point from = timeline.TranslatePoint(new(38 + (0.6 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        Point to = timeline.TranslatePoint(new(38 + (0.3 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseMove(to);
+        window.MouseUp(to, MouseButton.Left);
+        Dispatch();
+        Assert.True(timeline.Viewport.StartTicks > workspace.Snapshot.Extent.StartTicks);
+        Assert.Equal(zoomed.SpanTicks, timeline.Viewport.SpanTicks);
+        Assert.Null(workspace.SelectedInterval);
+
+        window.KeyPressQwerty(PhysicalKey.End, RawInputModifiers.None);
+        Assert.Equal(workspace.Snapshot.Extent.EndTicks, timeline.Viewport.EndTicks);
+        window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+        Assert.Equal(workspace.Snapshot.Extent, timeline.Viewport);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R7: pausing the live view holds its generation while recording continues, and F resumes it")]
+    public void PausingTheLiveViewHoldsItAndFResumes()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var first = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.True(window.GetControl<Button>("FollowButton").IsVisible);
+        Assert.Equal("Recording · following live", window.GetControl<TextBlock>("HealthStateText").Text);
+        Assert.Equal("Loss is stated when recording stops", window.GetControl<TextBlock>("HealthLossText").Text);
+        Assert.StartsWith("last publication", window.GetControl<TextBlock>("HealthFreshnessText").Text, StringComparison.Ordinal);
+
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Assert.Equal("Recording · view paused", window.GetControl<TextBlock>("HealthStateText").Text);
+        Assert.Equal("Follow live (F)", window.GetControl<Button>("FollowButton").Content);
+
+        Publish(session.Store, Exchange(10, 5));
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.Same(first, window.DataContext);
+        Assert.StartsWith("View paused at generation 1", window.GetControl<TextBlock>("HeldBannerText").Text,
+            StringComparison.Ordinal);
+        Assert.True(window.GetControl<Button>("HeldFollowButton").IsVisible);
+        WriteableBitmapCheck(window, "paused-live-view.png");
+
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Dispatch();
+        var resumed = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.NotSame(first, resumed);
+        Assert.Contains("generation 2", resumed.Snapshot.Title, StringComparison.Ordinal);
+        Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
+        Assert.Equal("Recording · following live", window.GetControl<TextBlock>("HealthStateText").Text);
+
+        // A saved session is not live: F does nothing and the strip says which loss statement applies.
+        window.ApplyCaptureUpdate(Update(session) with { Phase = CaptureUiPhase.Complete }, forceOverview: true);
+        Dispatch();
+        Assert.False(window.GetControl<Button>("FollowButton").IsVisible);
+        Assert.Equal("Saved session", window.GetControl<TextBlock>("HealthStateText").Text);
+        Assert.Equal("No coverage ledger · loss unknown", window.GetControl<TextBlock>("HealthLossText").Text);
+        Assert.Equal(string.Empty, window.GetControl<TextBlock>("HealthFreshnessText").Text);
         window.Close();
     }
 

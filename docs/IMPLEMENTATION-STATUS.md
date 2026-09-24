@@ -1,14 +1,52 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 98
+Plan revision: 99
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: brush a burst and rank it
+## Latest slice: pause the live view, a health strip that states what is known, and §6.7 timeline gestures
+
+**Record/view pause.** `F`, or "Pause view (F)" in the capture card, pauses following a live capture at any rung;
+recording continues. A paused view, like the evidence rung, keeps its generation. Each newer publication is offered in
+the banner ("View paused at generation 1. Generation 2 is published; recording continues.") with "Update to newest
+(F5)" for a one-time update and "Follow live (F)" to resume, which applies the newest generation at once. A new
+capture starts following; a saved session ignores `F`.
+
+**Health strip.** The bottom strip now shows:
+
+- a state dot: green while following, amber while paused or held;
+- the state: "Recording · following live", "Recording · view paused", "Recording · view held while you read records",
+  "Stopping and saving", or "Saved session";
+- the generation shown, and the interval coverage;
+- the loss the capture has stated: "Loss is stated when recording stops" while no ledger exists, "No coverage ledger ·
+  loss unknown" for a saved generation without one, and "No loss reported" or the affected mechanisms from a published
+  ledger;
+- "last publication N s ago", refreshed each second while live.
+
+The fixed "Workspace preview" label is gone.
+
+**Timeline gestures (§6.7).** A drag now pans from the viewport it began with, so a long drag does not drift. Shift+drag
+or a middle-button drag brushes, correcting the previous slice's plain-drag brush, which contradicted §6.2. A press
+still selects a bucket. Home, End and 0 (fit the analysis scope) now work; the pane's hint had promised Home and End
+without handling them. The axis labels its edges in span-driven units, as every other range does. Zooming a session
+shorter than the 10-ms minimum span used to throw from an inverted `Math.Clamp` in `ViewportMath.ZoomAtPixel`; it now
+returns the extent. A `Viewport` property exposes the visible range.
+
+Verification: frames of the paused view were reviewed. 821 tests pass in Debug and Release (+3): pause, hold, resume
+and the strip's statements for live and saved sessions; plain-drag pan with Home, End and 0; and the short-extent zoom.
+The brush test now uses Shift+drag. Plan revision 99.
+
+Not done: live loss counters while recording (the broker's status carries none, so the strip says loss is not yet
+stated); a minimap; export of the applied snapshot; the viewport as default ranking scope.
+
+Next: export the applied snapshot (`Ctrl+E`: the ranked rows and evidence page in view, named by session, generation,
+rung, scope and interval), then live broker health counters in the status response.
+
+## Previous slice: brush a burst and rank it
 
 The M2 gate's "brush its burst, rank it" now works in the Desktop, as §3.4 and §6.4 describe. Dragging across the
 timeline brushes any range; a press without a drag still selects the single bucket. `SessionIntervalQuery.Count`

@@ -98,6 +98,14 @@ public static class WorkspaceTime
             $"{(range.StartTicks / divisor).ToString(format, provider)} – {(range.EndTicks / divisor).ToString(format, provider)} {unit}");
     }
 
+    /// <summary>One instant, in the unit a visible span of <paramref name="span"/> ticks needs, as an axis labels its edges.</summary>
+    public static string FormatInstant(long ticks, long span, IFormatProvider? culture = null)
+    {
+        (decimal divisor, string unit, string format) = Unit(span);
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return string.Create(provider, $"{(ticks / divisor).ToString(format, provider)} {unit}");
+    }
+
     /// <summary>A duration of this many workspace ticks, in the same span-driven unit as <see cref="FormatRange"/>.</summary>
     public static string FormatDuration(long ticks, IFormatProvider? culture = null)
     {
