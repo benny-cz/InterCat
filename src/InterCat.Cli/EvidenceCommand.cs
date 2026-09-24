@@ -83,6 +83,7 @@ internal static class EvidenceCommand
 
         ConsoleUi.Heading("Published source observations");
         ConsoleUi.Field("Session", path);
+        ConsoleUi.Field("Session ID", page.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (channel is not null) ConsoleUi.Field("Paired TCP channel", channel);
@@ -106,6 +107,11 @@ internal static class EvidenceCommand
         }
 
         ConsoleUi.Note(page.Caveat);
+        if (page.Records.Count > 0)
+            ConsoleUi.Note("To verify one original retained journal record, run icat raw <directory> "
+                + $"--session-id {page.SessionId:N} --generation {page.Generation} "
+                + "--segment <segment-name> --row <segment-row> using the locator printed above. "
+                + "Body bytes stay hidden unless --reveal-bytes is supplied.");
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat evidence <directory> --cursor {page.NextCursor}"
                 + (channel is null ? string.Empty : $" --channel {channel}")

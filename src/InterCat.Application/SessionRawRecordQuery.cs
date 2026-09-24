@@ -41,6 +41,43 @@ public static class SessionRawRecordQuery
     public const int DefaultPreviewBytes = 256;
     public const int MaximumPreviewBytes = 1024;
 
+    /// <summary>
+    /// Resolve a generation-bound segment coordinate supplied by a headless evidence page. The second lease in
+    /// <see cref="Read"/> rechecks the generation before touching raw evidence, so a publication between these
+    /// two reads is a refusal rather than a shifted row.
+    /// </summary>
+    public static SessionRawRecordDetail ReadAt(
+        SessionStore store,
+        Guid expectedSessionId,
+        long expectedGeneration,
+        string segmentName,
+        int segmentRow,
+        bool revealBodyBytes = false,
+        int maximumPreviewBytes = DefaultPreviewBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentException.ThrowIfNullOrWhiteSpace(segmentName);
+        ArgumentOutOfRangeException.ThrowIfNegative(segmentRow);
+        SessionEvidenceRecord selected;
+        using (EvidenceLease lease = store.AcquireLease())
+        {
+            SessionManifestV1 manifest = lease.Manifest;
+            if (manifest.SessionId != expectedSessionId || manifest.Generation != expectedGeneration)
+                throw new InvalidOperationException("This raw-record locator names another session or generation. "
+                    + "Restart from icat evidence; no row was silently shifted.");
+            SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, segmentName);
+            if (segmentRow >= segment.RowCount)
+                throw new ArgumentException("The row coordinate is outside its published segment.", nameof(segmentRow));
+            ObservationRowV1 row = segment.Row(segmentRow);
+            selected = new(row.ObservationIdIn(segment.CaptureId, segment.Derivation),
+                segmentName, segmentRow, row);
+        }
+
+        return Read(store, expectedSessionId, expectedGeneration, selected,
+            revealBodyBytes, maximumPreviewBytes, cancellationToken);
+    }
+
     public static SessionRawRecordDetail Read(
         SessionStore store,
         Guid expectedSessionId,

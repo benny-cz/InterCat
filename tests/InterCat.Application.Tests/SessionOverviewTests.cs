@@ -444,6 +444,12 @@ public sealed class SessionOverviewTests
         Assert.Equal(BodyDispositionV1.Retained, hidden.BodyDisposition);
         Assert.Equal(5, hidden.OriginalBodyLength);
         Assert.Equal(5, hidden.RetainedBodyLength);
+        SessionRawRecordDetail fromLocator = SessionRawRecordQuery.ReadAt(session.Store,
+            page.SessionId, page.Generation, selected.SegmentName, selected.SegmentRow);
+        Assert.Equal(hidden.ObservationId, fromLocator.ObservationId);
+        Assert.Null(fromLocator.BodyPreview);
+        Assert.Throws<ArgumentException>(() => SessionRawRecordQuery.ReadAt(session.Store,
+            page.SessionId, page.Generation, selected.SegmentName, 99));
 
         SessionRawRecordDetail revealed = SessionRawRecordQuery.Read(session.Store,
             page.SessionId, page.Generation, selected, revealBodyBytes: true, maximumPreviewBytes: 2);
@@ -459,6 +465,8 @@ public sealed class SessionOverviewTests
             .Between(ClientEnd, ServerEnd)]);
         Assert.Throws<InvalidOperationException>(() => SessionRawRecordQuery.Read(session.Store,
             page.SessionId, page.Generation, selected));
+        Assert.Throws<InvalidOperationException>(() => SessionRawRecordQuery.ReadAt(session.Store,
+            page.SessionId, page.Generation, selected.SegmentName, selected.SegmentRow));
     }
 
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()

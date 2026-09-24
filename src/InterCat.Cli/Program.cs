@@ -35,6 +35,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -140,6 +141,7 @@ static void PrintHelp()
     ConsoleUi.Line();
     ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
     ConsoleUi.Line("                [--interval <start:end>]");
+    ConsoleUi.Line("  icat raw <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
     ConsoleUi.Line("                [--page-size <1-200>]");
     ConsoleUi.Line("                [--cursor <token>] [--json]");
     ConsoleUi.Line("      Leased pages of exact admitted observation rows; cursors restart on generation change.");

@@ -1,12 +1,29 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 93
+Plan revision: 94
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: original journal-record drill-down from a source row
+## Latest slice: headless original-record parity
+
+`icat raw <session-dir> --session-id <guid> --generation <n> --segment <name> --row <n> [--reveal-bytes]
+[--json]` now resolves the same original journal envelope as Desktop. `icat evidence` prints the SessionId and an
+actionable raw-record hint alongside segment/row locators. The command requires both session and generation; the
+application resolves the selected row under a lease and then rechecks identity under the raw-record lease, so a
+publication between those steps refuses instead of shifting the coordinate. Without `--reveal-bytes`, no body bytes
+are returned or printed; with it, at most 256 inert hex bytes appear. JSON uses the same `raw-record-view-v1`
+result, including explicit unavailable reason for released raw evidence.
+
+Application tests cover locator parity, out-of-range row and stale-generation refusal. CLI Release builds and the
+raw-command help route was smoke-checked; an actual persisted-session CLI invocation remains to be qualified.
+All 787 solution tests pass in separate Debug and Release runs. Plan revision 94 records this limited R18 parity.
+This does not complete L4 operations, decoded content, bulk export, an indexed raw lookup or the in-ladder L5
+projection. Real Desktop/UAC and the §3.1 first-feedback budget remain unqualified. Next: source-specific,
+loss-aware operation pairing, raw lookup indexing/latency, and the wider milestone gates.
+
+## Previous slice: original journal-record drill-down from a source row
 
 The Desktop's bounded source-row inspector now opens the **exact original journal-v1 envelope** for a selected
 normalized observation. `SessionRawRecordQuery` takes a manifest lease, requires the same SessionId/generation,
