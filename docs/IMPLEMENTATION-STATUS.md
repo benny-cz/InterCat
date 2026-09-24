@@ -1,12 +1,38 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 88
+Plan revision: 89
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: broker staging for both ordinary clients
+## Latest slice: bounded channel discovery and leased observation pages
+
+`icat channels <session-dir> [--process <instance-guid>] [--page-size 1..200] [--cursor] [--json]` now
+pages all admitted paired TCP incarnations from one leased generation, including a session whose L3 overview exceeded
+the provisional 4,096-channel bound. It uses the overview's exact admission and channel shape, reports the complete
+count in scope, and never silently truncates. A process scope uses its stable instance ID, not a reused PID. The
+Desktop's bounded-L3 empty state now points to this actionable query.
+
+`icat evidence <session-dir> [--channel <key>] [--page-size 1..200] [--cursor] [--json]` pages admitted
+`observation-v1` rows with their stable observation identity, provider/descriptor, native reading, raw-record locator
+and immutable segment position. Unscoped pages include one-sided rows; a channel page includes only the same admitted
+incarnation the overview names. Both page cursors bind the manifest and query/relation identity. A changed scope or
+generation returns an explicit restart and no shifted rows; malformed coordinates are refused. The graph identity
+also now names the correlation rule, preventing a later rule revision from reusing stale layout results. The Desktop
+truthfully describes the CLI evidence path while its own L4-L5 UI remains unprojected. Plan revision 89 records the
+boundary: these are exact **normalized observation rows**, not original payload bytes or completion-paired operations.
+
+Four new application tests cover evidence paging across segments, capped-channel discovery, identity/source provenance,
+and cursor restart on query and generation change. CLI routing/help was smoke-checked. All 784 tests pass in Debug and
+Release when the configurations run serially. An earlier concurrent two-configuration run had one transient follower
+test failure; that unrelated test passed alone and in the full serial Debug rerun, so parallel cross-configuration
+qualification is not claimed. Next: complete L4 operation
+semantics only for mechanisms with proven start/completion pairing, add an in-viewer bounded exact-record inspector,
+and wire the selected channel/time scope into both queries; retain unpaired starts as unresolved. Real Desktop/UAC
+and the §3.1 feedback measurement remain open, as do installer/version negotiation and the wider plan.
+
+## Previous slice: broker staging for both ordinary clients
 
 Windows Debug and Release builds and framework-dependent publishes of Desktop and `icat` now stage the separate
 capture broker executable beside the client, with its managed deps/runtime files and native subdirectories. The

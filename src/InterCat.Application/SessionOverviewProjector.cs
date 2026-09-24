@@ -120,20 +120,12 @@ public static class SessionOverviewProjector
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
                 + $"{maximumChannels:N0}-channel overview bound. The graph and timeline remain available; "
-                + "the channel rung needs a scoped query before it can show the complete set."
+                + "the channel rung needs a scoped query before it can show the complete set. "
+                + "Use icat channels <session-directory> --process <instance-guid> to page admitted channels."
             : null;
         Channel[] channels = channelProblem is not null ? [] : [.. admitted
             .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)
-            .Select(relation => new Channel(
-                relation.StableKey,
-                $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:"
-                    + Pair(relation.First.Id, relation.Second.Id).Second,
-                $"{relation.FirstEndpoint} ↔ {relation.SecondEndpoint}",
-                Mechanism.Tcp,
-                Direction.UnknownDirection,
-                relation.Records,
-                null,
-                CoverageState.UnknownCoverage))];
+            .Select(ProjectChannel)];
         if (channelProblem is null
             && channels.Select(channel => channel.Key).Distinct(StringComparer.Ordinal).Count() != channels.Length)
         {
@@ -177,7 +169,8 @@ public static class SessionOverviewProjector
             .. (channelProblem is null ? [] : new[] { channelProblem }),
         ];
         return new(
-            $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}:policy:{policy}",
+            $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
+                + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}",
             manifest.SessionId,
             manifest.Generation,
             extent,
@@ -392,7 +385,7 @@ public static class SessionOverviewProjector
         _ => checked(tick * 100),
     };
 
-    private static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
+    internal static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
     {
         RelationStrength.Direct => true,
         RelationStrength.Correlated => policy >= EvidencePolicy.IncludeCorrelated,
@@ -400,6 +393,17 @@ public static class SessionOverviewProjector
         RelationStrength.Conflicting => policy >= EvidencePolicy.AllIncludingConflicting,
         _ => false,
     };
+
+    internal static Channel ProjectChannel(TransportRelation relation) => new(
+        relation.StableKey,
+        $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:"
+            + Pair(relation.First.Id, relation.Second.Id).Second,
+        $"{relation.FirstEndpoint} ↔ {relation.SecondEndpoint}",
+        Mechanism.Tcp,
+        Direction.UnknownDirection,
+        relation.Records,
+        null,
+        CoverageState.UnknownCoverage);
 
     private static (ProcessInstanceId First, ProcessInstanceId Second) Pair(
         ProcessInstanceId first, ProcessInstanceId second) =>

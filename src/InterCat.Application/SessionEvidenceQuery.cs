@@ -1,0 +1,141 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using InterCat.Analysis;
+using InterCat.Domain;
+using InterCat.Storage;
+
+namespace InterCat.Application;
+
+/// <summary>One materialized observation-v1 row, with both its stable source identity and its location in this generation.</summary>
+public sealed record SessionEvidenceRecord(
+    ObservationId ObservationId,
+    string SegmentName,
+    int SegmentRow,
+    ObservationRowV1 Observation);
+
+/// <summary>
+/// A bounded exact-row page. A cursor is tied to the manifest digest and query semantics; on a new generation the
+/// caller gets an explicit restart, never a shifted page. These are admitted normalized rows, not raw payload bytes.
+/// </summary>
+public sealed record SessionEvidencePage(
+    string QueryIdentity,
+    long Generation,
+    string? ChannelKey,
+    IReadOnlyList<SessionEvidenceRecord> Records,
+    string? NextCursor,
+    bool RestartRequired,
+    string? RestartReason,
+    string Caveat);
+
+public static class SessionEvidenceQuery
+{
+    public const int DefaultPageSize = 100;
+    public const int MaximumPageSize = 200;
+
+    private const string Caveat = "These are exact admitted observation-v1 rows with provider, descriptor, native "
+        + "reading and raw-record locator. They are normalized facts, not a replay of original payload bytes. "
+        + "A channel page includes only the admitted paired TCP incarnation; one-sided and ambiguous rows remain "
+        + "available in unscoped evidence. This page does not infer completeness from observed rows; consult the "
+        + "session's coverage ledger.";
+
+    public static SessionEvidencePage Read(
+        SessionStore store,
+        string? channelKey = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        int pageSize = DefaultPageSize,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (string.IsNullOrWhiteSpace(channelKey) && channelKey is not null)
+            throw new ArgumentException("A channel key cannot be empty.", nameof(channelKey));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
+
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        string identity = Identity(manifest, channelKey, policy);
+        (string suppliedIdentity, int startSegment, int startRow) = ParseCursor(cursor);
+        if (cursor is not null && suppliedIdentity != identity)
+        {
+            return new(identity, manifest.Generation, channelKey, [], null, true,
+                "This evidence cursor names another generation or query. Restart from the first page; no rows "
+                + "were silently shifted.", Caveat);
+        }
+
+        string[] names = [.. SessionSegments.Names(manifest)];
+        SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        if (cursor is not null && (startSegment >= segments.Length || startRow >= segments[startSegment].RowCount))
+            throw new ArgumentException("The cursor points outside this generation's observation rows.", nameof(cursor));
+
+        int? selectedChannel = null;
+        TransportRelationIndex? relations = null;
+        if (channelKey is not null)
+        {
+            SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
+                ?? throw new InvalidDataException("This generation has no source clock for channel binding.");
+            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
+                .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
+            relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+            TransportRelation[] matching = [.. relations.Relations.Where(relation =>
+                relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
+                && SessionOverviewProjector.Admitted(relation.Strength, policy))];
+            if (matching.Length != 1)
+                throw new InvalidOperationException("This paired TCP channel is not uniquely admitted in the "
+                    + "current generation and evidence policy. Return to the overview and select it again.");
+            selectedChannel = matching[0].Channel;
+        }
+
+        var records = new List<SessionEvidenceRecord>(pageSize);
+        for (int segmentIndex = startSegment; segmentIndex < segments.Length; segmentIndex++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentReaderV1 segment = segments[segmentIndex];
+            ChannelBinding[]? bindings = relations?.ChannelsOf(segment);
+            int first = segmentIndex == startSegment ? startRow : 0;
+            for (int row = first; row < segment.RowCount; row++)
+            {
+                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                if (selectedChannel is { } channel && bindings![row].Channel != channel) continue;
+                if (records.Count == pageSize)
+                {
+                    return new(identity, manifest.Generation, channelKey, records.AsReadOnly(),
+                        Cursor(identity, segmentIndex, row), false, null, Caveat);
+                }
+
+                ObservationRowV1 observation = segment.Row(row);
+                records.Add(new(observation.ObservationIdIn(segment.CaptureId, segment.Derivation),
+                    names[segmentIndex], row, observation));
+            }
+        }
+
+        return new(identity, manifest.Generation, channelKey, records.AsReadOnly(), null, false, null, Caveat);
+    }
+
+    private static string Identity(SessionManifestV1 manifest, string? channelKey, EvidencePolicy policy)
+    {
+        string canonical = string.Create(CultureInfo.InvariantCulture,
+            $"evidence-page-v1|{manifest.SessionId:N}|{manifest.Generation}|{manifest.Digest}|{policy}|"
+            + $"{(channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule)}|"
+            + $"{channelKey?.Length ?? 0}:{channelKey}");
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    private static string Cursor(string identity, int segment, int row) =>
+        string.Create(CultureInfo.InvariantCulture, $"v1.{identity}.{segment}.{row}");
+
+    private static (string Identity, int Segment, int Row) ParseCursor(string? cursor)
+    {
+        if (cursor is null) return (string.Empty, 0, 0);
+        if (cursor.Length > 128) throw new ArgumentException("The evidence cursor is too long.", nameof(cursor));
+        string[] parts = cursor.Split('.');
+        if (parts.Length != 4 || parts[0] != "v1" || parts[1].Length != 64
+            || !parts[1].All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f')
+            || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int segment)
+            || !int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out int row))
+            throw new ArgumentException("The evidence cursor is malformed; restart from the first page.", nameof(cursor));
+        return (parts[1], segment, row);
+    }
+}

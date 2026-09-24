@@ -37,6 +37,27 @@ public sealed class SessionOverviewTests
         Assert.Contains("scoped query", overview.ChannelProjectionProblem, StringComparison.Ordinal);
         Assert.Equal(overview.ChannelProjectionProblem, workspace.ChannelProjectionProblem);
         Assert.Contains(overview.Caveats, caveat => caveat == overview.ChannelProjectionProblem);
+
+        SessionChannelPage first = SessionChannelQuery.Read(session.Store, pageSize: 1);
+        SessionChannelPage second = SessionChannelQuery.Read(session.Store, pageSize: 1, cursor: first.NextCursor);
+        Assert.Equal(2, first.TotalChannels);
+        Assert.Single(first.Channels);
+        Assert.Single(second.Channels);
+        Assert.Null(second.NextCursor);
+        Assert.Equal(2, new[] { first.Channels[0].Key, second.Channels[0].Key }.Distinct().Count());
+        Assert.Equal(4, first.Channels[0].ObservationCount + second.Channels[0].ObservationCount);
+        ProcessInstanceId process = overview.Edges[0].SourceId;
+        SessionChannelPage focused = SessionChannelQuery.Read(session.Store, processScope: process);
+        Assert.Single(focused.Channels);
+        Assert.Equal(1, focused.TotalChannels);
+        Assert.True(SessionChannelQuery.Read(session.Store, processScope: process,
+            cursor: first.NextCursor).RestartRequired);
+        Publish(session.Store,
+        [Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 1, 500, 5)
+            .Between("127.0.0.1:50002", "127.0.0.1:7070")]);
+        SessionChannelPage newer = SessionChannelQuery.Read(session.Store, cursor: first.NextCursor);
+        Assert.True(newer.RestartRequired);
+        Assert.Empty(newer.Channels);
     }
 
     [Fact(DisplayName = "R7: one leased generation yields a stable graph and exact graph-eligible timeline")]
@@ -220,6 +241,109 @@ public sealed class SessionOverviewTests
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         Assert.Equal((-1L, 1L), (overview.Extent!.Value.StartTicks, overview.Extent.Value.EndTicks));
         Assert.Equal([CoverageState.Covered, CoverageState.Covered], overview.Timeline.Select(bucket => bucket.Coverage));
+    }
+
+    [Fact]
+    public void EvidencePagesKeepEveryExactRowAndSourceIdentityAcrossSegments()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 3, 300, 3)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090"),
+        ], rowsPerSegment: 1);
+
+        SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store, pageSize: 1);
+        SessionEvidencePage second = SessionEvidenceQuery.Read(session.Store, pageSize: 1, cursor: first.NextCursor);
+        SessionEvidencePage third = SessionEvidenceQuery.Read(session.Store, pageSize: 1, cursor: second.NextCursor);
+
+        Assert.False(first.RestartRequired);
+        Assert.Equal(first.QueryIdentity, second.QueryIdentity);
+        Assert.Equal(first.QueryIdentity, third.QueryIdentity);
+        Assert.NotNull(first.NextCursor);
+        Assert.NotNull(second.NextCursor);
+        Assert.Null(third.NextCursor);
+        SessionEvidenceRecord[] records = [first.Records.Single(), second.Records.Single(), third.Records.Single()];
+        Assert.Equal(3, records.Select(record => record.ObservationId).Distinct().Count());
+        Assert.Equal([10L, 20L, 30L], records.Select(record => record.Observation.NativeTicks));
+        Assert.All(records, record =>
+        {
+            Assert.Equal(record.Observation.ProviderId, NetworkProvider);
+            Assert.NotEqual(default, record.ObservationId.RawRecordId);
+            Assert.Equal(1u, record.ObservationId.NormalizerContractVersion.Value);
+        });
+        Assert.Contains("not a replay of original payload", first.Caveat, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChannelEvidencePagesUseTheSameAdmittedIncarnationAboveOverviewCap()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 9, 300, 3)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090"),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 9, 400, 4)
+                .Between("127.0.0.1:9090", "127.0.0.1:50001"),
+        ]);
+
+        SessionOverviewBundle complete = SessionOverviewProjector.Project(session.Store);
+        SessionOverviewBundle capped = SessionOverviewProjector.Project(session.Store, maximumChannels: 1);
+        Assert.Empty(capped.Channels);
+        Assert.Equal(complete.Channels.Select(channel => channel.Key),
+            SessionChannelQuery.Read(session.Store).Channels.Select(channel => channel.Key));
+        string key = complete.Channels.Single(channel => channel.Name.Contains(ClientEnd, StringComparison.Ordinal)).Key;
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, channelKey: key);
+        Assert.Equal(2, page.Records.Count);
+        Assert.Equal([10L, 11L], page.Records.Select(record => record.Observation.NativeTicks));
+        Assert.Null(page.NextCursor);
+        Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store, channelKey: "tcp:missing"));
+    }
+
+    [Fact]
+    public void EvidenceCursorRejectsAnotherQueryAndMalformedCoordinates()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
+        ]);
+        SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store, pageSize: 1);
+        SessionEvidencePage changed = SessionEvidenceQuery.Read(session.Store,
+            policy: EvidencePolicy.IncludeCandidates, cursor: first.NextCursor);
+        Assert.True(changed.RestartRequired);
+        Assert.Empty(changed.Records);
+        Assert.Null(changed.NextCursor);
+        Assert.Contains("Restart", changed.RestartReason, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, cursor: "bad"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SessionEvidenceQuery.Read(session.Store, pageSize: 201));
+    }
+
+    [Fact]
+    public void EvidenceCursorDoesNotShiftOntoAReplacementGeneration()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
+        ]);
+        SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store, pageSize: 1);
+        Assert.NotNull(first.NextCursor);
+
+        Publish(session.Store,
+        [
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 3).Between(ClientEnd, ServerEnd),
+        ]);
+        SessionEvidencePage changed = SessionEvidenceQuery.Read(session.Store, cursor: first.NextCursor);
+        Assert.True(changed.RestartRequired);
+        Assert.Empty(changed.Records);
+        Assert.True(changed.Generation > first.Generation);
     }
 
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()

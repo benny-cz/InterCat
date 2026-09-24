@@ -33,6 +33,8 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -131,6 +133,15 @@ static void PrintHelp()
     ConsoleUi.Line("  icat overview <directory> [--json]");
     ConsoleUi.Line("      The Desktop's exact leased process graph, paired TCP channels and timeline bundle.");
     ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat channels <directory> [--process <instance-guid>] [--page-size <1-200>]");
+    ConsoleUi.Line("                [--cursor <token>] [--json]");
+    ConsoleUi.Line("      Bounded paired TCP channel pages, including sessions above the overview cap.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--page-size <1-200>]");
+    ConsoleUi.Line("                [--cursor <token>] [--json]");
+    ConsoleUi.Line("      Leased pages of exact admitted observation rows; cursors restart on generation change.");
+    ConsoleUi.Line("      These are normalized source facts, not completion-paired operations or raw payloads.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

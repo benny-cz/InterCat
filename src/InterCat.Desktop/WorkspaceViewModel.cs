@@ -55,7 +55,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
                 : "Graph and channel rungs show admitted paired TCP only. Timeline includes other observed rows; "
-                    + "logical operations and exact records are not yet projected in this viewer.";
+                    + "logical operations and exact records are not yet projected in this viewer. "
+                    + "The saved session supports read-only icat channels and icat evidence queries.";
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -331,8 +332,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             if (emptyWorkspace) return "No capture is running. Start exploring to publish a live session.";
             if (realOverview && ladder.Current.Level >= DetailLevel.Channel)
             {
-                return "This viewer has not projected logical operations or exact-record rows yet. "
-                    + "The saved session keeps the evidence; use icat session to inspect it.";
+                return "This viewer has not projected completion-paired operations or exact-record rows yet. "
+                    + "The saved session keeps admitted observations; use icat evidence <session-directory> "
+                    + "--channel <channel-key> --json for a channel's rows, or omit --channel for all rows.";
             }
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)
