@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -94,6 +95,48 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         Assert.Equal(2 * 25, refreshed.RungRows.Count);
         Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: dragging across the timeline brushes a range and the ranking counts only that range")]
+    public async Task DraggingTheTimelineBrushesARangeAndReRanks()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        string whole = workspace.RungRows.Single().Observations;
+
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        double plot = timeline.Bounds.Width - 52;
+        Avalonia.Point from = timeline.TranslatePoint(new(38 + (0.10 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        Avalonia.Point to = timeline.TranslatePoint(new(38 + (0.40 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseMove(new(from.X + 20, from.Y));
+        window.MouseMove(to);
+        window.MouseUp(to, MouseButton.Left);
+        Dispatch();
+
+        TimeRange brushed = Assert.IsType<TimeRange>(workspace.SelectedInterval);
+        long span = workspace.Snapshot.Extent.EndTicks - workspace.Snapshot.Extent.StartTicks;
+        Assert.InRange(brushed.EndTicks - brushed.StartTicks, span / 4, span / 2);
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.True(workspace.IsRankedWithinInterval);
+        Assert.NotEqual(whole, workspace.RungRows.Single().Observations);
+        Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
+        WriteableBitmapCheck(window, "brushed-interval.png");
+
+        // A press without a drag still selects the single bucket under the pointer, as before.
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseUp(from, MouseButton.Left);
+        Dispatch();
+        Assert.Contains(workspace.Snapshot.Timeline, bucket => bucket.Interval == workspace.SelectedInterval);
         window.Close();
     }
 

@@ -17,9 +17,17 @@ public sealed class TimelineView : Control
     private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
     private static readonly IBrush GridBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
     private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
+    private static readonly SolidColorBrush DimBrush = Token(ThemePalette.Surfaces(Mode).Plot);
 
     private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
+
+    /// <summary>A press that moves at least this far brushes a range; a shorter one selects the bucket under it.</summary>
+    private const double BrushThreshold = 4;
+
     private TimeRange? viewport;
+    private long? brushAnchor;
+    private long? brushEnd;
+    private double pressX;
 
     public override void Render(DrawingContext context)
     {
@@ -78,10 +86,40 @@ public sealed class TimelineView : Control
             }
         }
 
+        DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawText(context, $"{visible.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(left, bottom + 7));
         DrawText(context, $"{visible.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(right - 38, bottom + 7));
         DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
+    }
+
+    /// <summary>
+    /// The analysis interval as a translucent band with accent edges, and the brush being dragged as the same band, so
+    /// the range the ranking and graph now count is visible on the axis it came from (plan §6.4).
+    /// </summary>
+    private void DrawSelection(DrawingContext context, WorkspaceViewModel viewModel, TimeRange visible,
+        double left, double plotWidth, double top, double bottom)
+    {
+        TimeRange? range = brushAnchor is { } anchor && brushEnd is { } end
+            ? new TimeRange(Math.Min(anchor, end), Math.Max(anchor, end) + 1)
+            : viewModel.SelectedInterval;
+        if (range is not { } shown || shown.EndTicks <= visible.StartTicks || shown.StartTicks >= visible.EndTicks)
+        {
+            return;
+        }
+
+        double x1 = left + ViewportMath.PixelAtTick(visible, Math.Max(shown.StartTicks, visible.StartTicks), plotWidth);
+        double x2 = Math.Max(x1 + 2, left + ViewportMath.PixelAtTick(visible, Math.Min(shown.EndTicks, visible.EndTicks), plotWidth));
+
+        // Everything outside the range is dimmed rather than the range tinted, so the counted records keep their true
+        // mechanism hue (§6.6) while the rest steps back.
+        var dim = new SolidColorBrush(DimBrush.Color, 0.6);
+        context.DrawRectangle(dim, null, new Rect(left, top, Math.Max(0, x1 - left), bottom - top));
+        context.DrawRectangle(dim, null, new Rect(x2, top, Math.Max(0, left + plotWidth - x2), bottom - top));
+        var edge = new Pen(SelectedBrush, 2);
+        context.DrawLine(edge, new(x1, top), new(x1, bottom));
+        context.DrawLine(edge, new(x2, top), new(x2, bottom));
+        context.DrawRectangle(SelectedBrush, null, new Rect(x1, top - 6, x2 - x1, 3));
     }
 
     /// <summary>
@@ -164,25 +202,87 @@ public sealed class TimelineView : Control
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Pressing starts a brush; dragging past a few pixels brushes a time range and releasing makes it the analysis
+    /// interval. A press without a drag selects the bucket under it, as before. There is no drag-pan to conflict with:
+    /// the wheel zooms and the arrow keys pan (plan §6.2).
+    /// </summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         Focus();
-        if (DataContext is not WorkspaceViewModel viewModel)
+        if (DataContext is not WorkspaceViewModel)
         {
             return;
         }
 
-        TimeRange visible = viewport ?? viewModel.Snapshot.Extent;
-        double plotWidth = Math.Max(1, Bounds.Width - 52);
-        long tick = ViewportMath.TickAtPixel(visible, e.GetPosition(this).X - 38, plotWidth);
-        TimelineBucket? bucket = viewModel.Snapshot.Timeline.FirstOrDefault(candidate => candidate.Interval.Contains(tick));
-        if (bucket is not null)
+        pressX = e.GetPosition(this).X;
+        brushAnchor = TickAt(pressX);
+        brushEnd = null;
+        e.Pointer.Capture(this);
+        e.Handled = true;
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (brushAnchor is null)
+        {
+            return;
+        }
+
+        double x = e.GetPosition(this).X;
+        if (brushEnd is not null || Math.Abs(x - pressX) >= BrushThreshold)
+        {
+            brushEnd = TickAt(x);
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (brushAnchor is not { } anchor || DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        long? end = brushEnd;
+        brushAnchor = null;
+        brushEnd = null;
+        e.Pointer.Capture(null);
+        TimeRange extent = viewModel.Snapshot.Extent;
+        if (end is { } dragged)
+        {
+            long start = Math.Max(extent.StartTicks, Math.Min(anchor, dragged));
+            long stop = Math.Min(extent.EndTicks, Math.Max(anchor, dragged) + 1);
+            if (stop > start)
+            {
+                viewModel.SelectInterval(new TimeRange(start, stop));
+            }
+        }
+        else if (viewModel.Snapshot.Timeline.FirstOrDefault(candidate => candidate.Interval.Contains(anchor)) is { } bucket)
         {
             viewModel.SelectInterval(bucket.Interval);
-            InvalidateVisual();
-            e.Handled = true;
         }
+
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        brushAnchor = null;
+        brushEnd = null;
+        InvalidateVisual();
+    }
+
+    private long TickAt(double x)
+    {
+        TimeRange visible = viewport ?? (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
+        double plotWidth = Math.Max(1, Bounds.Width - 52);
+        return ViewportMath.TickAtPixel(visible, Math.Clamp(x - 38, 0, plotWidth), plotWidth);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

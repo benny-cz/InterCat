@@ -784,6 +784,7 @@
       "R15": [
         "R15: a custom workspace header names its session without inventing a capture gap",
         "R15: a published session's channel and evidence rungs render at every supported size",
+        "R15: dragging across the timeline brushes a range and the ranking counts only that range",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the table toggle is reachable by keyboard while a list has focus",
         "R15: the window renders at its minimum size and at a review size",

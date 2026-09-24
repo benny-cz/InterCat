@@ -175,6 +175,49 @@ public sealed class EvidenceRungTests
         Assert.False(workspace.CanLoadMoreEvidence);
     }
 
+    [Fact]
+    public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows();
+        Publish(session.Store, rows);
+        using WorkspaceViewModel workspace = Open(session);
+        long whole = long.Parse(workspace.RungRows.Single().Observations, System.Globalization.NumberStyles.AllowThousands,
+            System.Globalization.CultureInfo.CurrentCulture);
+        Assert.False(workspace.IsRankedWithinInterval);
+        Assert.Equal(string.Empty, workspace.RankingScopeText);
+
+        // Only the first twenty exchanges fall inside the brush; the machine rung now counts exactly those.
+        var brush = new TimeRange(10, 50);
+        workspace.SelectInterval(brush);
+        Assert.Contains("Ranking within", workspace.RankingScopeText, StringComparison.Ordinal);
+        await workspace.IntervalReady;
+        Assert.True(workspace.IsRankedWithinInterval);
+        Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+        Assert.Equal(whole, workspace.WholeSnapshot.Edges.Sum(edge => edge.ObservationCount));
+
+        // The channel rung and the relationship table count the same interval.
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+        Assert.Equal("40", workspace.Relationships.Single().Observations);
+
+        // A newer brush supersedes one still being read; only the newest is applied.
+        workspace.SelectInterval(new TimeRange(10, 20));
+        workspace.SelectInterval(new TimeRange(10, 30));
+        await workspace.IntervalReady;
+        Assert.Equal("20", workspace.RungRows.Single().Observations);
+
+        workspace.ClearSelection();
+        await workspace.IntervalReady;
+        Assert.False(workspace.IsRankedWithinInterval);
+        Assert.Equal(workspace.WholeSnapshot, workspace.Snapshot);
+        Assert.Equal((2 * Exchanges).ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.RungRows.Single().Observations);
+    }
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

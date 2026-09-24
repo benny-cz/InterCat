@@ -71,7 +71,20 @@ public sealed class GraphView : Control
             // quality. No channel carries two meanings, and none of them is colour alone (section 6.6, R14).
             SolidColorBrush brush = MechanismBrush(edge.Mechanism);
             double thickness = edge.Strength == RelationStrength.Direct ? 3 : 1.5;
-            context.DrawLine(EvidencePen(edge.Mechanism, edge.Strength, thickness), source, target);
+
+            // Under a brushed interval an edge with no records in it steps back rather than vanishing: the relationship
+            // exists in the session, it is only quiet in the range being ranked (§3.4, §6.4).
+            if (viewModel.IsRankedWithinInterval && edge.ObservationCount == 0)
+            {
+                using (context.PushOpacity(0.3))
+                {
+                    context.DrawLine(EvidencePen(edge.Mechanism, edge.Strength, thickness), source, target);
+                }
+            }
+            else
+            {
+                context.DrawLine(EvidencePen(edge.Mechanism, edge.Strength, thickness), source, target);
+            }
             Point middle = new((source.X + target.X) / 2, (source.Y + target.Y) / 2);
             if (edge.Strength is RelationStrength.Candidate or RelationStrength.Unresolved)
             {

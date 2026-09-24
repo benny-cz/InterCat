@@ -1,14 +1,43 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 97
+Plan revision: 98
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: first feedback measured, then brought inside its budget
+## Latest slice: brush a burst and rank it
+
+The M2 gate's "brush its burst, rank it" now works in the Desktop, as §3.4 and §6.4 describe. Dragging across the
+timeline brushes any range; a press without a drag still selects the single bucket. `SessionIntervalQuery.Count`
+counts each graph edge's and paired channel's records inside the range from one leased generation. It uses the
+overview's own admission and channel rules and the cached derivation. `OverviewWorkspace.WithinInterval` then gives the
+workspace the same edges and channels with interval counts. Every rung re-ranks from them, and so do the relationship
+table, the level summaries and the inspector's evidence line. Identities, graph positions and the timeline stay put.
+
+Edges quiet in the range dim to 30% rather than vanish. The range is drawn on the axis with everything outside it
+dimmed, accent edges and a top bar. The rail reads "Ranked within 1.234 – 3.456 s · Esc at the machine rung clears it",
+and "Ranking within…" while counting. A newer brush cancels a count still being read; clearing returns to whole-session
+counts. Ranges and durations are now written in the unit their span needs (`WorkspaceTime.FormatRange`/`FormatDuration`:
+s, ms or µs) in the ranking scope, the evidence scope and the inspector's time scope. Before this, a 20-µs range read
+"0.00 s – 0.00 s".
+
+Verification: on the real 94,694-record session a brushed ranking applied in 132–153 ms (Release, in process). A
+headless frame of the brushed state was reviewed; the first rendering's 16% tint was too faint and was replaced by
+dimming the outside. 818 tests pass in Debug and Release (+4): interval counts per edge and channel with untimed rows
+excluded, the scoped ranking, unit-by-span formatting, re-ranking at every rung with supersession and clearing, and a
+headless drag that brushes and re-ranks. Plan revision 98.
+
+Not done: the viewport as the default scope when nothing is brushed, a scope lock, edge thickness by metric intensity
+(§6.3), and the interval ranking for UDP or other mechanisms, which the overview does not draw.
+
+Next: pause and resume the live view at any rung, so the view can be held while recording continues (the M2 record/view
+pause distinction; the evidence rung already holds). Then the health strip with live capture state, and export of the
+applied snapshot.
+
+## Previous slice: first feedback measured, then brought inside its budget
 
 `InterCat.BrokerQualification first-feedback --output <dir> [--runs N] [--seconds S]` (elevated) runs the Desktop's own
 `DesktopCaptureRunner` with the tool as its broker over a qualification root, never the production root. It adds a

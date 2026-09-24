@@ -1,4 +1,5 @@
 using InterCat.Application;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Desktop;
@@ -15,6 +16,13 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
 
     /// <summary>The generation the workspace was projected from; a page may continue in a newer one.</summary>
     public long Generation { get; } = generation;
+
+    /// <summary>Counts each edge's and channel's records inside an analysis interval, for a brushed ranking.</summary>
+    public Task<SessionIntervalCounts> CountAsync(TimeRange interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionIntervalQuery.Count(
+            SessionStore.OpenExisting(LocalOwnedDirectory.Open(SessionPath)),
+            interval,
+            cancellationToken: cancellationToken), cancellationToken);
 
     public Task<SessionEvidencePage> ReadAsync(EvidenceScope scope, string? cursor, CancellationToken cancellationToken)
     {

@@ -44,6 +44,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private SessionEvidenceRecord? selectedEvidence;
     private string? pendingEvidenceKey;
     private IReadOnlyList<RungRow> evidenceRows = [];
+    private readonly WorkspaceSnapshot wholeSnapshot;
+    private WorkspaceSnapshot? scopedSnapshot;
+    private TimeRange? scopedInterval;
+    private CancellationTokenSource? intervalQuery;
+    private bool intervalLoading;
+    private string? intervalProblem;
+    private IReadOnlyList<RelationshipRow> relationships;
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -55,7 +62,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public WorkspaceViewModel(WorkspaceSnapshot snapshot, string graphIdentity, SessionEvidenceSource? evidenceSource = null)
     {
-        Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
+        wholeSnapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
         realOverview = graphIdentity.StartsWith("session:", StringComparison.Ordinal);
         emptyWorkspace = graphIdentity == "empty-workspace";
@@ -75,7 +82,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
-        Relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
         Intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
@@ -89,7 +96,33 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public WorkspaceSnapshot Snapshot { get; }
+    /// <summary>
+    /// What the ranking, graph and tables show: the whole session, or the same entities counted only inside the brushed
+    /// analysis interval once that count has arrived (plan §6.4). Identities, positions and the timeline never change.
+    /// </summary>
+    public WorkspaceSnapshot Snapshot => scopedSnapshot ?? wholeSnapshot;
+
+    /// <summary>The published generation as projected, before any analysis interval scoped its counts.</summary>
+    public WorkspaceSnapshot WholeSnapshot => wholeSnapshot;
+
+    /// <summary>Completes when the most recent analysis-interval ranking has applied, been cleared or reported a problem.</summary>
+    public Task IntervalReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Whether the ranking is scoped to the brushed interval rather than the whole session.</summary>
+    public bool IsRankedWithinInterval => scopedSnapshot is not null;
+
+    /// <summary>What the ranking counts, stated wherever totals appear so a brushed number is never read as a session total.</summary>
+    public string RankingScopeText
+    {
+        get
+        {
+            if (evidenceSource is null || scopedInterval is not { } interval) return string.Empty;
+            string range = WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture);
+            return intervalProblem is { } problem ? $"Could not rank within {range}: {problem}"
+                : intervalLoading ? $"Ranking within {range}…"
+                : $"Ranked within {range} · Esc at the machine rung clears it";
+        }
+    }
 
     public string WorkspaceDisclosure => workspaceDisclosure;
 
@@ -313,6 +346,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         disposed = true;
         CancelEvidence();
+        intervalQuery?.Cancel();
+        intervalQuery?.Dispose();
+        intervalQuery = null;
         graphLayout.Dispose();
     }
 
@@ -320,7 +356,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public IReadOnlyList<LegendEntry> Legend { get; }
 
     /// <summary>Table equivalent of the graph. It yields the same relationships the canvas draws (R15).</summary>
-    public IReadOnlyList<RelationshipRow> Relationships { get; }
+    public IReadOnlyList<RelationshipRow> Relationships => relationships;
 
     /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
     public IReadOnlyList<IntervalRow> Intervals { get; }
@@ -543,10 +579,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         ? "Choose a node, ranked row, or timeline bucket."
         : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
 
-    public string IntervalLabel => selectedInterval is null
-        ? $"All {(Snapshot.Extent.EndTicks - (decimal)Snapshot.Extent.StartTicks) / WorkspaceTime.TicksPerSecond:N1} seconds"
-        : $"{selectedInterval.Value.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s – "
-            + $"{selectedInterval.Value.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s";
+    public string IntervalLabel => selectedInterval is { } interval
+        ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
+        : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     public string EvidenceSummary
     {
@@ -1033,9 +1068,98 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         public CancellationTokenSource Cancellation { get; } = new();
     }
 
+    /// <summary>
+    /// Follows the analysis interval: a brushed interval re-ranks every rung by the records inside it, and clearing the
+    /// brush returns to the whole session. A newer brush supersedes an older count still being read (R7).
+    /// </summary>
+    private void SyncIntervalScope()
+    {
+        if (evidenceSource is null || selectedInterval == scopedInterval)
+        {
+            return;
+        }
+
+        intervalQuery?.Cancel();
+        intervalQuery?.Dispose();
+        intervalQuery = null;
+        scopedInterval = selectedInterval;
+        intervalProblem = null;
+        if (selectedInterval is not { } interval)
+        {
+            intervalLoading = false;
+            ApplyScope(null);
+            IntervalReady = Task.CompletedTask;
+            return;
+        }
+
+        var query = new CancellationTokenSource();
+        intervalQuery = query;
+        IntervalReady = LoadIntervalAsync(evidenceSource, interval, query);
+    }
+
+    private async Task LoadIntervalAsync(SessionEvidenceSource source, TimeRange interval, CancellationTokenSource query)
+    {
+        intervalLoading = true;
+        OnPropertyChanged(nameof(RankingScopeText));
+        try
+        {
+            SessionIntervalCounts counts = await source.CountAsync(interval, query.Token);
+            if (disposed || !ReferenceEquals(intervalQuery, query))
+            {
+                return;
+            }
+
+            intervalLoading = false;
+            if (counts.SessionId != source.SessionId)
+            {
+                intervalProblem = "this directory now holds another session";
+                ApplyScope(null);
+                return;
+            }
+
+            ApplyScope(OverviewWorkspace.WithinInterval(wholeSnapshot, counts));
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            // A newer brush or a closed workspace superseded this count; nothing is applied.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!disposed && ReferenceEquals(intervalQuery, query))
+            {
+                intervalLoading = false;
+                intervalProblem = exception.Message;
+                ApplyScope(null);
+            }
+        }
+    }
+
+    /// <summary>Re-projects the ranking and the relationship table over the scoped or whole snapshot, keeping the selected row.</summary>
+    private void ApplyScope(WorkspaceSnapshot? scoped)
+    {
+        string? rowKey = selectedRung?.Key;
+        scopedSnapshot = scoped;
+        view = LadderProjection.Project(Snapshot, ladder.Current);
+        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
+        OnPropertyChanged(nameof(Snapshot));
+        OnPropertyChanged(nameof(IsRankedWithinInterval));
+        OnPropertyChanged(nameof(RankingScopeText));
+        OnPropertyChanged(nameof(Relationships));
+        OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(SelectedRung));
+        OnPropertyChanged(nameof(LevelSummary));
+        OnPropertyChanged(nameof(LevelSummaryShort));
+        OnPropertyChanged(nameof(EmptyReason));
+        OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(EvidenceSummary));
+    }
+
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {
         selectedInterval = changed.Interval;
+        SyncIntervalScope();
         if (changed.ProcessId is null)
         {
             selectedProcess = null;

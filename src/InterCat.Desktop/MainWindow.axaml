@@ -36,6 +36,10 @@
           </Grid>
           <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      AutomationProperties.Name="What the ranked table holds" />
+          <!-- A brushed interval re-ranks every rung; its scope is stated where the totals are read (plan §6.4). -->
+          <TextBlock Text="{Binding RankingScopeText}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
+                     TextWrapping="Wrap" IsVisible="{Binding IsRankedWithinInterval}"
+                     AutomationProperties.Name="The time range the ranking counts" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- While records are read, the view holds its generation; a newer one is offered, never forced (section 5.2). -->
           <Border x:Name="HeldBanner" IsVisible="False" Margin="0,6,0,0" Padding="8" CornerRadius="7"
@@ -260,7 +264,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel>
                 <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
-                <TextBlock Text="Observed records · 1 second buckets · unknown stays unknown"
+                <TextBlock Text="Observed records · drag to brush a time range · unknown stays unknown"
                            Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <TextBlock Grid.Column="1" Text="Wheel to zoom · arrows to pan · Home and End for the extent"

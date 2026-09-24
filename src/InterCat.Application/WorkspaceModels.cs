@@ -84,6 +84,35 @@ public sealed record TimelineBucket(
 public static class WorkspaceTime
 {
     public const long TicksPerSecond = TimeSpan.TicksPerSecond;
+
+    /// <summary>
+    /// A session-relative range in the unit its span needs, so a brushed millisecond never reads "0.00 s – 0.00 s":
+    /// seconds for spans of 10 ms and more (to the millisecond below 10 s), milliseconds below 10 ms, and microseconds
+    /// below 10 µs (§6.2 escalates axis units the same way).
+    /// </summary>
+    public static string FormatRange(TimeRange range, IFormatProvider? culture = null)
+    {
+        (decimal divisor, string unit, string format) = Unit(range.EndTicks - range.StartTicks);
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return string.Create(provider,
+            $"{(range.StartTicks / divisor).ToString(format, provider)} – {(range.EndTicks / divisor).ToString(format, provider)} {unit}");
+    }
+
+    /// <summary>A duration of this many workspace ticks, in the same span-driven unit as <see cref="FormatRange"/>.</summary>
+    public static string FormatDuration(long ticks, IFormatProvider? culture = null)
+    {
+        (decimal divisor, string unit, string format) = Unit(ticks);
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return string.Create(provider, $"{(ticks / divisor).ToString(format, provider)} {unit}");
+    }
+
+    private static (decimal Divisor, string Unit, string Format) Unit(long span) => span switch
+    {
+        >= 10 * TicksPerSecond => (TicksPerSecond, "s", "N1"),
+        >= TicksPerSecond / 100 => (TicksPerSecond, "s", "N3"),
+        >= TicksPerSecond / 100_000 => (TicksPerSecond / 1_000m, "ms", "N3"),
+        _ => (TicksPerSecond / 1_000_000m, "µs", "N1"),
+    };
 }
 
 /// <summary>

@@ -32,11 +32,7 @@ public static class EvidenceScopes
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(rung);
         TimeRange? interval = rung.Viewport == snapshot.Extent ? null : rung.Viewport;
-        string time = interval is { } range
-            ? string.Create(CultureInfo.CurrentCulture,
-                $" · {range.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N3} s – "
-                + $"{range.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N3} s")
-            : string.Empty;
+        string time = interval is { } range ? " · " + WorkspaceTime.FormatRange(range, CultureInfo.CurrentCulture) : string.Empty;
 
         for (int index = rung.Filters.Count - 1; index >= 0; index--)
         {

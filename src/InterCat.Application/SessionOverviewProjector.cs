@@ -395,10 +395,13 @@ public static class SessionOverviewProjector
         _ => false,
     };
 
+    /// <summary>The graph edge a paired TCP relation contributes to: one edge per unordered pair of process instances.</summary>
+    internal static string EdgeKeyOf(TransportRelation relation) =>
+        $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:{Pair(relation.First.Id, relation.Second.Id).Second}";
+
     internal static Channel ProjectChannel(TransportRelation relation) => new(
         relation.StableKey,
-        $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:"
-            + Pair(relation.First.Id, relation.Second.Id).Second,
+        EdgeKeyOf(relation),
         $"{relation.FirstEndpoint} ↔ {relation.SecondEndpoint}",
         Mechanism.Tcp,
         Direction.UnknownDirection,

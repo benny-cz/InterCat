@@ -20,7 +20,7 @@ public sealed class GraphLayoutIntegrationTests
         await viewModel.LayoutReady;
 
         Assert.Equal(snapshot, viewModel.Snapshot);
-        Assert.Equal($"All {42m.ToString("N1", CultureInfo.CurrentCulture)} seconds", viewModel.IntervalLabel);
+        Assert.Equal($"All {42m.ToString("N1", CultureInfo.CurrentCulture)} s", viewModel.IntervalLabel);
         GraphLayoutResult expected = GraphLayout.Compute(
             "generation-42", snapshot.Groups, snapshot.Processes, snapshot.Edges,
             previous: snapshot.Processes.ToDictionary(node => node.Id, node => new GraphPoint(node.X, node.Y)));
@@ -31,7 +31,7 @@ public sealed class GraphLayoutIntegrationTests
 
         viewModel.SelectInterval(new TimeRange(10 * WorkspaceTime.TicksPerSecond, 12 * WorkspaceTime.TicksPerSecond));
         Assert.Equal(
-            $"{10m.ToString("N1", CultureInfo.CurrentCulture)}s – {12m.ToString("N1", CultureInfo.CurrentCulture)}s",
+            $"{10m.ToString("N3", CultureInfo.CurrentCulture)} – {12m.ToString("N3", CultureInfo.CurrentCulture)} s",
             viewModel.IntervalLabel);
     }
 
