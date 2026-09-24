@@ -87,15 +87,45 @@ public static class SessionEvidenceQuery
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
-        if (string.IsNullOrWhiteSpace(channelKey) && channelKey is not null)
-            throw new ArgumentException("A channel key cannot be empty.", nameof(channelKey));
-        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
         if (ownerProcessScope is not null && ownerProcesses is not null)
             throw new ArgumentException("Name one owner process or a set of them, not both.", nameof(ownerProcesses));
+        ProcessInstanceId[] owners = Owners(channelKey, policy,
+            ownerProcesses ?? (ownerProcessScope is { } single ? [single] : null));
+        return ReadCore(store, channelKey, interval, owners, policy, pageSize, ParseCursor(cursor), resolveOwners,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Every record of one scope in canonical order, up to <paramref name="limit"/>, under a single lease: what an
+    /// export needs, where paging would acquire a lease and reopen the segments once per page. The records are exactly
+    /// the pages' records concatenated; the page's next cursor is set when the scope holds more than the limit.
+    /// </summary>
+    public static SessionEvidencePage ReadScope(
+        SessionStore store,
+        int limit,
+        string? channelKey = null,
+        TimeRange? interval = null,
+        IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        bool resolveOwners = false,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        return ReadCore(store, channelKey, interval, Owners(channelKey, policy, ownerProcesses), policy, limit, null,
+            resolveOwners, cancellationToken);
+    }
+
+    private static ProcessInstanceId[] Owners(
+        string? channelKey, EvidencePolicy policy, IReadOnlyCollection<ProcessInstanceId>? ownerProcesses)
+    {
+        if (string.IsNullOrWhiteSpace(channelKey) && channelKey is not null)
+            throw new ArgumentException("A channel key cannot be empty.", nameof(channelKey));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         ProcessInstanceId[] owners = ownerProcesses is not null
             ? [.. ownerProcesses.Distinct().OrderBy(id => id.Value.ToString("N"), StringComparer.Ordinal)]
-            : ownerProcessScope is { } single ? [single] : [];
+            : [];
         if (ownerProcesses is not null && owners.Length == 0)
             throw new ArgumentException("An owner-process set needs at least one member.", nameof(ownerProcesses));
         if (owners.Length > MaximumOwnerProcesses)
@@ -103,8 +133,20 @@ public static class SessionEvidenceQuery
                 $"An owner-process set is limited to {MaximumOwnerProcesses:N0} members.", nameof(ownerProcesses));
         if (owners.Any(owner => owner.Value == Guid.Empty))
             throw new ArgumentException("An owner process needs a non-empty instance ID.", nameof(ownerProcesses));
-        EvidenceCursor? position = ParseCursor(cursor);
+        return owners;
+    }
 
+    private static SessionEvidencePage ReadCore(
+        SessionStore store,
+        string? channelKey,
+        TimeRange? interval,
+        ProcessInstanceId[] owners,
+        EvidencePolicy policy,
+        int maximum,
+        EvidenceCursor? position,
+        bool resolveOwners,
+        CancellationToken cancellationToken)
+    {
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         string[] names = [.. SessionSegments.Names(manifest)];
@@ -176,7 +218,7 @@ public static class SessionEvidenceQuery
                 queue.Enqueue(index, segmentCursor.Key);
         }
 
-        var records = new List<SessionEvidenceRecord>(pageSize);
+        var records = new List<SessionEvidenceRecord>(Math.Min(maximum, 4_096));
         bool needOwners = processes is not null && (selectedOwners.Count > 0 || resolveOwners);
         RowKey? lastReturned = null;
         RowKey? previous = null;
@@ -201,7 +243,7 @@ public static class SessionEvidenceQuery
             ProcessBinding? binding = needOwners ? segment.OwnerOf(row, processes!) : null;
             if (selectedOwners.Count > 0
                 && (!selectedOwners.Contains(binding!.Value.Instance) || !binding.Value.IsAdmittedUnder(policy))) continue;
-            if (records.Count == pageSize)
+            if (records.Count == maximum)
             {
                 more = true;
                 break;

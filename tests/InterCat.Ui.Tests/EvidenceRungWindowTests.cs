@@ -398,7 +398,7 @@ public sealed class EvidenceRungWindowTests
         Assert.True(window.GetControl<Button>("ExportButton").IsVisible);
 
         string json = Path.Combine(session.Path, "view.json");
-        Assert.Equal(1, await window.WriteExportAsync(json, ExportFormat.Json));
+        Assert.Equal(1, (await window.WriteExportAsync(json, ExportFormat.Json)).Rows);
         using (var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(json)))
         {
             Assert.Equal("ranking", document.RootElement.GetProperty("kind").GetString());
@@ -406,7 +406,7 @@ public sealed class EvidenceRungWindowTests
         }
 
         string csv = Path.Combine(session.Path, "view.csv");
-        Assert.Equal(1, await window.WriteExportAsync(csv, ExportFormat.Csv));
+        Assert.Equal(1, (await window.WriteExportAsync(csv, ExportFormat.Csv)).Rows);
         Assert.Equal(2, (await File.ReadAllLinesAsync(csv)).Length);
         window.Close();
     }

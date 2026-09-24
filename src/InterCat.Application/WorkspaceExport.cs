@@ -7,6 +7,13 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
+/// <summary>How an export is written: self-describing JSON, or CSV that repeats its context in every row.</summary>
+public enum ExportFormat
+{
+    Json,
+    Csv,
+}
+
 /// <summary>
 /// What one export names: the applied snapshot it was taken from and the scope its rows answer (plan §6.4). An export
 /// that holds fewer rows than its scope has says so rather than passing a loaded page off as the whole result.
@@ -34,6 +41,75 @@ public static class WorkspaceExport
     public const string Contract = "intercat-export-v1";
 
     private static readonly JsonSerializerOptions Json = CreateJson();
+
+    /// <summary>
+    /// A ranked rung's export context: its breadcrumb and filters, and the interval its counts answer, which is a
+    /// brushed interval only once its counts have been applied. The Desktop and <c>icat export</c> both build it here,
+    /// so the two name one snapshot the same way (R18).
+    /// </summary>
+    public static ExportContext RankingContext(
+        Guid? sessionId,
+        long? generation,
+        DetailLadder ladder,
+        TimeRange? appliedInterval,
+        string disclosure,
+        DateTimeOffset exportedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(ladder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
+        return new(
+            sessionId,
+            generation,
+            ladder.Current.Level,
+            LadderProjection.Breadcrumb(ladder),
+            [.. ladder.Current.Filters],
+            appliedInterval,
+            appliedInterval is { } range
+                ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
+                : "Whole session",
+            true,
+            [disclosure],
+            exportedUtc);
+    }
+
+    /// <summary>
+    /// An evidence export's context: the records' own scope, complete only when every record of it is included. An
+    /// incomplete export says what was left out and how to get the rest, in the words of whoever produced it.
+    /// </summary>
+    public static ExportContext EvidenceContext(
+        Guid? sessionId,
+        long? generation,
+        DetailLadder ladder,
+        EvidenceScope scope,
+        bool complete,
+        string disclosure,
+        string incompleteAdvice,
+        DateTimeOffset exportedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(ladder);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
+        ArgumentException.ThrowIfNullOrWhiteSpace(incompleteAdvice);
+        return new(
+            sessionId,
+            generation,
+            ladder.Current.Level,
+            LadderProjection.Breadcrumb(ladder),
+            [.. ladder.Current.Filters],
+            scope.Interval,
+            scope.Description,
+            complete,
+            [disclosure, complete ? "Every record of this scope is included." : incompleteAdvice],
+            exportedUtc);
+    }
+
+    /// <summary>Ranked rows in the chosen format.</summary>
+    public static string Ranking(ExportFormat format, ExportContext context, IReadOnlyList<LadderRow> rows) =>
+        format == ExportFormat.Csv ? RankingCsv(context, rows) : RankingJson(context, rows);
+
+    /// <summary>Evidence records in the chosen format.</summary>
+    public static string Evidence(ExportFormat format, ExportContext context, IReadOnlyList<SessionEvidenceRecord> records) =>
+        format == ExportFormat.Csv ? EvidenceCsv(context, records) : EvidenceJson(context, records);
 
     public static string RankingJson(ExportContext context, IReadOnlyList<LadderRow> rows)
     {

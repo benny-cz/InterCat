@@ -48,6 +48,20 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         }
     }
 
+    /// <summary>Every record of a scope up to a limit, in one pass under one lease, for an export of the whole scope.</summary>
+    public Task<SessionEvidencePage> ReadScopeAsync(EvidenceScope scope, int limit, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return Task.Run(() => SessionEvidenceQuery.ReadScope(
+            Store(),
+            limit,
+            scope.ChannelKey,
+            scope.Interval,
+            scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses,
+            resolveOwners: true,
+            cancellationToken: cancellationToken), cancellationToken);
+    }
+
     public Task<SessionEvidencePage> ReadAsync(EvidenceScope scope, string? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);

@@ -8,6 +8,13 @@ namespace InterCat.Application;
 /// </summary>
 public static class OverviewWorkspace
 {
+    /// <summary>What every view of a real session's overview must say about what it does and does not show.</summary>
+    public const string SessionDisclosure =
+        "Graph and channel rungs show admitted paired TCP only; the timeline includes every observed row. "
+        + "TCP and UDP records are completed transfers, so this session has no operation rung: source "
+        + "records are one step (E) from every rung, and Enter on a record opens its original journal "
+        + "entry. Byte previews stay hidden until requested.";
+
     public static WorkspaceSnapshot Empty() => new(
         "Start exploring", new TimeRange(0, 1), [], [], [], [], [], [], []);
 

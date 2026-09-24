@@ -199,14 +199,14 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ExportView(object? sender, RoutedEventArgs eventArgs) => ExportView();
 
     /// <summary>
-    /// Exports the applied view (§6.4, §6.7 Ctrl+E): the rung's ranked rows or loaded evidence records, named by session,
-    /// generation, rung, filters and interval. The user chooses the file; nothing is written anywhere else.
+    /// Exports the applied view (§6.4, §6.7 Ctrl+E): the rung's ranked rows or its evidence scope's records, named by
+    /// session, generation, rung, filters and interval. The user chooses the file; nothing is written anywhere else.
     /// </summary>
     private async void ExportView()
     {
-        if (exporting || workspace.ExportRowCount == 0)
+        if (exporting || !workspace.CanExport)
         {
-            if (!closed && workspace.ExportRowCount == 0) CaptureDetail.Text = "Nothing to export at this rung yet.";
+            if (!closed && !workspace.CanExport) CaptureDetail.Text = "Nothing to export at this rung yet.";
             return;
         }
 
@@ -228,11 +228,17 @@ public sealed partial class MainWindow : Window, IDisposable
             if (file is null || closed) return;
             string path = file.Path.LocalPath;
             ExportFormat format = path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExportFormat.Csv : ExportFormat.Json;
-            int rows = await WriteExportAsync(path, format);
+            SessionExportResult written = await WriteExportAsync(path, format);
             if (!closed)
-                CaptureDetail.Text = $"Exported {rows:N0} rows ({(context.Complete ? "complete" : "the loaded part of the scope")}) to {path}.";
+            {
+                string what = written.Context.Rung == DetailLevel.Evidence ? "records" : "rows";
+                CaptureDetail.Text = written.Context.Complete
+                    ? $"Exported {written.Rows:N0} {what} (complete) to {path}."
+                    : $"Exported the first {written.Rows:N0} {what} of the scope to {path}; the file says what it leaves out.";
+            }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or InvalidDataException or InvalidOperationException)
         {
             if (!closed) CaptureDetail.Text = "Could not export this view: " + exception.Message;
         }
@@ -242,13 +248,12 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    /// <summary>Writes the applied view to a chosen path; the text is built on the UI thread from what is shown.</summary>
-    internal async Task<int> WriteExportAsync(string path, ExportFormat format)
+    /// <summary>Writes the applied view to a chosen path: ranked rows as shown, or the evidence scope read in one pass.</summary>
+    internal async Task<SessionExportResult> WriteExportAsync(string path, ExportFormat format)
     {
-        string content = workspace.Export(format, DateTimeOffset.UtcNow);
-        int rows = workspace.ExportRowCount;
-        await File.WriteAllTextAsync(path, content, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        return rows;
+        SessionExportResult result = await workspace.ExportAsync(format, DateTimeOffset.UtcNow);
+        await File.WriteAllTextAsync(path, result.Content, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return result;
     }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();

@@ -36,6 +36,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -153,6 +154,11 @@ static void PrintHelp()
     ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--json]");
     ConsoleUi.Line("      The all-observations timeline over any interval, bucketed exactly as the overview's,");
     ConsoleUi.Line("      as the Desktop draws a zoomed viewport. Empty buckets stay coverage-unknown.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
+    ConsoleUi.Line("              [--evidence [--limit <n>]] [--format json|csv] [--overwrite]");
+    ConsoleUi.Line("      The Desktop's export of one ladder rung, in the same intercat-export-v1 contract: ranked");
+    ConsoleUi.Line("      rows, or with --evidence its source records' metadata. Written staged, never partly.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

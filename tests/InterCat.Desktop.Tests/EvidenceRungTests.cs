@@ -236,25 +236,24 @@ public sealed class EvidenceRungTests
         Assert.Equal(brush, ranked.Interval);
         Assert.True(ranked.Complete);
         Assert.StartsWith("Ranked within", ranked.Scope, StringComparison.Ordinal);
-        using (var json = System.Text.Json.JsonDocument.Parse(workspace.Export(ExportFormat.Json, at)))
+        using (var json = System.Text.Json.JsonDocument.Parse((await workspace.ExportAsync(ExportFormat.Json, at)).Content))
         {
             Assert.Equal("ranking", json.RootElement.GetProperty("kind").GetString());
             Assert.Equal(40, json.RootElement.GetProperty("rows")[0].GetProperty("observations").GetInt64());
         }
 
-        // At the evidence rung an export holds the loaded records and is complete only once every page is loaded.
+        // At the evidence rung an export holds its whole scope, read in one pass, not only the page loaded so far.
         workspace.ClearSelection();
         await workspace.IntervalReady;
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
-        Assert.False(workspace.DescribeExport(at).Complete);
-        Assert.Equal(SessionEvidenceQuery.DefaultPageSize, workspace.ExportRowCount);
-        await workspace.LoadMoreEvidenceAsync();
-        await workspace.LoadMoreEvidenceAsync();
-        ExportContext whole = workspace.DescribeExport(at);
-        Assert.True(whole.Complete);
-        Assert.Equal(DetailLevel.Evidence, whole.Rung);
-        string[] csv = workspace.Export(ExportFormat.Csv, at).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.True(workspace.CanLoadMoreEvidence);
+        SessionExportResult whole = await workspace.ExportAsync(ExportFormat.Csv, at);
+        Assert.True(whole.Context.Complete);
+        Assert.Equal(DetailLevel.Evidence, whole.Context.Rung);
+        Assert.Equal(rows.Length, whole.Rows);
+        Assert.Contains("Every record of this scope is included.", whole.Context.Caveats);
+        string[] csv = whole.Content.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(rows.Length + 1, csv.Length);
     }
 

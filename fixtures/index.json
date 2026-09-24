@@ -1069,7 +1069,10 @@
         "R9: writing a batch returns every buffer the records held"
       ],
       "R18": [
+        "R18: a headless export descends by row key and names its rung, interval and scope",
+        "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
+        "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"
       ]
     },

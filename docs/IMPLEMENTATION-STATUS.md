@@ -1,14 +1,51 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 102
+Plan revision: 103
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: a minimap, and a timeline that resolves its viewport
+## Latest slice: `icat export`, the Desktop's export without the Desktop
+
+`icat export <dir> --output <path> [--at <row-key>]... [--interval <start:end>] [--evidence [--limit n]]
+[--format json|csv] [--overwrite]` writes the same `intercat-export-v1` file the Desktop's "Export this view" writes
+(R18).
+
+- **Reaching a rung:** each `--at` descends into the row with that key: group, then process instance (dashed as
+  `icat overview --json` prints it, or not), then channel. An unknown key is refused with the keys the rung has.
+- **Scope:** `--interval` ranks within `[start,end)` by the same count as a brushed ranking. `--evidence` exports
+  the rung's evidence scope, the same scope the Desktop's evidence step resolves.
+- **Writing:** the file is staged beside the destination and moved into place, never left partial, and an existing
+  file is replaced only with `--overwrite`. An evidence export stopped by `--limit` (default 100,000) says what it
+  left out and exits with the partial-result code.
+- **One definition:** `SessionExport.Build` in Application does the work. The context rules are shared through
+  `WorkspaceExport.RankingContext` and `EvidenceContext`, and the view model uses the same functions.
+- **One-pass evidence:** `SessionEvidenceQuery.ReadScope` reads a whole scope under one lease through the pages'
+  own merge and filter code. The 94,694-record real-session export went from 83.5 s (474 paged reads) to 2.9 s, with
+  identical output.
+- **Desktop:** at the evidence rung, "Export this view" now writes the whole scope rather than the pages loaded so
+  far. It names the generation the records were read in and says when the bound left records out.
+
+847 tests pass in Debug and Release (+3):
+
+- the headless export descends by key, including dashed instance IDs, and names its rung, interval and scope;
+- the evidence export's single pass equals the concatenated pages across 11 segments, and a limit that stops short
+  says so;
+- the Desktop's export and the headless export are byte-identical, JSON and CSV, at a ranked rung and at evidence.
+
+Plan revision 103.
+
+Not done: the redacted sharing export (§11.3, M5), a persisted overview pyramid (S4), wheel zoom over the minimap,
+and the steady-state latency design.
+
+Next: the redacted sharing export. It needs a stated redaction policy for process, executable, user and endpoint
+names and for addresses. Tokens must stay consistent within one export so relationships survive redaction. The file
+must say what was redacted and how.
+
+## Previous slice: a minimap, and a timeline that resolves its viewport
 
 The timeline gains a whole-session minimap, and zooming now reveals detail instead of stretching the overview's 64
 buckets.

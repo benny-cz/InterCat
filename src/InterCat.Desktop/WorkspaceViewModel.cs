@@ -10,12 +10,6 @@ using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
-/// <summary>How an export is written: self-describing JSON, or CSV that repeats its context in every row.</summary>
-public enum ExportFormat
-{
-    Json,
-    Csv,
-}
 
 /// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
 public sealed record EvidenceField(string Label, string Value);
@@ -85,10 +79,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : "Graph and channel rungs show admitted paired TCP only; the timeline includes every observed row. "
-                    + "TCP and UDP records are completed transfers, so this session has no operation rung: source "
-                    + "records are one step (E) from every rung, and Enter on a record opens its original journal "
-                    + "entry. Byte previews stay hidden until requested.";
+                : OverviewWorkspace.SessionDisclosure;
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -1277,56 +1268,36 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// counts answer. At the evidence rung the scope is the records' own, and the export is complete only when every
     /// page of that scope has been loaded (plan §6.4).
     /// </summary>
-    public ExportContext DescribeExport(DateTimeOffset exportedUtc)
+    public ExportContext DescribeExport(DateTimeOffset exportedUtc) =>
+        WorkspaceExport.RankingContext(
+            evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure, exportedUtc);
+
+    /// <summary>
+    /// The applied view in the chosen format (§6.4). A ranked rung exports its rows. The evidence rung exports its whole
+    /// scope, read off the UI thread in one pass up to <see cref="SessionExport.DefaultEvidenceLimit"/> records rather
+    /// than only the pages loaded so far, names the generation the records were read in, and says when the limit left
+    /// records out. <c>icat export</c> builds the same file through the same contract (R18).
+    /// </summary>
+    public async Task<SessionExportResult> ExportAsync(
+        ExportFormat format, DateTimeOffset exportedUtc, CancellationToken cancellationToken = default)
     {
-        bool evidenceRung = IsEvidenceRung && evidence is not null;
-        string scope = evidenceRung
-            ? evidence!.Scope.Description
-            : appliedInterval is { } range
-                ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
-                : "Whole session";
-        bool complete = !evidenceRung
-            || (evidence!.NextCursor is null && !evidence.Loading && evidence.Problem is null);
-        List<string> caveats = [workspaceDisclosure];
-        if (evidenceRung)
+        if (IsEvidenceRung && evidence is { Problem: null } list && evidenceSource is { } source)
         {
-            caveats.Add(complete
-                ? "Every record of this scope is included."
-                : "Only the records loaded so far are included; load more before exporting for the rest of the scope.");
+            SessionEvidencePage read = await source.ReadScopeAsync(list.Scope, SessionExport.DefaultEvidenceLimit, cancellationToken);
+            ExportContext context = WorkspaceExport.EvidenceContext(read.SessionId, read.Generation, ladder, list.Scope,
+                read.NextCursor is null, workspaceDisclosure,
+                string.Create(CultureInfo.InvariantCulture,
+                    $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
+                exportedUtc);
+            return new(WorkspaceExport.Evidence(format, context, read.Records), context, read.Records.Count);
         }
 
-        return new(
-            evidenceSource?.SessionId,
-            evidenceSource?.Generation,
-            ladder.Current.Level,
-            LadderProjection.Breadcrumb(ladder),
-            [.. ladder.Current.Filters],
-            evidenceRung ? evidence!.Scope.Interval : appliedInterval,
-            scope,
-            complete,
-            caveats,
-            exportedUtc);
+        ExportContext ranked = DescribeExport(exportedUtc);
+        return new(WorkspaceExport.Ranking(format, ranked, view.Rows), ranked, view.Rows.Count);
     }
 
-    /// <summary>What the rung shows, in the chosen format: its ranked rows, or the evidence records loaded at the evidence rung.</summary>
-    public string Export(ExportFormat format, DateTimeOffset exportedUtc)
-    {
-        ExportContext context = DescribeExport(exportedUtc);
-        if (IsEvidenceRung && evidence is { } list)
-        {
-            SessionEvidenceRecord[] records = [.. list.Records];
-            return format == ExportFormat.Csv
-                ? WorkspaceExport.EvidenceCsv(context, records)
-                : WorkspaceExport.EvidenceJson(context, records);
-        }
-
-        return format == ExportFormat.Csv
-            ? WorkspaceExport.RankingCsv(context, view.Rows)
-            : WorkspaceExport.RankingJson(context, view.Rows);
-    }
-
-    /// <summary>How many rows an export of the current rung holds.</summary>
-    public int ExportRowCount => IsEvidenceRung ? evidence?.Records.Count ?? 0 : view.Rows.Count;
+    /// <summary>Whether the rung shows anything to export: ranked rows, or a readable evidence scope that holds records.</summary>
+    public bool CanExport => IsEvidenceRung ? evidence is { Problem: null, Records.Count: > 0 } : view.Rows.Count > 0;
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {
