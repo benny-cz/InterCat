@@ -346,6 +346,35 @@ public sealed class SessionOverviewTests
         Assert.True(changed.Generation > first.Generation);
     }
 
+    [Fact]
+    public void EvidenceTimeScopeIsHalfOpenAndPartOfTheCursorIdentity()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 1_100 },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3)
+                .Between(ClientEnd, ServerEnd),
+        ]);
+
+        var wide = new TimeRange(10, 12);
+        SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store, interval: wide, pageSize: 1);
+        SessionEvidencePage second = SessionEvidenceQuery.Read(session.Store,
+            interval: wide, pageSize: 1, cursor: first.NextCursor);
+        Assert.Equal(10L, first.Records.Single().Observation.SessionRelativeTicks!.Value / 100);
+        Assert.Equal(11L, second.Records.Single().Observation.SessionRelativeTicks!.Value / 100);
+        Assert.Null(second.NextCursor);
+        Assert.Equal(wide, first.Interval);
+        SessionEvidencePage changed = SessionEvidenceQuery.Read(session.Store,
+            interval: new TimeRange(10, 11), cursor: first.NextCursor);
+        Assert.True(changed.RestartRequired);
+        Assert.Empty(changed.Records);
+        Assert.Single(SessionEvidenceQuery.Read(session.Store, interval: new TimeRange(10, 11)).Records);
+    }
+
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()
     {
         Contract = CoverageLedgerV1.ContractName,

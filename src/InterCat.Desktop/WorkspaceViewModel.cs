@@ -55,8 +55,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
                 : "Graph and channel rungs show admitted paired TCP only. Timeline includes other observed rows; "
-                    + "logical operations and exact records are not yet projected in this viewer. "
-                    + "The saved session supports read-only icat channels and icat evidence queries.";
+                    + "the L4-L5 ladder is not yet projected. The source-row inspector and read-only icat "
+                    + "channels/evidence queries remain available without implying operation pairing.";
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -332,9 +332,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             if (emptyWorkspace) return "No capture is running. Start exploring to publish a live session.";
             if (realOverview && ladder.Current.Level >= DetailLevel.Channel)
             {
-                return "This viewer has not projected completion-paired operations or exact-record rows yet. "
-                    + "The saved session keeps admitted observations; use icat evidence <session-directory> "
-                    + "--channel <channel-key> --json for a channel's rows, or omit --channel for all rows.";
+                return "This ladder has not projected completion-paired operations or source-record rows yet. "
+                    + "Return to the machine with no process selected, or to a channel, then choose Inspect "
+                    + "source rows for a bounded page of "
+                    + "admitted normalized observations. The saved session also supports icat evidence --json.";
             }
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)

@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private int captureRunId;
     private Guid? displayedSessionId;
     private long displayedGeneration = -1;
+    private string? currentSessionPath;
     private bool openingSession;
     private bool closed;
     private bool closingPrompt;
@@ -121,6 +122,30 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void StartExploring(object? sender, RoutedEventArgs eventArgs) => BeginCapture();
 
+    private async void InspectSourceRows(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId
+            || displayedGeneration < 1) return;
+        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
+        string? channelKey = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Channel)
+            ?.Focus?.Key;
+        NavigationState current = navigation.Breadcrumb[^1];
+        if (channelKey is null
+            && (current.Level != DetailLevel.Machine || navigation.SelectedProcess is not null)) return;
+        TimeRange? interval = navigation.SelectedInterval
+            ?? (current.Viewport == workspace.Snapshot.Extent ? null : current.Viewport);
+        using var inspector = new SessionEvidenceWindow(currentSessionPath, sessionId,
+            displayedGeneration, channelKey, interval);
+        try
+        {
+            await inspector.ShowDialog(this);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the source-row inspector: " + exception.Message;
+        }
+    }
+
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
         StopCaptureButton.IsEnabled = false;
@@ -151,7 +176,8 @@ public sealed partial class MainWindow : Window, IDisposable
             CaptureSummary.Text = string.Empty;
             ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open",
                 "This is a published generation. The graph contains admitted paired TCP only; "
-                + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview));
+                + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
+                forceOverview: true);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException)
@@ -182,6 +208,8 @@ public sealed partial class MainWindow : Window, IDisposable
         int run = ++captureRunId;
         displayedSessionId = null;
         displayedGeneration = -1;
+        currentSessionPath = null;
+        UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
         CaptureSessionPath.Text = string.Empty;
         ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
@@ -208,7 +236,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         });
 
-    private void ApplyCaptureUpdate(CaptureUiUpdate update)
+    private void ApplyCaptureUpdate(CaptureUiUpdate update, bool forceOverview = false)
     {
         CaptureStatus.Text = update.Headline;
         CaptureDetail.Text = update.Detail;
@@ -222,12 +250,14 @@ public sealed partial class MainWindow : Window, IDisposable
             && captureStop?.IsCancellationRequested != true;
 
         if (update.Overview is { } overview
-            && (overview.SessionId != displayedSessionId || overview.Generation > displayedGeneration))
+            && (forceOverview || overview.SessionId != displayedSessionId
+                || overview.Generation > displayedGeneration))
         {
-            WorkspaceNavigationMemento? savedNavigation = overview.SessionId == displayedSessionId
+            WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
                 ? workspace.CaptureNavigation() : null;
             displayedSessionId = overview.SessionId;
             displayedGeneration = overview.Generation;
+            currentSessionPath = update.SessionPath;
             var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
             if (savedNavigation is not null
                 && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
@@ -238,6 +268,7 @@ public sealed partial class MainWindow : Window, IDisposable
             workspace.Dispose();
             workspace = replacement;
             DataContext = workspace;
+            UpdateEvidenceAction();
             GraphSurface.InvalidateVisual();
             TimelineSurface.InvalidateVisual();
         }
@@ -245,8 +276,22 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
     {
+        UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
+    }
+
+    private void UpdateEvidenceAction()
+    {
+        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
+        NavigationState[] path = [.. navigation.Breadcrumb];
+        bool atMachine = path[^1].Level == DetailLevel.Machine && navigation.SelectedProcess is null;
+        bool inChannel = path.Any(rung => rung.Level == DetailLevel.Channel);
+        InspectEvidenceButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
+            && (atMachine || inChannel);
+        ToolTip.SetTip(InspectEvidenceButton, InspectEvidenceButton.IsEnabled
+            ? "Read exact normalized rows from this published generation. No payload bytes or operation pairing."
+            : "Open a session, clear a process selection for whole-machine rows, or descend to one channel.");
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)

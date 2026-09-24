@@ -20,8 +20,10 @@ public sealed record SessionEvidenceRecord(
 /// </summary>
 public sealed record SessionEvidencePage(
     string QueryIdentity,
+    Guid SessionId,
     long Generation,
     string? ChannelKey,
+    TimeRange? Interval,
     IReadOnlyList<SessionEvidenceRecord> Records,
     string? NextCursor,
     bool RestartRequired,
@@ -42,6 +44,7 @@ public static class SessionEvidenceQuery
     public static SessionEvidencePage Read(
         SessionStore store,
         string? channelKey = null,
+        TimeRange? interval = null,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         int pageSize = DefaultPageSize,
         string? cursor = null,
@@ -55,11 +58,11 @@ public static class SessionEvidenceQuery
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        string identity = Identity(manifest, channelKey, policy);
+        string identity = Identity(manifest, channelKey, interval, policy);
         (string suppliedIdentity, int startSegment, int startRow) = ParseCursor(cursor);
         if (cursor is not null && suppliedIdentity != identity)
         {
-            return new(identity, manifest.Generation, channelKey, [], null, true,
+            return new(identity, manifest.SessionId, manifest.Generation, channelKey, interval, [], null, true,
                 "This evidence cursor names another generation or query. Restart from the first page; no rows "
                 + "were silently shifted.", Caveat);
         }
@@ -94,14 +97,18 @@ public static class SessionEvidenceQuery
             cancellationToken.ThrowIfCancellationRequested();
             SegmentReaderV1 segment = segments[segmentIndex];
             ChannelBinding[]? bindings = relations?.ChannelsOf(segment);
+            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             int first = segmentIndex == startSegment ? startRow : 0;
             for (int row = first; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
                 if (selectedChannel is { } channel && bindings![row].Channel != channel) continue;
+                if (interval is { } range
+                    && (times.SignedAt(row) is not { } nanoseconds
+                        || !range.Contains(nanoseconds / 100))) continue;
                 if (records.Count == pageSize)
                 {
-                    return new(identity, manifest.Generation, channelKey, records.AsReadOnly(),
+                    return new(identity, manifest.SessionId, manifest.Generation, channelKey, interval, records.AsReadOnly(),
                         Cursor(identity, segmentIndex, row), false, null, Caveat);
                 }
 
@@ -111,15 +118,20 @@ public static class SessionEvidenceQuery
             }
         }
 
-        return new(identity, manifest.Generation, channelKey, records.AsReadOnly(), null, false, null, Caveat);
+        return new(identity, manifest.SessionId, manifest.Generation, channelKey, interval,
+            records.AsReadOnly(), null, false, null, Caveat);
     }
 
-    private static string Identity(SessionManifestV1 manifest, string? channelKey, EvidencePolicy policy)
+    private static string Identity(SessionManifestV1 manifest, string? channelKey, TimeRange? interval,
+        EvidencePolicy policy)
     {
+        string timeScope = interval is { } range
+            ? string.Create(CultureInfo.InvariantCulture, $"{range.StartTicks}:{range.EndTicks}")
+            : "all-time";
+        string relationRule = channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule;
         string canonical = string.Create(CultureInfo.InvariantCulture,
             $"evidence-page-v1|{manifest.SessionId:N}|{manifest.Generation}|{manifest.Digest}|{policy}|"
-            + $"{(channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule)}|"
-            + $"{channelKey?.Length ?? 0}:{channelKey}");
+            + $"{relationRule}|{channelKey?.Length ?? 0}:{channelKey}|{timeScope}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 

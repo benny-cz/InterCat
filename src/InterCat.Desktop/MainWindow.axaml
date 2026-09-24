@@ -288,6 +288,9 @@
             <TextBlock Text="◆ Candidate relationships stay qualified"
                        Foreground="{DynamicResource Family.RemoteCall.Ink}" TextWrapping="Wrap" />
           </Border>
+          <Button x:Name="InspectEvidenceButton" Content="Inspect source rows" IsEnabled="False"
+                  Click="InspectSourceRows"
+                  AutomationProperties.Name="Inspect a bounded page of source observation rows" />
         </StackPanel>
         <TextBlock Grid.Row="4" VerticalAlignment="Bottom" Classes="muted" FontSize="11" TextWrapping="Wrap"
                    Text="{Binding WorkspaceDisclosure}" />

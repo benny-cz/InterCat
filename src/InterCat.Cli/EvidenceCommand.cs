@@ -23,6 +23,7 @@ internal static class EvidenceCommand
         string? directory = command.TakePositional();
         string? channel = command.TakeOption("--channel");
         string? cursor = command.TakeOption("--cursor");
+        string? intervalText = command.TakeOption("--interval");
         string? size = command.TakeOption("--page-size");
         int pageSize = SessionEvidenceQuery.DefaultPageSize;
         bool invalidSize = size is not null &&
@@ -30,11 +31,13 @@ internal static class EvidenceCommand
                 || pageSize is < 1 or > SessionEvidenceQuery.MaximumPageSize);
         bool json = command.TryTakeFlag("--json");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
-        if (directory is null || hasUnknown || invalidSize)
+        bool invalidInterval = !TryParseInterval(intervalText, out TimeRange? interval);
+        if (directory is null || hasUnknown || invalidSize || invalidInterval)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
                 : hasUnknown ? $"Unknown or incomplete option: {unknown}"
-                : "--page-size must be an integer from 1 to 200.");
+                : invalidSize ? "--page-size must be an integer from 1 to 200."
+                : "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
             PrintHelp();
             return InterCatExitCode.InvalidInvocation;
         }
@@ -50,7 +53,7 @@ internal static class EvidenceCommand
         try
         {
             page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
-                channel, pageSize: pageSize, cursor: cursor,
+                channel, interval, pageSize: pageSize, cursor: cursor,
                 cancellationToken: cancellationToken);
         }
         catch (ArgumentException exception)
@@ -78,6 +81,8 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (channel is not null) ConsoleUi.Field("Paired TCP channel", channel);
+        if (interval is { } range)
+            ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks");
         if (page.RestartRequired)
         {
             ConsoleUi.Warn(page.RestartReason!);
@@ -97,16 +102,32 @@ internal static class EvidenceCommand
         ConsoleUi.Note(page.Caveat);
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat evidence <directory> --cursor {page.NextCursor}"
-                + (channel is null ? string.Empty : $" --channel {channel}"));
+                + (channel is null ? string.Empty : $" --channel {channel}")
+                + (interval is { } scope ? $" --interval {scope.StartTicks}:{scope.EndTicks}" : string.Empty));
         return InterCatExitCode.Success;
     }
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--page-size <1-200>]");
+        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--interval <start:end>]");
+        ConsoleUi.Line("              [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows, tied to one manifest and query.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --channel uses an overview channel key.");
+        ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");
+    }
+
+    private static bool TryParseInterval(string? raw, out TimeRange? interval)
+    {
+        interval = null;
+        if (raw is null) return true;
+        string[] parts = raw.Split(':');
+        if (parts.Length != 2
+            || !long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long start)
+            || !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long end)
+            || end <= start) return false;
+        interval = new TimeRange(start, end);
+        return true;
     }
 }

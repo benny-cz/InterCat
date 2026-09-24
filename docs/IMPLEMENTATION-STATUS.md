@@ -1,12 +1,36 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 89
+Plan revision: 90
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: bounded channel discovery and leased observation pages
+## Latest slice: time-scoped Desktop source-row inspector
+
+Evidence pages now accept a deliberate half-open interval in the workspace's 100-nanosecond presentation ticks.
+Untimed rows remain visible when no interval is selected and are excluded only when the user chooses a time scope.
+The interval is part of cursor identity; changing it returns an explicit restart rather than shifting rows. `icat
+evidence --interval <start:end>` exposes the same scope headlessly.
+
+Desktop's inspector has an enabled `Inspect source rows` action once a published session is visible. At the machine
+rung with no process selected it reads whole-session rows; at a channel rung it reads only that admitted paired TCP
+incarnation. A selected interval or deliberately narrowed viewport is applied. Pages are capped at 100 rows, read off
+the UI thread, cancellable on close, and show source descriptor, raw locator, normalized fact, endpoint/size/status
+fields and quality. The dialog refuses a page whose session or generation differs from the workspace it opened from;
+it never silently follows a live publication. It calls the result admitted **normalized observations**, not raw
+payloads or completed operations. A process-selected machine view disables the action rather than offering a falsely
+scoped result. The headless first-run check verifies this action is disabled before any session exists.
+
+Explicitly opening a saved session now replaces the workspace even if it is an older or equal generation of the
+same session; only live updates use the newer-generation guard. This fixes a stale-path/stale-workspace UX gap.
+All 785 tests pass in Debug and Release, run serially; CLI Release builds. Plan revision 90 records the intermediate
+inspector boundary. A real Desktop/UAC run and §3.1 first-feedback measurement remain unqualified. The L4
+completion-paired operation model, full L5 raw-record/payload inspector, process-scoped source rows, integration of
+scoped channel discovery directly in Desktop, and the wider plan remain open. Next, implement operation semantics
+only for a mechanism with proven start/completion keys and add their source records without borrowing TCP counts.
+
+## Previous slice: bounded channel discovery and leased observation pages
 
 `icat channels <session-dir> [--process <instance-guid>] [--page-size 1..200] [--cursor] [--json]` now
 pages all admitted paired TCP incarnations from one leased generation, including a session whose L3 overview exceeded

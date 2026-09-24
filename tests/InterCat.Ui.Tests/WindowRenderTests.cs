@@ -28,6 +28,7 @@ public sealed class WindowRenderTests
         Assert.Empty(viewModel.Snapshot.Timeline);
         Assert.True(start.IsFocused);
         Assert.Equal("Ready to explore", window.GetControl<TextBlock>("CaptureStatus").Text);
+        Assert.False(window.GetControl<Button>("InspectEvidenceButton").IsEnabled);
         window.Close();
     }
 
