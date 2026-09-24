@@ -10,6 +10,7 @@ namespace InterCat.Application;
 /// <summary>A complete count and a bounded page of admitted paired TCP incarnations in a leased generation.</summary>
 public sealed record SessionChannelPage(
     string QueryIdentity,
+    Guid SessionId,
     long Generation,
     ProcessInstanceId? ProcessScope,
     int TotalChannels,
@@ -47,7 +48,7 @@ public static class SessionChannelQuery
         (string suppliedIdentity, int offset) = ParseCursor(cursor);
         if (cursor is not null && suppliedIdentity != identity)
         {
-            return new(identity, manifest.Generation, processScope, 0, [], null, true,
+            return new(identity, manifest.SessionId, manifest.Generation, processScope, 0, [], null, true,
                 "This channel cursor names another generation or scope. Restart from the first page; no "
                 + "channel was silently shifted.", Caveat);
         }
@@ -76,7 +77,7 @@ public static class SessionChannelQuery
         int count = Math.Min(pageSize, admitted.Length - offset);
         Channel[] channels = [.. admitted.Skip(offset).Take(count).Select(SessionOverviewProjector.ProjectChannel)];
         int next = offset + count;
-        return new(identity, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
+        return new(identity, manifest.SessionId, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
             next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat);
     }
 

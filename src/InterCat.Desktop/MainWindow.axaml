@@ -291,6 +291,9 @@
           <Button x:Name="InspectEvidenceButton" Content="Inspect source rows" IsEnabled="False"
                   Click="InspectSourceRows"
                   AutomationProperties.Name="Inspect a bounded page of source observation rows" />
+          <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
+                  Click="BrowseChannels"
+                  AutomationProperties.Name="Browse all admitted paired TCP channels" />
         </StackPanel>
         <TextBlock Grid.Row="4" VerticalAlignment="Bottom" Classes="muted" FontSize="11" TextWrapping="Wrap"
                    Text="{Binding WorkspaceDisclosure}" />

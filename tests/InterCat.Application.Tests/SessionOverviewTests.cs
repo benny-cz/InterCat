@@ -40,6 +40,7 @@ public sealed class SessionOverviewTests
 
         SessionChannelPage first = SessionChannelQuery.Read(session.Store, pageSize: 1);
         SessionChannelPage second = SessionChannelQuery.Read(session.Store, pageSize: 1, cursor: first.NextCursor);
+        Assert.Equal(overview.SessionId, first.SessionId);
         Assert.Equal(2, first.TotalChannels);
         Assert.Single(first.Channels);
         Assert.Single(second.Channels);

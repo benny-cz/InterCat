@@ -48,7 +48,8 @@ public sealed class DesktopCaptureTests
         Assert.True(viewModel.Descend());
 
         Assert.True(viewModel.IsEmptyRung);
-        Assert.Equal(reason, viewModel.EmptyReason);
+        Assert.StartsWith(reason, viewModel.EmptyReason, StringComparison.Ordinal);
+        Assert.Contains("Browse paired channels", viewModel.EmptyReason, StringComparison.Ordinal);
     }
 
     [Fact]

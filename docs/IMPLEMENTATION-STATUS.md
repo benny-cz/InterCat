@@ -1,12 +1,29 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 91
+Plan revision: 92
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: exact process-owner source-row scope
+## Latest slice: bounded paired-channel discovery inside Desktop
+
+The Desktop now has `Browse paired channels` for a published generation at Machine, for a selected Machine process,
+or from the focused Process/Channel path. It reads `SessionChannelQuery` in 100-channel pages off the UI thread, with
+cancellation on close, the complete admitted count, and explicit all-session-time scope. A selected time brush does
+not silently alter discovery counts; it is applied only when `Inspect selected source rows` opens the existing
+bounded evidence dialog for that channel. This gives a direct in-viewer path even above the overview's provisional
+4,096-channel L3 cap. Group context is not silently treated as a process. The browser refuses pages from another
+session/generation or query and tells the user to reopen; channel pages now carry SessionId for that guard.
+
+The first-run channel action is disabled, and the capped process-rung copy points to the Desktop browser as well as
+the CLI. Application and headless UI tests pass; the new dialog compiles, but an interactive Desktop/UAC run has not
+yet been performed. The browser is **discovery plus source-row drill-down**, not a complete in-ladder L3 projection
+or L4/L5 operation/payload inspector. All 786 tests pass in separate Debug and Release solution runs. Plan revision
+92 records that boundary. Next: qualify a production operation start/completion derivation before displaying L4;
+complete the exact raw-record/payload L5 path, real Desktop first-feedback/UAC gate and wider milestone work.
+
+## Previous slice: exact process-owner source-row scope
 
 `SessionEvidenceQuery` now accepts an optional process-instance owner scope. It uses the existing
 `process-binding-v2` row binding, including lifecycle-exact identity and evidence-strength policy, so a reused PID

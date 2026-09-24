@@ -340,8 +340,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)
             {
-                return Snapshot.ChannelProjectionProblem
-                    ?? "No admitted paired TCP channel belongs to this process in this generation. "
+                return Snapshot.ChannelProjectionProblem is { } problem
+                    ? problem + " Choose Browse paired channels here to page this process's admitted channels "
+                        + "and inspect a selected channel's source rows."
+                    : "No admitted paired TCP channel belongs to this process in this generation. "
                         + "One-sided, ambiguous and other-mechanism observations may still exist in the timeline.";
             }
 

@@ -144,6 +144,28 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private async void BrowseChannels(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId
+            || displayedGeneration < 1) return;
+        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
+        var (available, processScope) = ChannelDiscoveryScope(navigation);
+        if (!available) return;
+        NavigationState current = navigation.Breadcrumb[^1];
+        TimeRange? evidenceInterval = navigation.SelectedInterval
+            ?? (current.Viewport == workspace.Snapshot.Extent ? null : current.Viewport);
+        using var browser = new SessionChannelWindow(currentSessionPath, sessionId,
+            displayedGeneration, processScope, evidenceInterval);
+        try
+        {
+            await browser.ShowDialog(this);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open channel discovery: " + exception.Message;
+        }
+    }
+
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
         StopCaptureButton.IsEnabled = false;
@@ -283,13 +305,21 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
         var (available, channelKey, ownerProcess) = EvidenceScope(navigation);
+        var (channelsAvailable, channelProcess) = ChannelDiscoveryScope(navigation);
         InspectEvidenceButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
             && available;
+        BrowseChannelsButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
+            && channelsAvailable;
         ToolTip.SetTip(InspectEvidenceButton, InspectEvidenceButton.IsEnabled
             ? (channelKey is not null ? "Read this paired TCP channel's normalized rows."
                 : ownerProcess is not null ? "Read normalized rows canonically owned by this process instance."
                 : "Read whole-session normalized rows.") + " No payload bytes or operation pairing."
             : "Open a session, select a process at Machine, or descend to Process or Channel.");
+        ToolTip.SetTip(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
+            ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
+                : "Browse admitted paired TCP channels involving this process instance.")
+                + " Discovery covers all session time; a selected time brush applies when inspecting source rows."
+            : "Open a session, or return to Machine or Process to browse paired channels.");
     }
 
     private static (bool Available, string? ChannelKey, ProcessInstanceId? OwnerProcess) EvidenceScope(
@@ -304,6 +334,17 @@ public sealed partial class MainWindow : Window, IDisposable
             && Guid.TryParse(current.Focus?.Key, out Guid id) && id != Guid.Empty)
             return (true, null, new ProcessInstanceId(id));
         return (false, null, null);
+    }
+
+    private static (bool Available, ProcessInstanceId? ProcessScope) ChannelDiscoveryScope(
+        WorkspaceNavigationMemento navigation)
+    {
+        string? processKey = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.ProcessInstance)
+            ?.Focus?.Key;
+        if (processKey is not null && Guid.TryParse(processKey, out Guid id) && id != Guid.Empty)
+            return (true, new ProcessInstanceId(id));
+        return navigation.Breadcrumb[^1].Level == DetailLevel.Machine
+            ? (true, navigation.SelectedProcess) : (false, null);
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
