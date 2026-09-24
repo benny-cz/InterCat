@@ -21,7 +21,17 @@ public readonly record struct LadderTarget(DetailLevel Level, string Key, string
 /// A filter a descent implies. Descending sets scope and grouping and never silently adds a predicate,
 /// so where one is implied it is carried here, shown in the filter bar and removable (section 3.2).
 /// </summary>
-public sealed record ImpliedFilter(string Field, string Value, string Reason);
+public sealed record ImpliedFilter(string Field, string Value, string Reason)
+{
+    /// <summary>
+    /// The stable key of what the filter names - a group key, a process-instance ID or a channel key - so a query
+    /// can read its scope from the filter the user sees rather than from its label. Null for a label-only filter.
+    /// </summary>
+    public string? Key { get; init; }
+
+    /// <summary>The rung whose selection the filter names. Evidence reads its scope from the latest such filter.</summary>
+    public DetailLevel? Level { get; init; }
+}
 
 /// <summary>
 /// One restorable rung. Ascending returns this value unchanged, so the viewport, selection, lane

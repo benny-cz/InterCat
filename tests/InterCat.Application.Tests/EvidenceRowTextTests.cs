@@ -57,6 +57,8 @@ public sealed class EvidenceRowTextTests
         var instance = new ProcessInstanceId(Guid.NewGuid());
 
         Assert.Equal("PID 100", EvidenceRowText.Owner(Record(row), Invariant));
+        Assert.Equal("PID 100 · executable not witnessed", EvidenceRowText.Owner(Record(row,
+            new(instance, 100, null, RelationStrength.Direct, ProcessBindingReason.Bound, true)), Invariant));
         Assert.Equal("client.exe · PID 100", EvidenceRowText.Owner(Record(row,
             new(instance, 100, "client.exe", RelationStrength.Direct, ProcessBindingReason.Bound, true)), Invariant));
         Assert.Equal("client.exe · PID 100 · candidate · not admitted by the evidence policy",
@@ -69,6 +71,15 @@ public sealed class EvidenceRowTextTests
         Assert.Equal("no owner process named", EvidenceRowText.Owner(Record(
             Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null),
             new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.NoOwner, false)), Invariant));
+    }
+
+    [Fact]
+    public void TheValidatedProvidersAreNamedAndAnyOtherIsIdentifiedNotGuessed()
+    {
+        Assert.Equal("Microsoft-Windows-Kernel-Network", EvidenceRowText.ProviderName(NetworkProvider));
+        Assert.Equal("Microsoft-Windows-Kernel-Process", EvidenceRowText.ProviderName(ProcessProvider));
+        Guid other = Guid.Parse("01234567-89ab-4cde-8f01-23456789abcd");
+        Assert.Equal("provider 01234567-89ab-4cde-8f01-23456789abcd", EvidenceRowText.ProviderName(other));
     }
 
     private static SessionEvidenceRecord Record(ObservationRowV1 row, SessionEvidenceOwner? owner = null) =>

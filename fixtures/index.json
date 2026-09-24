@@ -783,6 +783,7 @@
       ],
       "R15": [
         "R15: a custom workspace header names its session without inventing a capture gap",
+        "R15: a published session's channel and evidence rungs render at every supported size",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the table toggle is reachable by keyboard while a list has focus",
         "R15: the window renders at its minimum size and at a review size",
@@ -1016,12 +1017,14 @@
         "R6: linked panes observe one atomic selection state"
       ],
       "R7": [
+        "R7: F5 applies the held generation and keeps the evidence rung and its scope",
         "R7: a disposed scheduler cannot publish its in-flight layout",
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a worker result naming another graph identity is refused",
         "R7: caller cancellation propagates instead of looking like a superseded query",
-        "R7: one leased generation yields a stable graph and exact graph-eligible timeline"
+        "R7: one leased generation yields a stable graph and exact graph-eligible timeline",
+        "R7: records hold the view still; a newer generation is offered, and applied on leaving"
       ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",

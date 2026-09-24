@@ -85,11 +85,13 @@ public static class EvidenceRowText
         if (record.Owner is not { } owner) return pid;
         if (owner.Instance is null)
             return record.Observation.OwnerProcessId is null ? pid : pid + " · owner unresolved: " + Reason(owner.Reason);
-        string name = string.IsNullOrWhiteSpace(owner.ImageName) ? "executable not witnessed" : owner.ImageName;
+        string named = string.IsNullOrWhiteSpace(owner.ImageName)
+            ? string.Create(format, $"PID {owner.ProcessId} · executable not witnessed")
+            : string.Create(format, $"{owner.ImageName} · PID {owner.ProcessId}");
         string qualifier = owner.Strength == RelationStrength.Candidate ? " · candidate"
             : owner.Strength == RelationStrength.Conflicting ? " · conflicting" : string.Empty;
         string admitted = owner.AdmittedUnderPolicy ? string.Empty : " · not admitted by the evidence policy";
-        return string.Create(format, $"{name} · PID {owner.ProcessId}{qualifier}{admitted}");
+        return named + qualifier + admitted;
     }
 
     /// <summary>One line for a list: time, what happened, size and endpoints where the record has them.</summary>
@@ -102,6 +104,17 @@ public static class EvidenceRowText
         if (Endpoints(row) is { } endpoints) parts.Add(endpoints);
         return string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// The provider's registered name for the two providers InterCat's validated sources use, whose identifiers are
+    /// fixed by Windows; any other provider is named by its identifier rather than by a guess.
+    /// </summary>
+    public static string ProviderName(Guid provider) => provider.ToString("D") switch
+    {
+        "7dd42a49-5329-4832-8dfd-43d979153a88" => "Microsoft-Windows-Kernel-Network",
+        "22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716" => "Microsoft-Windows-Kernel-Process",
+        string other => "provider " + other,
+    };
 
     public static string MechanismName(Mechanism mechanism) => mechanism switch
     {

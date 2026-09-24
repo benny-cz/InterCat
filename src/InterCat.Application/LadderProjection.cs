@@ -130,18 +130,32 @@ public static class LadderProjection
     {
         ArgumentNullException.ThrowIfNull(from);
         LadderTarget focus = from.Focus ?? new(from.Level, "machine", "Whole machine");
+        return EvidenceDescentFor(from, viewport, focus,
+            $"Evidence was reached from the {NavigationState.Name(from.Level).ToLowerInvariant()} rung.");
+    }
+
+    /// <summary>
+    /// The evidence step for an explicitly named scope: a process selected at the machine rung, or a channel chosen
+    /// in a discovery list the ladder does not hold. The scope is the visible, removable filter the step adds, so the
+    /// jump is never an implicit predicate.
+    /// </summary>
+    public static LadderDescent EvidenceDescentFor(NavigationState from, TimeRange viewport, LadderTarget scope, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         return new()
         {
-            Target = new(DetailLevel.Evidence, focus.Key, focus.Label),
+            Target = new(DetailLevel.Evidence, scope.Key, scope.Label),
             Viewport = viewport,
             Lanes = LaneGrouping.Endpoint,
             GraphFocusKey = from.GraphFocusKey,
             AddedFilters =
             [
-                new(
-                    "scope",
-                    focus.Label,
-                    $"Evidence was reached from the {NavigationState.Name(from.Level).ToLowerInvariant()} rung."),
+                new("scope", scope.Label, reason)
+                {
+                    Key = scope.Level == DetailLevel.Machine ? null : scope.Key,
+                    Level = scope.Level,
+                },
             ],
         };
     }
@@ -159,12 +173,17 @@ public static class LadderProjection
 
     private static IReadOnlyList<ImpliedFilter> FiltersFor(LadderRow row) => row.DescendsTo switch
     {
-        DetailLevel.Group => [new("group", row.Label, "Descending from the machine rung scopes to one group.")],
+        DetailLevel.Group => [new("group", row.Label, "Descending from the machine rung scopes to one group.")
+            { Key = row.Key, Level = DetailLevel.Group }],
         DetailLevel.ProcessInstance =>
-            [new("process", row.Label, "Descending from a group scopes to one process instance.")],
-        DetailLevel.Channel => [new("channel", row.Label, "Descending from a process scopes to one channel.")],
-        DetailLevel.Operation => [new("operation", row.Label, "Descending from a channel scopes to one operation.")],
-        DetailLevel.Evidence => [new("scope", row.Label, "Descending from an operation scopes to its records.")],
+            [new("process", row.Label, "Descending from a group scopes to one process instance.")
+                { Key = row.Key, Level = DetailLevel.ProcessInstance }],
+        DetailLevel.Channel => [new("channel", row.Label, "Descending from a process scopes to one channel.")
+            { Key = row.Key, Level = DetailLevel.Channel }],
+        DetailLevel.Operation => [new("operation", row.Label, "Descending from a channel scopes to one operation.")
+            { Key = row.Key, Level = DetailLevel.Operation }],
+        DetailLevel.Evidence => [new("scope", row.Label, "Descending from an operation scopes to its records.")
+            { Key = row.Key, Level = DetailLevel.Operation }],
         _ => [],
     };
 

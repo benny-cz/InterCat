@@ -34,11 +34,23 @@
             <TextBlock Grid.Column="1" Text="{Binding LevelBadge}" Classes="eyebrow"
                        Foreground="{DynamicResource Ink.Accent}" VerticalAlignment="Center" />
           </Grid>
-          <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                     AutomationProperties.Name="What the ranked table holds" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          <!-- While records are read, the view holds its generation; a newer one is offered, never forced (section 5.2). -->
+          <Border x:Name="HeldBanner" IsVisible="False" Margin="0,6,0,0" Padding="8" CornerRadius="7"
+                  Background="{DynamicResource Surface.Elevated}"
+                  BorderBrush="{DynamicResource Ink.Accent}" BorderThickness="1">
+            <StackPanel Spacing="6">
+              <TextBlock x:Name="HeldBannerText" FontSize="11" TextWrapping="Wrap"
+                         AutomationProperties.Name="Newer evidence is published" />
+              <Button Content="Update to newest (F5)" Click="UpdateHeldGeneration"
+                      AutomationProperties.Name="Show the newest published generation" />
+            </StackPanel>
+          </Border>
         </StackPanel>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" RowDefinitions="*,Auto">
           <ListBox x:Name="RungList"
                    ItemsSource="{Binding RungRows}"
                    SelectedItem="{Binding SelectedRung, Mode=TwoWay}"
@@ -66,16 +78,27 @@
             </ListBox.ItemTemplate>
           </ListBox>
 
-          <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2). -->
-          <Border Padding="12" CornerRadius="8" VerticalAlignment="Top"
-                  Background="{DynamicResource Surface.Elevated}"
-                  IsVisible="{Binding IsEmptyRung}">
-            <StackPanel Spacing="6">
-              <TextBlock Text="NOTHING AT THIS LEVEL" Classes="eyebrow" />
-              <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
-                         AutomationProperties.Name="Why this level has no rows" />
-            </StackPanel>
-          </Border>
+          <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2).
+               At the minimum window height the reason scrolls rather than being clipped. -->
+          <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding IsEmptyRung}">
+            <Border Padding="12" CornerRadius="8" VerticalAlignment="Top"
+                    Background="{DynamicResource Surface.Elevated}">
+              <StackPanel Spacing="6">
+                <TextBlock Text="NOTHING AT THIS LEVEL" Classes="eyebrow" />
+                <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                           AutomationProperties.Name="Why this level has no rows" />
+                <!-- Evidence is one step from every rung; an empty rung offers that step where the reason is read. -->
+                <Button Content="Show source records (E)" Click="ShowSourceRecords"
+                        IsVisible="{Binding OffersEvidenceStep}"
+                        AutomationProperties.Name="Show this rung's source records" />
+              </StackPanel>
+            </Border>
+          </ScrollViewer>
+
+          <Button Grid.Row="1" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                  Content="Load more records (M)" Click="LoadMoreRecords"
+                  IsVisible="{Binding CanLoadMoreEvidence}"
+                  AutomationProperties.Name="Load the next page of source records" />
         </Grid>
 
         <Border Grid.Row="3" Margin="0,12,0,0" Padding="10" CornerRadius="8"
@@ -113,7 +136,7 @@
                      TextTrimming="CharacterEllipsis" />
           <!-- The breadcrumb states the position at every rung, and each crumb returns to it (section 3.2).
                It scrolls rather than pushing the header wider, so a deep rung cannot overrun the title. -->
-          <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+          <ScrollViewer x:Name="CrumbScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
           <ListBox x:Name="CrumbList"
                    ItemsSource="{Binding Crumbs}"
                    SelectedItem="{Binding SelectedCrumb, Mode=TwoWay}"
@@ -252,50 +275,77 @@
     <Border Grid.Column="2" Grid.Row="2" Margin="0,16,16,16" Padding="16" CornerRadius="10"
             Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+      <Grid RowDefinitions="Auto,*,Auto">
         <TextBlock Text="INSPECTOR" Classes="eyebrow" />
-        <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="4">
-          <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding SelectionSubtitle}" Classes="muted" TextWrapping="Wrap" />
-        </StackPanel>
-        <Border Grid.Row="2" Margin="0,18,0,0" Padding="12" CornerRadius="8"
-                Background="{DynamicResource Surface.Elevated}">
-          <StackPanel Spacing="10">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-              <TextBlock Text="Time scope" Classes="muted" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1" Text="{Binding IntervalLabel}" HorizontalAlignment="Right"
-                         TextWrapping="Wrap" TextAlignment="Right" />
-            </Grid>
-            <StackPanel Spacing="3">
-              <TextBlock Text="Selected process" Classes="muted" />
-              <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
+        <ScrollViewer Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="0">
+            <!-- At the evidence rung the inspector describes the selected record in words, with its original one step on. -->
+            <StackPanel Spacing="8" Margin="0,0,0,18" IsVisible="{Binding IsEvidenceRung}">
+              <TextBlock Text="SOURCE RECORD" Classes="eyebrow" />
+              <TextBlock Text="{Binding SelectedEvidenceTitle}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding EvidenceScopeText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                         AutomationProperties.Name="What these records are" />
+              <ItemsControl ItemsSource="{Binding SelectedEvidenceFields}"
+                            AutomationProperties.Name="Facts of the selected record">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="local:EvidenceField">
+                    <StackPanel Margin="0,0,0,7" Spacing="1"
+                                AutomationProperties.Name="{Binding Label}">
+                      <TextBlock Text="{Binding Label}" Classes="muted" FontSize="10" />
+                      <TextBlock Text="{Binding Value}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="Open original record (Enter)" Click="OpenOriginalRecord"
+                      IsEnabled="{Binding HasSelectedEvidence}"
+                      AutomationProperties.Name="Open the selected record's original journal entry" />
             </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Text="{Binding LevelBadge}" Classes="muted" />
-              <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"
-                         AutomationProperties.Name="What the current level accounts for" />
+            <StackPanel Spacing="4" IsVisible="{Binding !IsEvidenceRung}">
+              <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding SelectionSubtitle}" Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+            <Border Margin="0,18,0,0" Padding="12" CornerRadius="8"
+                    Background="{DynamicResource Surface.Elevated}">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                  <TextBlock Text="Time scope" Classes="muted" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding IntervalLabel}" HorizontalAlignment="Right"
+                             TextWrapping="Wrap" TextAlignment="Right" />
+                </Grid>
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Selected process" Classes="muted" />
+                  <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Spacing="3">
+                  <TextBlock Text="{Binding LevelBadge}" Classes="muted" />
+                  <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"
+                             AutomationProperties.Name="What the current level accounts for" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+            <StackPanel Margin="0,20,0,0" Spacing="8">
+              <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
+              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
+                      BorderBrush="{DynamicResource Family.Alpc.Ink}" BorderThickness="1">
+                <TextBlock Text="● Direct transport evidence" Foreground="{DynamicResource Family.Alpc.Ink}" />
+              </Border>
+              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
+                      BorderBrush="{DynamicResource Family.RemoteCall.Ink}" BorderThickness="1,1,1,1">
+                <TextBlock Text="◆ Candidate relationships stay qualified"
+                           Foreground="{DynamicResource Family.RemoteCall.Ink}" TextWrapping="Wrap" />
+              </Border>
+              <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
+                      Click="ShowSourceRecords"
+                      AutomationProperties.Name="Show this rung's source records in the ladder" />
+              <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
+                      Click="BrowseChannels"
+                      AutomationProperties.Name="Browse all admitted paired TCP channels" />
             </StackPanel>
           </StackPanel>
-        </Border>
-        <StackPanel Grid.Row="3" Margin="0,20,0,0" Spacing="8">
-          <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
-          <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
-                  BorderBrush="{DynamicResource Family.Alpc.Ink}" BorderThickness="1">
-            <TextBlock Text="● Direct transport evidence" Foreground="{DynamicResource Family.Alpc.Ink}" />
-          </Border>
-          <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
-                  BorderBrush="{DynamicResource Family.RemoteCall.Ink}" BorderThickness="1,1,1,1">
-            <TextBlock Text="◆ Candidate relationships stay qualified"
-                       Foreground="{DynamicResource Family.RemoteCall.Ink}" TextWrapping="Wrap" />
-          </Border>
-          <Button x:Name="InspectEvidenceButton" Content="Inspect source rows" IsEnabled="False"
-                  Click="InspectSourceRows"
-                  AutomationProperties.Name="Inspect a bounded page of source observation rows" />
-          <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
-                  Click="BrowseChannels"
-                  AutomationProperties.Name="Browse all admitted paired TCP channels" />
-        </StackPanel>
-        <TextBlock Grid.Row="4" VerticalAlignment="Bottom" Classes="muted" FontSize="11" TextWrapping="Wrap"
+        </ScrollViewer>
+        <TextBlock Grid.Row="2" Margin="0,12,0,0" Classes="muted" FontSize="11" TextWrapping="Wrap"
                    Text="{Binding WorkspaceDisclosure}" />
       </Grid>
     </Border>

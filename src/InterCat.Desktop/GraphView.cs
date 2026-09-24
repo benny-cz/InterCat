@@ -55,10 +55,18 @@ public sealed class GraphView : Control
 
         IReadOnlyList<ProcessNode> nodes = viewModel.Snapshot.Processes;
         var positions = nodes.ToDictionary(node => node.Id, node => Position(node, viewModel));
+        string? highlighted = viewModel.HighlightedEdgeKey;
         foreach (CommunicationEdge edge in viewModel.Snapshot.Edges)
         {
             Point source = positions[edge.SourceId];
             Point target = positions[edge.TargetId];
+            if (edge.Key == highlighted)
+            {
+                // The edge that contributes to the rung is haloed in the accent under its own stroke, so its hue,
+                // thickness and dash keep their meanings (section 3.2 L3 and L5, section 6.6).
+                context.DrawLine(new Pen(SelectedBrush, 9) { LineCap = PenLineCap.Round }, source, target);
+            }
+
             // Hue states the mechanism, thickness states magnitude and the dash pattern states evidence
             // quality. No channel carries two meanings, and none of them is colour alone (section 6.6, R14).
             SolidColorBrush brush = MechanismBrush(edge.Mechanism);

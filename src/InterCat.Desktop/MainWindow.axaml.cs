@@ -19,9 +19,16 @@ public sealed partial class MainWindow : Window, IDisposable
     private long displayedGeneration = -1;
     private string? currentSessionPath;
     private bool openingSession;
+    private bool openingRecord;
     private bool closed;
     private bool closingPrompt;
     private bool closeAfterCapture;
+
+    /// <summary>
+    /// The newest published generation of the displayed session, kept aside while the user inspects evidence so rows
+    /// and selection stay still. It is applied on F5 or when the user leaves the evidence rung.
+    /// </summary>
+    private CaptureUiUpdate? heldUpdate;
 
     public MainWindow() : this(new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace"))
     {
@@ -35,6 +42,17 @@ public sealed partial class MainWindow : Window, IDisposable
         // Window shortcuts are handled while the key tunnels down, because a focused list would otherwise
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
+
+        // The current rung is the last crumb. When a descent or a long channel name widens the trail, it scrolls so
+        // that crumb stays in view instead of being clipped behind the level badge (section 3.2, position stated).
+        CrumbScroller.ScrollChanged += (_, change) =>
+        {
+            if (change.ExtentDelta.X != 0 || change.ViewportDelta.X != 0)
+            {
+                // ScrollToEnd means bottom-left in Avalonia; the trail's end is its right edge.
+                CrumbScroller.Offset = new(Math.Max(0, CrumbScroller.Extent.Width - CrumbScroller.Viewport.Width), 0);
+            }
+        };
         workspace = viewModel;
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
@@ -72,10 +90,25 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = true;
                 break;
             case Key.Enter:
-                e.Handled = viewModel.Descend();
+                if (viewModel.HasSelectedEvidence)
+                {
+                    OpenOriginalRecord();
+                    e.Handled = true;
+                }
+                else
+                {
+                    e.Handled = viewModel.Descend();
+                }
                 break;
             case Key.E:
                 e.Handled = viewModel.ShowEvidence();
+                break;
+            case Key.M when viewModel.CanLoadMoreEvidence:
+                _ = viewModel.LoadMoreEvidenceAsync();
+                e.Handled = true;
+                break;
+            case Key.F5:
+                e.Handled = ApplyHeldUpdate();
                 break;
             case Key.Escape:
                 _ = viewModel.Ascend();
@@ -98,7 +131,16 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void DescendFromRow(object? sender, TappedEventArgs eventArgs)
     {
-        if (DataContext is WorkspaceViewModel viewModel)
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.HasSelectedEvidence)
+        {
+            OpenOriginalRecord();
+        }
+        else
         {
             _ = viewModel.Descend();
         }
@@ -122,25 +164,36 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void StartExploring(object? sender, RoutedEventArgs eventArgs) => BeginCapture();
 
-    private async void InspectSourceRows(object? sender, RoutedEventArgs eventArgs)
+    /// <summary>The pointer equivalent of E: one step to the current rung's source records (section 3.2).</summary>
+    private void ShowSourceRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ShowEvidence();
+
+    private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreEvidenceAsync();
+
+    private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
+
+    private void UpdateHeldGeneration(object? sender, RoutedEventArgs eventArgs) => ApplyHeldUpdate();
+
+    /// <summary>
+    /// Opens the selected record's original journal envelope. It is found by its stable raw identity, so it stays
+    /// reachable while a live capture publishes newer generations.
+    /// </summary>
+    private async void OpenOriginalRecord()
     {
-        if (currentSessionPath is null || displayedSessionId is not { } sessionId
-            || displayedGeneration < 1) return;
-        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        var (available, channelKey, ownerProcess) = EvidenceScope(navigation);
-        if (!available) return;
-        NavigationState current = navigation.Breadcrumb[^1];
-        TimeRange? interval = navigation.SelectedInterval
-            ?? (current.Viewport == workspace.Snapshot.Extent ? null : current.Viewport);
-        using var inspector = new SessionEvidenceWindow(currentSessionPath, sessionId,
-            displayedGeneration, channelKey, ownerProcess, interval);
+        if (openingRecord || workspace.SelectedEvidence is not { } record || currentSessionPath is null
+            || displayedSessionId is not { } sessionId) return;
+        openingRecord = true;
         try
         {
-            await inspector.ShowDialog(this);
+            using var window = new SessionRawRecordWindow(currentSessionPath, sessionId, record);
+            await window.ShowDialog(this);
         }
         catch (InvalidOperationException exception)
         {
-            if (!closed) CaptureDetail.Text = "Could not open the source-row inspector: " + exception.Message;
+            if (!closed) CaptureDetail.Text = "Could not open the original record: " + exception.Message;
+        }
+        finally
+        {
+            openingRecord = false;
         }
     }
 
@@ -151,14 +204,15 @@ public sealed partial class MainWindow : Window, IDisposable
         WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
         var (available, processScope) = ChannelDiscoveryScope(navigation);
         if (!available) return;
-        NavigationState current = navigation.Breadcrumb[^1];
-        TimeRange? evidenceInterval = navigation.SelectedInterval
-            ?? (current.Viewport == workspace.Snapshot.Extent ? null : current.Viewport);
-        using var browser = new SessionChannelWindow(currentSessionPath, sessionId,
-            displayedGeneration, processScope, evidenceInterval);
+        using var browser = new SessionChannelWindow(currentSessionPath, sessionId, displayedGeneration, processScope);
         try
         {
-            await browser.ShowDialog(this);
+            // A chosen channel opens at the evidence rung of this workspace, so its records sit in the ladder with
+            // the breadcrumb, filter bar and Esc back to where the user was.
+            if (await browser.ShowDialog<Channel?>(this) is { } chosen && !closed)
+            {
+                _ = workspace.ShowChannelEvidence(chosen);
+            }
         }
         catch (InvalidOperationException exception)
         {
@@ -193,6 +247,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 SessionOverviewProjector.Project(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path))));
             if (closed) return;
             captureRunId++;
+            heldUpdate = null;
             CaptureSummary.Text = string.Empty;
             ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open",
                 "This is a published generation. The graph contains admitted paired TCP only; "
@@ -229,6 +284,8 @@ public sealed partial class MainWindow : Window, IDisposable
         displayedSessionId = null;
         displayedGeneration = -1;
         currentSessionPath = null;
+        heldUpdate = null;
+        UpdateHeldBanner();
         UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
         CaptureSessionPath.Text = string.Empty;
@@ -256,7 +313,11 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         });
 
-    private void ApplyCaptureUpdate(CaptureUiUpdate update, bool forceOverview = false)
+    /// <summary>
+    /// Shows one capture or open-session update. A newer generation of the displayed session replaces the workspace,
+    /// except while the user reads evidence, when it is held and offered instead.
+    /// </summary>
+    internal void ApplyCaptureUpdate(CaptureUiUpdate update, bool forceOverview = false)
     {
         CaptureStatus.Text = update.Headline;
         CaptureDetail.Text = update.Detail;
@@ -273,25 +334,66 @@ public sealed partial class MainWindow : Window, IDisposable
             && (forceOverview || overview.SessionId != displayedSessionId
                 || overview.Generation > displayedGeneration))
         {
-            WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
-                ? workspace.CaptureNavigation() : null;
-            displayedSessionId = overview.SessionId;
-            displayedGeneration = overview.Generation;
-            currentSessionPath = update.SessionPath;
-            var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
-            if (savedNavigation is not null
-                && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
+            if (!forceOverview && overview.SessionId == displayedSessionId && workspace.HoldsGeneration)
             {
-                CaptureDetail.Text += " " + navigationNotice;
+                // The user is reading records of this generation: keep them still and offer the newer one.
+                heldUpdate = update;
+                UpdateHeldBanner();
+                return;
             }
-            workspace.PropertyChanged -= OnWorkspaceChanged;
-            workspace.Dispose();
-            workspace = replacement;
-            DataContext = workspace;
-            UpdateEvidenceAction();
-            GraphSurface.InvalidateVisual();
-            TimelineSurface.InvalidateVisual();
+
+            ReplaceWorkspace(update, overview, forceOverview);
         }
+    }
+
+    private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview)
+    {
+        WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
+            ? workspace.CaptureNavigation() : null;
+        heldUpdate = null;
+        displayedSessionId = overview.SessionId;
+        displayedGeneration = overview.Generation;
+        currentSessionPath = update.SessionPath ?? currentSessionPath;
+        SessionEvidenceSource? evidence = currentSessionPath is { } path
+            ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
+            : null;
+        var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence);
+        if (savedNavigation is not null
+            && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
+        {
+            CaptureDetail.Text += " " + navigationNotice;
+        }
+        workspace.PropertyChanged -= OnWorkspaceChanged;
+        workspace.Dispose();
+        workspace = replacement;
+        workspace.PropertyChanged += OnWorkspaceChanged;
+        DataContext = workspace;
+        UpdateHeldBanner();
+        UpdateEvidenceAction();
+        GraphSurface.InvalidateVisual();
+        TimelineSurface.InvalidateVisual();
+    }
+
+    /// <summary>Applies the generation held while evidence was inspected. False when none is waiting.</summary>
+    private bool ApplyHeldUpdate()
+    {
+        if (heldUpdate is not { Overview: { } overview } pending || closed)
+        {
+            return false;
+        }
+
+        ReplaceWorkspace(pending, overview, forceOverview: false);
+        return true;
+    }
+
+    private void UpdateHeldBanner()
+    {
+        bool held = heldUpdate?.Overview is not null;
+        HeldBanner.IsVisible = held;
+        HeldBannerText.Text = held
+            ? $"Showing generation {displayedGeneration:N0} while you read records. Generation "
+                + $"{heldUpdate!.Overview!.Generation:N0} is published; recording continues."
+            : string.Empty;
     }
 
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
@@ -299,41 +401,33 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration) && !workspace.HoldsGeneration
+            && heldUpdate is not null)
+        {
+            // Leaving the evidence rung releases the hold; apply after this change has finished notifying.
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!workspace.HoldsGeneration) _ = ApplyHeldUpdate();
+            });
+        }
     }
 
     private void UpdateEvidenceAction()
     {
         WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        var (available, channelKey, ownerProcess) = EvidenceScope(navigation);
         var (channelsAvailable, channelProcess) = ChannelDiscoveryScope(navigation);
-        InspectEvidenceButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
-            && available;
-        BrowseChannelsButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
-            && channelsAvailable;
-        ToolTip.SetTip(InspectEvidenceButton, InspectEvidenceButton.IsEnabled
-            ? (channelKey is not null ? "Read this paired TCP channel's normalized rows."
-                : ownerProcess is not null ? "Read normalized rows canonically owned by this process instance."
-                : "Read whole-session normalized rows.") + " No payload bytes or operation pairing."
-            : "Open a session, select a process at Machine, or descend to Process or Channel.");
+        bool session = currentSessionPath is not null && displayedGeneration > 0;
+        ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
+        BrowseChannelsButton.IsEnabled = session && channelsAvailable && !workspace.IsEvidenceRung;
+        ToolTip.SetTip(ShowRecordsButton, ShowRecordsButton.IsEnabled
+            ? "Open this rung's admitted source records in the ladder. Esc comes back here."
+            : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
+            : "Open or record a session first.");
         ToolTip.SetTip(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
             ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
                 : "Browse admitted paired TCP channels involving this process instance.")
-                + " Discovery covers all session time; a selected time brush applies when inspecting source rows."
+                + " Choosing one opens its source records; a time brush applies to them."
             : "Open a session, or return to Machine or Process to browse paired channels.");
-    }
-
-    private static (bool Available, string? ChannelKey, ProcessInstanceId? OwnerProcess) EvidenceScope(
-        WorkspaceNavigationMemento navigation)
-    {
-        string? channel = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Channel)
-            ?.Focus?.Key;
-        if (channel is not null) return (true, channel, null);
-        NavigationState current = navigation.Breadcrumb[^1];
-        if (current.Level == DetailLevel.Machine) return (true, null, navigation.SelectedProcess);
-        if (current.Level == DetailLevel.ProcessInstance
-            && Guid.TryParse(current.Focus?.Key, out Guid id) && id != Guid.Empty)
-            return (true, null, new ProcessInstanceId(id));
-        return (false, null, null);
     }
 
     private static (bool Available, ProcessInstanceId? ProcessScope) ChannelDiscoveryScope(

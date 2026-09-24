@@ -21,7 +21,10 @@ public sealed record RungRow(
     string DescendsTo,
     LadderRow Source)
 {
-    public string AccessibleName => string.Create(
+    /// <summary>The sentence a screen reader hears when the ranked-row wording does not fit, as for a source record.</summary>
+    public string? SpokenName { get; init; }
+
+    public string AccessibleName => SpokenName ?? string.Create(
         CultureInfo.CurrentCulture,
         $"{Label}, {Detail}, {Observations} observations, {KnownBytes}, {Mechanism}, coverage {Coverage}. "
         + $"Press Enter to open the {DescendsTo} level.");

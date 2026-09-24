@@ -78,9 +78,51 @@ public sealed class TimelineView : Control
             }
         }
 
+        DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawText(context, $"{visible.StartTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(left, bottom + 7));
         DrawText(context, $"{visible.EndTicks / (decimal)WorkspaceTime.TicksPerSecond:N1}s", new(right - 38, bottom + 7));
         DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
+    }
+
+    /// <summary>
+    /// At the evidence rung each loaded record is an individual mark on a strip above the axis, and the selected one
+    /// is drawn full height in the accent, so the list and the time axis point at the same record (section 3.2 L5).
+    /// Marks are records, not a rate: an empty stretch between them says nothing about records not yet loaded.
+    /// </summary>
+    private static void DrawEvidenceMarks(DrawingContext context, WorkspaceViewModel viewModel, TimeRange visible,
+        double left, double plotWidth, double top, double bottom)
+    {
+        IReadOnlyList<long> marks = viewModel.EvidenceMarkTicks;
+        if (marks.Count == 0)
+        {
+            return;
+        }
+
+        var pen = new Pen(TextBrush, 1);
+        double markTop = bottom - 10;
+        double lastX = double.NaN;
+        foreach (long tick in marks)
+        {
+            if (!visible.Contains(tick))
+            {
+                continue;
+            }
+
+            double x = left + ViewportMath.PixelAtTick(visible, tick, plotWidth);
+            if (Math.Abs(x - lastX) < 1)
+            {
+                continue;
+            }
+
+            context.DrawLine(pen, new(x, markTop), new(x, bottom));
+            lastX = x;
+        }
+
+        if (viewModel.SelectedEvidenceTick is { } selected && visible.Contains(selected))
+        {
+            double x = left + ViewportMath.PixelAtTick(visible, selected, plotWidth);
+            context.DrawLine(new Pen(SelectedBrush, 2), new(x, top), new(x, bottom));
+        }
     }
 
     /// <summary>

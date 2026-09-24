@@ -1,14 +1,56 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 95
+Plan revision: 96
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: evidence paging that survives live publication
+## Latest slice: the evidence rung inside the Desktop ladder
+
+L5 is now a rung of the Desktop ladder for published sessions, replacing the separate source-row dialog. `E` from any
+rung (or the inspector's "Show source records (E)") opens it. Its scope is the visible filter the step adds, which now
+carries the scoped entity's stable key and rung. `EvidenceScopes.Resolve` reads the latest entity filter: a channel,
+a process instance, a group's member instances, or the whole session, narrowed by a deliberate time brush. Removing
+that filter widens the scope to the next one out. A scope the generation cannot read (a missing channel, an empty
+group) is stated, never widened. At Machine a selected process is the scope, and a channel chosen in "Browse paired
+channels" opens here too; the browser no longer shows rows itself, and it restarts its list instead of refusing when a
+live capture publishes.
+
+Rows load off the UI thread 100 at a time and read as "TCP send · 64 B" over "+4.750045 s · PID 100". `M` or a button
+loads more. Selecting a row fills the inspector with When, Owner, Endpoints, Size, Source (provider name), Quality and
+Record; `Enter`, a double-click or the button opens the original journal envelope by stable identity. Loaded records are
+individual marks on the timeline with the selection full height, and the scope's channel edge is haloed in the graph,
+at L3 as well.
+
+While the user is at L5 the window holds its generation. A newer live publication shows a banner ("Showing generation N
+while you read records…") and is applied on F5, with L5, scope and selection replayed, or automatically on leaving the
+rung. "Load more" meanwhile continues into the newer generation after the last row. A TCP channel rung now says TCP
+records are completed transfers, so there is no operation rung, gives its own record count instead of "0 observations",
+and offers the evidence step; an empty Process rung offers it too. The breadcrumb keeps its current crumb in view.
+
+Two fixes came with it. After the first live replacement, MainWindow had never re-subscribed to the new workspace's
+changes, so button states went stale on navigation. The inspector also named the focused process above a selected
+record owned by the other end; it now hides that heading at L5.
+
+Verification: in-process Release on the real 94,694-record session, the overview projected in 904 ms cold. The first L5
+page took 167 ms and the next 129 ms; the first channel page took 148 ms, reusing the overview's cached derivation; the
+original record took 89 ms. Headless frames at 1080×700 and 1456×939 were rendered and reviewed. 811 tests pass in
+Debug and Release (+14): scope resolution and widening, whole-session paging with hold, channel-to-process-to-session
+widening, selected-process and channel-list scopes, replay and reselection across generations with continuation, an
+unreadable scope, and headless E/M/Escape/F5 with the held banner. Plan revision 96, which also records that TCP's
+missing L4 is met by the evidence step rather than synthesized operations.
+
+Not done: L4 for any mechanism, the real Desktop/UAC run and the §3.1 first-feedback budget, and group scope in the
+CLI beyond repeated `--owner-process`. The capture card still takes most of the rail at the minimum window height.
+
+Next: measure §3.1's first useful feedback and §6.8's latency windows from a real Explore start (the shell here is
+elevated, so the broker launches without a prompt, which does not qualify UAC). Then compact the rail's capture card
+and continue with the remaining M2 exit-gate items: minimap, record/view pause controls, and export.
+
+## Previous slice: evidence paging that survives live publication
 
 Evidence pages now continue by row, not by position. A v2 cursor names the last row returned, in `segment-v1` §4's
 canonical order, plus what the query means: session, captures, derivations, policy, relation and binding rules, channel,

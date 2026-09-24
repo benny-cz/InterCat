@@ -9,8 +9,9 @@ using InterCat.Storage;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// A bounded, generation-bound channel browser. Discovery covers the full admitted paired-TCP relation set,
-/// including sessions whose overview intentionally omits its L3 projection.
+/// A bounded channel browser. Discovery covers the full admitted paired-TCP relation set, including sessions whose
+/// overview intentionally omits its L3 projection. Choosing a channel closes the browser with that channel, and the
+/// workspace descends to its source records; the browser itself shows no rows.
 /// </summary>
 internal sealed class SessionChannelWindow : Window, IDisposable
 {
@@ -18,13 +19,12 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     private readonly Guid expectedSessionId;
     private readonly long expectedGeneration;
     private readonly ProcessInstanceId? processScope;
-    private readonly TimeRange? evidenceInterval;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock caveat = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly ListBox rows = new();
     private readonly TextBlock selectedDetail = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly Button inspect = new() { Content = "Inspect selected source rows", IsEnabled = false };
+    private readonly Button inspect = new() { Content = "Show this channel's source records", IsEnabled = false };
     private readonly Button next = new() { Content = "Next 100 channels", IsEnabled = false };
     private IReadOnlyList<Channel> currentChannels = [];
     private string? nextCursor;
@@ -33,13 +33,12 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     private bool disposed;
 
     public SessionChannelWindow(string path, Guid expectedSessionId, long expectedGeneration,
-        ProcessInstanceId? processScope, TimeRange? evidenceInterval)
+        ProcessInstanceId? processScope)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.processScope = processScope;
-        this.evidenceInterval = evidenceInterval;
         Title = "InterCat · Paired TCP channels";
         Width = 880;
         Height = 650;
@@ -52,7 +51,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             Text = (processScope is { } process
                 ? $"Channels involving process instance {process}"
                 : "All admitted paired TCP channels")
-                + " · all session times (the current time brush does not filter channel discovery)",
+                + " · all session times (a time brush applies to the source records you open, not to this list)",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold,
         };
@@ -64,7 +63,8 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         {
             if (nextCursor is { } cursor) _ = LoadPageAsync(cursor);
         };
-        inspect.Click += InspectSelected;
+        inspect.Click += (_, _) => ChooseSelected();
+        rows.DoubleTapped += (_, _) => ChooseSelected();
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
 
@@ -124,11 +124,20 @@ internal sealed class SessionChannelWindow : Window, IDisposable
                 pageSize: SessionChannelQuery.DefaultPageSize, cursor: cursor,
                 cancellationToken: token), token);
             if (closed) return;
-            if (page.RestartRequired || page.SessionId != expectedSessionId
-                || page.Generation != expectedGeneration)
+            if (page.SessionId != expectedSessionId || page.Generation < expectedGeneration)
             {
-                status.Text = "The session has published a newer generation or the channel scope changed. "
-                    + "Close this browser and reopen it from the current workspace; no page was shifted.";
+                status.Text = "This directory no longer holds the generation the workspace shows. Close this "
+                    + "browser and reopen it from the current workspace; no page was shifted.";
+                return;
+            }
+
+            if (page.RestartRequired)
+            {
+                // A live capture published between two pages. Channel keys are stable, but a page position is
+                // not, so the list starts again rather than shifting; the user is told why.
+                loading = false;
+                await LoadPageAsync(null);
+                if (!closed) status.Text += " · the list restarted because the session published a newer generation";
                 return;
             }
 
@@ -173,25 +182,11 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             : string.Empty;
     }
 
-    private async void InspectSelected(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
+    /// <summary>The channel the user chose, which the workspace opens at its evidence rung.</summary>
+    private void ChooseSelected()
     {
         int index = rows.SelectedIndex;
         if (loading || index < 0 || index >= currentChannels.Count) return;
-        string channelKey = currentChannels[index].Key;
-        using var inspector = new SessionEvidenceWindow(path, expectedSessionId,
-            expectedGeneration, channelKey, null, evidenceInterval);
-        inspect.IsEnabled = false;
-        try
-        {
-            await inspector.ShowDialog(this);
-        }
-        catch (InvalidOperationException exception)
-        {
-            if (!closed) status.Text = "Could not open source rows: " + exception.Message;
-        }
-        finally
-        {
-            if (!closed) UpdateSelection();
-        }
+        Close(currentChannels[index]);
     }
 }

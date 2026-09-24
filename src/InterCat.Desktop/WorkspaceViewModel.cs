@@ -6,8 +6,12 @@ using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Desktop;
+
+/// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
+public sealed record EvidenceField(string Label, string Value);
 
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 public sealed record WorkspaceNavigationMemento(
@@ -35,6 +39,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private readonly string workspaceDisclosure;
     private readonly bool realOverview;
     private readonly bool emptyWorkspace;
+    private readonly SessionEvidenceSource? evidenceSource;
+    private EvidenceList? evidence;
+    private SessionEvidenceRecord? selectedEvidence;
+    private string? pendingEvidenceKey;
+    private IReadOnlyList<RungRow> evidenceRows = [];
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -44,20 +53,21 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// Presents one immutable workspace. The graph identity must name the same data revision as the snapshot,
     /// so an off-thread layout from an older revision can never replace its coordinates.
     /// </summary>
-    public WorkspaceViewModel(WorkspaceSnapshot snapshot, string graphIdentity)
+    public WorkspaceViewModel(WorkspaceSnapshot snapshot, string graphIdentity, SessionEvidenceSource? evidenceSource = null)
     {
         Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
         realOverview = graphIdentity.StartsWith("session:", StringComparison.Ordinal);
         emptyWorkspace = graphIdentity == "empty-workspace";
+        this.evidenceSource = realOverview ? evidenceSource : null;
         workspaceDisclosure = graphIdentity == "synthetic-tour-v1"
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : "Graph and channel rungs show admitted paired TCP only. Timeline includes other observed rows; "
-                    + "the L4-L5 ladder is not yet projected. The source-row inspector can verify an original "
-                    + "retained journal record with a separately revealed bounded byte preview; read-only icat "
-                    + "channels/evidence queries remain available without implying operation pairing.";
+                : "Graph and channel rungs show admitted paired TCP only; the timeline includes every observed row. "
+                    + "TCP and UDP records are completed transfers, so this session has no operation rung: source "
+                    + "records are one step (E) from every rung, and Enter on a record opens its original journal "
+                    + "entry. Byte previews stay hidden until requested.";
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -128,7 +138,15 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             }
 
             LadderDescent? descent = null;
-            if (target.Level == DetailLevel.Evidence
+            if (target.Level == DetailLevel.Evidence && target.Focus is { } evidenceFocus
+                && target.Filters.LastOrDefault(filter => filter.Field == "scope") is { Level: { } scopeLevel } scopeFilter)
+            {
+                // An evidence rung is replayed with the exact scope it showed, including one reached from a channel
+                // the discovery list chose; the reader then says if that scope is gone from this generation.
+                descent = LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                    new(scopeLevel, evidenceFocus.Key, evidenceFocus.Label), scopeFilter.Reason);
+            }
+            else if (target.Level == DetailLevel.Evidence
                 && (previous.Focus is null && target.Focus?.Key == "machine"
                     || previous.Focus is { } focus && target.Focus?.Key == focus.Key))
             {
@@ -164,6 +182,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         SelectedRung = ladder.Depth == old.Length - 1
             ? RungRows.FirstOrDefault(row => row.Key == saved.SelectedRungKey)
             : null;
+        if (IsEvidenceRung && ladder.Depth == old.Length - 1)
+        {
+            // Evidence rows arrive after the first page loads; the selection follows them if the row is still there.
+            pendingEvidenceKey = saved.SelectedRungKey;
+        }
         ProcessNode? process = Snapshot.Processes.FirstOrDefault(node => node.Id == saved.SelectedProcess);
         SelectedProcess = process;
         if (saved.SelectedProcess is not null && process is null)
@@ -289,6 +312,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         disposed = true;
+        CancelEvidence();
         graphLayout.Dispose();
     }
 
@@ -301,8 +325,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
     public IReadOnlyList<IntervalRow> Intervals { get; }
 
-    /// <summary>The ranked table of the rung the user is on. The same gesture works at every rung.</summary>
-    public IReadOnlyList<RungRow> RungRows => LadderRowBuilder.Rows(view, ThemeMode.Dark);
+    /// <summary>
+    /// The ranked table of the rung the user is on. The same gesture works at every rung. At a published session's
+    /// evidence rung it lists the admitted source records of the rung's scope, in reading order, as they load.
+    /// </summary>
+    public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows : LadderRowBuilder.Rows(view, ThemeMode.Dark);
 
     /// <summary>The breadcrumb. It always names the level and the selection at each rung (section 3.2).</summary>
     public IReadOnlyList<CrumbRow> Crumbs => LadderRowBuilder.Crumbs(ladder);
@@ -317,27 +344,56 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         CultureInfo.CurrentCulture,
         $"L{(int)ladder.Current.Level} · {NavigationState.Name(ladder.Current.Level).ToUpperInvariant()}");
 
-    public string LevelSummary => LadderRowBuilder.DescribeTotal(view)
-        + (realOverview ? " · admitted paired TCP only; not all session observations" : string.Empty);
+    public string LevelSummary => IsEvidenceRung
+        ? (evidence?.Scope.Description ?? string.Empty) + " · " + EvidenceStatus
+        : FocusedRealChannel is { } channel
+            ? string.Create(CultureInfo.CurrentCulture,
+                $"{channel.ObservationCount:N0} observed records at this channel's two ends · bytes unknown · no operation rung; E shows the records")
+            : LadderRowBuilder.DescribeTotal(view)
+                + (realOverview ? " · admitted paired TCP only; not all session observations" : string.Empty);
 
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
-    public string LevelSummaryShort => LadderRowBuilder.DescribeTotalShort(view)
-        + (realOverview ? " · paired TCP only" : string.Empty);
+    public string LevelSummaryShort => IsEvidenceRung
+        ? EvidenceStatus
+        : FocusedRealChannel is { } channel
+            ? string.Create(CultureInfo.CurrentCulture, $"{channel.ObservationCount:N0} records on this channel · no operation rung")
+            : LadderRowBuilder.DescribeTotalShort(view) + (realOverview ? " · paired TCP only" : string.Empty);
+
+    /// <summary>
+    /// The channel a published session's channel rung is focused on. Its rung lists no operations, so its own record
+    /// count, not a sum of absent rows, is what the rung states.
+    /// </summary>
+    private Channel? FocusedRealChannel => realOverview && ladder.Current.Level == DetailLevel.Channel
+        && ladder.Current.Focus is { } focus
+            ? Snapshot.Channels.FirstOrDefault(channel => channel.Key == focus.Key)
+            : null;
 
     /// <summary>Why this rung is empty, naming the source that would supply it. Empty when it has rows.</summary>
     public string EmptyReason
     {
         get
         {
+            if (IsEvidenceRung)
+            {
+                if (evidence is null || evidence.Records.Count > 0) return string.Empty;
+                return evidence.Problem
+                    ?? (evidence.Loading
+                        ? "Reading this scope's source records…"
+                        : "No admitted source record is in this scope. That is not proof of inactivity: coverage "
+                            + "is stated in the health strip, and a time brush or a removed filter changes the scope.");
+            }
+
             if (view.EmptyReason is null) return string.Empty;
             if (emptyWorkspace) return "No capture is running. Start exploring to publish a live session.";
-            if (realOverview && ladder.Current.Level >= DetailLevel.Channel)
+            if (realOverview && ladder.Current.Level is DetailLevel.Channel or DetailLevel.Operation)
             {
-                return "This ladder has not projected completion-paired operations or source-record rows yet. "
-                    + "Return to the machine, process, or channel context, then choose Inspect "
-                    + "source rows for a bounded page of "
-                    + "admitted normalized observations and an exact retained journal-record drill-down. "
-                    + "The saved session also supports icat evidence --json.";
+                return "TCP records are completed transfers, not operations with a start and an end, so a channel "
+                    + "has no operation rung. Its source records are one step away.";
+            }
+
+            if (realOverview && ladder.Current.Level == DetailLevel.Evidence)
+            {
+                return "Source records need the session directory this workspace was opened from.";
             }
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)
@@ -345,15 +401,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return Snapshot.ChannelProjectionProblem is { } problem
                     ? problem + " Choose Browse paired channels here to page this process's admitted channels "
                         + "and inspect a selected channel's source rows."
-                    : "No admitted paired TCP channel belongs to this process in this generation. "
-                        + "One-sided, ambiguous and other-mechanism observations may still exist in the timeline.";
+                    : "No admitted paired TCP channel belongs to this process in this generation. Its one-sided, "
+                        + "ambiguous and other-mechanism records are still one step away.";
             }
 
             return view.EmptyReason;
         }
     }
 
-    public bool IsEmptyRung => view.EmptyReason is not null;
+    public bool IsEmptyRung => IsEvidenceRung ? evidenceRows.Count == 0 : view.EmptyReason is not null;
+
+    /// <summary>Whether the empty rung can offer its one-step path to evidence as a button beside the reason.</summary>
+    public bool OffersEvidenceStep => IsEmptyRung && realOverview && evidenceSource is not null
+        && ladder.Current.Level is DetailLevel.ProcessInstance or DetailLevel.Channel or DetailLevel.Operation;
 
     public bool CanAscend => ladder.CanAscend;
 
@@ -361,9 +421,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         ? $"Back to {ladder.Breadcrumb[^2].Crumb} (Esc)"
         : "Clear selection (Esc)";
 
-    public string DescendHint => ladder.Current.Level == DetailLevel.Evidence
-        ? "Evidence is the last rung. Esc returns to where you were."
-        : "Enter opens the selected row · E jumps straight to evidence · Esc goes back";
+    public string DescendHint => IsEvidenceRung
+        ? "Enter opens the original record · M loads more · Esc goes back"
+        : ladder.Current.Level == DetailLevel.Evidence
+            ? "Evidence is the last rung. Esc returns to where you were."
+            : "Enter opens the selected row · E jumps straight to evidence · Esc goes back";
 
     /// <summary>Whether the table equivalents are shown. They are always reachable, never a hidden mode.</summary>
     public bool ShowTables
@@ -392,6 +454,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         {
             selectedRung = value;
             OnPropertyChanged();
+            if (IsEvidenceRung)
+            {
+                SelectEvidence(value?.Key);
+                return;
+            }
+
             if (value is not null && TryResolveProcess(value.Key, out ProcessNode? process))
             {
                 SelectedProcess = process;
@@ -525,7 +593,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         return true;
     }
 
-    /// <summary>Jumps to evidence in one step, from whichever rung the user is on (section 3.2).</summary>
+    /// <summary>
+    /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). At a published session's
+    /// machine rung a selected process is the scope, named in the filter bar where it can be removed.
+    /// </summary>
     public bool ShowEvidence()
     {
         if (ladder.Current.Level == DetailLevel.Evidence)
@@ -533,9 +604,37 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
-        LadderDescent descent = LadderProjection.EvidenceDescentFor(
-            ladder.Current,
-            selectedInterval ?? ladder.Current.Viewport);
+        TimeRange viewport = selectedInterval ?? ladder.Current.Viewport;
+        LadderDescent descent = realOverview && ladder.Current.Level == DetailLevel.Machine && selectedProcess is { } process
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                new(DetailLevel.ProcessInstance, process.Id.ToString(), process.Name),
+                "Evidence was reached from the machine rung with this process selected.")
+            : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+        if (!ladder.TryDescend(descent, out _))
+        {
+            return false;
+        }
+
+        AfterNavigation();
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the evidence rung for a channel chosen outside the ladder, such as the discovery list above the overview's
+    /// channel bound. The channel becomes the rung's visible scope filter.
+    /// </summary>
+    public bool ShowChannelEvidence(Channel channel)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        if (!realOverview || ladder.Current.Level == DetailLevel.Evidence)
+        {
+            return false;
+        }
+
+        LadderDescent descent = LadderProjection.EvidenceDescentFor(ladder.Current,
+            selectedInterval ?? ladder.Current.Viewport,
+            new(DetailLevel.Channel, channel.Key, channel.Name),
+            "Evidence was reached from a channel chosen in the channel list.");
         if (!ladder.TryDescend(descent, out _))
         {
             return false;
@@ -604,6 +703,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         view = LadderProjection.Project(Snapshot, ladder.Current);
         selectedRung = null;
         selectedCrumb = null;
+        SyncEvidence();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));
@@ -619,6 +719,318 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(AscendLabel));
         OnPropertyChanged(nameof(DescendHint));
         OnPropertyChanged(nameof(IntervalLabel));
+        OnPropertyChanged(nameof(OffersEvidenceStep));
+        OnPropertyChanged(nameof(HighlightedEdgeKey));
+        RaiseEvidenceChanged();
+    }
+
+    /// <summary>Whether the user is at a published session's evidence rung, where rows are read from the session.</summary>
+    public bool IsEvidenceRung => evidenceSource is not null && ladder.Current.Level == DetailLevel.Evidence;
+
+    /// <summary>
+    /// While the user inspects records the workspace keeps showing the generation they were read from, so rows,
+    /// selection and marks stay still; recording continues and a newer generation is offered instead of applied.
+    /// </summary>
+    public bool HoldsGeneration => IsEvidenceRung;
+
+    /// <summary>Completes when the most recent evidence page request has applied or reported a problem.</summary>
+    public Task EvidenceReady { get; private set; } = Task.CompletedTask;
+
+    public bool CanLoadMoreEvidence => evidence is { Loading: false, Problem: null, NextCursor: not null };
+
+    public bool HasSelectedEvidence => IsEvidenceRung && selectedEvidence is not null;
+
+    public SessionEvidenceRecord? SelectedEvidence => IsEvidenceRung ? selectedEvidence : null;
+
+    /// <summary>What the evidence rung reads, in words: the channel, the owners or the whole session, and any time range.</summary>
+    public string EvidenceScopeText => IsEvidenceRung ? evidence?.Scope.Description ?? string.Empty : string.Empty;
+
+    /// <summary>How much of the scope is loaded, and whether a page continued in a newer generation.</summary>
+    public string EvidenceStatus
+    {
+        get
+        {
+            if (evidence is not { } list) return string.Empty;
+            if (list.Problem is not null) return "Source records unavailable";
+            string loaded = string.Create(CultureInfo.CurrentCulture, $"{list.Records.Count:N0} source records");
+            string state = list.Loading
+                ? list.Records.Count == 0 ? "Reading source records…" : loaded + " · reading more…"
+                : list.NextCursor is null ? loaded + " · end of scope" : loaded + " · more available (M)";
+            return list.ContinuedIn is { } generation
+                ? state + string.Create(CultureInfo.CurrentCulture, $" · later pages read generation {generation:N0}")
+                : state;
+        }
+    }
+
+    public string SelectedEvidenceTitle => SelectedEvidence is { } record
+        ? EvidenceRowText.Title(record.Observation)
+            + (EvidenceRowText.Size(record.Observation, CultureInfo.CurrentCulture) is { } size ? " · " + size : string.Empty)
+        : "No record selected";
+
+    /// <summary>The selected record's facts, labelled, as the inspector shows them.</summary>
+    public IReadOnlyList<EvidenceField> SelectedEvidenceFields
+    {
+        get
+        {
+            if (SelectedEvidence is not { } record) return [];
+            ObservationRowV1 row = record.Observation;
+            var fields = new List<EvidenceField>
+            {
+                new("When", EvidenceRowText.When(row, CultureInfo.CurrentCulture)),
+                new("Owner", EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)),
+            };
+            if (EvidenceRowText.Endpoints(row) is { } endpoints) fields.Add(new("Endpoints", endpoints));
+            if (EvidenceRowText.Size(row, CultureInfo.CurrentCulture) is { } size)
+                fields.Add(new("Size", size + (row.ByteDomain is { } domain ? $" · {domain}" : string.Empty)));
+            fields.Add(new("Source", string.Create(CultureInfo.InvariantCulture,
+                $"{EvidenceRowText.ProviderName(row.ProviderId)} · event {row.EventId} v{row.DescriptorVersion}")));
+            fields.Add(new("Quality", $"attribution {row.AttributionQuality}, correlation {row.CorrelationQuality}, "
+                + $"measurement {row.MeasurementQuality}, timing {row.TimingQuality}"));
+            fields.Add(new("Record", string.Create(CultureInfo.InvariantCulture,
+                $"raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} · {record.SegmentName} row {record.SegmentRow}")));
+            return fields;
+        }
+    }
+
+    /// <summary>Reading times of the loaded records, in workspace ticks, drawn as individual marks on the timeline.</summary>
+    public IReadOnlyList<long> EvidenceMarkTicks => IsEvidenceRung && evidence is { } list
+        ? [.. list.Records.Where(record => record.Observation.SessionRelativeTicks is not null)
+            .Select(record => record.Observation.SessionRelativeTicks!.Value / 100)]
+        : [];
+
+    public long? SelectedEvidenceTick => SelectedEvidence?.Observation.SessionRelativeTicks is { } nanoseconds
+        ? nanoseconds / 100
+        : null;
+
+    /// <summary>
+    /// The graph edge that contributes to what the rung shows: the focused channel's edge at the channel rung, and the
+    /// scope's channel at the evidence rung. Null when the rung is not one channel.
+    /// </summary>
+    public string? HighlightedEdgeKey
+    {
+        get
+        {
+            if (IsEvidenceRung) return evidence?.Scope.ContributingEdgeKey;
+            if (ladder.Current.Level != DetailLevel.Channel || ladder.Current.Focus is not { } focus) return null;
+            return Snapshot.Channels.FirstOrDefault(channel => channel.Key == focus.Key)?.EdgeKey;
+        }
+    }
+
+    /// <summary>Reads the next page of the evidence rung's scope, continuing after the last record shown.</summary>
+    public Task LoadMoreEvidenceAsync()
+    {
+        if (evidence is not { Loading: false, Problem: null, NextCursor: { } cursor } list)
+        {
+            return Task.CompletedTask;
+        }
+
+        EvidenceReady = LoadEvidenceAsync(list, cursor);
+        return EvidenceReady;
+    }
+
+    private void SyncEvidence()
+    {
+        if (!IsEvidenceRung)
+        {
+            CancelEvidence();
+            return;
+        }
+
+        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot, ladder.Current);
+        if (evidence is { } current && SameScope(current.Scope, scope))
+        {
+            return;
+        }
+
+        CancelEvidence();
+        var list = new EvidenceList(scope);
+        evidence = list;
+        if (scope.Problem is { } problem)
+        {
+            list.Problem = problem;
+            RebuildEvidenceRows();
+            return;
+        }
+
+        EvidenceReady = LoadEvidenceAsync(list, null);
+    }
+
+    private async Task LoadEvidenceAsync(EvidenceList list, string? cursor)
+    {
+        SessionEvidenceSource source = evidenceSource!;
+        list.Loading = true;
+        RaiseEvidenceChanged();
+        try
+        {
+            SessionEvidencePage page = await source.ReadAsync(list.Scope, cursor, list.Cancellation.Token);
+            if (disposed || !ReferenceEquals(evidence, list))
+            {
+                return;
+            }
+
+            if (page.SessionId != source.SessionId)
+            {
+                list.Problem = "This directory now holds another session. Open it again to read its records.";
+                list.NextCursor = null;
+                return;
+            }
+
+            if (page.RestartRequired)
+            {
+                list.Problem = page.RestartReason;
+                list.NextCursor = null;
+                return;
+            }
+
+            list.Records.AddRange(page.Records);
+            list.NextCursor = page.NextCursor;
+            if (page.Generation != source.Generation)
+            {
+                list.ContinuedIn = page.Generation;
+            }
+        }
+        catch (OperationCanceledException) when (list.Cancellation.IsCancellationRequested)
+        {
+            // Leaving the rung cancels its read; nothing is applied.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (ReferenceEquals(evidence, list))
+            {
+                list.Problem = exception.Message;
+                list.NextCursor = null;
+            }
+        }
+        finally
+        {
+            list.Loading = false;
+            if (!disposed && ReferenceEquals(evidence, list))
+            {
+                RebuildEvidenceRows();
+                if (pendingEvidenceKey is { } key && evidenceRows.FirstOrDefault(row => row.Key == key) is { } row)
+                {
+                    pendingEvidenceKey = null;
+                    SelectedRung = row;
+                }
+
+                RaiseEvidenceChanged();
+            }
+        }
+    }
+
+    private void SelectEvidence(string? key)
+    {
+        selectedEvidence = key is null || evidence is null
+            ? null
+            : evidence.Records.FirstOrDefault(record => EvidenceKey(record) == key);
+        OnPropertyChanged(nameof(SelectedEvidence));
+        OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(SelectedEvidenceTitle));
+        OnPropertyChanged(nameof(SelectedEvidenceFields));
+        OnPropertyChanged(nameof(SelectedEvidenceTick));
+    }
+
+    private void CancelEvidence()
+    {
+        if (evidence is { } list)
+        {
+            list.Cancellation.Cancel();
+            list.Cancellation.Dispose();
+        }
+
+        evidence = null;
+        selectedEvidence = null;
+        evidenceRows = [];
+    }
+
+    private void RebuildEvidenceRows()
+    {
+        if (evidence is not { } list)
+        {
+            evidenceRows = [];
+            return;
+        }
+
+        evidenceRows = [.. list.Records.Select(EvidenceRow)];
+    }
+
+    private static RungRow EvidenceRow(SessionEvidenceRecord record)
+    {
+        ObservationRowV1 row = record.Observation;
+        FamilyTokens tokens = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(row.Mechanism));
+        string title = EvidenceRowText.Title(row);
+        string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
+        string owner = EvidenceRowText.Owner(record, CultureInfo.CurrentCulture);
+        string when = EvidenceRowText.When(row, CultureInfo.CurrentCulture);
+        string pid = row.OwnerProcessId is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
+        // The rail is narrow: what happened and its size on the first line, when and whose on the second. Endpoints
+        // and the full owner are the inspector's, where they fit without being cut.
+        string detail = when + " · " + pid;
+        var source = new LadderRow(EvidenceKey(record), title, detail, 1, row.ByteValue, row.Mechanism,
+            CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
+        string endpoints = EvidenceRowText.Endpoints(row) is { } pair ? ", " + pair : string.Empty;
+        return new(EvidenceKey(record), size is null ? title : title + " · " + size, detail, string.Empty,
+            size ?? string.Empty, tokens.Label, tokens.Glyph, string.Empty, "original record", source)
+        {
+            SpokenName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, owned by {owner}. "
+                + "Press Enter to open the original record.",
+        };
+    }
+
+    private static string EvidenceKey(SessionEvidenceRecord record) => string.Create(CultureInfo.InvariantCulture,
+        $"{record.ObservationId.RawRecordId.StreamId}/{record.ObservationId.RawRecordId.SourceEpoch}/"
+        + $"{record.ObservationId.RawRecordId.RecordOrdinal}/{record.ObservationId.FactKey}");
+
+    private static bool SameScope(EvidenceScope left, EvidenceScope right) =>
+        left.ChannelKey == right.ChannelKey
+        && left.Interval == right.Interval
+        && left.Problem == right.Problem
+        && left.OwnerProcesses.SequenceEqual(right.OwnerProcesses);
+
+    private void RaiseEvidenceChanged()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsEvidenceRung));
+        OnPropertyChanged(nameof(HoldsGeneration));
+        OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(EmptyReason));
+        OnPropertyChanged(nameof(EvidenceStatus));
+        OnPropertyChanged(nameof(EvidenceScopeText));
+        OnPropertyChanged(nameof(CanLoadMoreEvidence));
+        OnPropertyChanged(nameof(LevelSummary));
+        OnPropertyChanged(nameof(LevelSummaryShort));
+        OnPropertyChanged(nameof(EvidenceMarkTicks));
+        OnPropertyChanged(nameof(HighlightedEdgeKey));
+        OnPropertyChanged(nameof(SelectedEvidence));
+        OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(SelectedEvidenceTitle));
+        OnPropertyChanged(nameof(SelectedEvidenceFields));
+        OnPropertyChanged(nameof(SelectedEvidenceTick));
+    }
+
+    /// <summary>The evidence rung's loaded rows for one scope. A new scope starts a new list and cancels the old read.</summary>
+    private sealed class EvidenceList(EvidenceScope scope)
+    {
+        public EvidenceScope Scope { get; } = scope;
+
+        public List<SessionEvidenceRecord> Records { get; } = [];
+
+        public string? NextCursor { get; set; }
+
+        public bool Loading { get; set; }
+
+        public string? Problem { get; set; }
+
+        /// <summary>The newer generation a page was read from, when the list continued past the workspace's own.</summary>
+        public long? ContinuedIn { get; set; }
+
+        public CancellationTokenSource Cancellation { get; } = new();
     }
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
