@@ -354,6 +354,8 @@
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
                       Click="BrowseChannels"
                       AutomationProperties.Name="Browse all admitted paired TCP channels" />
+              <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
+                      AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

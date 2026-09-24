@@ -226,6 +226,31 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "6.4: the window writes the applied view to the file the user chose, in either format")]
+    public async Task TheWindowWritesTheAppliedViewToTheChosenFile()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 12));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(window.GetControl<Button>("ExportButton").IsVisible);
+
+        string json = Path.Combine(session.Path, "view.json");
+        Assert.Equal(1, await window.WriteExportAsync(json, ExportFormat.Json));
+        using (var document = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(json)))
+        {
+            Assert.Equal("ranking", document.RootElement.GetProperty("kind").GetString());
+            Assert.Equal("Machine", document.RootElement.GetProperty("context").GetProperty("rung").GetString());
+        }
+
+        string csv = Path.Combine(session.Path, "view.csv");
+        Assert.Equal(1, await window.WriteExportAsync(csv, ExportFormat.Csv));
+        Assert.Equal(2, (await File.ReadAllLinesAsync(csv)).Length);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "3.1: the capture card states how soon the first view arrived and how often it refreshes")]
     public void TheCaptureCardStatesFirstFeedback()
     {

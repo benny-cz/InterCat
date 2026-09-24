@@ -1,14 +1,43 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 99
+Plan revision: 100
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: pause the live view, a health strip that states what is known, and §6.7 timeline gestures
+## Latest slice: export the applied view
+
+`Ctrl+E` (`E` alone still opens evidence) and "Export this view (Ctrl+E)" in the inspector write the applied view to a
+file the user picks, as JSON or CSV. `WorkspaceExport` builds it and names the snapshot through `ExportContext`: session,
+generation, rung, breadcrumb, filters, the interval the shown counts answer, the scope in words, a completeness flag,
+the workspace's caveats and the time.
+
+- **Ranked rungs** export their rows with counts, known bytes (null stays null), mechanism, coverage, accounting side
+  and the rung each row opens. A brushed ranking exports its interval only once its counts are applied.
+- **The evidence rung** exports the records loaded so far, with `complete: false` until every page is loaded. Each
+  record carries its identity, times, what happened, bytes and domain, endpoints, owner (PID, instance, executable,
+  strength, reason), provider name and descriptor, the four qualities and its segment location. No body or
+  extended-data bytes are exported, and the export states it.
+- **CSV** repeats the context columns in every row. It quotes per RFC 4180 and prefixes text cells beginning with `=`,
+  `+`, `-`, `@`, tab or carriage return with an apostrophe (formula-injection neutralization); numbers, including
+  negative times, stay numeric.
+
+The window reports "Exported N rows (complete | the loaded part of the scope) to <path>", and states when there is
+nothing to export.
+
+825 tests pass in Debug and Release (+4): CSV quoting and neutralization with the JSON context, evidence metadata with
+no body and the partial flag, the view model's applied-interval and completeness rules, and the window writing both
+formats to a chosen path. Plan revision 100.
+
+Not done: a redacted sharing export (§11.3, M5), the same export from the CLI, live loss counters, a minimap.
+
+Next: live broker health counters in the capture status, so the strip can state drops and ETW loss while recording
+rather than only at stop.
+
+## Previous slice: pause the live view, a health strip that states what is known, and §6.7 timeline gestures
 
 **Record/view pause.** `F`, or "Pause view (F)" in the capture card, pauses following a live capture at any rung;
 recording continues. A paused view, like the evidence rung, keeps its generation. Each newer publication is offered in

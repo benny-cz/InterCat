@@ -10,6 +10,13 @@ using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
+/// <summary>How an export is written: self-describing JSON, or CSV that repeats its context in every row.</summary>
+public enum ExportFormat
+{
+    Json,
+    Csv,
+}
+
 /// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
 public sealed record EvidenceField(string Label, string Value);
 
@@ -47,6 +54,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private readonly WorkspaceSnapshot wholeSnapshot;
     private WorkspaceSnapshot? scopedSnapshot;
     private TimeRange? scopedInterval;
+
+    // The interval the displayed counts actually answer; a brush still being counted is not yet applied.
+    private TimeRange? appliedInterval;
     private CancellationTokenSource? intervalQuery;
     private bool intervalLoading;
     private string? intervalProblem;
@@ -1140,6 +1150,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         string? rowKey = selectedRung?.Key;
         scopedSnapshot = scoped;
+        appliedInterval = scoped is null ? null : scopedInterval;
         view = LadderProjection.Project(Snapshot, ladder.Current);
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
@@ -1155,6 +1166,62 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(EvidenceSummary));
     }
+
+    /// <summary>
+    /// The applied snapshot an export names: this generation, this rung and its filters, and the interval the shown
+    /// counts answer. At the evidence rung the scope is the records' own, and the export is complete only when every
+    /// page of that scope has been loaded (plan §6.4).
+    /// </summary>
+    public ExportContext DescribeExport(DateTimeOffset exportedUtc)
+    {
+        bool evidenceRung = IsEvidenceRung && evidence is not null;
+        string scope = evidenceRung
+            ? evidence!.Scope.Description
+            : appliedInterval is { } range
+                ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
+                : "Whole session";
+        bool complete = !evidenceRung
+            || (evidence!.NextCursor is null && !evidence.Loading && evidence.Problem is null);
+        List<string> caveats = [workspaceDisclosure];
+        if (evidenceRung)
+        {
+            caveats.Add(complete
+                ? "Every record of this scope is included."
+                : "Only the records loaded so far are included; load more before exporting for the rest of the scope.");
+        }
+
+        return new(
+            evidenceSource?.SessionId,
+            evidenceSource?.Generation,
+            ladder.Current.Level,
+            LadderProjection.Breadcrumb(ladder),
+            [.. ladder.Current.Filters],
+            evidenceRung ? evidence!.Scope.Interval : appliedInterval,
+            scope,
+            complete,
+            caveats,
+            exportedUtc);
+    }
+
+    /// <summary>What the rung shows, in the chosen format: its ranked rows, or the evidence records loaded at the evidence rung.</summary>
+    public string Export(ExportFormat format, DateTimeOffset exportedUtc)
+    {
+        ExportContext context = DescribeExport(exportedUtc);
+        if (IsEvidenceRung && evidence is { } list)
+        {
+            SessionEvidenceRecord[] records = [.. list.Records];
+            return format == ExportFormat.Csv
+                ? WorkspaceExport.EvidenceCsv(context, records)
+                : WorkspaceExport.EvidenceJson(context, records);
+        }
+
+        return format == ExportFormat.Csv
+            ? WorkspaceExport.RankingCsv(context, view.Rows)
+            : WorkspaceExport.RankingJson(context, view.Rows);
+    }
+
+    /// <summary>How many rows an export of the current rung holds.</summary>
+    public int ExportRowCount => IsEvidenceRung ? evidence?.Records.Count ?? 0 : view.Rows.Count;
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {

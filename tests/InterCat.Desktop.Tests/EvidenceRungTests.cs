@@ -218,6 +218,46 @@ public sealed class EvidenceRungTests
             workspace.RungRows.Single().Observations);
     }
 
+    [Fact]
+    public async Task AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows();
+        Publish(session.Store, rows);
+        using WorkspaceViewModel workspace = Open(session);
+        var at = new DateTimeOffset(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
+
+        // A brushed ranking exports the interval its counts answer, and only once those counts are applied.
+        var brush = new TimeRange(10, 50);
+        workspace.SelectInterval(brush);
+        Assert.Null(workspace.DescribeExport(at).Interval);
+        await workspace.IntervalReady;
+        ExportContext ranked = workspace.DescribeExport(at);
+        Assert.Equal(brush, ranked.Interval);
+        Assert.True(ranked.Complete);
+        Assert.StartsWith("Ranked within", ranked.Scope, StringComparison.Ordinal);
+        using (var json = System.Text.Json.JsonDocument.Parse(workspace.Export(ExportFormat.Json, at)))
+        {
+            Assert.Equal("ranking", json.RootElement.GetProperty("kind").GetString());
+            Assert.Equal(40, json.RootElement.GetProperty("rows")[0].GetProperty("observations").GetInt64());
+        }
+
+        // At the evidence rung an export holds the loaded records and is complete only once every page is loaded.
+        workspace.ClearSelection();
+        await workspace.IntervalReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.False(workspace.DescribeExport(at).Complete);
+        Assert.Equal(SessionEvidenceQuery.DefaultPageSize, workspace.ExportRowCount);
+        await workspace.LoadMoreEvidenceAsync();
+        await workspace.LoadMoreEvidenceAsync();
+        ExportContext whole = workspace.DescribeExport(at);
+        Assert.True(whole.Complete);
+        Assert.Equal(DetailLevel.Evidence, whole.Rung);
+        string[] csv = workspace.Export(ExportFormat.Csv, at).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(rows.Length + 1, csv.Length);
+    }
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

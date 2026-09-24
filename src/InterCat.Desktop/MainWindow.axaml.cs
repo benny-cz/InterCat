@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private string? currentSessionPath;
     private bool openingSession;
     private bool openingRecord;
+    private bool exporting;
     private bool closed;
     private bool closingPrompt;
     private bool closeAfterCapture;
@@ -99,6 +100,10 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
                 e.Handled = true;
                 break;
+            case Key.E when e.KeyModifiers.HasFlag(KeyModifiers.Control):
+                ExportView();
+                e.Handled = true;
+                break;
             case Key.T:
                 viewModel.ShowTables = !viewModel.ShowTables;
                 e.Handled = true;
@@ -114,7 +119,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     e.Handled = viewModel.Descend();
                 }
                 break;
-            case Key.E:
+            case Key.E when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = viewModel.ShowEvidence();
                 break;
             case Key.M when viewModel.CanLoadMoreEvidence:
@@ -185,6 +190,61 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ShowSourceRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ShowEvidence();
 
     private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreEvidenceAsync();
+
+    private void ExportView(object? sender, RoutedEventArgs eventArgs) => ExportView();
+
+    /// <summary>
+    /// Exports the applied view (§6.4, §6.7 Ctrl+E): the rung's ranked rows or loaded evidence records, named by session,
+    /// generation, rung, filters and interval. The user chooses the file; nothing is written anywhere else.
+    /// </summary>
+    private async void ExportView()
+    {
+        if (exporting || workspace.ExportRowCount == 0)
+        {
+            if (!closed && workspace.ExportRowCount == 0) CaptureDetail.Text = "Nothing to export at this rung yet.";
+            return;
+        }
+
+        exporting = true;
+        try
+        {
+            ExportContext context = workspace.DescribeExport(DateTimeOffset.UtcNow);
+            Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+            {
+                Title = "Export this view",
+                SuggestedFileName = WorkspaceExport.SuggestedName(context, "json"),
+                DefaultExtension = "json",
+                FileTypeChoices =
+                [
+                    new("JSON, self-describing") { Patterns = ["*.json"] },
+                    new("CSV, one row per line") { Patterns = ["*.csv"] },
+                ],
+            });
+            if (file is null || closed) return;
+            string path = file.Path.LocalPath;
+            ExportFormat format = path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExportFormat.Csv : ExportFormat.Json;
+            int rows = await WriteExportAsync(path, format);
+            if (!closed)
+                CaptureDetail.Text = $"Exported {rows:N0} rows ({(context.Complete ? "complete" : "the loaded part of the scope")}) to {path}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!closed) CaptureDetail.Text = "Could not export this view: " + exception.Message;
+        }
+        finally
+        {
+            exporting = false;
+        }
+    }
+
+    /// <summary>Writes the applied view to a chosen path; the text is built on the UI thread from what is shown.</summary>
+    internal async Task<int> WriteExportAsync(string path, ExportFormat format)
+    {
+        string content = workspace.Export(format, DateTimeOffset.UtcNow);
+        int rows = workspace.ExportRowCount;
+        await File.WriteAllTextAsync(path, content, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return rows;
+    }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
 
