@@ -23,6 +23,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool openingSession;
     private bool openingRecord;
     private bool exporting;
+
+    /// <summary>The package being made, while one is; its cancellation is the share button's second meaning.</summary>
+    private CancellationTokenSource? packaging;
+
+    /// <summary>A session folder picker is open, so a second one is not started behind it.</summary>
+    private bool choosingSession;
     private bool closed;
     private bool closingPrompt;
     private bool closeAfterCapture;
@@ -362,37 +368,59 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OpenSavedSession(object? sender, RoutedEventArgs eventArgs)
     {
-        if (openingSession || captureTask is { IsCompleted: false }) return;
+        if (openingSession || choosingSession || packaging is not null || captureTask is { IsCompleted: false }) return;
+        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders;
+        choosingSession = true;
+        try
+        {
+            folders = await StorageProvider.OpenFolderPickerAsync(new()
+            {
+                Title = "Open an InterCat session directory", AllowMultiple = false,
+            });
+        }
+        finally
+        {
+            choosingSession = false;
+        }
+
+        if (folders.Count > 0 && !closed) _ = await OpenSessionAsync(folders[0].Path.LocalPath);
+    }
+
+    /// <summary>
+    /// Opens a published session directory as the workspace. A redacted package says so where the status is read, so
+    /// nobody mistakes its pseudonyms for the source machine's names and IDs. False when the directory could not open;
+    /// the current workspace is then unchanged.
+    /// </summary>
+    internal async Task<bool> OpenSessionAsync(string path)
+    {
+        if (openingSession || captureTask is { IsCompleted: false }) return false;
         openingSession = true;
         StartExploringButton.IsEnabled = false;
         OpenSavedSessionButton.IsEnabled = false;
         try
         {
-            IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders =
-                await StorageProvider.OpenFolderPickerAsync(new()
-                {
-                    Title = "Open an InterCat session directory", AllowMultiple = false,
-                });
-            if (folders.Count == 0) return;
-            string path = folders[0].Path.LocalPath;
             CaptureStatus.Text = "Opening saved session";
-            OpenSavedSessionButton.IsEnabled = false;
             SessionOverviewBundle overview = await Task.Run(() =>
                 SessionOverviewProjector.Project(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path))));
-            if (closed) return;
+            if (closed) return false;
             captureRunId++;
             heldUpdate = null;
             CaptureSummary.Text = string.Empty;
-            ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open",
-                "This is a published generation. The graph contains admitted paired TCP only; "
-                + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
+            ApplyCaptureUpdate(overview.Redaction is { } redaction
+                ? new(CaptureUiPhase.Complete, "Redacted session package open",
+                    SessionRedaction.Summary + " " + redaction.Warning, SessionPath: path, Overview: overview)
+                : new(CaptureUiPhase.Complete, "Saved session open",
+                    "This is a published generation. The graph contains admitted paired TCP only; "
+                    + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
                 forceOverview: true);
+            return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException)
         {
             CaptureStatus.Text = "Could not open this session";
             CaptureDetail.Text = exception.Message + " The current workspace is unchanged.";
+            return false;
         }
         finally
         {
@@ -401,9 +429,212 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 StartExploringButton.IsEnabled = true;
                 OpenSavedSessionButton.IsEnabled = true;
+                UpdateEvidenceAction();
             }
         }
     }
+
+    /// <summary>
+    /// Shares the open session as a redacted package (§11.3): what it keeps and leaves out is stated first, the user
+    /// chooses where the new folder goes, and the finished package - verified before it appears - can be opened here to
+    /// review what a recipient will see. While a package is being made, the same button cancels it.
+    /// </summary>
+    private async void SharePackage(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (packaging is { } running)
+        {
+            running.Cancel();
+            return;
+        }
+
+        if (currentSessionPath is not { } source || displayedOverview is not { } overview || IsLive || exporting)
+        {
+            return;
+        }
+
+        if (!await ConfirmRedactedPackageAsync(overview)) return;
+        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        {
+            Title = "Choose where to save the redacted session package",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 0 || closed) return;
+        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now);
+        RedactedSessionPackageResult? result = await WriteRedactedPackageAsync(source, destination);
+        if (result is not null && !closed && await ShowPackageResultAsync(result))
+        {
+            _ = await OpenSessionAsync(result.Directory);
+        }
+    }
+
+    /// <summary>A new folder name under the chosen one: dated, and numbered rather than reusing an existing name.</summary>
+    internal static string NewPackageDirectory(string parent, DateTimeOffset now)
+    {
+        string stem = Path.Combine(parent, $"intercat-redacted-session-{now:yyyyMMdd-HHmmss}");
+        string candidate = stem;
+        for (int attempt = 2; Directory.Exists(candidate) || File.Exists(candidate); attempt++)
+        {
+            candidate = $"{stem}-{attempt}";
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
+    /// Makes the package off the UI thread, stating its progress on the capture card, and returns null when it was
+    /// cancelled or refused - the card then says which, and the source session is unchanged either way.
+    /// </summary>
+    internal async Task<RedactedSessionPackageResult?> WriteRedactedPackageAsync(string source, string destination)
+    {
+        if (packaging is not null) return null;
+        using var cancellation = new CancellationTokenSource();
+        packaging = cancellation;
+        UpdateEvidenceAction();
+        string headline = CaptureStatus.Text ?? string.Empty;
+        CaptureStatus.Text = "Creating redacted session package";
+        CaptureDetail.Text = "Reading the session's rows…";
+        var progress = new Progress<RedactedPackageProgress>(update =>
+        {
+            if (closed || packaging != cancellation) return;
+            string stage = update.Stage switch
+            {
+                RedactedPackageStage.Inspecting => "Reading the session's rows",
+                RedactedPackageStage.Writing => "Writing pseudonymized rows",
+                _ => "Reopening and verifying the package",
+            };
+            CaptureDetail.Text = update.Total > 0
+                ? $"{stage}… {update.Done * 100 / update.Total}%"
+                : stage + "…";
+        });
+        try
+        {
+            RedactedSessionPackageResult result = await Task.Run(() => RedactedSessionPackage.Create(
+                SessionStore.OpenExisting(LocalOwnedDirectory.Open(source)), destination, DateTimeOffset.UtcNow,
+                progress, cancellation.Token), cancellation.Token);
+            if (!closed)
+            {
+                CaptureStatus.Text = "Redacted session package saved";
+                CaptureDetail.Text = $"Saved {result.Counts.Rows:N0} records to {result.Directory}. It was reopened and "
+                    + "checked before it was published. Review it before sharing it.";
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!closed)
+            {
+                CaptureStatus.Text = headline;
+                CaptureDetail.Text = "Packaging cancelled. Nothing was saved, and the session is unchanged.";
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed)
+            {
+                CaptureStatus.Text = headline;
+                CaptureDetail.Text = "Could not create the redacted package: " + exception.Message;
+            }
+
+            return null;
+        }
+        finally
+        {
+            packaging = null;
+            if (!closed) UpdateEvidenceAction();
+        }
+    }
+
+    private async Task<bool> ConfirmRedactedPackageAsync(SessionOverviewBundle overview)
+    {
+        var prompt = new Window
+        {
+            Title = "Share a redacted session package?", Width = 580, Height = 470,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Content = "Cancel" };
+        var proceed = new Button { Content = "Choose a folder…" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                Paragraph("This saves a new session folder that opens in InterCat, for someone else to explore. The "
+                    + "session you have open is not changed."),
+                Paragraph($"Kept: all {overview.ObservationRows:N0} records with their times, sizes, status and quality; "
+                    + $"the {overview.Nodes.Count:N0} processes and how they relate; coverage and loss."),
+                Paragraph("Replaced by random pseudonyms: executable, pipe and resource names; process and thread IDs; "
+                    + "addresses and ports; activity and interface identifiers; third-party providers."),
+                Paragraph("Left out: the original journal with any record bodies and extended data, process start and "
+                    + "exit clock times, and this session's own identities. Each record's original entry becomes a "
+                    + "synthetic one."),
+                Paragraph("This is not anonymous: timing, sizes and the shape of the workload can still identify a "
+                    + "system. The package is checked before it is saved; review it before sharing it."),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
+            },
+        };
+        return await prompt.ShowDialog<bool>(this);
+    }
+
+    /// <summary>Says where the package is and what verified it; true when the user wants to open it here to review.</summary>
+    private async Task<bool> ShowPackageResultAsync(RedactedSessionPackageResult result)
+    {
+        var prompt = new Window
+        {
+            Title = "Redacted session package saved", Width = 580, Height = 330,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var done = new Button { Content = "Done" };
+        var open = new Button { Content = "Open it here to review" };
+        done.Click += (_, _) => prompt.Close(false);
+        open.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => open.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        string journals = result.Source.SourceJournals == 1 ? "journal file" : "journal files";
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                Paragraph($"Saved {result.Counts.Rows:N0} records to {result.Directory}."),
+                Paragraph($"Before it was saved, the package was reopened as a recipient would open it, every value "
+                    + $"was checked against the pseudonyms it issued, and {result.FilesVerified:N0} files were searched "
+                    + "for this session's identities and names. None was found."),
+                Paragraph($"Left behind: {result.Source.SourceJournals:N0} original {journals} "
+                    + $"({result.Source.SourceJournalBytes / 1024.0 / 1024.0:N1} MB). Opening the package here shows "
+                    + "what a recipient will see."),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
+            },
+        };
+        return await prompt.ShowDialog<bool>(this);
+    }
+
+    private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
 
     private async void BeginCapture()
     {
@@ -500,6 +731,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         UpdateHealthStrip();
+        UpdateEvidenceAction();
     }
 
     /// <summary>Whether a live capture is being followed, as opposed to a saved session or nothing.</summary>
@@ -605,7 +837,8 @@ public sealed partial class MainWindow : Window, IDisposable
             CaptureUiPhase.Recording => "Recording · following live",
             CaptureUiPhase.Finishing => "Stopping and saving",
             CaptureUiPhase.Unavailable => "Capture unavailable",
-            _ => displayedOverview is null ? "Ready" : "Saved session",
+            _ => displayedOverview is null ? "Ready"
+                : displayedOverview.Redaction is null ? "Saved session" : "Redacted package",
         };
         HealthDot.Foreground = (this.TryFindResource(
             phase == CaptureUiPhase.Recording && !paused ? "Family.Alpc.Ink"
@@ -711,6 +944,17 @@ public sealed partial class MainWindow : Window, IDisposable
                 : "Browse admitted paired TCP channels involving this process instance.")
                 + " Choosing one opens its source records; a time brush applies to them."
             : "Open a session, or return to Machine or Process to browse paired channels.");
+
+        // Packaging reads a whole published generation, so it waits until a live capture has stopped.
+        SharePackageButton.Content = packaging is null ? "Share redacted session…" : "Cancel packaging";
+        SharePackageButton.IsEnabled = packaging is not null || (session && !IsLive && !openingSession);
+        ToolTip.SetTip(SharePackageButton, packaging is not null
+            ? "Stop making the package. Nothing is saved, and the session is unchanged."
+            : SharePackageButton.IsEnabled
+                ? "Save a new session folder with pseudonymous names, IDs and addresses and no original journal, "
+                    + "that opens in InterCat. What it keeps and leaves out is shown first."
+                : IsLive ? "Stop the capture first; a package holds a finished session."
+                : "Open or record a session first.");
     }
 
     private static (bool Available, ProcessInstanceId? ProcessScope) ChannelDiscoveryScope(
@@ -783,6 +1027,7 @@ public sealed partial class MainWindow : Window, IDisposable
     public void Dispose()
     {
         healthClock.Stop();
+        packaging?.Cancel();
         captureStop?.Cancel();
         captureStop?.Dispose();
         workspace.PropertyChanged -= OnWorkspaceChanged;

@@ -79,7 +79,9 @@ internal static class RawCommand
             return detail.Available ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
         }
 
-        ConsoleUi.Heading("Original admitted journal record");
+        // A redacted package's journal holds synthetic records under its own policy; they are never called originals.
+        bool synthetic = detail.AdmissionPolicyId == RedactedSessionPackage.Policy;
+        ConsoleUi.Heading(synthetic ? "Synthetic record of a redacted package" : "Original admitted journal record");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Session ID", detail.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", detail.Generation.ToString(CultureInfo.InvariantCulture));
@@ -111,9 +113,12 @@ internal static class RawCommand
         }
         else if (detail.RetainedBodyLength > 0)
             ConsoleUi.Note("Body bytes are hidden. Add --reveal-bytes to print at most 256 inert hex bytes.");
-        else
+        else if (!synthetic)
             ConsoleUi.Note("No body bytes were retained; the recorded disposition states why.");
-        ConsoleUi.Note("This is an original source envelope, not a decoded message, operation or payload export.");
+        ConsoleUi.Note(synthetic
+            ? "This package holds no original record. This synthetic entry carries the row's pseudonymous descriptor, "
+                + "header and reading, and never a body or extended data (redacted-session-v1)."
+            : "This is an original source envelope, not a decoded message, operation or payload export.");
         return InterCatExitCode.Success;
     }
 

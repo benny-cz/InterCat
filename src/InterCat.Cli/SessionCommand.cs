@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
+using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -18,6 +19,9 @@ internal sealed record SessionDocument
     public required SessionRederivationDocument Rederivation { get; init; }
     public required IReadOnlyList<SessionSegmentDocument> Segments { get; init; }
     public required IReadOnlyList<SessionFieldSegmentDocument> FieldSegments { get; init; }
+
+    /// <summary>The policy a redacted session package was built under; null for an ordinary session.</summary>
+    public required SessionRedaction? Redaction { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
     public required SessionLedgerDocument? CoverageLedger { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
@@ -247,6 +251,11 @@ internal static class SessionCommand
         var fieldSegments = new List<SessionFieldSegmentDocument>();
         SessionCoverageDocument? coverage = null;
         SessionLedgerDocument? ledger = null;
+        SessionRedaction? redaction = manifest is null ? null : SessionRedaction.Read(store.Root, manifest);
+        if (redaction is not null)
+        {
+            notes.Add(SessionRedaction.Summary + " " + redaction.Warning);
+        }
 
         if (manifest is null)
         {
@@ -430,6 +439,7 @@ internal static class SessionCommand
             FieldSegments = fieldSegments,
             Coverage = coverage,
             CoverageLedger = ledger,
+            Redaction = redaction,
             Notes = notes,
         };
     }
@@ -518,6 +528,12 @@ internal static class SessionCommand
         ConsoleUi.Field("Committed", generation.CommittedUtc.ToString("u", CultureInfo.InvariantCulture));
         ConsoleUi.Field("Session", generation.SessionId);
         ConsoleUi.Field("Derived from", generation.SourceIdentity.Length == 0 ? "not stated" : generation.SourceIdentity);
+        if (document.Redaction is { } redaction)
+        {
+            ConsoleUi.Field("Redacted package", string.Create(CultureInfo.InvariantCulture,
+                $"{redaction.Policy}, made {redaction.CreatedUtc:u}; pseudonymized, not anonymous"));
+        }
+
         ConsoleUi.Field("Manifest digest", generation.Digest);
         ConsoleUi.Field("Re-derivation", document.Rederivation.CanAttempt ? "can attempt" : "not available");
         ConsoleUi.Note(document.Rederivation.Explanation);

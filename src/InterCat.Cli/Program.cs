@@ -37,6 +37,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "package" => await PackageCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -160,6 +161,11 @@ static void PrintHelp()
     ConsoleUi.Line("      Detailed export of one ladder rung; --evidence writes source-record metadata.");
     ConsoleUi.Line("      --share-redacted writes a separate pseudonymized report, not a reopenable session.");
     ConsoleUi.Line("      Both formats are staged, never left partly written.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat package <directory> --redacted --output <new-directory> [--check] [--json]");
+    ConsoleUi.Line("      A reopenable redacted session for sharing: fresh identities, pseudonymous names, IDs,");
+    ConsoleUi.Line("      addresses and ports, synthetic records, and no original journal, payload or locator.");
+    ConsoleUi.Line("      It is verified before it is published. --check measures and writes nothing.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

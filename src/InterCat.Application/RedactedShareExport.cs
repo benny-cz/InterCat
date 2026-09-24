@@ -114,7 +114,7 @@ public static class RedactedShareExport
             row.SourceIdentifier is { } sourceId ? tokens.For("identifier", sourceId.ToString("N")) : null,
             row.ActivityId is { } activity ? tokens.For("activity", activity.ToString("N")) : null,
             row.RelatedActivityId is { } related ? tokens.For("activity", related.ToString("N")) : null,
-            row.SessionRelativeTicks,
+            row.SessionRelativeTicks / 100,
             row.Mechanism, row.Layer, row.Kind, row.Direction,
             row.ByteValue, row.ByteDomain, row.ByteAvailability, row.StatusCode, row.StatusAvailability,
             row.AttributionQuality, row.CorrelationQuality, row.MeasurementQuality, row.TimingQuality,

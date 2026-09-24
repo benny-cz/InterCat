@@ -109,12 +109,16 @@ public static class EvidenceRowText
     /// The provider's registered name for the two providers InterCat's validated sources use, whose identifiers are
     /// fixed by Windows; any other provider is named by its identifier rather than by a guess.
     /// </summary>
-    public static string ProviderName(Guid provider) => provider.ToString("D") switch
-    {
-        "7dd42a49-5329-4832-8dfd-43d979153a88" => "Microsoft-Windows-Kernel-Network",
-        "22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716" => "Microsoft-Windows-Kernel-Process",
-        string other => "provider " + other,
-    };
+    /// <summary>
+    /// A provider's public name, when it is one of the providers InterCat's catalog admits. Any other provider is named by
+    /// its identifier - which in a redacted package is a pseudonym, and is said to be one.
+    /// </summary>
+    public static string ProviderName(Guid provider, bool pseudonymous = false) =>
+        RedactedSessionPseudonyms.PublicProviders.TryGetValue(provider, out string? name)
+            ? name
+            : pseudonymous
+                ? RedactedSessionPseudonyms.PseudonymousProviderName(provider) + " (pseudonym)"
+                : "provider " + provider.ToString("D");
 
     public static string MechanismName(Mechanism mechanism) => mechanism switch
     {

@@ -19,6 +19,19 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     private readonly SessionEvidenceRecord selected;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock heading = new()
+    {
+        Text = "Original journal envelope for one selected normalized fact",
+        FontWeight = FontWeight.SemiBold,
+        TextWrapping = TextWrapping.Wrap,
+    };
+    private readonly TextBlock disclosure = new()
+    {
+        Text = "Body bytes may be sensitive. They are hidden until you choose Reveal; the preview is capped "
+            + "at 256 bytes, inert hexadecimal, and is not a decoded message or export.",
+        FontSize = 11,
+        TextWrapping = TextWrapping.Wrap,
+    };
     private readonly TextBox detail = new() { IsReadOnly = true, AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap };
     private readonly Button reveal = new() { Content = "Reveal up to 256 retained body bytes", IsEnabled = false };
@@ -39,19 +52,6 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         MinHeight = 430;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        var heading = new TextBlock
-        {
-            Text = "Original journal envelope for one selected normalized fact",
-            FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap,
-        };
-        var disclosure = new TextBlock
-        {
-            Text = "Body bytes may be sensitive. They are hidden until you choose Reveal; the preview is capped "
-                + "at 256 bytes, inert hexadecimal, and is not a decoded message or export.",
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-        };
         status.Text = "Locating the retained original record…";
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
         var close = new Button { Content = "Close" };
@@ -116,6 +116,15 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
 
             revealed = revealBytes;
             status.Text = $"Verified generation {result.Generation:N0} · {result.JournalName}";
+            if (result.AdmissionPolicyId == RedactedSessionPackage.Policy)
+            {
+                // A redacted package holds no original record; its entry must never be presented as one.
+                Title = "InterCat · Synthetic record of a redacted package";
+                heading.Text = "Synthetic record of a redacted session package";
+                disclosure.Text = "This package holds no original record. This entry carries the row's pseudonymous "
+                    + "descriptor, header and reading, and never a body or extended data.";
+            }
+
             detail.Text = Describe(result);
             reveal.IsEnabled = !revealed && result.RetainedBodyLength > 0;
         }

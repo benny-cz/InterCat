@@ -344,7 +344,7 @@ would let absence be read as data (R21, P1).
 - Compression. Every column at this version is uncompressed and directly mappable; §20.1's bounded decode
   buffers apply when a compressed encoding is added.
 - Aggregate tiles and the multiresolution overview pyramid of §10.2.
-- Compaction. §20.1's targets exist; coalescing segments is separate work, and the raw-record locator is
-  carried in the row precisely so it survives one.
-- Evidence leases (I18). A reader acquires a generation by reading the current manifest, and nothing yet
-  pins it against a concurrent retention or compaction, because neither exists.
+
+Compaction and evidence leases, listed here while this format was frozen, are now `contracts/store-v1.md` §8: a
+compaction rewrites rows unchanged, raw-record locator included, and a reader holds its generation under a lease. Neither
+changed a byte of this format.

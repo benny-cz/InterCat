@@ -492,15 +492,17 @@ public sealed class SessionStore
                         + "boundary; it cannot silently switch evidence while replacing derived files.");
                 }
 
-                // The admitted evidence - every journal chunk - and the plan, optional coverage ledger and finalization
-                // marker that describe the capture are not derivations of it, so replacement carries them unchanged. Carrying
-                // every journal means no chunk's evidence is ever dropped by replacing the rows derived from it.
+                // The admitted evidence - every journal chunk - and the plan, optional coverage ledger, finalization
+                // marker and redaction policy that describe the capture are not derivations of it, so replacement carries
+                // them unchanged. Carrying every journal means no chunk's evidence is ever dropped by replacing the rows
+                // derived from it, and carrying a redaction policy means a package never loses its provenance (I22).
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
                         dependency.Kind is StoreDependencyKind.DerivationPlan
                             or StoreDependencyKind.CoverageLedger
                             or StoreDependencyKind.CaptureFinalization
+                            or StoreDependencyKind.RedactionPolicy
                             or StoreDependencyKind.Journal),
                 ];
                 if (!carried.Any(dependency => dependency.Kind == StoreDependencyKind.Journal
@@ -747,6 +749,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "A capture finalization marker is durable evidence that the recording reached its last "
                         + "publication. It is not a rebuildable derived index and retention cannot release it.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.RedactionPolicy)
+                {
+                    throw new ArgumentException(
+                        "A redaction policy is a redacted package's provenance: it says the journal is synthetic and "
+                        + "what was pseudonymized. Releasing it would make the package read as an original capture (I22).",
                         nameof(names));
                 }
 

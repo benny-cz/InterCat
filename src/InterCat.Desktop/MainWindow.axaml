@@ -315,7 +315,7 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-              <Button Content="Open original record (Enter)" Click="OpenOriginalRecord"
+              <Button Content="{Binding OriginalRecordLabel}" Click="OpenOriginalRecord"
                       IsEnabled="{Binding HasSelectedEvidence}"
                       AutomationProperties.Name="Open the selected record's original journal entry" />
             </StackPanel>
@@ -363,6 +363,9 @@
                       AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
               <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
                       AutomationProperties.Name="Share a pseudonymized metadata report without original sources or raw record locators" />
+              <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
+              <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
+                      AutomationProperties.Name="Save a reopenable, pseudonymized copy of this session to share" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

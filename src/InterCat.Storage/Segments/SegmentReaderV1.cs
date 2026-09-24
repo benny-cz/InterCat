@@ -412,6 +412,31 @@ public sealed class SegmentReaderV1
     }
 
     /// <summary>
+    /// The row count a segment's checksummed header declares, read without the rest of the file. A caller that needs a
+    /// total before reading - a bound to refuse early, a progress denominator - uses it; the rows themselves are
+    /// verified when the segment is opened.
+    /// </summary>
+    public static int DeclaredRowCount(ReadOnlySpan<byte> header)
+    {
+        if (header.Length < SegmentFormatV1.HeaderLength
+            || BinaryPrimitives.ReadUInt64LittleEndian(header) != SegmentFormatV1.Magic
+            || BinaryPrimitives.ReadUInt16LittleEndian(header[8..]) != SegmentFormatV1.FormatMajor)
+        {
+            throw new InvalidDataException("This file is not a segment-v1 segment this reader implements.");
+        }
+
+        if (Crc32C.Compute(header[..120]) != BinaryPrimitives.ReadUInt32LittleEndian(header[120..]))
+        {
+            throw new InvalidDataException("A segment-v1 header fails its checksum.");
+        }
+
+        uint rows = BinaryPrimitives.ReadUInt32LittleEndian(header[68..]);
+        return rows is >= 1 and <= SegmentFormatV1.MaximumRowsPerSegment
+            ? (int)rows
+            : throw new InvalidDataException("A segment-v1 header declares a row count outside its bound.");
+    }
+
+    /// <summary>
     /// Resolves and verifies one column once, for a caller that reads it for every row. A variable-reference
     /// column has no numeric value and is refused here rather than read as its offset.
     /// </summary>

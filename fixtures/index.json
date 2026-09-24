@@ -624,6 +624,23 @@
       "I21": [
         "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
+      "I22": [
+        "I22: a cancelled package leaves neither the package nor its stage behind",
+        "I22: a companion the package reproduces unchanged is not mistaken for a leak",
+        "I22: a package refuses an overlapping or existing destination, and a package of a package",
+        "I22: a preview measures the package without writing it",
+        "I22: a redacted package is refused as a package, not as a legacy session needing a plan",
+        "I22: a redacted package reproduces its source's graph, processes, coverage and totals",
+        "I22: a redaction policy survives reopen, cannot be released, and is carried by a replacement",
+        "I22: a redaction policy that claims original sources, or names an unknown member, is refused",
+        "I22: a session with no rows has nothing to package",
+        "I22: an ordinary session names no policy, and a generation naming two is refused",
+        "I22: no source name, identity, reading, locator or body byte reaches a package file",
+        "I22: source fields are kept, pseudonymized or redacted by their allowlist",
+        "I22: the coverage ledger keeps its states under pseudonymous providers",
+        "I22: the leak scanner finds a needle across a chunk boundary and ignores generated-looking text",
+        "I22: two packages of one session share no pseudonym"
+      ],
       "I3": [
         "I3: a session-time interval maps to exactly the native readings inside it",
         "I3: an interval scopes every metric half-open, and a rate divides by the whole of it",
@@ -1089,10 +1106,6 @@
       "I20": {
         "reason": "Boundary censoring needs the checkpoint work of IC-016.",
         "plannedBy": "IC-016"
-      },
-      "I22": {
-        "reason": "Redacted export belongs to M5.",
-        "plannedBy": "M5"
       },
       "P12": {
         "reason": "Callback-path prohibitions are asserted against the journal of IC-011.",

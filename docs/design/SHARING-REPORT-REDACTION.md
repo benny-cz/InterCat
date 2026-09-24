@@ -5,7 +5,9 @@ Contract: `intercat-share-report-v1` · Policy: `share-report-redaction-v1` · P
 This is a derived **report**, not a reopenable session or evidence package. Its sole output is a JSON or CSV file.
 No original ETL, journal, segment, dictionary, body, extended-data bytes, source-to-token mapping, raw locator or
 reference to an original source is attached. The ordinary `intercat-export-v1` JSON/CSV is a detailed inspection
-export and is **not** a sharing format. A redacted normalized session package is separately still owed by §11.3.
+export and is **not** a sharing format. §11.3's reopenable redacted normalized session is a separate preset with its own
+contract, [`redacted-session-v1`](../../contracts/redacted-session-v1.md); choose it when the recipient should explore the
+session rather than read one view of it.
 
 ## Allowlist and transformations
 
@@ -36,6 +38,6 @@ to external auxiliary data or multiple reports of the same capture.
 
 Before widening this contract: prove every added field cannot contain names, IDs, addresses, content or a locator;
 extend adversarial JSON/CSV leak tests; confirm CSV is still safe to open in a spreadsheet; preserve truthful
-completeness and byte-domain labels; and review the disclosure text in both CLI and Desktop. Do not use this
-report's safety claim for the future reopenable redacted normalized session package: that package needs new
-dictionaries/indices, an annotation/reference scan, a new identity and provenance, and I22 package inspection.
+completeness and byte-domain labels; and review the disclosure text in both CLI and Desktop. This report's safety claim does not cover the redacted session
+package, and the package's does not cover this report: each has its own allowlist, tests and verification
+(`redacted-session-v1` §8).

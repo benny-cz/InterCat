@@ -31,7 +31,8 @@ public sealed record SessionOverviewBundle(
     bool CoverageLedgerPublished,
     IReadOnlyList<MechanismCoverage> MechanismCoverage,
     IReadOnlyList<string> Caveats,
-    SessionMinimap? Minimap = null);
+    SessionMinimap? Minimap = null,
+    SessionRedaction? Redaction = null);
 
 /// <summary>
 /// Builds graph and timeline data from exactly one leased generation. This is the read-side bundle for IC-017, not a
@@ -67,6 +68,7 @@ public static class SessionOverviewProjector
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
             .Select(name => SessionSegments.Open(store.Root, manifest, name))];
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
+        SessionRedaction? redaction = SessionRedaction.Read(store.Root, manifest);
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
         TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
         ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
@@ -169,6 +171,7 @@ public static class SessionOverviewProjector
                 + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
                 + "remains in the all-observations timeline, not a guessed channel.",
             .. (channelProblem is null ? [] : new[] { channelProblem }),
+            .. (redaction is null ? [] : new[] { SessionRedaction.Summary + " " + redaction.Warning }),
         ];
         return new(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
@@ -192,7 +195,8 @@ public static class SessionOverviewProjector
             coverage is not null,
             Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage)]),
             Array.AsReadOnly(caveats),
-            minimap);
+            minimap,
+            redaction);
     }
 
     private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets, SessionMinimap? Minimap,

@@ -197,6 +197,42 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Equal(1, session.Store.Current!.Generation);
     }
 
+    [Fact(DisplayName = "I22: a redacted package is refused as a package, not as a legacy session needing a plan")]
+    public void ARedactedPackageIsNotRederived()
+    {
+        using var session = new TemporarySession();
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan descriptor = TransferPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(descriptor)], clock.Id);
+        using (DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(session.Store,
+            new SegmentIdentityV1
+            {
+                CaptureId = session.Capture,
+                ClockId = clock.Id,
+                TimestampEncoding = clock.Encoding,
+                Derivation = ObservationNormalizerV1.ContractVersion,
+            }, clock, DateTimeOffset.UtcNow))
+        {
+            builder.Journal.WriteSchemas(mapper.Schemas);
+            AdmittedEvent admitted = Admitted(descriptor);
+            admitted.SetSlot(0, 100);
+            admitted.SetSlot(1, 10);
+            RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, descriptor, session.Capture);
+            builder.AddRow(normalizer.ToRow(envelope, descriptor, 0));
+            builder.Journal.Append(envelope);
+            builder.StageRedactionPolicy("{}"u8);
+            _ = builder.Complete(DateTimeOffset.UtcNow);
+        }
+
+        JournalRederivationReadiness readiness = JournalRederivation.Assess(session.Store.Current);
+        Assert.False(readiness.CanAttempt);
+        Assert.Contains("redacted session package", readiness.Explanation, StringComparison.Ordinal);
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
+            JournalRederivation.Verify(session.Store));
+        Assert.Equal(readiness.Explanation, refusal.Message);
+        Assert.Equal(1, session.Store.Current!.Generation);
+    }
+
     [Fact(DisplayName = "R20: an in-place change after store open and a cancelled check never publish")]
     public void ReplayRechecksTheOpenedEvidenceAndLeavesTheGenerationUntouched()
     {

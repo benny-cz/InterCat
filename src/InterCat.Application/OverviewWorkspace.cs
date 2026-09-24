@@ -22,7 +22,9 @@ public static class OverviewWorkspace
     {
         ArgumentNullException.ThrowIfNull(overview);
         return new(
-            $"Session · generation {overview.Generation:N0}",
+            overview.Redaction is null
+                ? $"Session · generation {overview.Generation:N0}"
+                : $"Redacted package · generation {overview.Generation:N0}",
             overview.Extent ?? new TimeRange(0, 1),
             overview.Groups,
             overview.Nodes,
@@ -30,8 +32,18 @@ public static class OverviewWorkspace
             overview.Channels, [], [],
             overview.Timeline,
             overview.ChannelProjectionProblem,
-            overview.Minimap);
+            overview.Minimap,
+            overview.Redaction);
     }
+
+    /// <summary>
+    /// What every view of a redacted session package adds to <see cref="SessionDisclosure"/>: its values are pseudonyms
+    /// and its records synthetic, so no name, id or address in it is the source machine's.
+    /// </summary>
+    public const string RedactedDisclosure =
+        "This is a redacted session package: names, process and thread IDs, addresses, ports and identifiers are random "
+        + "pseudonyms consistent only within it, and each record's original entry is a synthetic metadata record with "
+        + "no payload. Times, sizes, counts and relationships are the source's.";
 
     /// <summary>
     /// The same workspace ranked within an analysis interval: every edge and channel keeps its identity and position and

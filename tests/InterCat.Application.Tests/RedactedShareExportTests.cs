@@ -81,7 +81,8 @@ public sealed class RedactedShareExportTests
             Assert.Equal(left.GetProperty("ownerToken").GetString(), right.GetProperty("ownerToken").GetString());
             Assert.Equal(left.GetProperty("activityToken").GetString(),
                 right.GetProperty("relatedActivityToken").GetString());
-            Assert.Equal(1_500, left.GetProperty("sessionRelativeTicks").GetInt64());
+            // The stored row has nanoseconds; report context promises 100-ns presentation ticks.
+            Assert.Equal(15, left.GetProperty("sessionRelativeTicks").GetInt64());
             Assert.False(json.RootElement.GetProperty("redaction").GetProperty("rawLocatorsIncluded").GetBoolean());
         }
         else

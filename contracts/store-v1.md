@@ -52,11 +52,17 @@ survived a power failure from a name that was renamed into place and lost its co
 is no directory flush, so a rename proves nothing about the bytes behind the name.
 
 A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index`, `DerivationPlan` (code 5,
-`contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`) or
-`CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`). An unknown kind, an unreadable
+`contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`),
+`CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`) or `RedactionPolicy` (code 8,
+`contracts/redacted-session-v1.md`). An unknown kind, an unreadable
 format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
 duplicate dependency, or a dependency name that is not an owned file name are each refused — the
 manifest is not read at a guessed layout.
+
+A `RedactionPolicy` dependency, `redaction-policy-<generation:D10>.json`, is published only by a redacted session
+package, at most once per generation. It is that package's provenance: it says the journal is synthetic and what was
+pseudonymized. Retention refuses to release it, and every later generation carries it, so a package never comes to read
+as an original capture. A reader built before code 8 refuses a package's manifest rather than reading it as one.
 
 ## 4. The committed boundary
 
@@ -100,7 +106,8 @@ threads within one store instance. A reader does not need that lock.
 
 A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
 exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan, the
-capture coverage ledger if published, and the capture-finalization marker if present; it stages a replacement set of
+capture coverage ledger if published, the capture-finalization marker if present, and a redaction policy if present
+(a redacted package itself is refused before replay, because it has no plan); it stages a replacement set of
 segments and dictionaries and publishes it as the next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
 dependencies remain last-known-good; publication still follows the same staged-file and pointer sequence. The
 replacement is refused if the source generation changed during replay. The replay itself refuses two cases:

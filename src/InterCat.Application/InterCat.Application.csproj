@@ -3,5 +3,6 @@
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../InterCat.Storage/InterCat.Storage.csproj" />
     <ProjectReference Include="../InterCat.Analysis/InterCat.Analysis.csproj" />
+    <InternalsVisibleTo Include="InterCat.Application.Tests" />
   </ItemGroup>
 </Project>

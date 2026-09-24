@@ -49,6 +49,14 @@ public static class JournalRederivation
             return new(false, "No generation has been published yet.");
         }
 
+        if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy))
+        {
+            // Checked before the plan, whose absence would otherwise read as a legacy session needing a migration.
+            return new(false, "This is a redacted session package. Its journal holds synthetic metadata records, not the "
+                + "original capture, and it carries no normalizer plan, so its rows are the package's evidence and "
+                + "cannot be re-derived.");
+        }
+
         if (!manifest.Boundary.IsDeclared)
         {
             return new(false, "This generation names no committed journal boundary.");
@@ -170,6 +178,11 @@ public static class JournalRederivation
         ArgumentNullException.ThrowIfNull(store);
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
+        if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy))
+        {
+            throw new InvalidOperationException(Assess(manifest).Explanation);
+        }
+
         if (!manifest.Boundary.IsDeclared)
         {
             throw new InvalidOperationException(

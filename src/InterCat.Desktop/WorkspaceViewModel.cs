@@ -79,7 +79,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : OverviewWorkspace.SessionDisclosure;
+                : snapshot.Redaction is null
+                    ? OverviewWorkspace.SessionDisclosure
+                    : OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.SessionDisclosure;
         // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
         // and applied only if its identity is still the graph the window is showing.
         GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
@@ -564,7 +566,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : "Clear selection (Esc)";
 
     public string DescendHint => IsEvidenceRung
-        ? "Enter opens the original record · M loads more · Esc goes back"
+        ? $"Enter opens the {RecordNoun} · M loads more · Esc goes back"
         : ladder.Current.Level == DetailLevel.Evidence
             ? "Evidence is the last rung. Esc returns to where you were."
             : "Enter opens the selected row · E jumps straight to evidence · Esc goes back";
@@ -903,6 +905,17 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>
+    /// The record action's label. A redacted package holds synthetic records only, and its action never promises the
+    /// original that was left out.
+    /// </summary>
+    public string OriginalRecordLabel => wholeSnapshot.Redaction is null
+        ? "Open original record (Enter)"
+        : "Open synthetic record (Enter)";
+
+    /// <summary>What Enter opens at the evidence rung, in words the rail, its hint and a screen reader share.</summary>
+    private string RecordNoun => wholeSnapshot.Redaction is null ? "original record" : "synthetic record";
+
     public string SelectedEvidenceTitle => SelectedEvidence is { } record
         ? EvidenceRowText.Title(record.Observation)
             + (EvidenceRowText.Size(record.Observation, CultureInfo.CurrentCulture) is { } size ? " · " + size : string.Empty)
@@ -924,7 +937,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             if (EvidenceRowText.Size(row, CultureInfo.CurrentCulture) is { } size)
                 fields.Add(new("Size", size + (row.ByteDomain is { } domain ? $" · {domain}" : string.Empty)));
             fields.Add(new("Source", string.Create(CultureInfo.InvariantCulture,
-                $"{EvidenceRowText.ProviderName(row.ProviderId)} · event {row.EventId} v{row.DescriptorVersion}")));
+                $"{EvidenceRowText.ProviderName(row.ProviderId, wholeSnapshot.Redaction is not null)} · event {row.EventId} v{row.DescriptorVersion}")));
             fields.Add(new("Quality", $"attribution {row.AttributionQuality}, correlation {row.CorrelationQuality}, "
                 + $"measurement {row.MeasurementQuality}, timing {row.TimingQuality}"));
             fields.Add(new("Record", string.Create(CultureInfo.InvariantCulture,
@@ -1093,10 +1106,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        evidenceRows = [.. list.Records.Select(EvidenceRow)];
+        evidenceRows = [.. list.Records.Select(record => EvidenceRow(record, RecordNoun))];
     }
 
-    private static RungRow EvidenceRow(SessionEvidenceRecord record)
+    private static RungRow EvidenceRow(SessionEvidenceRecord record, string recordNoun)
     {
         ObservationRowV1 row = record.Observation;
         FamilyTokens tokens = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(row.Mechanism));
@@ -1112,10 +1125,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
         string endpoints = EvidenceRowText.Endpoints(row) is { } pair ? ", " + pair : string.Empty;
         return new(EvidenceKey(record), size is null ? title : title + " · " + size, detail, string.Empty,
-            size ?? string.Empty, tokens.Label, tokens.Glyph, string.Empty, "original record", source)
+            size ?? string.Empty, tokens.Label, tokens.Glyph, string.Empty, recordNoun, source)
         {
             SpokenName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, owned by {owner}. "
-                + "Press Enter to open the original record.",
+                + $"Press Enter to open the {recordNoun}.",
         };
     }
 

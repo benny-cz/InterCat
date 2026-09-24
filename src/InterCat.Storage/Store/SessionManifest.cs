@@ -35,6 +35,12 @@ public enum StoreDependencyKind
     /// committed chunk; this companion distinguishes the capture's final chunk from an intermediate live chunk.
     /// </summary>
     CaptureFinalization = 7,
+
+    /// <summary>
+    /// The allowlist and provenance of a redacted session package (`contracts/redacted-session-v1.md`): what the package
+    /// kept, pseudonymized, redacted and left out, and that its journal holds synthetic records. Never released.
+    /// </summary>
+    RedactionPolicy = 8,
 }
 
 /// <summary>

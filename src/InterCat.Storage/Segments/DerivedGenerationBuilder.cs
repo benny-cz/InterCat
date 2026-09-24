@@ -99,6 +99,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool planStaged;
     private bool ledgerStaged;
     private bool finalizationStaged;
+    private bool redactionPolicyStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -178,6 +179,31 @@ public sealed class DerivedGenerationBuilder : IDisposable
         Stage(CoverageLedgerFileName(generation), StoreDependencyKind.CoverageLedger, ledger.Encode());
         ledgerStaged = true;
     }
+
+    /// <summary>
+    /// Names the policy a redacted session package was built under (`contracts/redacted-session-v1.md`). It is the
+    /// package's provenance: it says what was kept, pseudonymized, redacted and left out, and that the package's journal
+    /// holds synthetic records rather than the original capture's evidence.
+    /// </summary>
+    public void StageRedactionPolicy(ReadOnlySpan<byte> bytes)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || redactionPolicyStaged)
+        {
+            throw new InvalidOperationException("A generation stages one redaction policy before publication.");
+        }
+
+        if (bytes.Length is < 1 or > SessionSegments.MaximumRedactionPolicyBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bytes), "A redaction policy is between 1 B and 64 KiB.");
+        }
+
+        Stage(RedactionPolicyFileName(generation), StoreDependencyKind.RedactionPolicy, bytes.ToArray());
+        redactionPolicyStaged = true;
+    }
+
+    /// <summary>The published name of a generation's redaction policy.</summary>
+    public static string RedactionPolicyFileName(long generation) => $"redaction-policy-{generation:D10}.json";
 
     /// <summary>
     /// Retains a coverage ledger exactly as another session published it, so a mirrored session names the same bytes.
@@ -840,6 +866,71 @@ public static class SessionSegments
         }
 
         return CoverageLedgerV1.Decode(bytes);
+    }
+
+    /// <summary>
+    /// The rows a published segment's header declares, read without opening the whole file. It is for a total before a
+    /// pass - a bound or a progress denominator - and is never a substitute for opening the segment to read its rows.
+    /// </summary>
+    public static int DeclaredRowCount(IOwnedDirectory directory, SessionManifestV1 manifest, string segmentName)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(manifest);
+        StoreDependency dependency = manifest.Dependencies.FirstOrDefault(candidate =>
+            candidate.Name.Equals(segmentName, StringComparison.OrdinalIgnoreCase)
+            && candidate.Kind == StoreDependencyKind.Segment)
+            ?? throw new InvalidDataException($"Generation {manifest.Generation} names no segment '{segmentName}'.");
+        byte[] header = new byte[SegmentFormatV1.HeaderLength];
+        using FileStream stream = directory.OpenOwnedFile(
+            dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.None);
+        stream.ReadExactly(header);
+        return SegmentReaderV1.DeclaredRowCount(header);
+    }
+
+    /// <summary>The largest redaction policy a generation publishes or a reader accepts.</summary>
+    public const int MaximumRedactionPolicyBytes = 65_536;
+
+    /// <summary>
+    /// The bytes of the redaction policy a generation names, or null for an ordinary session, which names none. Only a
+    /// redacted session package publishes one; its contract (`contracts/redacted-session-v1.md`) is read by the
+    /// application layer, because this layer does not interpret it. Two policies are a refusal: a reader could not say
+    /// which one the package was built under.
+    /// </summary>
+    public static byte[]? RedactionPolicy(IOwnedDirectory directory, SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(manifest);
+        StoreDependency[] policies =
+        [
+            .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy),
+        ];
+        if (policies.Length > 1)
+        {
+            throw new InvalidDataException(
+                $"Generation {manifest.Generation} names {policies.Length} redaction policies; a package has one.");
+        }
+
+        if (policies.Length == 0)
+        {
+            return null;
+        }
+
+        if (policies[0].LengthBytes is < 1 or > MaximumRedactionPolicyBytes)
+        {
+            throw new InvalidDataException("The redaction policy is outside its 64 KiB bound.");
+        }
+
+        byte[] bytes = new byte[checked((int)policies[0].LengthBytes)];
+        using FileStream stream = directory.OpenOwnedFile(
+            policies[0].Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+        if (stream.Length != bytes.Length)
+        {
+            throw new InvalidDataException(
+                $"The redaction policy '{policies[0].Name}' is not the length its generation recorded.");
+        }
+
+        stream.ReadExactly(bytes);
+        return bytes;
     }
 
     /// <summary>
