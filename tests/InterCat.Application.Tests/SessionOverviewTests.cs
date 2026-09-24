@@ -375,6 +375,46 @@ public sealed class SessionOverviewTests
         Assert.Single(SessionEvidenceQuery.Read(session.Store, interval: new TimeRange(10, 11)).Records);
     }
 
+    [Fact]
+    public void OwnerScopedEvidenceKeepsOnlyCanonicalOwnerAndBindsCursorToScope()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 3, 100, 3)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090"),
+        ], rowsPerSegment: 1);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessInstanceId client = overview.Nodes.Single(node => node.ProcessId == 100).Id;
+        ProcessInstanceId server = overview.Nodes.Single(node => node.ProcessId == 200).Id;
+        SessionEvidencePage first = SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: client, pageSize: 1);
+        SessionEvidencePage second = SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: client, pageSize: 1, cursor: first.NextCursor);
+        Assert.Equal(client, first.OwnerProcessScope);
+        Assert.Equal([10L, 12L], new[] { first, second }
+            .Select(page => page.Records.Single().Observation.NativeTicks));
+        Assert.Null(second.NextCursor);
+        Assert.Contains("not possible peer rows", first.Caveat, StringComparison.Ordinal);
+
+        SessionEvidencePage changed = SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: server, cursor: first.NextCursor);
+        Assert.True(changed.RestartRequired);
+        Assert.Empty(changed.Records);
+        Assert.Equal(11L, SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: server).Records.Single().Observation.NativeTicks);
+        Assert.Empty(SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: client, policy: EvidencePolicy.DirectOnly).Records);
+        string channel = Assert.Single(overview.Channels).Key;
+        Assert.Equal(10L, SessionEvidenceQuery.Read(session.Store,
+            channelKey: channel, ownerProcessScope: client).Records.Single().Observation.NativeTicks);
+        Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store,
+            ownerProcessScope: new ProcessInstanceId(Guid.NewGuid())));
+    }
+
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()
     {
         Contract = CoverageLedgerV1.ContractName,

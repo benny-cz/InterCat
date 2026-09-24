@@ -127,15 +127,13 @@ public sealed partial class MainWindow : Window, IDisposable
         if (currentSessionPath is null || displayedSessionId is not { } sessionId
             || displayedGeneration < 1) return;
         WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        string? channelKey = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Channel)
-            ?.Focus?.Key;
+        var (available, channelKey, ownerProcess) = EvidenceScope(navigation);
+        if (!available) return;
         NavigationState current = navigation.Breadcrumb[^1];
-        if (channelKey is null
-            && (current.Level != DetailLevel.Machine || navigation.SelectedProcess is not null)) return;
         TimeRange? interval = navigation.SelectedInterval
             ?? (current.Viewport == workspace.Snapshot.Extent ? null : current.Viewport);
         using var inspector = new SessionEvidenceWindow(currentSessionPath, sessionId,
-            displayedGeneration, channelKey, interval);
+            displayedGeneration, channelKey, ownerProcess, interval);
         try
         {
             await inspector.ShowDialog(this);
@@ -284,14 +282,28 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateEvidenceAction()
     {
         WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        NavigationState[] path = [.. navigation.Breadcrumb];
-        bool atMachine = path[^1].Level == DetailLevel.Machine && navigation.SelectedProcess is null;
-        bool inChannel = path.Any(rung => rung.Level == DetailLevel.Channel);
+        var (available, channelKey, ownerProcess) = EvidenceScope(navigation);
         InspectEvidenceButton.IsEnabled = currentSessionPath is not null && displayedGeneration > 0
-            && (atMachine || inChannel);
+            && available;
         ToolTip.SetTip(InspectEvidenceButton, InspectEvidenceButton.IsEnabled
-            ? "Read exact normalized rows from this published generation. No payload bytes or operation pairing."
-            : "Open a session, clear a process selection for whole-machine rows, or descend to one channel.");
+            ? (channelKey is not null ? "Read this paired TCP channel's normalized rows."
+                : ownerProcess is not null ? "Read normalized rows canonically owned by this process instance."
+                : "Read whole-session normalized rows.") + " No payload bytes or operation pairing."
+            : "Open a session, select a process at Machine, or descend to Process or Channel.");
+    }
+
+    private static (bool Available, string? ChannelKey, ProcessInstanceId? OwnerProcess) EvidenceScope(
+        WorkspaceNavigationMemento navigation)
+    {
+        string? channel = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Channel)
+            ?.Focus?.Key;
+        if (channel is not null) return (true, channel, null);
+        NavigationState current = navigation.Breadcrumb[^1];
+        if (current.Level == DetailLevel.Machine) return (true, null, navigation.SelectedProcess);
+        if (current.Level == DetailLevel.ProcessInstance
+            && Guid.TryParse(current.Focus?.Key, out Guid id) && id != Guid.Empty)
+            return (true, null, new ProcessInstanceId(id));
+        return (false, null, null);
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)

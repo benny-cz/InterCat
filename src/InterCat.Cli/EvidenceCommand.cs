@@ -22,6 +22,7 @@ internal static class EvidenceCommand
 
         string? directory = command.TakePositional();
         string? channel = command.TakeOption("--channel");
+        string? ownerProcessText = command.TakeOption("--owner-process");
         string? cursor = command.TakeOption("--cursor");
         string? intervalText = command.TakeOption("--interval");
         string? size = command.TakeOption("--page-size");
@@ -32,11 +33,14 @@ internal static class EvidenceCommand
         bool json = command.TryTakeFlag("--json");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         bool invalidInterval = !TryParseInterval(intervalText, out TimeRange? interval);
-        if (directory is null || hasUnknown || invalidSize || invalidInterval)
+        bool invalidOwner = ownerProcessText is not null
+            && (!Guid.TryParse(ownerProcessText, out Guid ownerId) || ownerId == Guid.Empty);
+        if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
                 : hasUnknown ? $"Unknown or incomplete option: {unknown}"
                 : invalidSize ? "--page-size must be an integer from 1 to 200."
+                : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
                 : "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
             PrintHelp();
             return InterCatExitCode.InvalidInvocation;
@@ -49,11 +53,12 @@ internal static class EvidenceCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        ProcessInstanceId? ownerScope = ownerProcessText is null ? null : new(Guid.Parse(ownerProcessText));
         SessionEvidencePage page;
         try
         {
             page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
-                channel, interval, pageSize: pageSize, cursor: cursor,
+                channel, interval, ownerScope, pageSize: pageSize, cursor: cursor,
                 cancellationToken: cancellationToken);
         }
         catch (ArgumentException exception)
@@ -81,6 +86,7 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (channel is not null) ConsoleUi.Field("Paired TCP channel", channel);
+        if (ownerScope is not null) ConsoleUi.Field("Canonical owner process", ownerScope.ToString()!);
         if (interval is { } range)
             ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks");
         if (page.RestartRequired)
@@ -103,17 +109,20 @@ internal static class EvidenceCommand
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat evidence <directory> --cursor {page.NextCursor}"
                 + (channel is null ? string.Empty : $" --channel {channel}")
+                + (ownerScope is null ? string.Empty : $" --owner-process {ownerScope}")
                 + (interval is { } scope ? $" --interval {scope.StartTicks}:{scope.EndTicks}" : string.Empty));
         return InterCatExitCode.Success;
     }
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--interval <start:end>]");
+        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
+        ConsoleUi.Line("              [--interval <start:end>]");
         ConsoleUi.Line("              [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows, tied to one manifest and query.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --channel uses an overview channel key.");
+        ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");
     }

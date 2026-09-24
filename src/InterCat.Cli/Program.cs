@@ -138,7 +138,8 @@ static void PrintHelp()
     ConsoleUi.Line("                [--cursor <token>] [--json]");
     ConsoleUi.Line("      Bounded paired TCP channel pages, including sessions above the overview cap.");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--interval <start:end>]");
+    ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
+    ConsoleUi.Line("                [--interval <start:end>]");
     ConsoleUi.Line("                [--page-size <1-200>]");
     ConsoleUi.Line("                [--cursor <token>] [--json]");
     ConsoleUi.Line("      Leased pages of exact admitted observation rows; cursors restart on generation change.");

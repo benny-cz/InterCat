@@ -304,6 +304,12 @@ public sealed class ProcessInstanceIndex
     }
 
     /// <summary>
+    /// The canonical owner binding for each normalized row of a segment. This uses the same lifecycle-exact
+    /// and reading-time rules as metric process filters; callers must not select rows by a reused numeric PID.
+    /// </summary>
+    public ProcessBinding[] OwnersOf(SegmentReaderV1 segment) => ProcessRoles.OwnersOf(this, segment);
+
+    /// <summary>
     /// Binds one record, given the owner its payload names, its native reading and whether it is a process
     /// lifecycle record. Pure: the same inputs bind the same way every time.
     /// </summary>

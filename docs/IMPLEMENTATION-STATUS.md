@@ -1,12 +1,34 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 90
+Plan revision: 91
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: time-scoped Desktop source-row inspector
+## Latest slice: exact process-owner source-row scope
+
+`SessionEvidenceQuery` now accepts an optional process-instance owner scope. It uses the existing
+`process-binding-v2` row binding, including lifecycle-exact identity and evidence-strength policy, so a reused PID
+cannot silently redirect the result. The scope intersects a channel and time interval when supplied, and is part of
+cursor identity; a changed scope returns an explicit restart. This is the row's **canonical owner**, not a claim that
+the process is a peer of some other row. `icat evidence --owner-process <instance-guid>` exposes the same read-side
+scope and carries it into the next-page hint.
+
+Desktop's `Inspect source rows` is now available at Machine with or without a selected process, at the focused
+Process rung, and at a Channel rung. The inspector clearly names whole-session, owner-process, or paired-channel
+scope. A group is not quietly treated as a process, and a channel ignores incidental list selection. The source-row
+inspector still does not project L4 logical operations or original payload bytes as L5. The existing RPC pairing
+code is a fixture-specific feasibility evaluator; it must not be promoted to a production operation correlator.
+
+One application regression covers owner versus peer rows, paging across segments, policy admission, scope-bound
+cursors, a missing instance, and intersection with a paired channel. All 786 tests pass in separate Debug and Release
+solution runs; CLI Release builds and the evidence help path was smoke-checked. Plan revision 91 records the exact
+scope boundary. Real Desktop/UAC and §3.1 first-feedback measurement remain unqualified. Next, build a production
+operation derivation only after validating a source-specific start/completion key and ambiguity behavior. Continue
+full L5 provenance/payload work and bounded Desktop channel discovery separately; the wider plan is not complete.
+
+## Previous slice: time-scoped Desktop source-row inspector
 
 Evidence pages now accept a deliberate half-open interval in the workspace's 100-nanosecond presentation ticks.
 Untimed rows remain visible when no interval is selected and are excluded only when the user chooses a time scope.

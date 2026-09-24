@@ -333,7 +333,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             if (realOverview && ladder.Current.Level >= DetailLevel.Channel)
             {
                 return "This ladder has not projected completion-paired operations or source-record rows yet. "
-                    + "Return to the machine with no process selected, or to a channel, then choose Inspect "
+                    + "Return to the machine, process, or channel context, then choose Inspect "
                     + "source rows for a bounded page of "
                     + "admitted normalized observations. The saved session also supports icat evidence --json.";
             }

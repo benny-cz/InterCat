@@ -19,6 +19,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
     private readonly Guid expectedSessionId;
     private readonly long expectedGeneration;
     private readonly string? channelKey;
+    private readonly ProcessInstanceId? ownerProcess;
     private readonly TimeRange? interval;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
@@ -34,12 +35,13 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
     private bool disposed;
 
     public SessionEvidenceWindow(string path, Guid expectedSessionId, long expectedGeneration,
-        string? channelKey, TimeRange? interval)
+        string? channelKey, ProcessInstanceId? ownerProcess, TimeRange? interval)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.channelKey = channelKey;
+        this.ownerProcess = ownerProcess;
         this.interval = interval;
         Title = "InterCat · Source observations";
         Width = 960;
@@ -50,7 +52,9 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
 
         var scope = new TextBlock
         {
-            Text = (channelKey is null ? "Whole-session observed rows" : $"Paired TCP channel {channelKey}")
+            Text = (channelKey is not null ? $"Paired TCP channel {channelKey}"
+                : ownerProcess is { } owner ? $"Rows canonically owned by process {owner}"
+                : "Whole-session observed rows")
                 + (interval is { } range
                     ? $" · [{range.StartTicks}, {range.EndTicks}) in 100 ns session ticks"
                     : " · all session times, including rows without a usable time"),
@@ -58,7 +62,8 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             FontWeight = FontWeight.SemiBold,
         };
         status.Text = "Opening a verified evidence generation…";
-        caveat.Text = "Only admitted normalized rows are shown. Original payload bytes and completion-paired "
+        caveat.Text = "Only admitted normalized rows are shown. Process scope means the row's canonical owner, "
+            + "not its possible peer. Original payload bytes and completion-paired "
             + "logical operations are not represented here.";
         rows.SelectionChanged += (_, _) =>
         {
@@ -124,7 +129,8 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             CancellationToken token = lifetime.Token;
             SessionEvidencePage page = await Task.Run(() => SessionEvidenceQuery.Read(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), channelKey, interval,
-                pageSize: SessionEvidenceQuery.DefaultPageSize, cursor: cursor, cancellationToken: token), token);
+                ownerProcess, pageSize: SessionEvidenceQuery.DefaultPageSize, cursor: cursor,
+                cancellationToken: token), token);
             if (closed) return;
             if (page.RestartRequired || page.SessionId != expectedSessionId
                 || page.Generation != expectedGeneration)
