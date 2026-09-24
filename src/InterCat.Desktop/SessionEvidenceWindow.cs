@@ -28,6 +28,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
     private readonly TextBox detail = new() { IsReadOnly = true, AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap };
     private readonly Button next = new() { Content = "Next 100 rows", IsEnabled = false };
+    private readonly Button original = new() { Content = "Open original record", IsEnabled = false };
     private IReadOnlyList<SessionEvidenceRecord> currentRows = [];
     private string? nextCursor;
     private bool loading;
@@ -65,16 +66,12 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
         caveat.Text = "Only admitted normalized rows are shown. Process scope means the row's canonical owner, "
             + "not its possible peer. Original payload bytes and completion-paired "
             + "logical operations are not represented here.";
-        rows.SelectionChanged += (_, _) =>
-        {
-            int index = rows.SelectedIndex;
-            detail.Text = index >= 0 && index < currentRows.Count
-                ? Describe(currentRows[index]) : string.Empty;
-        };
+        rows.SelectionChanged += (_, _) => UpdateSelection();
         next.Click += (_, _) =>
         {
             if (nextCursor is { } cursor) _ = LoadPageAsync(cursor);
         };
+        original.Click += OpenOriginalRecord;
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
 
@@ -83,7 +80,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Children = { next, close },
+            Children = { original, next, close },
         };
         var header = new StackPanel { Spacing = 5, Children = { scope, status, caveat } };
         var grid = new Grid
@@ -122,6 +119,7 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
         next.IsEnabled = false;
         currentRows = [];
         rows.ItemsSource = Array.Empty<string>();
+        original.IsEnabled = false;
         detail.Text = string.Empty;
         status.Text = "Reading a verified page…";
         try
@@ -171,6 +169,36 @@ internal sealed class SessionEvidenceWindow : Window, IDisposable
         finally
         {
             loading = false;
+            if (!closed) UpdateSelection();
+        }
+    }
+
+    private void UpdateSelection()
+    {
+        int index = rows.SelectedIndex;
+        bool selected = index >= 0 && index < currentRows.Count;
+        detail.Text = selected ? Describe(currentRows[index]) : string.Empty;
+        original.IsEnabled = selected && !loading;
+    }
+
+    private async void OpenOriginalRecord(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs)
+    {
+        int index = rows.SelectedIndex;
+        if (loading || index < 0 || index >= currentRows.Count) return;
+        using var inspector = new SessionRawRecordWindow(path, expectedSessionId,
+            expectedGeneration, currentRows[index]);
+        original.IsEnabled = false;
+        try
+        {
+            await inspector.ShowDialog(this);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) status.Text = "Could not open original record: " + exception.Message;
+        }
+        finally
+        {
+            if (!closed) UpdateSelection();
         }
     }
 

@@ -159,7 +159,8 @@ internal static class TestSessions
         CaptureId? capture = null,
         SourceClockDescriptor? clock = null,
         IReadOnlyList<SourceFieldRowV1>? fields = null,
-        CoverageLedgerV1? coverage = null)
+        CoverageLedgerV1? coverage = null,
+        Func<ObservationRowV1, BodyV1>? bodyForRow = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -196,7 +197,8 @@ internal static class TestSessions
                 references[(row.ProviderId, row.EventId, row.DescriptorVersion, row.SchemaFingerprint)],
                 policy,
                 captureId,
-                sourceClock.Id));
+                sourceClock.Id,
+                bodyForRow?.Invoke(row)));
         }
 
         foreach (SourceFieldRowV1 field in fields ?? [])
@@ -212,7 +214,8 @@ internal static class TestSessions
         return builder.Complete(Committed);
     }
 
-    private static RecordEnvelopeV1 Envelope(ObservationRowV1 row, uint schema, uint policy, CaptureId capture, ClockId clock) => new()
+    private static RecordEnvelopeV1 Envelope(ObservationRowV1 row, uint schema, uint policy, CaptureId capture,
+        ClockId clock, BodyV1? body = null) => new()
     {
         CaptureId = capture,
         StreamId = row.RawStreamId,
@@ -242,7 +245,7 @@ internal static class TestSessions
         AdmissionPolicyReference = policy,
         ExtendedItems = [],
         OmittedExtendedItemCount = 0,
-        Body = BodyV1.None,
+        Body = body ?? BodyV1.None,
     };
 
     /// <summary>Every segment the store's current generation names, opened.</summary>

@@ -1,12 +1,32 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 92
+Plan revision: 93
 Current milestone: M1 — evidence and persistence foundation. M0 and its explicit IC-010a capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: bounded paired-channel discovery inside Desktop
+## Latest slice: original journal-record drill-down from a source row
+
+The Desktop's bounded source-row inspector now opens the **exact original journal-v1 envelope** for a selected
+normalized observation. `SessionRawRecordQuery` takes a manifest lease, requires the same SessionId/generation,
+reopens the selected segment row, verifies its stable observation identity and source descriptor, then streams the
+generation's retained journal chunks with cancellation. It rejects duplicate raw identities or a descriptor/schema
+disagreement; a released raw record yields an explicit unavailable reason, not reconstructed bytes. The view names
+provider/event, native clock reading, header and buffer context, resolved schema fingerprint and admission policy,
+body classification/disposition, original/retained lengths, and extended-item lengths/omissions.
+
+Retained body bytes are **hidden by default**. A separate user action reveals at most 256 bytes as inert hex; the
+query enforces a 1,024-byte maximum for other callers and copies the preview before pooled envelope buffers are
+released. A test covers provenance, hidden-by-default behavior, bounded reveal, wrong row and stale-generation
+refusal. All 787 tests pass in separate Debug and Release solution runs; the new dialog compiles and headless UI
+tests pass. Plan revision 93 records this intermediate L5 path. It is not a decoded message, full payload export,
+extended-item byte viewer, or in-ladder L5 projection; there is no CLI raw-record command yet. Scanning retained
+journals is bounded in memory but can be slow for large sessions, so indexing and latency qualification remain open.
+The real Desktop/UAC path and §3.1 feedback gate are still unqualified. Next: production L4 start/completion
+semantics from a proven mechanism, then complete and qualify the L5 path and remaining milestones.
+
+## Previous slice: bounded paired-channel discovery inside Desktop
 
 The Desktop now has `Browse paired channels` for a published generation at Machine, for a selected Machine process,
 or from the focused Process/Channel path. It reads `SessionChannelQuery` in 100-channel pages off the UI thread, with

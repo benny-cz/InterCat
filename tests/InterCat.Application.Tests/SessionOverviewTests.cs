@@ -416,6 +416,51 @@ public sealed class SessionOverviewTests
             ownerProcessScope: new ProcessInstanceId(Guid.NewGuid())));
     }
 
+    [Fact]
+    public void OriginalRecordLookupIsGenerationBoundAndRevealsOnlyAnExplicitBoundedPreview()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+            .Between(ClientEnd, ServerEnd)],
+            bodyForRow: _ => new BodyV1
+            {
+                Classification = BodyClassificationV1.ApprovedMetadata,
+                Disposition = BodyDispositionV1.Retained,
+                OriginalLength = 5,
+                Bytes = EnvelopeBuffer.CopyOf([1, 2, 3, 4, 5]),
+            });
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord selected = Assert.Single(page.Records);
+
+        SessionRawRecordDetail hidden = SessionRawRecordQuery.Read(session.Store,
+            page.SessionId, page.Generation, selected);
+        Assert.True(hidden.Available);
+        Assert.Null(hidden.BodyPreview);
+        Assert.Equal(selected.ObservationId, hidden.ObservationId);
+        Assert.Equal(selected.Observation.ProviderId, hidden.Header!.Value.ProviderId);
+        Assert.Equal(selected.Observation.SchemaFingerprint, hidden.SchemaFingerprint);
+        Assert.Equal("metadata-only-admitted-projection-v1", hidden.AdmissionPolicyId);
+        Assert.Equal(BodyDispositionV1.Retained, hidden.BodyDisposition);
+        Assert.Equal(5, hidden.OriginalBodyLength);
+        Assert.Equal(5, hidden.RetainedBodyLength);
+
+        SessionRawRecordDetail revealed = SessionRawRecordQuery.Read(session.Store,
+            page.SessionId, page.Generation, selected, revealBodyBytes: true, maximumPreviewBytes: 2);
+        Assert.Equal([1, 2], revealed.BodyPreview);
+        Assert.True(revealed.BodyPreviewTruncated);
+        Assert.Throws<ArgumentOutOfRangeException>(() => SessionRawRecordQuery.Read(session.Store,
+            page.SessionId, page.Generation, selected, maximumPreviewBytes: 1025));
+        Assert.Throws<InvalidDataException>(() => SessionRawRecordQuery.Read(session.Store,
+            page.SessionId, page.Generation, selected with { SegmentRow = 99 }));
+
+        Publish(session.Store,
+        [Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 1, 100, 2)
+            .Between(ClientEnd, ServerEnd)]);
+        Assert.Throws<InvalidOperationException>(() => SessionRawRecordQuery.Read(session.Store,
+            page.SessionId, page.Generation, selected));
+    }
+
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()
     {
         Contract = CoverageLedgerV1.ContractName,
