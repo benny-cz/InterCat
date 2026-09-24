@@ -15,6 +15,7 @@ public sealed class BrokerConnectionDispatcher
     private readonly Guid serverInstanceId;
     private readonly string serverVersion;
     private readonly Func<CaptureId, string?>? evidenceDirectory;
+    private readonly Func<CaptureId, BrokerCaptureHealth?>? liveHealth;
     private readonly Lock stateGate = new();
     private readonly HashSet<Guid> inFlight = [];
     private ConnectionState state;
@@ -25,9 +26,11 @@ public sealed class BrokerConnectionDispatcher
         BrokerLifecycleCoordinator lifecycle,
         Guid serverInstanceId,
         string serverVersion,
-        Func<CaptureId, string?>? evidenceDirectory = null)
+        Func<CaptureId, string?>? evidenceDirectory = null,
+        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null)
     {
         this.evidenceDirectory = evidenceDirectory;
+        this.liveHealth = liveHealth;
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.preparation = preparation ?? throw new ArgumentNullException(nameof(preparation));
         this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
@@ -216,7 +219,8 @@ public sealed class BrokerConnectionDispatcher
                 ownership.LeaseExpiresAtUtc,
                 ownership.StopMilestones,
                 ownership.FailureReason,
-                evidenceDirectory?.Invoke(ownership.CaptureId));
+                evidenceDirectory?.Invoke(ownership.CaptureId),
+                ownership.State == CaptureLifecycle.Recording ? liveHealth?.Invoke(ownership.CaptureId) : null);
 
     private static BrokerStopCaptureResponse ToResponse(BrokerStopOutcome outcome) =>
         new(outcome.Code, outcome.CaptureId, outcome.State, outcome.Milestones, outcome.FailureReason);

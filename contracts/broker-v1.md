@@ -380,6 +380,23 @@ is byte-for-byte unchanged by an ordinary-integrity follow. `icat capture` is th
 follow when the broker reports the capture `Closed` and one further pass mirrors nothing new. An
 interrupted capture never writes a finalization marker, so the marker alone cannot end the follow.
 
+### 5.8 Live acquisition counters
+
+While a capture is `Recording`, `GetStatus` also returns its acquisition counters, all optional fields:
+14 admitted records, 15 observed records, 16 records dropped by the broker's bounded queue, 17 ETW
+provider-reported event loss, 18 ETW consumer-reported buffer loss (each Int64), 19 queue depth and
+20 queue capacity (each Int32). Fields 14, 15, 16, 19 and 20 arrive together or not at all; a status
+carrying only part of them is refused. Fields 17 and 18 are omitted together when the session's loss
+counters could not be read, and a client states that loss as unknown, never as zero. No counter is
+negative, capacity is positive and depth never exceeds it. The three loss quantities are independent and
+a client never adds them into one total.
+
+No other lifecycle state returns live counters: once stopping begins, the coverage ledger published with
+the evidence states what the capture lost. A status request reads the counters without the start/stop
+gate, which a draining stop can hold, and an older ETW loss reading never replaces a newer one. A broker
+that predates these fields simply omits them. The Desktop passes a changed reading to its health strip at
+most once a second, and only until it sends stop.
+
 ## 6. Threat model and current non-capabilities
 
 Assets are the elevated provider/session controls, admitted event data, broker-owned output directory,

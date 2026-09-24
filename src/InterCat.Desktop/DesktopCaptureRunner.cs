@@ -19,7 +19,8 @@ public sealed record CaptureUiUpdate(
     string? SessionPath = null,
     SessionOverviewBundle? Overview = null,
     CaptureMilestones? Milestones = null,
-    CaptureVisibility? Visibility = null);
+    CaptureVisibility? Visibility = null,
+    BrokerCaptureHealth? LiveHealth = null);
 
 /// <summary>
 /// Elapsed time from the user's start action to each first-run step of section 3.1, so first feedback is measured
@@ -68,6 +69,9 @@ public sealed record CaptureRunOptions
 /// </summary>
 public static class DesktopCaptureRunner
 {
+    /// <summary>How often live acquisition counters are passed on while they change; the strip reads them, not a chart.</summary>
+    private static readonly TimeSpan HealthReport = TimeSpan.FromSeconds(1);
+
     /// <summary>
     /// How often the viewer looks for a new publication. A look reads a small pointer file, so a short poll costs little and
     /// keeps the viewer's share of the event-to-visible delay small (plan §12, measured in first-feedback qualification).
@@ -102,7 +106,19 @@ public static class DesktopCaptureRunner
         Stopwatch elapsed = Stopwatch.StartNew();
         var milestones = new CaptureMilestones();
         Action<CaptureUiUpdate> inner = report;
-        report = update => inner(update with { Milestones = milestones });
+        CaptureUiUpdate? lastLive = null;
+        BrokerCaptureHealth? health = null;
+        report = update =>
+        {
+            update = update with { Milestones = milestones, LiveHealth = update.LiveHealth ?? health };
+            if (update.Phase == CaptureUiPhase.Recording)
+            {
+                lastLive = update with { Overview = null, Visibility = null };
+            }
+
+            inner(update);
+        };
+        DateTimeOffset healthReported = DateTimeOffset.MinValue;
         if (!OperatingSystem.IsWindows())
         {
             report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
@@ -256,6 +272,17 @@ public static class DesktopCaptureRunner
                     }
 
                     status = await StatusAsync(client, started, work).ConfigureAwait(false);
+
+                    // Live counters change continuously; they are passed on at most once a second, only while recording.
+                    // Once stop is sent the window shows finishing, and a re-sent recording update would undo that.
+                    if (!stopSent && status.Health is { } live && live != health && lastLive is { } recording
+                        && DateTimeOffset.UtcNow - healthReported >= HealthReport)
+                    {
+                        health = live;
+                        healthReported = DateTimeOffset.UtcNow;
+                        report(recording with { LiveHealth = live });
+                    }
+
                     if (status.State == CaptureLifecycle.Closed)
                     {
                         if (settled)

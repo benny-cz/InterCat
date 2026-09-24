@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Threading;
 using InterCat.Analysis;
 using InterCat.Application;
+using InterCat.CaptureBroker;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -41,6 +42,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private CaptureUiPhase phase = CaptureUiPhase.Complete;
     private SessionOverviewBundle? displayedOverview;
     private DateTimeOffset? lastPublicationUtc;
+    private BrokerCaptureHealth? liveHealth;
+    private string? appliedDetail;
     private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainWindow() : this(new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace"))
@@ -401,7 +404,14 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         phase = update.Phase;
         CaptureStatus.Text = update.Headline;
-        CaptureDetail.Text = update.Detail;
+
+        // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it.
+        if (!string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
+        {
+            appliedDetail = update.Detail;
+            CaptureDetail.Text = update.Detail;
+        }
+
         CaptureLatency.Text = Freshness(update.Milestones);
         if (update.Summary is not null) CaptureSummary.Text = update.Summary;
         if (update.SessionPath is not null) CaptureSessionPath.Text = update.SessionPath;
@@ -412,6 +422,7 @@ public sealed partial class MainWindow : Window, IDisposable
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
             && captureStop?.IsCancellationRequested != true;
         FollowButton.IsVisible = IsLive;
+        liveHealth = IsLive ? update.LiveHealth : null;
         if (update.Overview is not null && !forceOverview && IsLive)
         {
             lastPublicationUtc = DateTimeOffset.UtcNow;
@@ -545,9 +556,39 @@ public sealed partial class MainWindow : Window, IDisposable
             phase == CaptureUiPhase.Recording && !paused ? "Family.Alpc.Ink"
                 : IsLive ? "Family.RemoteCall.Ink" : "Ink.Muted", out object? brush) ? brush : null) as Avalonia.Media.IBrush;
         HealthLossText.Text = LossStatement();
+        string admitted = IsLive && liveHealth is { } counters ? $"{counters.AdmittedRecords:N0} admitted · " : string.Empty;
         HealthFreshnessText.Text = IsLive && lastPublicationUtc is { } last
-            ? $"last publication {Math.Max(0, (DateTimeOffset.UtcNow - last).TotalSeconds):0} s ago"
-            : string.Empty;
+            ? admitted + $"last publication {Math.Max(0, (DateTimeOffset.UtcNow - last).TotalSeconds):0} s ago"
+            : admitted.TrimEnd(' ', '·');
+    }
+
+    /// <summary>
+    /// Loss so far while recording, from the broker's live counters. Drops and ETW's event and buffer loss are separate
+    /// counters and are never added into one total; unreadable ETW counters are said to be unreadable (§20.6, R21).
+    /// </summary>
+    internal static string LiveLossStatement(BrokerCaptureHealth? health)
+    {
+        if (health is null)
+        {
+            return "Loss is stated when recording stops";
+        }
+
+        string drops = health.ApplicationDrops == 0
+            ? "no drops"
+            : $"{Count(health.ApplicationDrops, "record")} dropped by InterCat's queue";
+        string? etw = (health.ProviderReportedLoss, health.ConsumerBufferLoss) switch
+        {
+            (null, _) or (_, null) => "ETW loss unreadable",
+            (0, 0) => null,
+            ({ } events, 0) => $"ETW lost {Count(events, "event")}",
+            (0, { } buffers) => $"ETW lost {Count(buffers, "buffer")}",
+            ({ } events, { } buffers) => $"ETW lost {Count(events, "event")} and {Count(buffers, "buffer")}",
+        };
+        return health.ApplicationDrops == 0 && etw is null
+            ? "So far nothing dropped or reported lost"
+            : $"So far {drops} · {etw ?? "no ETW loss"}";
+
+        static string Count(long count, string noun) => count == 1 ? $"1 {noun}" : $"{count:N0} {noun}s";
     }
 
     private string LossStatement()
@@ -559,7 +600,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
         if (!overview.CoverageLedgerPublished)
         {
-            return IsLive ? "Loss is stated when recording stops" : "No coverage ledger · loss unknown";
+            return IsLive ? LiveLossStatement(liveHealth) : "No coverage ledger · loss unknown";
         }
 
         MechanismCoverage[] collected = [.. overview.MechanismCoverage

@@ -110,13 +110,29 @@ public sealed class CaptureHealthLedger
         }
     }
 
-    /// <summary>Records source-reported loss. Both quantities are monotonic and are stored, not added.</summary>
+    /// <summary>
+    /// Records source-reported loss. Both quantities are monotonic and are stored, not added. Readers race (the health
+    /// sampler, a live status request, the final stop), so an older reading never replaces a newer, larger one.
+    /// </summary>
     public void RecordSourceLoss(long providerReportedEventLoss, long consumerReportedBufferLoss)
     {
-        Interlocked.Exchange(ref providerLoss, Math.Max(Interlocked.Read(ref providerLoss), providerReportedEventLoss));
-        Interlocked.Exchange(
-            ref consumerBufferLoss,
-            Math.Max(Interlocked.Read(ref consumerBufferLoss), consumerReportedBufferLoss));
+        RaiseTo(ref providerLoss, providerReportedEventLoss);
+        RaiseTo(ref consumerBufferLoss, consumerReportedBufferLoss);
+    }
+
+    private static void RaiseTo(ref long target, long value)
+    {
+        long current = Interlocked.Read(ref target);
+        while (value > current)
+        {
+            long seen = Interlocked.CompareExchange(ref target, value, current);
+            if (seen == current)
+            {
+                return;
+            }
+
+            current = seen;
+        }
     }
 
     public CaptureHealthSnapshot Read(int queueDepth, int queueCapacity) => new()

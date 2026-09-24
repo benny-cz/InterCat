@@ -36,6 +36,30 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.Equal(plan.Digest, reopened.Current.SourceIdentity);
     }
 
+    [Fact(DisplayName = "R8: a broker capture reads its live counters only while it records")]
+    public async Task LiveCountersAreReadOnlyWhileRecording()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedEtwHost();
+        await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
+        PreparedCapturePlan plan = SmallPlan();
+        BrokerCaptureOwnership ownership = Ownership(plan);
+        Assert.Null(runtime.ReadHealth(ownership.CaptureId));
+
+        Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+        BrokerCaptureHealth live = Assert.IsType<BrokerCaptureHealth>(runtime.ReadHealth(ownership.CaptureId));
+        Assert.Equal(0, live.ApplicationDrops);
+        Assert.Equal(0, live.ProviderReportedLoss);
+        Assert.Equal(0, live.ConsumerBufferLoss);
+        Assert.True(live.QueueCapacity > 0);
+        Assert.InRange(live.QueueDepth, 0, live.QueueCapacity);
+        Assert.Null(runtime.ReadHealth(CaptureId.New()));
+
+        BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);
+        Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
+        Assert.Null(runtime.ReadHealth(ownership.CaptureId));
+    }
+
     [Fact(DisplayName = "R16: restart cleanup stops exact owned ETW but leaves journal finalization unproven")]
     public async Task RecoveryStopIsHonestAboutInterruptedJournal()
     {

@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
+using InterCat.CaptureBroker;
 using InterCat.Desktop;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -223,6 +224,59 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal("Saved session", window.GetControl<TextBlock>("HealthStateText").Text);
         Assert.Equal("No coverage ledger · loss unknown", window.GetControl<TextBlock>("HealthLossText").Text);
         Assert.Equal(string.Empty, window.GetControl<TextBlock>("HealthFreshnessText").Text);
+        window.Close();
+    }
+
+    [AvaloniaTheory(DisplayName = "R21: live counters state each loss so far, and an unreadable counter as unreadable")]
+    [InlineData(0L, 0L, 0L, "So far nothing dropped or reported lost")]
+    [InlineData(3L, 0L, 0L, "So far 3 records dropped by InterCat's queue · no ETW loss")]
+    [InlineData(0L, 2L, 0L, "So far no drops · ETW lost 2 events")]
+    [InlineData(0L, 0L, 1L, "So far no drops · ETW lost 1 buffer")]
+    [InlineData(1L, 1L, 4L, "So far 1 record dropped by InterCat's queue · ETW lost 1 event and 4 buffers")]
+    [InlineData(0L, null, null, "So far no drops · ETW loss unreadable")]
+    [InlineData(5L, null, null, "So far 5 records dropped by InterCat's queue · ETW loss unreadable")]
+    public void LiveCountersStateEachLossSoFar(long drops, long? events, long? buffers, string expected)
+    {
+        Assert.Equal("Loss is stated when recording stops", MainWindow.LiveLossStatement(null));
+        Assert.Equal(expected, MainWindow.LiveLossStatement(new(40, 44, drops, events, buffers, 0, 64)));
+    }
+
+    [AvaloniaFact(DisplayName = "R21: live counters update the health strip while recording and leave the view where it is")]
+    public void LiveCountersUpdateTheStripWithoutMovingTheView()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var shown = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TextBlock loss = window.GetControl<TextBlock>("HealthLossText");
+        TextBlock freshness = window.GetControl<TextBlock>("HealthFreshnessText");
+        TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+        Assert.Equal("Loss is stated when recording stops", loss.Text);
+
+        // The runner repeats its last recording update without an overview when only the counters changed: the strip
+        // follows them, while the view and anything written to the detail line since stay as they are.
+        detail.Text = "Exported 20 rows (complete) to view.json.";
+        CaptureUiUpdate counters = Update(session) with
+        {
+            Overview = null,
+            LiveHealth = new(420, 431, 3, 2, 0, 5, 65_536),
+        };
+        window.ApplyCaptureUpdate(counters);
+        Dispatch();
+        Assert.Same(shown, window.DataContext);
+        Assert.Equal("So far 3 records dropped by InterCat's queue · ETW lost 2 events", loss.Text);
+        Assert.StartsWith("420 admitted · last publication", freshness.Text, StringComparison.Ordinal);
+        Assert.Equal("Exported 20 rows (complete) to view.json.", detail.Text);
+
+        // A closed capture states loss from its ledger, never from the counters of a recording that ended.
+        window.ApplyCaptureUpdate(counters with { Phase = CaptureUiPhase.Complete, Detail = "Session saved." }, forceOverview: true);
+        Dispatch();
+        Assert.Equal("No coverage ledger · loss unknown", loss.Text);
+        Assert.Equal(string.Empty, freshness.Text);
+        Assert.Equal("Session saved.", detail.Text);
         window.Close();
     }
 

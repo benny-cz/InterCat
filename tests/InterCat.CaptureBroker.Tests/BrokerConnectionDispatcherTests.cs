@@ -74,7 +74,8 @@ public sealed class BrokerConnectionDispatcherTests
         var runtime = new BrokerFakeRuntime();
         using var preparation = new BrokerPreparationCoordinator(source, registry, Runtime);
         using var lifecycle = new BrokerLifecycleCoordinator(registry, new InMemoryBrokerLifecycleStore(), runtime);
-        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle);
+        var counters = new BrokerCaptureHealth(12, 15, 1, 2, 0, 3, 64);
+        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters);
         await CompleteHello(dispatcher);
 
         var prepareRequest = new BrokerPrepareCaptureRequest(
@@ -104,6 +105,7 @@ public sealed class BrokerConnectionDispatcherTests
             new BrokerGetStatusRequest(captureId)));
         Assert.Equal(CaptureLifecycle.Recording, status.State);
         Assert.Equal(prepared.Grant.PlanDigest, status.PlanDigest);
+        Assert.Equal(counters, status.Health);
 
         var renewed = Assert.IsType<BrokerRenewOwnerLeaseResponse>(await Dispatch(
             dispatcher,
@@ -117,6 +119,13 @@ public sealed class BrokerConnectionDispatcherTests
         Assert.True(stopped.Milestones.FullyFinalized);
         Assert.Equal(1, runtime.StartCount);
         Assert.Equal(1, runtime.StopCount);
+
+        // A closed capture's loss is its ledger's; live counters are not offered for it.
+        var closed = Assert.IsType<BrokerCaptureStatusResponse>(await Dispatch(
+            dispatcher,
+            new BrokerGetStatusRequest(captureId)));
+        Assert.Equal(CaptureLifecycle.Closed, closed.State);
+        Assert.Null(closed.Health);
     }
 
     [Fact]
@@ -304,8 +313,15 @@ public sealed class BrokerConnectionDispatcherTests
     private static BrokerConnectionDispatcher CreateDispatcher(
         BrokerClientIdentity owner,
         BrokerPreparationCoordinator preparation,
-        BrokerLifecycleCoordinator lifecycle) =>
-        new(owner, preparation, lifecycle, Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), "fixture-1");
+        BrokerLifecycleCoordinator lifecycle,
+        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null) =>
+        new(
+            owner,
+            preparation,
+            lifecycle,
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "fixture-1",
+            liveHealth: liveHealth);
 
     private static async Task CompleteHello(BrokerConnectionDispatcher dispatcher)
     {

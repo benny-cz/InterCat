@@ -108,6 +108,10 @@ public sealed record BrokerStartCaptureResponse(
 /// Where the broker publishes this capture's evidence, which its owner may read (never write) and follow into a session
 /// of their own (field 13, optional). Absent from a broker that predates the field.
 /// </param>
+/// <param name="Health">
+/// Acquisition counters read while the capture records (fields 14-20, optional). Absent when it is not recording, or from
+/// a broker that predates them; absence means not known, never zero.
+/// </param>
 public sealed record BrokerCaptureStatusResponse(
     CaptureId CaptureId,
     CaptureLifecycle State,
@@ -117,10 +121,24 @@ public sealed record BrokerCaptureStatusResponse(
     DateTimeOffset LeaseExpiresAtUtc,
     BrokerStopMilestones StopMilestones,
     string? FailureReason,
-    string? EvidenceDirectory = null) : BrokerWireResponse
+    string? EvidenceDirectory = null,
+    BrokerCaptureHealth? Health = null) : BrokerWireResponse
 {
     public override BrokerMessageType MessageType => BrokerMessageType.GetStatus;
 }
+
+/// <summary>
+/// A recording capture's acquisition counters as the broker read them for one status request. Provider and consumer loss
+/// are null when the session's loss counters could not be read: an unread counter is unknown, not a reported zero (R21).
+/// </summary>
+public sealed record BrokerCaptureHealth(
+    long AdmittedRecords,
+    long ObservedRecords,
+    long ApplicationDrops,
+    long? ProviderReportedLoss,
+    long? ConsumerBufferLoss,
+    int QueueDepth,
+    int QueueCapacity);
 
 public sealed record BrokerStopCaptureResponse(
     BrokerOperationCode Code,
@@ -158,7 +176,7 @@ public static class BrokerWireResponseCodec
         20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34);
     private const int MaximumEvidenceDirectoryBytes = 1024;
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2, 3, 4, 5);
-    private static readonly IReadOnlySet<ushort> StatusFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+    private static readonly IReadOnlySet<ushort> StatusFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
     private static readonly IReadOnlySet<ushort> StopFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9);
     private static readonly IReadOnlySet<ushort> LeaseFields = Set(1, 2, 3, 4, 5);
 
@@ -353,6 +371,17 @@ public static class BrokerWireResponseCodec
         {
             fields.WriteString(13, value.EvidenceDirectory, required: false);
         }
+
+        if (value.Health is { } health)
+        {
+            fields.WriteInt64(14, health.AdmittedRecords, required: false);
+            fields.WriteInt64(15, health.ObservedRecords, required: false);
+            fields.WriteInt64(16, health.ApplicationDrops, required: false);
+            if (health.ProviderReportedLoss is { } providerLoss) fields.WriteInt64(17, providerLoss, required: false);
+            if (health.ConsumerBufferLoss is { } bufferLoss) fields.WriteInt64(18, bufferLoss, required: false);
+            fields.WriteInt32(19, health.QueueDepth, required: false);
+            fields.WriteInt32(20, health.QueueCapacity, required: false);
+        }
     }
 
     private static void WriteStop(BrokerWireFieldWriter fields, BrokerStopCaptureResponse value)
@@ -534,7 +563,27 @@ public static class BrokerWireResponseCodec
             ReadTime(fields.RequiredInt64(6), 6),
             ReadMilestones(fields, 7),
             fields.OptionalString(12, 512),
-            fields.OptionalString(13, MaximumEvidenceDirectoryBytes));
+            fields.OptionalString(13, MaximumEvidenceDirectoryBytes),
+            ReadHealth(fields));
+    }
+
+    /// <summary>Live counters come as a set: the three totals and the queue, or none of them.</summary>
+    private static BrokerCaptureHealth? ReadHealth(BrokerWireFieldSet fields)
+    {
+        long? admitted = fields.OptionalInt64(14);
+        long? observed = fields.OptionalInt64(15);
+        long? drops = fields.OptionalInt64(16);
+        int? depth = fields.OptionalInt32(19);
+        int? capacity = fields.OptionalInt32(20);
+        if (admitted is null && observed is null && drops is null && depth is null && capacity is null
+            && fields.OptionalInt64(17) is null && fields.OptionalInt64(18) is null)
+        {
+            return null;
+        }
+
+        return admitted is { } a && observed is { } o && drops is { } d && depth is { } q && capacity is { } c
+            ? new(a, o, d, fields.OptionalInt64(17), fields.OptionalInt64(18), q, c)
+            : throw new InvalidDataException("A capture status carries part of its live counters.");
     }
 
     private static BrokerStopCaptureResponse ReadStop(ReadOnlySpan<byte> payload)
@@ -602,6 +651,13 @@ public static class BrokerWireResponseCodec
                 RequireEnum(status.State, nameof(status.State));
                 ValidateTimes(status.CreatedAtUtc, status.UpdatedAtUtc, status.LeaseExpiresAtUtc);
                 RequireText(status.FailureReason, 512, nameof(status.FailureReason), optional: true);
+                if (status.Health is { } health
+                    && (health.AdmittedRecords < 0 || health.ObservedRecords < 0 || health.ApplicationDrops < 0
+                        || health.ProviderReportedLoss < 0 || health.ConsumerBufferLoss < 0
+                        || health.QueueCapacity <= 0 || health.QueueDepth < 0 || health.QueueDepth > health.QueueCapacity))
+                {
+                    throw new InvalidDataException("A capture status carries impossible live counters.");
+                }
                 break;
             case BrokerStopCaptureResponse stop:
                 ValidateOperation(stop.Code, stop.CaptureId, stop.State, null, stop.FailureReason);

@@ -928,6 +928,7 @@
         "R21: a legacy metric names unknown capture coverage rather than claiming a healthy rate",
         "R21: a live capture that cannot start publishes nothing and leaves its session empty",
         "R21: a live recording publishes its admitted records and what its sources delivered and lost",
+        "R21: a loss read that races the session's stop leaves the final reading standing",
         "R21: a machine that falls short of the reference names every way it does",
         "R21: a machine that meets the reference has no gaps to name",
         "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
@@ -950,6 +951,8 @@
         "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: coverage outcomes and descriptor bounds refuse overflow rather than wrapping",
         "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
+        "R21: live counters state each loss so far, and an unreadable counter as unreadable",
+        "R21: live counters update the health strip while recording and leave the view where it is",
         "R21: live quiet enablement is covered, unlike a quiet imported file",
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
@@ -1033,6 +1036,7 @@
       ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",
+        "R8: a broker capture reads its live counters only while it records",
         "R8: a capture moves Idle to Recording to Closed and reports its own counters",
         "R8: a capture reports per-thread processor time or says the host cannot",
         "R8: a full bounded queue drops records into a counter instead of blocking acquisition",
@@ -1047,6 +1051,7 @@
         "R8: invalid ETL bounds and ambiguous output paths are refused",
         "R8: loss before admission outranks every queue outcome",
         "R8: malformed layout input or a graph over budget is refused, never partly drawn",
+        "R8: racing loss readings never lower a source-reported loss counter",
         "R8: source-reported loss is read into its own counter, never merged with drops",
         "R8: staged UTF-8 resource names count against the segment's flush budget",
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"

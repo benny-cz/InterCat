@@ -1,14 +1,67 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 100
+Plan revision: 101
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: export the applied view
+## Latest slice: live acquisition counters in the capture status
+
+While a capture records, `GetStatus` carries its acquisition counters in optional fields 14–20 (broker contract
+§5.8). `LiveHealthProbe` attaches to the recording session once it is ready and detaches before it stops.
+`BrokerEvidenceCaptureRuntime.ReadHealth` reads it without the start/stop gate. The dispatcher offers the counters
+only in `Recording`.
+
+- **Counters on the wire:** admitted and observed records, queue drops, ETW provider-reported event loss and
+  consumer-reported buffer loss, and queue depth and capacity.
+- **Unknown stays unknown:** the ETW loss fields are omitted when the session could not read them, and the strip
+  says "ETW loss unreadable". A status with only part of the counters, a negative counter, or a depth past
+  capacity is refused.
+- **Desktop:** `DesktopCaptureRunner` passes a changed reading on at most once a second by repeating its last
+  recording update with the counters and without an overview. It stops doing so once stop is sent, so a late
+  reading cannot return the window to Recording.
+- **Health strip:** the loss statement becomes "So far … · …", with InterCat's queue drops and ETW's event and
+  buffer loss each stated and never summed. The freshness text starts with "N admitted". A repeated detail no
+  longer rewrites the detail line, so a navigation notice or export message survives a counter update. After
+  stop, loss comes from the ledger again.
+- **Loss counters under concurrent reads:** `CaptureHealthLedger.RecordSourceLoss` is a compare-and-swap maximum.
+  With status requests reading beside the health sampler, the old read-then-write could let an older, smaller
+  reading win.
+- **A read that races the stop:** `OwnedCaptureSession.ReadHealth` counts a failed loss query as unreadable loss
+  only while the session is still the owned, running one. Before, a sampler or status read overlapping cleanup
+  could mark a clean capture's loss unknown for good. Cleanup takes the session before stopping it, so the filter
+  can tell the two apart, and the read taken while finalizing stays the final one.
+
+Real ETW: first feedback over three 15-s runs
+(`bench/results/first-feedback-20260924T132726Z-live-counters`) received 14 distinct live readings per run, with
+loss readable and zero. First overview came 1.0–1.4 s after the first record. Event-to-visible p95 was 2.6–3.2 s,
+still the open steady-state miss. Broker qualification passes
+(`bench/results/broker-qualification-20260924T133432Z`); a first-feedback run without live readings now counts
+as invalid.
+
+839 tests pass in Debug and Release (+14):
+
+- the status codec round-trips counters, with unreadable loss as absent, and refuses partial or impossible sets;
+- the runtime reads counters only while recording;
+- the dispatcher offers them only in `Recording`;
+- racing loss readings keep the largest;
+- a loss read stalled across the stop leaves the final reading standing (and fails without the fix);
+- the strip's wording for each combination;
+- a counter update that leaves the view and the detail line alone.
+
+Plan revision 101.
+
+Not done: policy omissions, undecodable records and quarantined timestamps live (they stay in the final ledger), a
+redacted sharing export (§11.3, M5), the same export from the CLI, a minimap, the steady-state latency design.
+
+Next: the minimap. A whole-session strip under the timeline, backed by the overview pyramid's first level, that
+shows where activity and coverage gaps are and where the viewport sits. It should pan and zoom without leaving
+the rung.
+
+## Previous slice: export the applied view
 
 `Ctrl+E` (`E` alone still opens evidence) and "Export this view (Ctrl+E)" in the inspector write the applied view to a
 file the user picks, as JSON or CSV. `WorkspaceExport` builds it and names the snapshot through `ExportContext`: session,

@@ -296,7 +296,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
 
     public CaptureHealthSnapshot ReadHealth()
     {
-        IOwnedEtwSession? current = session;
+        IOwnedEtwSession? current = Volatile.Read(ref session);
         if (current is not null)
         {
             try
@@ -304,10 +304,15 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
                 SourceLossReading loss = current.ReadLoss();
                 ledger.RecordSourceLoss(loss.ProviderReportedEventLoss, loss.ConsumerReportedBufferLoss);
             }
-            catch (EtwSessionException)
+            catch (EtwSessionException) when (ReferenceEquals(Volatile.Read(ref session), current))
             {
                 sourceLossUnreadable = true;
                 AddDegradation("Source loss counters could not be read; reported loss may be understated.");
+            }
+            catch (EtwSessionException)
+            {
+                // Cleanup took the session before stopping it, so this read raced the stop. The read taken while
+                // finalizing, before cleanup, is the final one; a failure here says nothing about the counters.
             }
         }
 

@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using InterCat.Capture.Windows;
+using InterCat.CaptureBroker;
 using InterCat.Desktop;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -161,6 +162,12 @@ internal static partial class Qualification
         CaptureVisibility[] visible = [.. all.Where(update => update.Visibility is not null)
             .Select(update => update.Visibility!).OrderBy(visibility => visibility.DerivedRecords)];
         result.OverviewsHandedOff = visible.Length;
+        BrokerCaptureHealth[] live = [.. all
+            .Where(update => update.Phase == CaptureUiPhase.Recording && update.LiveHealth is not null)
+            .Select(update => update.LiveHealth!)
+            .Distinct()];
+        result.LiveCounterReadings = live.Length;
+        result.LastLiveCounters = live.LastOrDefault();
         result.Derivation = Summarize(visible.Select(visibility => visibility.Derivation.TotalMilliseconds));
         result.Projection = Summarize(visible.Select(visibility => visibility.Projection.TotalMilliseconds));
         string? sessionPath = all.LastOrDefault(update => update.SessionPath is not null)?.SessionPath;
@@ -209,7 +216,7 @@ internal static partial class Qualification
         result.EventToVisible = Summarize(delays);
         result.FirstOverviewAfterFirstDeliveredMs = (long)Math.Round(
             (visible[0].ObservedQpc - firstDelivered) * 1000d / Stopwatch.Frequency);
-        result.Valid = negative == 0 && result.Records > 0 && delays.Count > 0;
+        result.Valid = negative == 0 && result.Records > 0 && delays.Count > 0 && live.Length > 0;
         result.MeetsBudgets = result.Valid
             && result.FirstOverviewAfterFirstDeliveredMs <= FirstUsefulOverviewBudgetMilliseconds
             && result.EventToVisible!.P95Ms <= EventToVisibleP95BudgetMilliseconds
@@ -219,6 +226,8 @@ internal static partial class Qualification
         if (negative > 0)
             result.FailureReason = "Some records were read after the overview that included them. The native readings "
                 + "are not this machine's QPC clock, so no delay is reported as measured.";
+        else if (live.Length == 0)
+            result.FailureReason = "No live acquisition counters reached the viewer while it recorded.";
         return result;
     }
 
@@ -350,6 +359,10 @@ internal sealed class FirstFeedbackRun
     public long? PublicationIntervalMs { get; set; }
     public long? FirstOverviewAfterFirstDeliveredMs { get; set; }
     public int OverviewsHandedOff { get; set; }
+
+    /// <summary>Distinct live acquisition-counter readings the viewer received while recording, and the last of them.</summary>
+    public int LiveCounterReadings { get; set; }
+    public BrokerCaptureHealth? LastLiveCounters { get; set; }
     public long Records { get; set; }
     public long RecordsWithoutJournalIndex { get; set; }
     public long RecordsFirstVisibleAfterStop { get; set; }

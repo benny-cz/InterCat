@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Runtime.Versioning;
 using InterCat.Capture.Recording;
@@ -21,6 +22,9 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     private readonly Func<string, VolumeSpace> volumeProbe;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<CaptureId, ActiveCapture> active = [];
+
+    // Read by status requests without the start/stop gate, which a stop can hold while it drains.
+    private readonly ConcurrentDictionary<CaptureId, LiveHealthProbe> health = new();
     private bool disposed;
 
     public BrokerEvidenceCaptureRuntime(
@@ -38,6 +42,22 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     /// <summary>Where this capture's evidence is published; its owner may read and follow it but never write.</summary>
     public string EvidenceDirectory(CaptureId captureId) =>
         System.IO.Path.Combine(root.Path, $"capture-{captureId.Value:N}");
+
+    /// <summary>
+    /// The capture's acquisition counters while it records, for a status request; null when it is not recording. An
+    /// unreadable loss counter is reported as unknown rather than zero.
+    /// </summary>
+    public BrokerCaptureHealth? ReadHealth(CaptureId captureId) =>
+        health.TryGetValue(captureId, out LiveHealthProbe? probe) && probe.Read() is { } live
+            ? new(
+                live.Snapshot.AdmittedRecords,
+                live.Snapshot.ObservedRecords,
+                live.Snapshot.ApplicationDrops,
+                live.SourceLossReadable ? live.Snapshot.ProviderReportedEventLoss : null,
+                live.SourceLossReadable ? live.Snapshot.ConsumerReportedBufferLoss : null,
+                live.Snapshot.QueueDepth,
+                live.Snapshot.QueueCapacity)
+            : null;
 
     public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
     {
@@ -121,6 +141,8 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                 }
 
                 capture.Stop.CancelAfter(sessionPlan.MaximumDuration);
+                var probe = new LiveHealthProbe();
+                health[ownership.CaptureId] = probe;
                 capture.Run = LiveRecorder.RecordAsync(
                     sessionPlan,
                     host,
@@ -134,7 +156,13 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     diskFloor: new LiveDiskFloor(
                         plan.Quota.MinimumFreeDiskBytes, () => volumeProbe(captureRoot.Path)),
                     publishFirstAfter: plan.FirstPublication,
+                    healthProbe: probe,
                     cancellationToken: capture.Stop.Token);
+                _ = capture.Run.ContinueWith(
+                    _ => health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
 
                 Task first = await Task.WhenAny(capture.Ready.Task, capture.Run).ConfigureAwait(false);
                 if (first == capture.Ready.Task && !capture.Run.IsCompleted)

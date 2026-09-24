@@ -60,6 +60,27 @@ public sealed class BrokerWireResponseTests
             Now.AddSeconds(30),
             BrokerStopMilestones.None,
             null)];
+        yield return [new BrokerCaptureStatusResponse(
+            captureId,
+            CaptureLifecycle.Recording,
+            Digest('b'),
+            Now,
+            Now.AddSeconds(1),
+            Now.AddSeconds(30),
+            BrokerStopMilestones.None,
+            null,
+            @"C:\ProgramData\InterCat\capture-1",
+            new BrokerCaptureHealth(1_234, 1_300, 2, 0, 1, 17, 65_536))];
+        yield return [new BrokerCaptureStatusResponse(
+            captureId,
+            CaptureLifecycle.Recording,
+            Digest('b'),
+            Now,
+            Now.AddSeconds(1),
+            Now.AddSeconds(30),
+            BrokerStopMilestones.None,
+            null,
+            Health: new BrokerCaptureHealth(10, 10, 0, null, null, 0, 1_024))];
         yield return [new BrokerStopCaptureResponse(
             BrokerOperationCode.StopPartial,
             captureId,
@@ -147,6 +168,35 @@ public sealed class BrokerWireResponseTests
             correlationId,
             requiredPayload,
             isError: true)));
+    }
+
+    [Fact]
+    public void LiveCountersArriveWholeAndPossibleOrNotAtAll()
+    {
+        var status = new BrokerCaptureStatusResponse(
+            new CaptureId(Guid.NewGuid()), CaptureLifecycle.Recording, Digest('b'), Now, Now.AddSeconds(1),
+            Now.AddSeconds(30), BrokerStopMilestones.None, null);
+        Guid correlationId = Guid.NewGuid();
+        BrokerWireFrame plain = BrokerWireResponseCodec.Encode(status, correlationId);
+        Assert.Null(Assert.IsType<BrokerCaptureStatusResponse>(BrokerWireResponseCodec.Decode(plain)).Health);
+
+        // Loss that could not be read travels as absent, and reads back as unknown rather than zero.
+        var unread = BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
+            status with { Health = new BrokerCaptureHealth(5, 5, 0, null, null, 0, 16) }, correlationId));
+        Assert.Null(Assert.IsType<BrokerCaptureStatusResponse>(unread).Health!.ProviderReportedLoss);
+
+        // Part of the set, or impossible values, are refused rather than read as zeros.
+        byte[] partial = new byte[16];
+        BinaryPrimitives.WriteUInt16LittleEndian(partial.AsSpan(0, 2), 14);
+        partial[2] = 2;
+        BinaryPrimitives.WriteInt32LittleEndian(partial.AsSpan(4, 4), 8);
+        BinaryPrimitives.WriteInt64LittleEndian(partial.AsSpan(8, 8), 99);
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireFrame.CreateResponse(
+            BrokerMessageType.GetStatus, correlationId, [.. plain.Payload.ToArray(), .. partial])));
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Encode(
+            status with { Health = new BrokerCaptureHealth(-1, 0, 0, 0, 0, 0, 16) }, correlationId));
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Encode(
+            status with { Health = new BrokerCaptureHealth(1, 1, 0, 0, 0, 17, 16) }, correlationId));
     }
 
     [Fact]

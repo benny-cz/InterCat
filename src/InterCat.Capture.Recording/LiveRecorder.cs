@@ -105,6 +105,7 @@ public static class LiveRecorder
         long? maximumJournalBytes = null,
         LiveDiskFloor? diskFloor = null,
         TimeSpan? publishFirstAfter = null,
+        LiveHealthProbe? healthProbe = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -205,6 +206,7 @@ public static class LiveRecorder
             // A broker may acknowledge Start only after ETW, the source clock and the single journal
             // writer are ready. Startup refusal never calls this hook; the completed result carries it.
             await writerReady.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            healthProbe?.Attach(session);
             onReady?.Invoke(start);
             try
             {
@@ -217,6 +219,8 @@ public static class LiveRecorder
         }
         finally
         {
+            // Stopping reads the final counters itself; the final ledger, not a live read, states what was lost.
+            healthProbe?.Detach();
             stop = await session.StopAsync(CancellationToken.None).ConfigureAwait(false);
             journaled = await writer.ConfigureAwait(false);
         }

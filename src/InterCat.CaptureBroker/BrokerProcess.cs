@@ -214,7 +214,8 @@ public static class BrokerProcess
                     lifecycle,
                     settings,
                     log: entry => Diagnostic($"{entry.AtUtc:O} {entry.Kind}: {entry.Message}"),
-                    evidenceDirectory: runtime.EvidenceDirectory);
+                    evidenceDirectory: runtime.EvidenceDirectory,
+                    liveHealth: runtime.ReadHealth);
 
                 BrokerHostResult result;
                 try

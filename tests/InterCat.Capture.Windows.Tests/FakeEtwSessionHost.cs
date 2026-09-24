@@ -106,7 +106,26 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
 
         public void RequestStopProcessing() => stopRequested = true;
 
-        public SourceLossReading ReadLoss() => new(ProviderLoss, ConsumerLoss);
+        /// <summary>
+        /// Set on one thread, a loss read there signals <see cref="LossReadStalled"/>, waits for the event, then fails
+        /// as a query does when the session was stopped under it. Reads on other threads answer normally.
+        /// </summary>
+        [ThreadStatic]
+        internal static ManualResetEventSlim? StallLossRead;
+
+        public ManualResetEventSlim LossReadStalled { get; } = new(false);
+
+        public SourceLossReading ReadLoss()
+        {
+            if (StallLossRead is { } release)
+            {
+                LossReadStalled.Set();
+                release.Wait(TimeSpan.FromSeconds(10));
+                throw new EtwSessionException("The session was stopped under this read.");
+            }
+
+            return new(ProviderLoss, ConsumerLoss);
+        }
 
         private int flushRequests;
 

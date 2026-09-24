@@ -249,6 +249,48 @@ public sealed class OwnedCaptureSessionTests
         _ = await session.StopAsync(CancellationToken.None);
     }
 
+    [Fact(DisplayName = "R8: racing loss readings never lower a source-reported loss counter")]
+    public void RacingLossReadingsKeepTheLargest()
+    {
+        var ledger = new CaptureHealthLedger();
+        long[] readings = [.. Enumerable.Range(0, 20_000).Select(value => (long)value)];
+        Random.Shared.Shuffle(readings);
+
+        Parallel.ForEach(readings, reading => ledger.RecordSourceLoss(reading, reading / 2));
+        ledger.RecordSourceLoss(5, 5);
+
+        CaptureHealthSnapshot health = ledger.Read(0, 1);
+        Assert.Equal(19_999, health.ProviderReportedEventLoss);
+        Assert.Equal(9_999, health.ConsumerReportedBufferLoss);
+    }
+
+    [Fact(DisplayName = "R21: a loss read that races the session's stop leaves the final reading standing")]
+    public async Task ALossReadRacingTheStopIsNotUnreadableLoss()
+    {
+        var host = new FakeEtwSessionHost();
+        await using var session = new OwnedCaptureSession(BuildPlan(), host);
+        _ = await session.StartAsync(CancellationToken.None);
+        FakeEtwSessionHost.FakeOwnedSession owned = host.Last!;
+        owned.ProviderLoss = 4;
+        using var release = new ManualResetEventSlim(false);
+        var reader = new Thread(() =>
+        {
+            FakeEtwSessionHost.FakeOwnedSession.StallLossRead = release;
+            _ = session.ReadHealth();
+        });
+        reader.Start();
+        Assert.True(owned.LossReadStalled.Wait(TimeSpan.FromSeconds(5)));
+
+        CaptureStopResult stop = await session.StopAsync(CancellationToken.None);
+        release.Set();
+        Assert.True(reader.Join(TimeSpan.FromSeconds(5)));
+
+        Assert.False(session.SourceLossUnreadable);
+        Assert.DoesNotContain(session.Degradations, reason => reason.Contains("could not be read", StringComparison.Ordinal));
+        Assert.Equal(4, stop.Health.ProviderReportedEventLoss);
+        Assert.Equal(4, session.ReadHealth().ProviderReportedEventLoss);
+    }
+
     [Fact(DisplayName = "R8: a session name carries a unique suffix and an ownership token per attempt")]
     public void EachAttemptGetsItsOwnIdentity()
     {
