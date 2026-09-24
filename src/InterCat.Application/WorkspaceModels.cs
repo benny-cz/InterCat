@@ -137,4 +137,5 @@ public sealed record WorkspaceSnapshot(
     IReadOnlyList<ChannelOperation> Operations,
     IReadOnlyList<EvidenceMark> Evidence,
     IReadOnlyList<TimelineBucket> Timeline,
-    string? ChannelProjectionProblem = null);
+    string? ChannelProjectionProblem = null,
+    SessionMinimap? Minimap = null);

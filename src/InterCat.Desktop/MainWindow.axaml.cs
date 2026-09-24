@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 CrumbScroller.Offset = new(Math.Max(0, CrumbScroller.Extent.Width - CrumbScroller.Viewport.Width), 0);
             }
         };
+        // The minimap shows and moves the timeline's viewport; the timeline owns it (presentation only, §6.4).
+        MinimapSurface.Timeline = TimelineSurface;
         workspace = viewModel;
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
@@ -502,6 +504,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
+        MinimapSurface.InvalidateVisual();
     }
 
     /// <summary>How soon the first view arrived after recording began and how often it refreshes, once both are known.</summary>
@@ -623,6 +626,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
+        MinimapSurface.InvalidateVisual();
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration))
         {
             UpdateHealthStrip();

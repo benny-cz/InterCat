@@ -77,6 +77,54 @@ public static class SessionCoverage
             .First();
     }
 
+    /// <summary>
+    /// The capture's own state over each native interval, whatever was observed in it: the worst state of every mechanism
+    /// each spanned epoch collected, or <see cref="CoverageState.NotCollected"/> for an epoch that collected nothing. An
+    /// interval outside the delivered readings, and every interval of a generation without a ledger, is unknown. Each
+    /// epoch is judged once, so a fine grid of intervals costs one pass over the epochs per interval.
+    /// </summary>
+    public static IReadOnlyList<CoverageState> CaptureStates(CoverageLedgerV1? ledger, IReadOnlyList<TimeRange?> nativeIntervals)
+    {
+        ArgumentNullException.ThrowIfNull(nativeIntervals);
+        var states = new CoverageState[nativeIntervals.Count];
+        Array.Fill(states, CoverageState.UnknownCoverage);
+        if (ledger is null)
+        {
+            return states;
+        }
+
+        ledger.Validate();
+        CoverageState[] judged = [.. ledger.Epochs.Select(epoch => Worst(epoch.Collected
+            .Select(descriptor => descriptor.Mechanism)
+            .Distinct()
+            .Select(mechanism => StateIn(epoch, mechanism).State)
+            .DefaultIfEmpty(CoverageState.NotCollected)))];
+        for (int index = 0; index < states.Length; index++)
+        {
+            if (nativeIntervals[index] is not { } range)
+            {
+                continue;
+            }
+
+            List<int> spanned = [];
+            for (int epoch = 0; epoch < ledger.Epochs.Count; epoch++)
+            {
+                if (ledger.Epochs[epoch] is { FirstDeliveredNativeTicks: { } first, LastDeliveredNativeTicks: { } last }
+                    && range.StartTicks <= last && range.EndTicks > first)
+                {
+                    spanned.Add(epoch);
+                }
+            }
+
+            if (spanned.Count > 0 && Spans([.. spanned.Select(epoch => ledger.Epochs[epoch])], range))
+            {
+                states[index] = Worst(spanned.Select(epoch => judged[epoch]));
+            }
+        }
+
+        return states;
+    }
+
     /// <summary>The worst of several states on the ordered lattice; nothing to span is unknown.</summary>
     public static CoverageState Worst(IEnumerable<CoverageState> states)
     {

@@ -114,16 +114,24 @@ public static class WorkspaceRowBuilder
     public static IReadOnlyList<IntervalRow> Intervals(WorkspaceSnapshot snapshot, ThemeMode mode)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        return Intervals(snapshot.Timeline, mode);
+    }
 
-        var rows = new List<IntervalRow>(snapshot.Timeline.Count);
-        foreach (TimelineBucket bucket in snapshot.Timeline)
+    /// <summary>
+    /// The interval table for the buckets the timeline draws. Each window is stated in the unit its span needs, so a
+    /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way).
+    /// </summary>
+    public static IReadOnlyList<IntervalRow> Intervals(IReadOnlyList<TimelineBucket> buckets, ThemeMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(buckets);
+
+        var rows = new List<IntervalRow>(buckets.Count);
+        foreach (TimelineBucket bucket in buckets)
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(bucket.DominantMechanism));
-            decimal from = bucket.Interval.StartTicks / (decimal)WorkspaceTime.TicksPerSecond;
-            decimal to = bucket.Interval.EndTicks / (decimal)WorkspaceTime.TicksPerSecond;
             rows.Add(new(
                 bucket.Interval,
-                string.Create(CultureInfo.CurrentCulture, $"{from:N0} s to {to:N0} s"),
+                WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
                 bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
                 DescribeBytes(bucket.KnownBytes),
                 tokens.Label,

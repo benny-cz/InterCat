@@ -141,6 +141,112 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "6.2: the minimap brush follows the timeline and moves, resizes and fits its viewport")]
+    public void TheMinimapBrushFollowsAndMovesTheViewport()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        MinimapView minimap = window.GetControl<MinimapView>("MinimapSurface");
+        SessionMinimap level = Assert.IsType<SessionMinimap>(workspace.Snapshot.Minimap);
+        Assert.Equal(workspace.Snapshot.Extent, level.Extent);
+        (double fitStart, double fitEnd) = minimap.Brush();
+
+        // Zooming the timeline narrows the brush, never below the width that keeps it grabbable.
+        timeline.Focus();
+        for (int step = 0; step < 6; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Dispatch();
+        TimeRange zoomed = timeline.Viewport;
+        (double start, double end) = minimap.Brush();
+        Assert.True(end - start < fitEnd - fitStart);
+        Assert.True(end - start >= MinimapView.MinimumBrushWidth);
+
+        // Dragging the brush moves the viewport by time and keeps its span.
+        double middle = minimap.Bounds.Height / 2;
+        Point grab = minimap.TranslatePoint(new((start + end) / 2, middle), window)!.Value;
+        window.MouseDown(grab, MouseButton.Left);
+        window.MouseMove(grab + new Vector(-60, 0));
+        window.MouseUp(grab + new Vector(-60, 0), MouseButton.Left);
+        Dispatch();
+        TimeRange moved = timeline.Viewport;
+        Assert.Equal(zoomed.SpanTicks, moved.SpanTicks);
+        Assert.True(moved.StartTicks < zoomed.StartTicks);
+
+        // Dragging its right edge resizes it from that edge alone.
+        (start, end) = minimap.Brush();
+        Point edge = minimap.TranslatePoint(new(end, middle), window)!.Value;
+        window.MouseDown(edge, MouseButton.Left);
+        window.MouseMove(edge + new Vector(80, 0));
+        window.MouseUp(edge + new Vector(80, 0), MouseButton.Left);
+        Dispatch();
+        Assert.Equal(moved.StartTicks, timeline.Viewport.StartTicks);
+        Assert.True(timeline.Viewport.EndTicks > moved.EndTicks);
+
+        // A press beside the brush centres the viewport there.
+        TimeRange before = timeline.Viewport;
+        Point beside = minimap.TranslatePoint(new(minimap.Bounds.Width - 20, middle), window)!.Value;
+        window.MouseDown(beside, MouseButton.Left);
+        window.MouseUp(beside, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
+        Assert.True(timeline.Viewport.StartTicks > before.StartTicks);
+        WriteableBitmapCheck(window, "timeline-minimap.png");
+
+        // 0 on the timeline fits again, and the brush spans the whole minimap.
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+        Dispatch();
+        Assert.True(timeline.IsFit);
+        Assert.Equal((fitStart, fitEnd), minimap.Brush());
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "6.2: a zoomed timeline draws its viewport's own buckets, and a press selects the finer one")]
+    public async Task AZoomedTimelineDrawsItsOwnResolution()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        timeline.Focus();
+        for (int step = 0; step < 8; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+
+        SessionTimelineDetail detail = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.Equal(timeline.Viewport, detail.Interval);
+        Assert.Equal(workspace.DisplayedGeneration, detail.Generation);
+        Assert.True(detail.Buckets.Count >= 16);
+
+        // A press selects the bucket drawn under it, which is the viewport's own, finer than the overview's there.
+        Point centre = timeline.TranslatePoint(new(38 + ((timeline.Bounds.Width - 52) / 2), timeline.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(centre, MouseButton.Left);
+        window.MouseUp(centre, MouseButton.Left);
+        Dispatch();
+        TimeRange selected = Assert.IsType<TimeRange>(workspace.SelectedInterval);
+        Assert.Contains(detail.Buckets, bucket => bucket.Interval == selected);
+        TimelineBucket coarse = workspace.WholeSnapshot.Timeline.First(bucket => bucket.Interval.Contains(selected.StartTicks));
+        Assert.True(selected.SpanTicks < coarse.Interval.SpanTicks);
+        WriteableBitmapCheck(window, "zoomed-timeline.png");
+
+        // Fitting again needs no detail: the overview answers the whole extent.
+        timeline.SetViewport(null);
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Assert.Null(workspace.TimelineDetail);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
     public void APlainDragPansAndKeysMoveTheViewport()
     {

@@ -940,6 +940,7 @@
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",
         "R21: a variant with no queue reports no utilization rather than zero",
+        "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview",
         "R21: an absent source-loss counter is never interpreted as a reported zero",
         "R21: an import distinguishes delivered, quiet, and uncollected mechanisms",
         "R21: an interval ending at maximum ticks is evaluated without overflow",
@@ -957,6 +958,7 @@
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
         "R21: source loss and undecodable records make coverage partial; policy omissions do not",
+        "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
         "R21: total-machine processor time is readable or explicitly unavailable"

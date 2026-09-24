@@ -22,7 +22,8 @@ public static class OverviewWorkspace
             overview.Edges,
             overview.Channels, [], [],
             overview.Timeline,
-            overview.ChannelProjectionProblem);
+            overview.ChannelProjectionProblem,
+            overview.Minimap);
     }
 
     /// <summary>

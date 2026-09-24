@@ -35,6 +35,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -140,13 +141,18 @@ static void PrintHelp()
     ConsoleUi.Line("      Bounded paired TCP channel pages, including sessions above the overview cap.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
-    ConsoleUi.Line("                [--interval <start:end>]");
-    ConsoleUi.Line("  icat raw <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
-    ConsoleUi.Line("                [--page-size <1-200>]");
-    ConsoleUi.Line("                [--cursor <token>] [--json]");
+    ConsoleUi.Line("                [--interval <start:end>] [--page-size <1-200>] [--cursor <token>] [--json]");
     ConsoleUi.Line("      Leased pages of exact admitted observation rows; cursors restart on generation change.");
     ConsoleUi.Line("      --interval uses 100-nanosecond session-relative presentation ticks [start,end).");
     ConsoleUi.Line("      These are normalized source facts, not completion-paired operations or raw payloads.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat raw <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
+    ConsoleUi.Line("           [--reveal-bytes] [--json]");
+    ConsoleUi.Line("      One original retained journal record, from an icat evidence page's exact row locator.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--json]");
+    ConsoleUi.Line("      The all-observations timeline over any interval, bucketed exactly as the overview's,");
+    ConsoleUi.Line("      as the Desktop draws a zoomed viewport. Empty buckets stay coverage-unknown.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
     ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");

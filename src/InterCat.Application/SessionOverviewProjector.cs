@@ -30,7 +30,8 @@ public sealed record SessionOverviewBundle(
     long RelationshipsNotAdmitted,
     bool CoverageLedgerPublished,
     IReadOnlyList<MechanismCoverage> MechanismCoverage,
-    IReadOnlyList<string> Caveats);
+    IReadOnlyList<string> Caveats,
+    SessionMinimap? Minimap = null);
 
 /// <summary>
 /// Builds graph and timeline data from exactly one leased generation. This is the read-side bundle for IC-017, not a
@@ -135,7 +136,7 @@ public static class SessionOverviewProjector
         }
 
         HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
-        (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline,
+        (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline, SessionMinimap? minimap,
             long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
             Timeline(segments, relations, eligibleChannels, policy, clock, coverage, cancellationToken);
         if (edges.Sum(edge => edge.ObservationCount) != graphRows)
@@ -190,10 +191,11 @@ public static class SessionOverviewProjector
             notAdmitted,
             coverage is not null,
             Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage)]),
-            Array.AsReadOnly(caveats));
+            Array.AsReadOnly(caveats),
+            minimap);
     }
 
-    private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets,
+    private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets, SessionMinimap? Minimap,
         long Rows, long WithoutTime, long GraphRows, long GraphWithoutTime, long Unresolved)
         Timeline(
             IReadOnlyList<SegmentReaderV1> segments,
@@ -254,16 +256,13 @@ public static class SessionOverviewProjector
                 }
             }
 
-            return (null, [], [], rows, withoutTime, allGraphRows, allGraphRows, unresolved);
+            return (null, [], [], null, rows, withoutTime, allGraphRows, allGraphRows, unresolved);
         }
 
         var extent = new TimeRange(minimum, maximum + 1);
-        long width = extent.EndTicks - extent.StartTicks;
-        int bucketCount = (int)Math.Min(MaximumTimelineBuckets, width);
-        var counts = new int[bucketCount];
-        var graphCounts = new int[bucketCount];
-        var mechanismsByBucket = new Dictionary<Mechanism, int>[bucketCount];
-        for (int index = 0; index < bucketCount; index++) mechanismsByBucket[index] = [];
+        var main = new TimelineColumns(extent, MaximumTimelineBuckets, tallyMechanisms: true);
+        var minimap = new TimelineColumns(extent, SessionMinimap.MaximumColumns, tallyMechanisms: false);
+        var graphCounts = new int[main.Counts.Count];
         long graphRows = 0;
         long graphWithoutTime = 0;
         foreach (SegmentReaderV1 segment in segments)
@@ -284,16 +283,10 @@ public static class SessionOverviewProjector
                 }
 
                 long tick = nanoseconds / 100;
-                int bucket = (int)Math.Min(bucketCount - 1,
-                    (long)(((Int128)(tick - minimum) * bucketCount) / width));
-                if (counts[bucket] == int.MaxValue)
-                {
-                    throw new InvalidOperationException(
-                        "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
-                        + "represent it without compaction, so it is refused rather than wrapped to a false value.");
-                }
-
-                counts[bucket]++;
+                int bucket = main.ColumnOf(tick)!.Value;
+                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                main.Add(bucket, mechanism);
+                minimap.Add(minimap.ColumnOf(tick)!.Value, mechanism);
                 if (graphEligible)
                 {
                     if (graphCounts[bucket] == int.MaxValue)
@@ -303,88 +296,23 @@ public static class SessionOverviewProjector
 
                     graphCounts[bucket]++;
                 }
-
-                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                Dictionary<Mechanism, int> tally = mechanismsByBucket[bucket];
-                if (tally.GetValueOrDefault(mechanism) == int.MaxValue)
-                {
-                    throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
-                }
-
-                tally[mechanism] = tally.GetValueOrDefault(mechanism) + 1;
             }
         }
 
-        TimelineBucket[] result = [.. Enumerable.Range(0, bucketCount).Select(index => new TimelineBucket(
-            new TimeRange(
-                minimum + (long)(((Int128)index * width) / bucketCount),
-                minimum + (long)(((Int128)(index + 1) * width) / bucketCount)),
-            counts[index],
-            null,
-            mechanismsByBucket[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
-                .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
-            BucketCoverage(coverage, clock,
-                new TimeRange(
-                    minimum + (long)(((Int128)index * width) / bucketCount),
-                    minimum + (long)(((Int128)(index + 1) * width) / bucketCount)),
-                counts[index] == 0 ? [] : mechanismsByBucket[index].Keys)))];
-        TimelineBucket[] graphResult = [.. Enumerable.Range(0, bucketCount).Select(index => new TimelineBucket(
+        TimelineBucket[] result = main.Buckets(coverage, clock);
+        TimelineBucket[] graphResult = [.. Enumerable.Range(0, result.Length).Select(index => new TimelineBucket(
             result[index].Interval,
             graphCounts[index],
             null,
             graphCounts[index] > 0 ? Mechanism.Tcp : Mechanism.UnknownMechanism,
-            BucketCoverage(coverage, clock, result[index].Interval,
+            TimelineColumns.BucketCoverage(coverage, clock, result[index].Interval,
                 graphCounts[index] == 0 ? [] : [Mechanism.Tcp])))];
-        return (extent, result, graphResult, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
+        var overviewMinimap = new SessionMinimap(
+            extent,
+            Array.AsReadOnly([.. minimap.Counts]),
+            Array.AsReadOnly(minimap.CaptureCoverage(coverage, clock)));
+        return (extent, result, graphResult, overviewMinimap, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
     }
-
-    private static CoverageState BucketCoverage(
-        CoverageLedgerV1? ledger,
-        SourceClockDescriptor clock,
-        TimeRange presentationInterval,
-        IEnumerable<Mechanism> mechanisms)
-    {
-        if (ledger is null)
-        {
-            return CoverageState.UnknownCoverage;
-        }
-
-        Mechanism[] scoped = [.. mechanisms];
-        if (scoped.Length == 0)
-        {
-            return CoverageState.UnknownCoverage;
-        }
-
-        try
-        {
-            // The overview's presentation tick is nanoseconds / 100 with C# truncation toward zero. These are
-            // the exact nanosecond boundaries of that mapping, including its asymmetric zero tick (I3, I8).
-            long first = SourceClockMath.FirstNativeAtOrAfter(clock,
-                new SessionTimestamp(PresentationLowerNanoseconds(presentationInterval.StartTicks)));
-            long lastExclusive = SourceClockMath.FirstNativeAtOrAfter(clock,
-                new SessionTimestamp(PresentationLowerNanoseconds(presentationInterval.EndTicks)));
-            if (lastExclusive <= first)
-            {
-                return CoverageState.UnknownCoverage;
-            }
-
-            var nativeInterval = new TimeRange(first, lastExclusive);
-            return SessionCoverage.Worst(SessionCoverage.ForMechanisms(ledger, scoped, nativeInterval)
-                .Select(result => result.State));
-        }
-        catch (OverflowException)
-        {
-            // A bucket that cannot be mapped to native readings is unknown, never inferred from neighboring bins.
-            return CoverageState.UnknownCoverage;
-        }
-    }
-
-    private static long PresentationLowerNanoseconds(long tick) => tick switch
-    {
-        < 0 => checked(tick * 100 - 99),
-        0 => -99,
-        _ => checked(tick * 100),
-    };
 
     internal static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
     {

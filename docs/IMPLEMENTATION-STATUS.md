@@ -1,14 +1,68 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 101
+Plan revision: 102
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: live acquisition counters in the capture status
+## Latest slice: a minimap, and a timeline that resolves its viewport
+
+The timeline gains a whole-session minimap, and zooming now reveals detail instead of stretching the overview's 64
+buckets.
+
+- **Minimap level:** `SessionOverviewProjector` counts up to 2,000 whole-session columns in the same pass as the
+  64 buckets (`SessionMinimap`). Each column also carries the capture's own coverage from
+  `SessionCoverage.CaptureStates`: the worst state of the mechanisms each spanned epoch collected, independent of
+  observation, so a gap shows even where it emptied the column.
+- **`MinimapView`**, under the timeline:
+  - density on the §6.2 log scale above the 0.42 occupied floor, max per pixel;
+  - a hatched gap row, and the analysis interval;
+  - the viewport as a brush of at least 8 px;
+  - drag to move, drag an edge to resize, press beside to centre, double press to fit.
+- **Zoomed detail:** `SessionTimelineQuery.Detail` counts any interval into columns under the overview's exact bucket
+  and coverage rules. `WorkspaceViewModel.RequestTimelineDetail` runs it off the input path once the viewport rests
+  150 ms, with a newer viewport cancelling an older one and nothing asked at the whole extent. The coarse buckets
+  stand until it answers.
+- **Timeline drawing:** coarse bars outside the detail interval and fine bars inside it share one rate-scaled axis,
+  labelled in records per second. A press selects the finest bucket drawn. A held view's zoomed detail from a newer
+  generation says so.
+- **Interval table (R15):** follows the drawn resolution, states its scope ("Whole session in N intervals" or
+  "Zoomed view … in N intervals"), and labels windows in span-driven units; sub-second buckets used to read
+  "5 s to 5 s".
+- **`icat timeline <dir> --interval <start:end> [--columns 1-2000] [--json]`:** the same query headlessly. The CLI
+  help no longer interleaves `icat raw` with `icat evidence`'s options.
+- **Store reuse:** `SessionEvidenceSource` opens its session's store once instead of on every read. Opening cost
+  ~57 ms; each read still leases the current generation. On a real 94,694-row session, zoomed detail takes 20–25 ms
+  (it was 75–98 ms), and evidence pages and interval ranking save the same.
+
+Projection cost with the minimap, warm, on that session: median 168–175 ms against 158–162 ms before, maximum
+≤ 199 ms, within the 250-ms budget. The first cut was +35–50 ms, because the per-row helpers ran unoptimized until
+tiering promoted them. They are now compiled optimized at once, and each column boundary is mapped once.
+
+Real ETW (`bench/results/first-feedback-20260924T140714Z-minimap`): live projection p50 16–32 ms and p95 21–129 ms;
+first overview 0.9–1.1 s after the first record.
+
+844 tests pass in Debug and Release (+5):
+
+- a zoomed timeline counts what a scan counts, and at 64 columns over the extent it equals the overview;
+- the minimap counts every timed record and shows covered, gap (including an empty gap stretch) and unknown columns;
+- the view model asks for detail only when zoomed, applies only the newest answer, and moves the interval table with
+  it;
+- the window's minimap brush follows, moves, resizes, centres and fits;
+- a zoomed timeline draws its own buckets, and a press selects the finer one.
+
+Plan revision 102.
+
+Not done: a persisted overview pyramid (S4) and incremental minimap updates; wheel zoom over the minimap; a redacted
+sharing export (§11.3, M5); the export from the CLI; the steady-state latency design.
+
+Next: `icat export` in the `intercat-export-v1` contract, so a headless run can produce the same ranked and evidence
+exports as the Desktop (R18 parity), then the redacted sharing mode.
+
+## Previous slice: live acquisition counters in the capture status
 
 While a capture records, `GetStatus` carries its acquisition counters in optional fields 14–20 (broker contract
 §5.8). `LiveHealthProbe` attaches to the recording session once it is ready and detaches before it stops.

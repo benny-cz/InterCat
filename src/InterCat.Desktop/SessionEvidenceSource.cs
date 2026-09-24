@@ -10,6 +10,9 @@ namespace InterCat.Desktop;
 /// </summary>
 public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, long generation)
 {
+    private readonly Lock storeGate = new();
+    private SessionStore? store;
+
     public string SessionPath { get; } = sessionPath ?? throw new ArgumentNullException(nameof(sessionPath));
 
     public Guid SessionId { get; } = sessionId;
@@ -20,15 +23,36 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     /// <summary>Counts each edge's and channel's records inside an analysis interval, for a brushed ranking.</summary>
     public Task<SessionIntervalCounts> CountAsync(TimeRange interval, CancellationToken cancellationToken) =>
         Task.Run(() => SessionIntervalQuery.Count(
-            SessionStore.OpenExisting(LocalOwnedDirectory.Open(SessionPath)),
+            Store(),
             interval,
             cancellationToken: cancellationToken), cancellationToken);
+
+    /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
+    public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionTimelineQuery.Detail(
+            Store(),
+            interval,
+            columns,
+            cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The session's store, opened once and shared by every read. Opening verifies the pointer, the manifest and the
+    /// directory, which costs several times more than a timeline or page read itself; each read still leases whichever
+    /// generation is current. A failed open is not kept, so the next read tries again.
+    /// </summary>
+    private SessionStore Store()
+    {
+        lock (storeGate)
+        {
+            return store ??= SessionStore.OpenExisting(LocalOwnedDirectory.Open(SessionPath));
+        }
+    }
 
     public Task<SessionEvidencePage> ReadAsync(EvidenceScope scope, string? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
         return Task.Run(() => SessionEvidenceQuery.Read(
-            SessionStore.OpenExisting(LocalOwnedDirectory.Open(SessionPath)),
+            Store(),
             scope.ChannelKey,
             scope.Interval,
             pageSize: SessionEvidenceQuery.DefaultPageSize,

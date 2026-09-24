@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -24,16 +25,95 @@ public sealed class TimelineView : Control
     /// <summary>A press that moves at least this far brushes a range; a shorter one selects the bucket under it.</summary>
     private const double BrushThreshold = 4;
 
-    private TimeRange? viewport;
+    /// <summary>The plot's margins: the axis label gutter on the left and a little air on the right.</summary>
+    private const double PlotLeft = 38;
+    private const double PlotRightMargin = 14;
 
-    /// <summary>The visible time range: the retained extent until the user zooms or pans (presentation only, §6.4).</summary>
-    public TimeRange Viewport => viewport ?? (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
+    /// <summary>The narrowest viewport a zoom may reach: 10 ms of presentation ticks, or the extent when shorter.</summary>
+    private const long MinimumSpanTicks = 100_000;
+
+    /// <summary>How long the viewport must rest before the timeline asks for its own resolution (§6.2, P25).</summary>
+    private static readonly TimeSpan DetailSettle = TimeSpan.FromMilliseconds(150);
+
+    private readonly DispatcherTimer detailTimer;
+    private TimeRange? viewport;
     private long? brushAnchor;
     private long? brushEnd;
     private double pressX;
     private bool brushing;
     private bool moved;
     private TimeRange panOrigin;
+
+    public TimelineView()
+    {
+        detailTimer = new DispatcherTimer { Interval = DetailSettle };
+        detailTimer.Tick += (_, _) => RequestDetailNow();
+    }
+
+    /// <summary>Raised whenever the visible range changes, by a gesture, a key, or <see cref="SetViewport"/>.</summary>
+    public event EventHandler? ViewportChanged;
+
+    /// <summary>The visible time range: the retained extent until the user zooms or pans (presentation only, §6.4).</summary>
+    public TimeRange Viewport => viewport ?? Extent;
+
+    /// <summary>Whether the whole retained extent is shown, following it as a live session grows.</summary>
+    public bool IsFit => viewport is null;
+
+    private TimeRange Extent => (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
+
+    private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin);
+
+    /// <summary>
+    /// Shows a range, clamped inside the retained extent; null, or the whole extent, fits it. Every viewport change
+    /// passes through here, so the minimap and the timeline's detail request always see the range that is drawn.
+    /// </summary>
+    public void SetViewport(TimeRange? range)
+    {
+        TimeRange extent = Extent;
+        TimeRange? next = range?.ClampInside(extent);
+        if (next == extent)
+        {
+            next = null;
+        }
+
+        if (next == viewport)
+        {
+            return;
+        }
+
+        viewport = next;
+        InvalidateVisual();
+        ViewportChanged?.Invoke(this, EventArgs.Empty);
+        detailTimer.Stop();
+        detailTimer.Start();
+    }
+
+    /// <summary>Asks at once for the detail the resting viewport needs, without waiting for it to settle.</summary>
+    internal void RequestDetailNow()
+    {
+        detailTimer.Stop();
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            viewModel.RequestTimelineDetail(Viewport, (int)Math.Clamp(PlotWidth / 10, 16, 256));
+        }
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+
+        // A newer generation replaces the view model: the zoomed range stays, and its detail is asked for again.
+        RequestDetailNow();
+        InvalidateVisual();
+        ViewportChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        detailTimer.Stop();
+        detailTimer.Start();
+    }
 
     public override void Render(DrawingContext context)
     {
@@ -43,9 +123,9 @@ public sealed class TimelineView : Control
             return;
         }
 
-        TimeRange visible = viewport ?? viewModel.Snapshot.Extent;
-        double left = 38;
-        double right = Math.Max(left + 1, Bounds.Width - 14);
+        TimeRange visible = Viewport;
+        double left = PlotLeft;
+        double right = Math.Max(left + 1, Bounds.Width - PlotRightMargin);
         double top = 24;
         double bottom = Math.Max(top + 1, Bounds.Height - 30);
         double plotWidth = right - left;
@@ -57,28 +137,89 @@ public sealed class TimelineView : Control
             context.DrawLine(new Pen(GridBrush, 0.7), new(left, y), new(right, y));
         }
 
-        int maximum = Math.Max(1, viewModel.Snapshot.Timeline
-            .Where(bucket => Intersects(bucket.Interval, visible))
-            .Select(bucket => bucket.ObservationCount)
-            .DefaultIfEmpty(1)
-            .Max());
-
-        foreach (TimelineBucket bucket in viewModel.Snapshot.Timeline)
+        // The overview's coarse buckets stand wherever the viewport's own count has not arrived; the detail replaces
+        // them over the interval it answers. Heights are rates, records per tick, so a coarse bucket and a fine one
+        // side by side are drawn on one honest scale rather than by counts over unequal widths (§6.2).
+        SessionTimelineDetail? detail = viewModel.TimelineDetail is { } answered && Intersects(answered.Interval, visible)
+            ? answered : null;
+        TimelineBucket[] coarse = [.. viewModel.Snapshot.Timeline
+            .Where(bucket => Intersects(bucket.Interval, visible)
+                && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
+        TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
+        double maximumRate = coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
+        var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate);
+        if (detail is null)
         {
-            if (!Intersects(bucket.Interval, visible))
+            DrawBuckets(context, viewModel, coarse, scale);
+        }
+        else
+        {
+            double x1 = scale.X(Math.Max(detail.Interval.StartTicks, visible.StartTicks));
+            double x2 = scale.X(Math.Min(detail.Interval.EndTicks, visible.EndTicks));
+            using (context.PushClip(new Rect(left, 0, Math.Max(0, x1 - left), Bounds.Height)))
             {
-                continue;
+                DrawBuckets(context, viewModel, coarse, scale);
             }
 
-            double x1 = left + ViewportMath.PixelAtTick(visible, Math.Max(bucket.Interval.StartTicks, visible.StartTicks), plotWidth);
-            double x2 = left + ViewportMath.PixelAtTick(visible, Math.Min(bucket.Interval.EndTicks, visible.EndTicks), plotWidth);
+            using (context.PushClip(new Rect(x2, 0, Math.Max(0, right - x2), Bounds.Height)))
+            {
+                DrawBuckets(context, viewModel, coarse, scale);
+            }
+
+            using (context.PushClip(new Rect(x1, 0, Math.Max(0, x2 - x1), Bounds.Height)))
+            {
+                DrawBuckets(context, viewModel, fine, scale);
+            }
+
+            if (detail.Generation != viewModel.DisplayedGeneration)
+            {
+                // A paused or held view keeps its generation; a zoomed count reads the newest one and says so.
+                string note = $"zoomed detail from generation {detail.Generation:N0}";
+                DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
+            }
+        }
+
+        DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
+        DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
+        DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
+        string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
+        DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
+        DrawText(context, RateText(maximumRate * WorkspaceTime.TicksPerSecond), new(4, top - 4));
+    }
+
+    /// <summary>Records per presentation tick: what a bar's height states, comparable across bucket widths.</summary>
+    private static double Rate(TimelineBucket bucket) => (double)bucket.ObservationCount / bucket.Interval.SpanTicks;
+
+    /// <summary>The axis's top label: the peak rate drawn, in records per second.</summary>
+    internal static string RateText(double perSecond) => perSecond switch
+    {
+        <= 0 => "0/s",
+        >= 100 => $"{perSecond.ToString("N0", CultureInfo.CurrentCulture)}/s",
+        >= 1 => $"{perSecond.ToString("N1", CultureInfo.CurrentCulture)}/s",
+        _ => $"{perSecond.ToString("N2", CultureInfo.CurrentCulture)}/s",
+    };
+
+    private readonly record struct BarScale(
+        TimeRange Visible, double Left, double PlotWidth, double Top, double Bottom, double MaximumRate)
+    {
+        public double X(long tick) => Left + ViewportMath.PixelAtTick(Visible, tick, PlotWidth);
+    }
+
+    private static void DrawBuckets(
+        DrawingContext context, WorkspaceViewModel viewModel, IEnumerable<TimelineBucket> buckets, BarScale scale)
+    {
+        double plotHeight = scale.Bottom - scale.Top;
+        foreach (TimelineBucket bucket in buckets)
+        {
+            double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
+            double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
             double width = Math.Max(1, x2 - x1 - 2);
             if (bucket.ObservationCount > 0)
             {
                 // Coverage and observation are separate facts. A gap or unknown coverage cannot erase records that
                 // were actually seen; the hatch crosses their bar without claiming unseen activity (P1, P26).
-                double height = Math.Max(3, plotHeight * bucket.ObservationCount / maximum);
-                var rectangle = new Rect(x1, bottom - height, width, height);
+                double height = Math.Max(3, plotHeight * Rate(bucket) / Math.Max(double.Epsilon, scale.MaximumRate));
+                var rectangle = new Rect(x1, scale.Bottom - height, width, height);
                 context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, rectangle);
                 if (viewModel.SelectedInterval == bucket.Interval)
                 {
@@ -88,16 +229,9 @@ public sealed class TimelineView : Control
 
             if (bucket.Coverage != CoverageState.Covered)
             {
-                DrawCoverageGap(context, new(x1, top, width, plotHeight));
+                DrawCoverageGap(context, new(x1, scale.Top, width, plotHeight));
             }
         }
-
-        DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
-        DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
-        DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
-        string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
-        DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-        DrawText(context, maximum.ToString("N0", CultureInfo.CurrentCulture), new(4, top - 4));
     }
 
     /// <summary>
@@ -175,7 +309,7 @@ public sealed class TimelineView : Control
     /// symbol, so it survives greyscale and a colour-vision difference and never looks like a value. The
     /// cell is never filled with an interpolated height, because a gap has no measurement to draw (P26).
     /// </summary>
-    private static void DrawCoverageGap(DrawingContext context, Rect cell)
+    internal static void DrawCoverageGap(DrawingContext context, Rect cell)
     {
         const double spacing = 7;
         context.DrawRectangle(Brushes.Transparent, new Pen(GapBrush, 1), cell);
@@ -200,12 +334,9 @@ public sealed class TimelineView : Control
             return;
         }
 
-        TimeRange current = viewport ?? viewModel.Snapshot.Extent;
-        double plotWidth = Math.Max(1, Bounds.Width - 52);
-        double pixel = Math.Clamp(e.GetPosition(this).X - 38, 0, plotWidth);
+        double pixel = Math.Clamp(e.GetPosition(this).X - PlotLeft, 0, PlotWidth);
         decimal factor = e.Delta.Y > 0 ? 1.25m : 0.8m;
-        viewport = ViewportMath.ZoomAtPixel(current, pixel, plotWidth, factor, viewModel.Snapshot.Extent, 100_000);
-        InvalidateVisual();
+        SetViewport(ViewportMath.ZoomAtPixel(Viewport, pixel, PlotWidth, factor, viewModel.Snapshot.Extent, MinimumSpanTicks));
         e.Handled = true;
     }
 
@@ -218,7 +349,7 @@ public sealed class TimelineView : Control
     {
         base.OnPointerPressed(e);
         Focus();
-        if (DataContext is not WorkspaceViewModel viewModel)
+        if (DataContext is not WorkspaceViewModel)
         {
             return;
         }
@@ -227,7 +358,7 @@ public sealed class TimelineView : Control
         pressX = point.Position.X;
         brushing = e.KeyModifiers.HasFlag(KeyModifiers.Shift) || point.Properties.IsMiddleButtonPressed;
         moved = false;
-        panOrigin = viewport ?? viewModel.Snapshot.Extent;
+        panOrigin = Viewport;
         brushAnchor = TickAt(pressX);
         brushEnd = null;
         e.Pointer.Capture(this);
@@ -252,15 +383,13 @@ public sealed class TimelineView : Control
         if (brushing)
         {
             brushEnd = TickAt(x);
+            InvalidateVisual();
         }
         else
         {
             // Pan from the viewport the drag began with, so one continuous drag accumulates no rounding drift (§6.7).
-            double plotWidth = Math.Max(1, Bounds.Width - 52);
-            viewport = ViewportMath.PanByFraction(panOrigin, (decimal)(-(x - pressX) / plotWidth), viewModel.Snapshot.Extent);
+            SetViewport(ViewportMath.PanByFraction(panOrigin, (decimal)(-(x - pressX) / PlotWidth), viewModel.Snapshot.Extent));
         }
-
-        InvalidateVisual();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -287,8 +416,7 @@ public sealed class TimelineView : Control
                 viewModel.SelectInterval(new TimeRange(start, stop));
             }
         }
-        else if (wasClick
-            && viewModel.Snapshot.Timeline.FirstOrDefault(candidate => candidate.Interval.Contains(anchor)) is { } bucket)
+        else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)
         {
             viewModel.SelectInterval(bucket.Interval);
         }
@@ -296,6 +424,12 @@ public sealed class TimelineView : Control
         InvalidateVisual();
         e.Handled = true;
     }
+
+    /// <summary>The finest bucket drawn at a tick: the zoomed detail where it has arrived, else the overview's.</summary>
+    private static TimelineBucket? BucketAt(WorkspaceViewModel viewModel, long tick) =>
+        (viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
+            ? detail.Buckets
+            : viewModel.Snapshot.Timeline).FirstOrDefault(candidate => candidate.Interval.Contains(tick));
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
@@ -305,12 +439,8 @@ public sealed class TimelineView : Control
         InvalidateVisual();
     }
 
-    private long TickAt(double x)
-    {
-        TimeRange visible = viewport ?? (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
-        double plotWidth = Math.Max(1, Bounds.Width - 52);
-        return ViewportMath.TickAtPixel(visible, Math.Clamp(x - 38, 0, plotWidth), plotWidth);
-    }
+    private long TickAt(double x) =>
+        ViewportMath.TickAtPixel(Viewport, Math.Clamp(x - PlotLeft, 0, PlotWidth), PlotWidth);
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -320,51 +450,55 @@ public sealed class TimelineView : Control
             return;
         }
 
-        TimeRange current = viewport ?? viewModel.Snapshot.Extent;
+        TimeRange current = Viewport;
         TimeRange extent = viewModel.Snapshot.Extent;
+        TimeRange? next;
         switch (e.Key)
         {
             case Key.Home:
-                viewport = new TimeRange(extent.StartTicks, extent.StartTicks + current.SpanTicks).ClampInside(extent);
+                next = new TimeRange(extent.StartTicks, extent.StartTicks + current.SpanTicks);
                 break;
             case Key.End:
-                viewport = new TimeRange(extent.EndTicks - current.SpanTicks, extent.EndTicks).ClampInside(extent);
+                next = new TimeRange(extent.EndTicks - current.SpanTicks, extent.EndTicks);
                 break;
             case Key.D0:
             case Key.NumPad0:
                 // Fit the analysis scope: the brushed interval when there is one, else the retained extent (§6.7).
-                viewport = viewModel.SelectedInterval is { } scope ? scope.ClampInside(extent) : null;
+                next = viewModel.SelectedInterval;
                 break;
             case Key.Left:
-                viewport = ViewportMath.PanByFraction(current, -0.1m, viewModel.Snapshot.Extent);
+                next = ViewportMath.PanByFraction(current, -0.1m, extent);
                 break;
             case Key.Right:
-                viewport = ViewportMath.PanByFraction(current, 0.1m, viewModel.Snapshot.Extent);
+                next = ViewportMath.PanByFraction(current, 0.1m, extent);
                 break;
             case Key.Add:
             case Key.OemPlus:
-                viewport = ViewportMath.ZoomAtPixel(current, Bounds.Width / 2, Bounds.Width, 1.25m, viewModel.Snapshot.Extent, 100_000);
+                next = ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, 1.25m, extent, MinimumSpanTicks);
                 break;
             case Key.Subtract:
             case Key.OemMinus:
-                viewport = ViewportMath.ZoomAtPixel(current, Bounds.Width / 2, Bounds.Width, 0.8m, viewModel.Snapshot.Extent, 100_000);
+                next = ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, 0.8m, extent, MinimumSpanTicks);
                 break;
             default:
                 return;
         }
 
-        InvalidateVisual();
+        SetViewport(next);
         e.Handled = true;
     }
 
     private static bool Intersects(TimeRange left, TimeRange right) =>
         left.StartTicks < right.EndTicks && right.StartTicks < left.EndTicks;
 
+    private static bool Inside(TimeRange inner, TimeRange outer) =>
+        inner.StartTicks >= outer.StartTicks && inner.EndTicks <= outer.EndTicks;
+
     /// <summary>Hue comes from the mechanism's family token; nothing else may assign it (section 6.6, R5).</summary>
     private static SolidColorBrush BrushFor(Mechanism mechanism) =>
         new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode));
 
-    private static void DrawText(DrawingContext context, string text, Point origin)
+    internal static void DrawText(DrawingContext context, string text, Point origin)
     {
         var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), 10, TextBrush);
         context.DrawText(formatted, origin);

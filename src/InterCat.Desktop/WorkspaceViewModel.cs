@@ -61,6 +61,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private bool intervalLoading;
     private string? intervalProblem;
     private IReadOnlyList<RelationshipRow> relationships;
+    private CancellationTokenSource? timelineQuery;
+    private (TimeRange Viewport, int Columns)? requestedTimeline;
+    private SessionTimelineDetail? timelineDetail;
+    private IReadOnlyList<IntervalRow> intervals;
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -93,7 +97,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
-        Intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
+        intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
         if (selectedProcess is not null)
@@ -117,6 +121,94 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Completes when the most recent analysis-interval ranking has applied, been cleared or reported a problem.</summary>
     public Task IntervalReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// The timeline at the viewport's own resolution once its count has arrived; null at the whole extent, which the
+    /// overview's buckets already answer, and until a zoomed count completes (plan §6.2).
+    /// </summary>
+    public SessionTimelineDetail? TimelineDetail => timelineDetail;
+
+    /// <summary>The generation this workspace was projected from, when it shows a real session.</summary>
+    public long? DisplayedGeneration => evidenceSource?.Generation;
+
+    /// <summary>Completes when the most recent timeline-detail request has applied, been superseded or failed.</summary>
+    public Task TimelineDetailReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Asks for the timeline over a viewport in <paramref name="columns"/> columns. The overview's coarse buckets stay
+    /// on screen until the answer arrives, a newer viewport cancels an older request, and the whole extent needs none
+    /// (P25). A request that fails leaves the coarse buckets, which remain true at their own resolution.
+    /// </summary>
+    public void RequestTimelineDetail(TimeRange viewport, int columns)
+    {
+        columns = Math.Clamp(columns, 1, SessionTimelineQuery.MaximumColumns);
+        if (disposed || requestedTimeline == (viewport, columns))
+        {
+            return;
+        }
+
+        requestedTimeline = (viewport, columns);
+        timelineQuery?.Cancel();
+        timelineQuery?.Dispose();
+        timelineQuery = null;
+        TimeRange extent = wholeSnapshot.Extent;
+        if (evidenceSource is null || (viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks))
+        {
+            SetTimelineDetail(null);
+            TimelineDetailReady = Task.CompletedTask;
+            return;
+        }
+
+        var query = new CancellationTokenSource();
+        timelineQuery = query;
+        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, query);
+    }
+
+    private async Task LoadTimelineDetailAsync(
+        SessionEvidenceSource source, TimeRange viewport, int columns, CancellationTokenSource query)
+    {
+        try
+        {
+            SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token);
+            if (!disposed && ReferenceEquals(timelineQuery, query))
+            {
+                SetTimelineDetail(detail.SessionId == source.SessionId ? detail : null);
+            }
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            // A newer viewport or a closed workspace superseded this count.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!disposed && ReferenceEquals(timelineQuery, query))
+            {
+                SetTimelineDetail(null);
+            }
+        }
+    }
+
+    private void SetTimelineDetail(SessionTimelineDetail? detail)
+    {
+        if (ReferenceEquals(timelineDetail, detail))
+        {
+            return;
+        }
+
+        timelineDetail = detail;
+        intervals = WorkspaceRowBuilder.Intervals(detail?.Buckets ?? wholeSnapshot.Timeline, ThemeMode.Dark);
+        if (selectedIntervalRow is { } row && !intervals.Contains(row))
+        {
+            // The analysis interval stays selected; only the table row that named it is gone at this resolution.
+            selectedIntervalRow = null;
+            OnPropertyChanged(nameof(SelectedIntervalRow));
+        }
+
+        OnPropertyChanged(nameof(TimelineDetail));
+        OnPropertyChanged(nameof(Intervals));
+        OnPropertyChanged(nameof(IntervalTableScope));
+    }
 
     /// <summary>Whether the ranking is scoped to the brushed interval rather than the whole session.</summary>
     public bool IsRankedWithinInterval => scopedSnapshot is not null;
@@ -359,6 +451,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
+        timelineQuery?.Cancel();
+        timelineQuery?.Dispose();
+        timelineQuery = null;
         graphLayout.Dispose();
     }
 
@@ -369,7 +464,17 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public IReadOnlyList<RelationshipRow> Relationships => relationships;
 
     /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
-    public IReadOnlyList<IntervalRow> Intervals { get; }
+    /// <summary>
+    /// The table equivalent of the timeline (R15): the buckets it draws, which are the zoomed viewport's own once they
+    /// have arrived and the whole session's otherwise.
+    /// </summary>
+    public IReadOnlyList<IntervalRow> Intervals => intervals;
+
+    /// <summary>What the interval table lists, so a zoomed table is never read as the whole session.</summary>
+    public string IntervalTableScope => timelineDetail is { } detail
+        ? string.Create(CultureInfo.CurrentCulture,
+            $"Zoomed view {WorkspaceTime.FormatRange(detail.Interval, CultureInfo.CurrentCulture)} in {detail.Buckets.Count:N0} intervals")
+        : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervals.Count:N0} intervals");
 
     /// <summary>
     /// The ranked table of the rung the user is on. The same gesture works at every rung. At a published session's
