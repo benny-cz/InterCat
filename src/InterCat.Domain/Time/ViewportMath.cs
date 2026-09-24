@@ -68,4 +68,15 @@ public static class ViewportMath
             checked(viewport.StartTicks + offset),
             checked(viewport.EndTicks + offset)).ClampInside(retainedExtent);
     }
+
+    /// <summary>Moves an unchanged-width viewport to a tick, clamping its edges inside the retained extent.</summary>
+    public static TimeRange CenterOnTick(TimeRange viewport, long focusTick, TimeRange retainedExtent)
+    {
+        long span = Math.Min(viewport.SpanTicks, retainedExtent.SpanTicks);
+        decimal start = decimal.Round(decimal.CreateChecked(focusTick) - (decimal.CreateChecked(span) / 2),
+            0, MidpointRounding.AwayFromZero);
+        long clamped = decimal.ToInt64(Math.Clamp(start, decimal.CreateChecked(retainedExtent.StartTicks),
+            decimal.CreateChecked(retainedExtent.EndTicks) - span));
+        return new TimeRange(clamped, checked(clamped + span));
+    }
 }

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-24 · Plan revision: 104 · Branch: `main`
+Updated: 2026-09-24 · Plan revision: 105 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -36,24 +36,32 @@ be described as safe to share.
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap implemented | Per-rung eligible graph/operation/byte composition, persisted overview pyramid, bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard implemented | Per-rung eligible graph/operation/byte composition, persisted overview pyramid, bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only pseudonymized report in JSON/CSV implemented | Reopenable redacted normalized session package, fresh dictionaries/indices and leakage audit; original evidence package preset. |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
-## Latest coherent slice — redacted sharing report and status reset
+## Recent completed slices
 
-- `RedactedShareExport` creates a separate `intercat-share-report-v1` contract by serializing **only** explicit fields.
+- **Revision 105 — minimap navigation:** wheel zooms at its pointer, including after the pointer moves outside the
+  current brush; the minimap is focusable and shares the timeline's arrow/Home/End/+/-/0 keyboard path. A pure
+  `ViewportMath.CenterOnTick` clamps without changing the span. Headless wheel/key and edge-clamp tests pass.
+  Storage audit: the existing replacement-derivation path deliberately carries the original journal and is
+  ineligible for a redacted package. That package needs a new sanitized admitted journal and identity, not just
+  rewritten segments. The plan now makes this a gate. Full-suite verification is recorded below.
+- **Revision 104 — redacted sharing report and status reset:**
+
+  `RedactedShareExport` creates a separate `intercat-share-report-v1` contract by serializing **only** explicit fields.
   It omits original session/capture IDs, raw record locators, provider IDs, names, PIDs, addresses, ports, source
   files, free-text context and content. Random relationship tokens are consistent inside one report, not across
   reports; JSON and CSV carry the policy, retained/omitted lists and a not-anonymous warning. Empty CSV scopes carry
   a metadata row marked `row_present=false`. Policy: [sharing-report redaction](design/SHARING-REPORT-REDACTION.md).
-- `icat export --share-redacted` and the Desktop's separate share action use that same renderer. Desktop shows a
+  `icat export --share-redacted` and the Desktop's separate share action use that same renderer. Desktop shows a
   pre-save disclosure; both paths stage UTF-8 beside the destination and publish only a complete file.
-- Adversarial JSON/CSV tests use sensitive sentinels in context and source fields, check relationship preservation,
+  Adversarial JSON/CSV tests use sensitive sentinels in context and source fields, check relationship preservation,
   per-report token rotation, empty scopes, and Desktop/headless scope parity. The ordinary detailed export stays
   byte-for-byte unchanged. **This is not the §11.3 redacted normalized session package.**
-- The previous 2,040-line chronological status was moved to `docs/history/`; this file is the concise, current ledger.
+  The previous 2,040-line chronological status was moved to `docs/history/`; this file is the concise, current ledger.
 
 ## Open work, dependency order
 
@@ -64,14 +72,16 @@ be described as safe to share.
    bundle. Eliminate the whole-machine graph at a channel rung. Include operation/byte projections where derivations
    actually support them, and say unavailable otherwise.
 3. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
-   missed steady-state latency target on real ETW. Add minimap wheel zoom and keyboard parity.
+   missed steady-state latency target on real ETW.
 4. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
 
 ## Verification and cautions
 
-- Current tests: **854 passed in Debug and Release**, zero failures (+7 over revision 103). The CLI export help
-  advertises the new flag; the Application and Desktop tests cover redaction, relationships and headless scope parity.
+- Current tests: **858 passed in Debug and Release**, zero failures (+4 over revision 104). This includes the
+  pointer/keyboard UI test, three new viewport-clamp cases and the updated R10 traceability index. The first
+  Release run had a broker R16 failure under the parallel full suite; it passed in isolation and in the complete
+  rerun. Watch repeatability; no broker behavior changed in this slice.
 - Recent real evidence: `bench/results/first-feedback-20260924T140714Z-minimap` (live projection p50 16–32 ms,
   p95 21–129 ms; first overview 0.9–1.1 s after first record). The event-to-visible steady-state budget still
   missed in the prior run (`first-feedback-20260924T132726Z-live-counters`: p95 2.6–3.2 s).

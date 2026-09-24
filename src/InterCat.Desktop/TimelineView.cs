@@ -445,15 +445,21 @@ public sealed class TimelineView : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (Navigate(e.Key)) e.Handled = true;
+    }
+
+    /// <summary>Shared timeline/minimap keyboard navigation over one viewport and one retained extent.</summary>
+    internal bool Navigate(Key key)
+    {
         if (DataContext is not WorkspaceViewModel viewModel)
         {
-            return;
+            return false;
         }
 
         TimeRange current = Viewport;
         TimeRange extent = viewModel.Snapshot.Extent;
         TimeRange? next;
-        switch (e.Key)
+        switch (key)
         {
             case Key.Home:
                 next = new TimeRange(extent.StartTicks, extent.StartTicks + current.SpanTicks);
@@ -481,11 +487,11 @@ public sealed class TimelineView : Control
                 next = ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, 0.8m, extent, MinimumSpanTicks);
                 break;
             default:
-                return;
+                return false;
         }
 
         SetViewport(next);
-        e.Handled = true;
+        return true;
     }
 
     private static bool Intersects(TimeRange left, TimeRange right) =>

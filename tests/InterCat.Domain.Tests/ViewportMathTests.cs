@@ -56,4 +56,17 @@ public sealed class ViewportMathTests
 
         Assert.Equal(new TimeRange(0, 200), panned);
     }
+
+    [Theory(DisplayName = "R10: centering a viewport on a tick keeps its span and clamps both edges")]
+    [InlineData(-1_000L, -500L, -300L)]
+    [InlineData(0L, -100L, 100L)]
+    [InlineData(1_000L, 300L, 500L)]
+    public void CenterOnTickClampsWithoutChangingSpan(long focus, long expectedStart, long expectedEnd)
+    {
+        var extent = new TimeRange(-500, 500);
+        var viewport = new TimeRange(-100, 100);
+
+        Assert.Equal(new TimeRange(expectedStart, expectedEnd),
+            ViewportMath.CenterOnTick(viewport, focus, extent));
+    }
 }

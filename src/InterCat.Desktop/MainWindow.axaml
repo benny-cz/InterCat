@@ -280,9 +280,9 @@
           <local:TimelineView x:Name="TimelineSurface" Grid.Row="1" Focusable="True"
                               AutomationProperties.Name="Activity timeline" />
           <Border Grid.Row="2" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
-            <local:MinimapView x:Name="MinimapSurface" Margin="0,4,0,2"
+            <local:MinimapView x:Name="MinimapSurface" Margin="0,4,0,2" Focusable="True"
                                AutomationProperties.Name="Whole-session minimap"
-                               ToolTip.Tip="The whole session. Drag the frame to move the view, drag an edge to resize it, click to centre it there, double-click to fit. Hatching below marks where the capture itself was not fully covered." />
+                               ToolTip.Tip="The whole session. Wheel or +/- zooms, arrows pan, Home/End jump and 0 fits. Drag the frame to move, drag an edge to resize, click to centre or double-click to fit. Hatching marks capture gaps." />
           </Border>
         </Grid>
       </Border>

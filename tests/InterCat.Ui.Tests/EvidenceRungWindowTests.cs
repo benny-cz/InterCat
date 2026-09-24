@@ -206,6 +206,45 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "6.2: the minimap wheel zooms at the pointer and its keyboard path shares the timeline")]
+    public void MinimapWheelAndKeyboardNavigateOneViewport()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with
+        { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        MinimapView minimap = window.GetControl<MinimapView>("MinimapSurface");
+        TimeRange extent = timeline.Viewport;
+        double middle = minimap.Bounds.Height / 2;
+
+        Point center = minimap.TranslatePoint(new(minimap.Bounds.Width / 2, middle), window)!.Value;
+        window.MouseWheel(center, new Vector(0, 1));
+        Dispatch();
+        TimeRange first = timeline.Viewport;
+        Assert.True(first.SpanTicks < extent.SpanTicks);
+
+        // Wheel beyond the current frame moves toward that part of the whole session before zooming.
+        Point farRight = minimap.TranslatePoint(new(minimap.Bounds.Width - 20, middle), window)!.Value;
+        window.MouseWheel(farRight, new Vector(0, 1));
+        Dispatch();
+        TimeRange second = timeline.Viewport;
+        Assert.True(second.StartTicks > first.StartTicks);
+        Assert.True(second.SpanTicks < first.SpanTicks);
+
+        minimap.Focus();
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Dispatch();
+        Assert.True(timeline.Viewport.StartTicks < second.StartTicks);
+        window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(extent, timeline.Viewport);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "6.2: a zoomed timeline draws its viewport's own buckets, and a press selects the finer one")]
     public async Task AZoomedTimelineDrawsItsOwnResolution()
     {

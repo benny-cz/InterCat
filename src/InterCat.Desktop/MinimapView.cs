@@ -13,6 +13,7 @@ namespace InterCat.Desktop;
 /// logarithmic intensity scale and the capture's own coverage as a hatched gap row, with the analysis interval above
 /// and the timeline's viewport as a brush. Dragging the brush moves the timeline's viewport and dragging an edge
 /// resizes it; a press elsewhere centres the viewport there, and a double press fits the extent (§6.7).
+/// Wheel zooms about the pointer; Home/End, arrows, +/- and 0 use the timeline's keyboard navigation.
 /// </summary>
 public sealed class MinimapView : Control
 {
@@ -218,6 +219,7 @@ public sealed class MinimapView : Control
             return;
         }
 
+        Focus();
         e.Handled = true;
         if (e.ClickCount >= 2)
         {
@@ -238,8 +240,7 @@ public sealed class MinimapView : Control
             if (x < bx1 || x > bx2)
             {
                 // A press beside the brush centres the viewport there, then the same drag keeps moving it.
-                long centre = TickAt(x);
-                timeline.SetViewport(new TimeRange(centre - (viewport.SpanTicks / 2), centre - (viewport.SpanTicks / 2) + viewport.SpanTicks));
+                timeline.SetViewport(ViewportMath.CenterOnTick(viewport, TickAt(x), Extent));
                 viewport = timeline.Viewport;
             }
 
@@ -290,5 +291,27 @@ public sealed class MinimapView : Control
     {
         base.OnPointerCaptureLost(e);
         gesture = Gesture.None;
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (timeline is null || DataContext is not WorkspaceViewModel || e.Delta.Y == 0) return;
+
+        long focusTick = TickAt(e.GetPosition(this).X);
+        TimeRange current = timeline.Viewport;
+        if (!current.Contains(focusTick))
+            current = ViewportMath.CenterOnTick(current, focusTick, Extent);
+        double focusPixel = ViewportMath.PixelAtTick(current, focusTick, PlotWidth);
+        decimal factor = e.Delta.Y > 0 ? 1.25m : 0.8m;
+        timeline.SetViewport(ViewportMath.ZoomAtPixel(current, focusPixel, PlotWidth, factor, Extent,
+            MinimumSpanTicks));
+        e.Handled = true;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (timeline?.Navigate(e.Key) == true) e.Handled = true;
     }
 }

@@ -746,6 +746,7 @@
       ],
       "R10": [
         "R10: a retained extent shorter than the minimum span zooms to itself rather than failing",
+        "R10: centering a viewport on a tick keeps its span and clamps both edges",
         "R10: inverse zoom restores the viewport within rounding tolerance",
         "R10: no sequence of pans escapes the retained extent",
         "R10: panning and back restores the viewport",
