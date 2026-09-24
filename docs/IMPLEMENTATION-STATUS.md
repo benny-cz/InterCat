@@ -1,14 +1,61 @@
 # InterCat implementation status
 
 Last updated: 2026-09-24
-Plan revision: 96
+Plan revision: 97
 Current milestone: M1 — evidence and persistence foundation, still open for IC-013, IC-015 and IC-016a. M2 live-exploration
 work (broker, Desktop ladder, evidence inspection) proceeds in parallel on that foundation. M0 and its explicit IC-010a
 capture-impact follow-on are complete.
 
 This is the resume document for implementation work. Update it after every coherent slice with verified results, known limitations, and the next dependency-ordered actions. Capability statements here are evidence-based; a provider being registered does not mean its mechanism is supported.
 
-## Latest slice: the evidence rung inside the Desktop ladder
+## Latest slice: first feedback measured, then brought inside its budget
+
+`InterCat.BrokerQualification first-feedback --output <dir> [--runs N] [--seconds S]` (elevated) runs the Desktop's own
+`DesktopCaptureRunner` with the tool as its broker over a qualification root, never the production root. It adds a
+paced loopback TCP stream and reports each run's milestones. It also reports every record's delay from its own QPC
+reading to the first overview that included it: the runner now stamps each overview it hands to the window with the
+machine's QPC reading, derived-record count, derivation time and projection time. The runner also takes
+`CaptureRunOptions` (broker, session root, duration) and reports `CaptureMilestones`.
+
+| Three 15-s runs | Baseline | After |
+|---|---|---|
+| First overview after first delivered record | 3.2–3.6 s | 0.96–1.3 s |
+| Start action to first overview (no approval prompt) | 3.7–4.4 s | 1.5–1.9 s |
+| Event-to-visible p50 | 2.5–3.4 s | 1.3–1.7 s |
+| Event-to-visible p95 | 3.3–4.4 s | 2.5–3.2 s |
+| Derivation p95 / projection p95 | 150–248 / 14–118 ms | 203–359 / 31–113 ms |
+
+The measurement showed three waits. ETW held partly filled buffers for up to about 2 s. The first chunk waited a whole
+2-s interval. The viewer polled once a second. Three changes address them:
+
+- A live broker capture now asks ETW to deliver partly filled buffers every 250 ms (`OwnedSessionPlan.DeliveryFlushInterval`,
+  `IOwnedEtwSession.TryFlushDelivery`; a refusal is stated once as a degradation).
+- The first chunk publishes 0.5 s after it holds records (`BrokerJournalPublicationPolicy.FirstLivePublication`,
+  `LiveRecorder publishFirstAfter`).
+- Desktop and `icat capture` poll every 250 ms.
+
+The capture card now states "First view 1.3 s after recording began · refreshed about every 2 s", and both effective
+summaries name the first publication.
+
+§3.1's 3-s first-useful-overview budget is met with margin, and the derivation and projection stage budgets hold at
+these sizes. The steady-state p95 under 1.5 s is not met. A 1-s floor experiment still gave p95 1.7–2.6 s, so the 2-s
+floor stays. Plan revision 97 records the miss and the two designs that could close it: a labeled non-durable live
+preview, or incremental derivation and projection. Capture impact stays Low: Live against no capture is 0.74 pp with 0%
+throughput regression, and broker CPU is 531 ms per window, from 470 ms. Broker qualification passes all four
+scenarios with no leaked session. Evidence: `bench/results/first-feedback-20260924T085642Z-baseline`,
+`first-feedback-20260924T090807Z`, `first-feedback-20260924T090952Z-1s-cadence-experiment`,
+`broker-qualification-20260924T091218Z`, `broker-impact-20260924T091714Z`.
+
+814 tests pass in Debug and Release (+3): the fast first publication and its validation, the delivery-flush lifecycle
+with a single stated refusal, and the capture card's freshness line; policy and review-wording tests were extended.
+
+Not done: the approval (UAC) step is not measured, since the harness is elevated; the steady-state budget; and a real
+interactive Desktop run.
+
+Next: compact the rail's capture card at the minimum window height, then the remaining M2 exit-gate items (minimap,
+record/view pause controls, export). The live-preview versus incremental-projection decision needs its own measured slice.
+
+## Previous slice: the evidence rung inside the Desktop ladder
 
 L5 is now a rung of the Desktop ladder for published sessions, replacing the separate source-row dialog. `E` from any
 rung (or the inspector's "Show source records (E)") opens it. Its scope is the visible filter the step adds, which now

@@ -97,6 +97,31 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "3.1: the capture card states how soon the first view arrived and how often it refreshes")]
+    public void TheCaptureCardStatesFirstFeedback()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 3));
+        var window = new MainWindow();
+        window.Show();
+        TextBlock latency = window.GetControl<TextBlock>("CaptureLatency");
+
+        window.ApplyCaptureUpdate(Update(session) with
+        {
+            Milestones = new(Started: TimeSpan.FromMilliseconds(650), PublicationInterval: TimeSpan.FromSeconds(2)),
+        });
+        Assert.Equal(string.Empty, latency.Text);
+
+        window.ApplyCaptureUpdate(Update(session) with
+        {
+            Milestones = new(Started: TimeSpan.FromMilliseconds(650), FirstOverview: TimeSpan.FromMilliseconds(1_950),
+                PublicationInterval: TimeSpan.FromSeconds(2)),
+        });
+        Assert.Contains($"{1.3:0.0} s after recording began", latency.Text, StringComparison.Ordinal);
+        Assert.Contains("every 2 s", latency.Text, StringComparison.Ordinal);
+        window.Close();
+    }
+
     public static TheoryData<int, int> Sizes => new() { { 1080, 700 }, { 1456, 939 } };
 
     [AvaloniaTheory(DisplayName = "R15: a published session's channel and evidence rungs render at every supported size")]

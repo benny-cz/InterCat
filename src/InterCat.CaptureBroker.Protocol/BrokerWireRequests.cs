@@ -36,6 +36,18 @@ public static class BrokerJournalPublicationPolicy
     public static readonly TimeSpan MinimumLiveInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>
+    /// How soon a live capture's first chunk publishes once it holds records. The first view of a capture should not wait a
+    /// whole interval (plan §3.1, §12 first feedback); it adds one small chunk, and every later chunk keeps the interval.
+    /// </summary>
+    public static readonly TimeSpan FirstLivePublication = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// How often a live capture asks ETW to deliver partly filled buffers, bounding how long a record waits before it
+    /// can join a chunk at all. An on-stop capture has no follower waiting and leaves delivery to ETW.
+    /// </summary>
+    public static readonly TimeSpan LiveDeliveryFlush = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
     /// The most chunks one live capture publishes. It keeps a full-length capture's manifest to a few hundred KiB and
     /// far inside the 65,536-dependency manifest limit, so publication cost stays bounded for the whole capture.
     /// </summary>
@@ -50,6 +62,12 @@ public static class BrokerJournalPublicationPolicy
             Math.Ceiling(maximumDurationSeconds / (double)MaximumLiveChunks))),
         _ => throw new ArgumentOutOfRangeException(nameof(publication), publication, "Unknown journal publication policy."),
     };
+
+    /// <summary>When the first chunk of this policy publishes, or null when it publishes only on stop.</summary>
+    public static TimeSpan? FirstPublication(BrokerJournalPublication publication, int maximumDurationSeconds) =>
+        Interval(publication, maximumDurationSeconds) is { } interval
+            ? (interval < FirstLivePublication ? interval : FirstLivePublication)
+            : null;
 
     /// <summary>The compiled interval in whole milliseconds as the effective summary states it; zero for OnStop.</summary>
     public static int IntervalMilliseconds(BrokerJournalPublication publication, int maximumDurationSeconds) =>

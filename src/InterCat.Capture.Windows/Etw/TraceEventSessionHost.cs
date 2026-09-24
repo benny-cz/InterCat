@@ -153,6 +153,24 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
         public ProviderEnablementResult Enable(ProviderEnablementRequest request) =>
             TraceEventProviderControl.Enable(session, request);
 
+        public bool TryFlushDelivery()
+        {
+            if (stopped)
+            {
+                return false;
+            }
+
+            try
+            {
+                session.Flush();
+                return true;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                return false;
+            }
+        }
+
         public bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason) =>
             TraceEventProviderControl.TryRequestCaptureState(session, request, out failureReason);
 

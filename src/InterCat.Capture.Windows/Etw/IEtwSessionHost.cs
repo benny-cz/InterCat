@@ -93,6 +93,12 @@ public interface IOwnedEtwSession : IDisposable
 
     SourceLossReading ReadLoss();
 
+    /// <summary>
+    /// Asks ETW to deliver the session's partly filled buffers now. Nothing is lost or reordered by it; records only
+    /// arrive sooner. False when the adapter cannot request it, in which case delivery waits for ETW's own flush.
+    /// </summary>
+    bool TryFlushDelivery() => false;
+
     /// <summary>Stops the ETW session this handle created. Safe to call more than once.</summary>
     void StopSession();
 }

@@ -7,5 +7,7 @@
     <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
     <ProjectReference Include="../../src/InterCat.CaptureBroker/InterCat.CaptureBroker.csproj" />
+    <!-- first-feedback drives the Desktop's own capture runner, which has no UI dependency of its own. -->
+    <ProjectReference Include="../../src/InterCat.Desktop/InterCat.Desktop.csproj" />
   </ItemGroup>
 </Project>

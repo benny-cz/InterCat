@@ -167,6 +167,13 @@ public sealed record OwnedSessionPlan
     /// <summary>Health sampling interval (section 18.5 tunable default).</summary>
     public TimeSpan HealthSamplingInterval { get; init; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// How often the session asks ETW to deliver its partly filled buffers, or null to leave delivery to ETW's own
+    /// buffer flush. At a low event rate a buffer can wait seconds to fill, and that wait is the provider flush latency
+    /// section 12 reports separately; a live capture bounds it rather than inheriting it.
+    /// </summary>
+    public TimeSpan? DeliveryFlushInterval { get; init; }
+
     /// <summary>Grace period applied after the workload stops, before the session stops (section 18.5).</summary>
     public TimeSpan ReorderGrace { get; init; } = TimeSpan.FromSeconds(2);
 

@@ -87,6 +87,7 @@ public sealed class PreparedCapturePlan
         Retention = retention;
         Publication = publication;
         PublicationInterval = BrokerJournalPublicationPolicy.Interval(publication, quota.MaximumDurationSeconds);
+        FirstPublication = BrokerJournalPublicationPolicy.FirstPublication(publication, quota.MaximumDurationSeconds);
         BodyPolicy = bodyPolicy;
         Sources = sources;
         Providers = providers;
@@ -111,6 +112,9 @@ public sealed class PreparedCapturePlan
 
     /// <summary>How often the runtime publishes journal chunks; null publishes once, when the capture stops.</summary>
     public TimeSpan? PublicationInterval { get; }
+
+    /// <summary>How soon the first chunk publishes once it holds records; null when the capture publishes on stop.</summary>
+    public TimeSpan? FirstPublication { get; }
     public CompiledBodyAdmissionPolicy BodyPolicy { get; }
     public ImmutableArray<SourceAdmissionPlan> Sources { get; }
     public ImmutableArray<ProviderEnablementRequest> Providers { get; }

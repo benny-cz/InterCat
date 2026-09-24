@@ -117,6 +117,41 @@ public sealed class OwnedCaptureSessionTests
         Assert.Equal(plan.Identity.SessionName, Assert.Single(host.StoppedSessions));
     }
 
+    [Fact(DisplayName = "R8: a live capture asks ETW to deliver partly filled buffers on a bounded interval and states a refusal once")]
+    public async Task DeliveryFlushRunsWhileRecordingAndStatesARefusalOnce()
+    {
+        foreach (bool refuse in new[] { false, true })
+        {
+            var host = new FakeEtwSessionHost { RefuseFlush = refuse };
+            await using var session = new OwnedCaptureSession(
+                BuildPlan() with { DeliveryFlushInterval = TimeSpan.FromMilliseconds(10) }, host);
+
+            CaptureStartResult start = await session.StartAsync(CancellationToken.None);
+            Assert.True(start.Started);
+            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            while (host.Last!.FlushRequests < 3 && DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(5);
+            }
+
+            CaptureStopResult stop = await session.StopAsync(CancellationToken.None);
+            int afterStop = host.Last.FlushRequests;
+            await Task.Delay(60);
+
+            Assert.InRange(afterStop, 3, int.MaxValue);
+            Assert.InRange(host.Last.FlushRequests, afterStop, afterStop + 1);
+            Assert.Equal(refuse ? 1 : 0, stop.Degradations.Count(text => text.Contains("delivery flush", StringComparison.Ordinal)));
+        }
+
+        // Without an interval nothing is flushed: delivery is left to ETW, as every non-live capture leaves it.
+        var quiet = new FakeEtwSessionHost();
+        await using var unflushed = new OwnedCaptureSession(BuildPlan(), quiet);
+        _ = await unflushed.StartAsync(CancellationToken.None);
+        await Task.Delay(40);
+        _ = await unflushed.StopAsync(CancellationToken.None);
+        Assert.Equal(0, quiet.Last!.FlushRequests);
+    }
+
     [Fact(DisplayName = "P14: a capture never adopts or stops a session it did not create")]
     public async Task ExistingSessionIsNeverAdopted()
     {

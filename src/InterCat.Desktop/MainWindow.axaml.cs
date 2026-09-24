@@ -321,6 +321,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         CaptureStatus.Text = update.Headline;
         CaptureDetail.Text = update.Detail;
+        CaptureLatency.Text = Freshness(update.Milestones);
         if (update.Summary is not null) CaptureSummary.Text = update.Summary;
         if (update.SessionPath is not null) CaptureSessionPath.Text = update.SessionPath;
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
@@ -373,6 +374,12 @@ public sealed partial class MainWindow : Window, IDisposable
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
     }
+
+    /// <summary>How soon the first view arrived after recording began and how often it refreshes, once both are known.</summary>
+    private static string Freshness(CaptureMilestones? milestones) =>
+        milestones is { FirstOverviewAfterStart: { } first, PublicationInterval: { } interval }
+            ? $"First view {first.TotalSeconds:0.0} s after recording began · refreshed about every {interval.TotalSeconds:0.#} s"
+            : string.Empty;
 
     /// <summary>Applies the generation held while evidence was inspected. False when none is waiting.</summary>
     private bool ApplyHeldUpdate()

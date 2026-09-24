@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Versioning;
 using InterCat.Application;
@@ -16,7 +17,50 @@ public sealed record CaptureUiUpdate(
     string Detail,
     string? Summary = null,
     string? SessionPath = null,
-    SessionOverviewBundle? Overview = null);
+    SessionOverviewBundle? Overview = null,
+    CaptureMilestones? Milestones = null,
+    CaptureVisibility? Visibility = null);
+
+/// <summary>
+/// Elapsed time from the user's start action to each first-run step of section 3.1, so first feedback is measured
+/// rather than asserted (section 12). A step not yet reached is null. The publication interval is the broker's compiled
+/// live cadence, which bounds how fresh any published overview can be.
+/// </summary>
+public sealed record CaptureMilestones(
+    TimeSpan? BrokerReady = null,
+    TimeSpan? Prepared = null,
+    TimeSpan? Started = null,
+    TimeSpan? FirstGeneration = null,
+    TimeSpan? FirstOverview = null,
+    TimeSpan? PublicationInterval = null)
+{
+    /// <summary>How long after recording began the first overview reached the window, when both are known.</summary>
+    public TimeSpan? FirstOverviewAfterStart => FirstOverview - Started;
+}
+
+/// <summary>
+/// What the viewer had derived when it handed an overview to the window: the generation, every record derived so far,
+/// and the machine's QPC reading at that moment. Records carry native QPC readings of the same clock, so a record's
+/// delay from acquisition to the window is exact rather than estimated.
+/// </summary>
+public sealed record CaptureVisibility(
+    long Generation,
+    long DerivedRecords,
+    long ObservedQpc,
+    TimeSpan Derivation,
+    TimeSpan Projection);
+
+/// <summary>Where and for how long one Desktop capture runs. The defaults are the first-run Explore capture.</summary>
+public sealed record CaptureRunOptions
+{
+    /// <summary>The broker to launch; null means the one installed beside the Desktop.</summary>
+    public BrokerLaunchTarget? Broker { get; init; }
+
+    /// <summary>The directory that receives the derived session; null means the user's local application data.</summary>
+    public string? SessionRoot { get; init; }
+
+    public int MaximumDurationSeconds { get; init; } = 600;
+}
 
 /// <summary>
 /// Ordinary-integrity Desktop owner of a bounded Explore capture. The elevated broker writes only raw evidence;
@@ -24,13 +68,17 @@ public sealed record CaptureUiUpdate(
 /// </summary>
 public static class DesktopCaptureRunner
 {
-    private static readonly TimeSpan Poll = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// How often the viewer looks for a new publication. A look reads a small pointer file, so a short poll costs little and
+    /// keeps the viewer's share of the event-to-visible delay small (plan §12, measured in first-feedback qualification).
+    /// </summary>
+    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FinishTimeout = TimeSpan.FromSeconds(60);
 
-    public static BrokerPrepareCaptureRequest ExploreRequest() => new(
+    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600) => new(
         "explore", null, [], false, false,
-        new BrokerCaptureQuota(600, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024),
+        new BrokerCaptureQuota(maximumDurationSeconds, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024),
         BrokerRetentionPolicy.StopAtLimit, null, BrokerJournalPublication.Live);
 
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
@@ -38,14 +86,23 @@ public static class DesktopCaptureRunner
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
         + $"up to {summary.Quota.MaximumDurationSeconds / 60:N0} min / "
         + $"{summary.Quota.MaximumJournalBytes / (1024 * 1024):N0} MiB journal · "
-        + $"{summary.PublicationIntervalMilliseconds / 1000d:0.#} s publication. "
+        + (summary.PublicationIntervalMilliseconds > 0
+            ? $"first view within {BrokerJournalPublicationPolicy.FirstLivePublication.TotalSeconds:0.#} s, then every "
+                + $"{summary.PublicationIntervalMilliseconds / 1000d:0.#} s. "
+            : "published when stopped. ")
         + summary.CollectionStatement + " " + summary.Disclosure
         + (summary.Diagnostics.Count == 0 ? string.Empty
             : " Diagnostics: " + string.Join("; ", summary.Diagnostics));
 
-    public static async Task RunAsync(Action<CaptureUiUpdate> report, CancellationToken stop)
+    public static async Task RunAsync(Action<CaptureUiUpdate> report, CancellationToken stop,
+        CaptureRunOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(report);
+        options ??= new();
+        Stopwatch elapsed = Stopwatch.StartNew();
+        var milestones = new CaptureMilestones();
+        Action<CaptureUiUpdate> inner = report;
+        report = update => inner(update with { Milestones = milestones });
         if (!OperatingSystem.IsWindows())
         {
             report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
@@ -53,7 +110,7 @@ public static class DesktopCaptureRunner
             return;
         }
 
-        BrokerLaunchTarget? target = BrokerLaunchTarget.BesideCurrentProcess();
+        BrokerLaunchTarget? target = options.Broker ?? BrokerLaunchTarget.BesideCurrentProcess();
         if (target is null)
         {
             report(new(CaptureUiPhase.Unavailable, "Capture broker is not installed",
@@ -71,6 +128,7 @@ public static class DesktopCaptureRunner
         try
         {
             connection = await WindowsBrokerLauncher.LaunchAsync(target, cancellationToken: stop).ConfigureAwait(false);
+            milestones = milestones with { BrokerReady = elapsed.Elapsed };
             WindowsBrokerPipeClient client = connection.Client;
             if (await client.SendAsync(new BrokerHelloRequest(Guid.NewGuid(), 1, 1,
                         BrokerHelloNegotiator.SupportedFeatures, BrokerProtocolFeature.PreparedPlanDigest), stop)
@@ -79,7 +137,8 @@ public static class DesktopCaptureRunner
                 throw new InvalidDataException("The capture broker protocol is incompatible. Reinstall InterCat.");
             }
 
-            BrokerWireResponse response = await client.SendAsync(ExploreRequest(), stop).ConfigureAwait(false);
+            BrokerWireResponse response = await client.SendAsync(ExploreRequest(options.MaximumDurationSeconds), stop)
+                .ConfigureAwait(false);
             if (response is not BrokerPrepareCaptureResponse prepared)
             {
                 throw new InvalidDataException("The broker did not return a capture review.");
@@ -93,6 +152,11 @@ public static class DesktopCaptureRunner
             }
 
             summary = Describe(prepared.Summary);
+            milestones = milestones with
+            {
+                Prepared = elapsed.Elapsed,
+                PublicationInterval = TimeSpan.FromMilliseconds(prepared.Summary.PublicationIntervalMilliseconds),
+            };
             report(new(CaptureUiPhase.Starting, "Capture plan ready", summary, summary));
             response = await client.SendAsync(
                 new BrokerStartCaptureRequest(prepared.Grant.Token, Guid.NewGuid()), stop).ConfigureAwait(false);
@@ -106,18 +170,13 @@ public static class DesktopCaptureRunner
             }
 
             captureId = started;
+            milestones = milestones with { Started = elapsed.Elapsed };
             BrokerCaptureStatusResponse status = await StatusAsync(client, started, CancellationToken.None)
                 .ConfigureAwait(false);
             string evidencePath = status.EvidenceDirectory
                 ?? throw new InvalidDataException("The broker did not publish an evidence location.");
-            string userData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(userData))
-            {
-                throw new InvalidOperationException("Windows did not provide a local user-data directory.");
-            }
-
-            sessionPath = Path.Combine(userData, "InterCat", "Sessions",
-                $"explore-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}-{started.Value:N}");
+            string sessionRoot = options.SessionRoot ?? LocalSessionRoot();
+            sessionPath = Path.Combine(sessionRoot, $"explore-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}-{started.Value:N}");
             report(new(CaptureUiPhase.Recording, "Recording · follow latest",
                 "Raw evidence is broker-owned. Published chunks are derived into your session below. "
                 + "Unobserved activity is not zero.", summary, sessionPath));
@@ -165,19 +224,27 @@ public static class DesktopCaptureRunner
 
                     if (follower is not null)
                     {
+                        long followStarted = Stopwatch.GetTimestamp();
                         FollowStep step = follower.CatchUp(cancellationToken: work);
+                        TimeSpan derivation = Stopwatch.GetElapsedTime(followStarted);
                         last = step;
                         if (derived!.Current is { } current && current.Generation != shownGeneration)
                         {
                             shownGeneration = current.Generation;
+                            milestones = milestones with { FirstGeneration = milestones.FirstGeneration ?? elapsed.Elapsed };
                             try
                             {
+                                long projectionStarted = Stopwatch.GetTimestamp();
                                 SessionOverviewBundle overview = SessionOverviewProjector.Project(derived, cancellationToken: work);
+                                TimeSpan projection = Stopwatch.GetElapsedTime(projectionStarted);
+                                milestones = milestones with { FirstOverview = milestones.FirstOverview ?? elapsed.Elapsed };
                                 report(new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
                                     $"{step.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
                                     $"Generation {current.Generation:N0} · {step.DerivedChunks:N0} published chunks. "
                                     + "Graph edges are paired TCP only; other observations remain in the timeline.",
-                                    summary, sessionPath, overview));
+                                    summary, sessionPath, overview,
+                                    Visibility: new(current.Generation, step.DerivedRecords, Stopwatch.GetTimestamp(),
+                                        derivation, projection)));
                             }
                             catch (InvalidOperationException exception)
                             {
@@ -266,6 +333,15 @@ public static class DesktopCaptureRunner
                 await connection.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>The user's own session folder; a viewer never writes derived sessions into broker-owned space (ADR-027).</summary>
+    private static string LocalSessionRoot()
+    {
+        string userData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return string.IsNullOrWhiteSpace(userData)
+            ? throw new InvalidOperationException("Windows did not provide a local user-data directory.")
+            : Path.Combine(userData, "InterCat", "Sessions");
     }
 
     [SupportedOSPlatform("windows")]

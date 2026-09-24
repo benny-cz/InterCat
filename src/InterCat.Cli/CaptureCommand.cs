@@ -43,7 +43,7 @@ internal static class CaptureCommand
     private const int MaximumSeconds = 86_400;
     private const long DefaultJournalMebibytes = 1_024;
     private const long DefaultFreeMebibytes = 1_024;
-    private static readonly TimeSpan Poll = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FinishAfterStop = TimeSpan.FromSeconds(60);
 
@@ -407,7 +407,8 @@ internal static class CaptureCommand
         ConsoleUi.Field(
             "Published",
             summary.PublicationIntervalMilliseconds > 0
-                ? $"every {summary.PublicationIntervalMilliseconds / 1000d:0.#} s while recording"
+                ? $"first within {BrokerJournalPublicationPolicy.FirstLivePublication.TotalSeconds:0.#} s, then every "
+                    + $"{summary.PublicationIntervalMilliseconds / 1000d:0.#} s while recording"
                 : "once, when the capture stops");
         ConsoleUi.Note(summary.CollectionStatement);
         if (!summary.CollectionStatement.Contains(summary.Disclosure, StringComparison.Ordinal))

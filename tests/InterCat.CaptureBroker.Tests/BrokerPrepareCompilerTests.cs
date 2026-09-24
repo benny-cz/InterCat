@@ -209,6 +209,8 @@ public sealed class BrokerPrepareCompilerTests
             plan, Quota, BrokerRetentionPolicy.StopAtLimit, Runtime, (BrokerJournalPublication)9);
 
         Assert.Null(onStop.PublicationInterval);
+        Assert.Null(onStop.FirstPublication);
+        Assert.Equal(BrokerJournalPublicationPolicy.FirstLivePublication, live.FirstPublication);
         Assert.Equal(BrokerJournalPublication.Live, live.Publication);
         Assert.Equal(
             BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, Quota.MaximumDurationSeconds),

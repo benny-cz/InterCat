@@ -54,6 +54,8 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private IOwnedEtwSession? session;
     private Task? pumpTask;
     private Task? healthTask;
+    private Task? flushTask;
+    private int flushRefused;
     private CaptureLifecycle state = CaptureLifecycle.Idle;
     private long firstRecordUtcTicks;
     private long lastRecordUtcTicks;
@@ -284,6 +286,11 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
 
         healthTask = Task.Run(() => SampleHealthAsync(lifetime.Token), CancellationToken.None);
+        if (plan.DeliveryFlushInterval is { } flushEvery)
+        {
+            flushTask = Task.Run(() => FlushDeliveryAsync(created, flushEvery, lifetime.Token), CancellationToken.None);
+        }
+
         return new(true, CaptureLifecycle.Recording, providerResults, null, Degradations, otherSessions);
     }
 
@@ -426,6 +433,35 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         catch (OperationCanceledException)
         {
             // Sampling ends with the capture.
+        }
+    }
+
+    /// <summary>
+    /// Bounds how long a record can wait in a partly filled ETW buffer. A refused request is reported once as a
+    /// degradation; delivery then waits for ETW's own flush, which is slower but loses nothing.
+    /// </summary>
+    private async Task FlushDeliveryAsync(IOwnedEtwSession owned, TimeSpan every, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(every, clock);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (state is not CaptureLifecycle.Recording)
+                {
+                    return;
+                }
+
+                if (!owned.TryFlushDelivery() && Interlocked.Exchange(ref flushRefused, 1) == 0)
+                {
+                    AddDegradation("ETW refused a delivery flush, so records reach InterCat on ETW's own buffer "
+                        + "flush and a live view may lag by a few seconds more. Nothing is lost.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Flushing ends with the capture.
         }
     }
 

@@ -81,6 +81,10 @@ public static class LiveRecorder
     /// <param name="publishEvery">
     /// How often to publish what was recorded so far, or null to publish once when the capture stops.
     /// </param>
+    /// <param name="publishFirstAfter">
+    /// How soon the first chunk may publish once it holds records, so a follower's first view does not wait a whole
+    /// interval; later chunks keep <paramref name="publishEvery"/>. Null publishes the first chunk on the interval too.
+    /// </param>
     /// <param name="derive">
     /// Creates the derivation once the capture's clock is known, or null to publish admitted evidence alone.
     /// </param>
@@ -100,6 +104,7 @@ public static class LiveRecorder
         Action<CaptureStartResult>? onReady = null,
         long? maximumJournalBytes = null,
         LiveDiskFloor? diskFloor = null,
+        TimeSpan? publishFirstAfter = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -109,6 +114,13 @@ public static class LiveRecorder
         if (publishEvery is { } interval && interval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(publishEvery), "A publication interval is positive.");
+        }
+
+        if (publishFirstAfter is { } first
+            && (publishEvery is not { } every || first <= TimeSpan.Zero || first > every))
+        {
+            throw new ArgumentOutOfRangeException(nameof(publishFirstAfter),
+                "A first publication is positive, no later than the publication interval, and needs one.");
         }
 
         if (maximumJournalBytes is { } maximum && maximum < 1_048_576)
@@ -159,6 +171,7 @@ public static class LiveRecorder
             committedUtc,
             options ?? DerivedGenerationOptions.Default,
             publishEvery,
+            publishFirstAfter,
             derive?.Invoke(clock.Descriptor),
             maximumJournalBytes,
             diskFloor,
@@ -268,6 +281,7 @@ public static class LiveRecorder
         private readonly DateTimeOffset createdUtc;
         private readonly DerivedGenerationOptions options;
         private readonly TimeSpan? publishEvery;
+        private readonly TimeSpan? publishFirstAfter;
         private readonly ILiveRecordingDerivation? derivation;
         private readonly long? maximumJournalBytes;
         private readonly LiveDiskFloor? diskFloor;
@@ -296,6 +310,7 @@ public static class LiveRecorder
             DateTimeOffset createdUtc,
             DerivedGenerationOptions options,
             TimeSpan? publishEvery,
+            TimeSpan? publishFirstAfter,
             ILiveRecordingDerivation? derivation,
             long? maximumJournalBytes,
             LiveDiskFloor? diskFloor,
@@ -308,6 +323,7 @@ public static class LiveRecorder
             this.createdUtc = createdUtc;
             this.options = options;
             this.publishEvery = publishEvery;
+            this.publishFirstAfter = publishFirstAfter;
             this.derivation = derivation;
             this.maximumJournalBytes = maximumJournalBytes;
             this.diskFloor = diskFloor;
@@ -404,9 +420,12 @@ public static class LiveRecorder
             && checked(builder.Journal.ProjectedCompleteLength + emptyChunkBytes
                 + LiveDiskFloor.IntermediatePublicationBytes(DependenciesAfterFinal, allocationUnitBytes)) > diskCeiling;
 
+        /// <summary>The wait before the current chunk publishes: shorter for the first, so a follower sees evidence sooner.</summary>
+        private TimeSpan CurrentInterval => Publications == 0 && publishFirstAfter is { } first ? first : publishEvery!.Value;
+
         private bool Due()
         {
-            if (!RolloverPossible || sincePublished.Elapsed < publishEvery!.Value)
+            if (!RolloverPossible || sincePublished.Elapsed < CurrentInterval)
             {
                 return false;
             }
@@ -633,7 +652,7 @@ public static class LiveRecorder
                 return session.Records.WaitToReadAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
             }
 
-            TimeSpan remaining = publishEvery!.Value - sincePublished.Elapsed;
+            TimeSpan remaining = CurrentInterval - sincePublished.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
                 return true;

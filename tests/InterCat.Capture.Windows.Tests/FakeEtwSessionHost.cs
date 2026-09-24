@@ -22,6 +22,8 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
 
     public bool FailCaptureState { get; set; }
 
+    public bool RefuseFlush { get; set; }
+
     /// <summary>Records this host produces once the pump starts.</summary>
     public List<AdmittedEvent> Scripted { get; } = [];
 
@@ -105,6 +107,16 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
         public void RequestStopProcessing() => stopRequested = true;
 
         public SourceLossReading ReadLoss() => new(ProviderLoss, ConsumerLoss);
+
+        private int flushRequests;
+
+        public int FlushRequests => Volatile.Read(ref flushRequests);
+
+        public bool TryFlushDelivery()
+        {
+            Interlocked.Increment(ref flushRequests);
+            return !host.RefuseFlush;
+        }
 
         public void StopSession() => host.StoppedSessions.Add(SessionName);
 

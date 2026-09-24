@@ -171,7 +171,13 @@ public sealed class BrokerWireProtocolTests
             Assert.True(
                 Math.Ceiling(seconds / interval.TotalSeconds) <= BrokerJournalPublicationPolicy.MaximumLiveChunks,
                 $"{seconds} s at {interval} exceeds the live chunk bound");
+            Assert.Equal(BrokerJournalPublicationPolicy.FirstLivePublication,
+                BrokerJournalPublicationPolicy.FirstPublication(BrokerJournalPublication.Live, seconds));
         }
+
+        // The first chunk publishes early once it holds records; it adds one chunk and changes no later interval.
+        Assert.Null(BrokerJournalPublicationPolicy.FirstPublication(BrokerJournalPublication.OnStop, 600));
+        Assert.True(BrokerJournalPublicationPolicy.FirstLivePublication < BrokerJournalPublicationPolicy.MinimumLiveInterval);
     }
 
     [Fact]

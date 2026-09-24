@@ -117,6 +117,9 @@
                        TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
             <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
+            <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                       AutomationProperties.Name="How fresh the live view is" />
             <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto">
               <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
             </ScrollViewer>

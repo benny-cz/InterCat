@@ -110,6 +110,9 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     Admission = plan.EffectiveAdmission,
                     MaximumDuration = TimeSpan.FromSeconds(plan.Quota.MaximumDurationSeconds),
                     PreserveExtendedData = plan.PreserveExtendedData,
+                    DeliveryFlushInterval = plan.PublicationInterval is null
+                        ? null
+                        : BrokerJournalPublicationPolicy.LiveDeliveryFlush,
                 };
                 SessionStore store = SessionStore.Open(captureRoot, ownership.CaptureId.Value, plan.Digest);
                 if (store.Current is not null)
@@ -130,6 +133,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     maximumJournalBytes: plan.Quota.MaximumJournalBytes,
                     diskFloor: new LiveDiskFloor(
                         plan.Quota.MinimumFreeDiskBytes, () => volumeProbe(captureRoot.Path)),
+                    publishFirstAfter: plan.FirstPublication,
                     cancellationToken: capture.Stop.Token);
 
                 Task first = await Task.WhenAny(capture.Ready.Task, capture.Run).ConfigureAwait(false);

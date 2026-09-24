@@ -1,0 +1,160 @@
+{
+  "Schema": "intercat.first-feedback.v1",
+  "StartedUtc": "2026-09-24T09:08:07.197087+00:00",
+  "FinishedUtc": "2026-09-24T09:09:28.6672024+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "QpcFrequency": 10000000,
+  "RecordingSeconds": 15,
+  "Budgets": {
+    "firstUsefulOverviewAfterFirstDeliveredMs": 3000,
+    "eventToVisibleP95Ms": 1500,
+    "eventToVisibleP99Ms": 3000,
+    "derivationP95Ms": 500,
+    "projectionP95Ms": 250
+  },
+  "Passed": true,
+  "MeetsBudgets": false,
+  "Runs": [
+    {
+      "Run": 1,
+      "Valid": true,
+      "MeetsBudgets": false,
+      "FinalHeadline": "Session saved",
+      "FailureReason": null,
+      "BrokerReadyMs": 222,
+      "PreparedMs": 474,
+      "StartedMs": 721,
+      "FirstGenerationMs": 1799,
+      "FirstOverviewMs": 1912,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1299,
+      "OverviewsHandedOff": 8,
+      "Records": 2508,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "EventToVisible": {
+        "Count": 2508,
+        "P50Ms": 1417,
+        "P95Ms": 3184,
+        "P99Ms": 3734,
+        "MaxMs": 4063
+      },
+      "Derivation": {
+        "Count": 8,
+        "P50Ms": 69,
+        "P95Ms": 359,
+        "P99Ms": 359,
+        "MaxMs": 359
+      },
+      "Projection": {
+        "Count": 8,
+        "P50Ms": 33,
+        "P95Ms": 113,
+        "P99Ms": 113,
+        "MaxMs": 113
+      }
+    },
+    {
+      "Run": 2,
+      "Valid": true,
+      "MeetsBudgets": false,
+      "FinalHeadline": "Session saved",
+      "FailureReason": null,
+      "BrokerReadyMs": 245,
+      "PreparedMs": 470,
+      "StartedMs": 655,
+      "FirstGenerationMs": 1524,
+      "FirstOverviewMs": 1530,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 979,
+      "OverviewsHandedOff": 8,
+      "Records": 2724,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "EventToVisible": {
+        "Count": 2724,
+        "P50Ms": 1680,
+        "P95Ms": 3068,
+        "P99Ms": 3723,
+        "MaxMs": 3958
+      },
+      "Derivation": {
+        "Count": 8,
+        "P50Ms": 69,
+        "P95Ms": 294,
+        "P99Ms": 294,
+        "MaxMs": 294
+      },
+      "Projection": {
+        "Count": 8,
+        "P50Ms": 13,
+        "P95Ms": 39,
+        "P99Ms": 39,
+        "MaxMs": 39
+      }
+    },
+    {
+      "Run": 3,
+      "Valid": true,
+      "MeetsBudgets": false,
+      "FinalHeadline": "Session saved",
+      "FailureReason": null,
+      "BrokerReadyMs": 241,
+      "PreparedMs": 459,
+      "StartedMs": 648,
+      "FirstGenerationMs": 1488,
+      "FirstOverviewMs": 1495,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 956,
+      "OverviewsHandedOff": 9,
+      "Records": 2009,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "EventToVisible": {
+        "Count": 2009,
+        "P50Ms": 1325,
+        "P95Ms": 2530,
+        "P99Ms": 2675,
+        "MaxMs": 2836
+      },
+      "Derivation": {
+        "Count": 9,
+        "P50Ms": 58,
+        "P95Ms": 203,
+        "P99Ms": 203,
+        "MaxMs": 203
+      },
+      "Projection": {
+        "Count": 9,
+        "P50Ms": 13,
+        "P95Ms": 31,
+        "P99Ms": 31,
+        "MaxMs": 31
+      }
+    }
+  ],
+  "LeakedSessions": [],
+  "Failure": null,
+  "Notes": [
+    "The Desktop\u0027s DesktopCaptureRunner runs unchanged except for three options: this tool as its broker (the production composition over a qualification root, never the production root), a session root in the output directory, and a 120-second quota.",
+    "Visible means the overview was projected and handed to the window; drawing it is not included. A record\u0027s delay is the QPC reading at hand-off of the first overview whose derived records include it, minus the record\u0027s own QPC reading.",
+    "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the ordinary-integrity first run is not measured here.",
+    "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, on top of whatever else the machine did during the run."
+  ]
+}

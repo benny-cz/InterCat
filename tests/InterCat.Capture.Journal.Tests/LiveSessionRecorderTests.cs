@@ -633,6 +633,55 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(result.Coverage);
     }
 
+    [Fact(DisplayName = "R7: a live recording's first chunk publishes soon after it holds records, and later chunks keep the interval")]
+    public async Task FirstChunkPublishesBeforeTheInterval()
+    {
+        async Task<(int Publications, int Chunks)> Record(TimeSpan? first)
+        {
+            using var directory = new TemporaryDirectory();
+            SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "first-publication");
+            var host = new ScriptedHost();
+            long now = Stopwatch.GetTimestamp();
+            for (int index = 0; index < 6; index++)
+            {
+                if (index is 2 or 4)
+                {
+                    host.Pause(TimeSpan.FromMilliseconds(400));
+                }
+
+                host.Admit(new AdmittedEvent
+                {
+                    SourceIndex = 0,
+                    EventId = 10,
+                    Version = 0,
+                    TimestampQpc = now + index,
+                    RecordOrdinal = index + 1,
+                });
+            }
+
+            LiveCaptureResult result = await LiveRecorder.RecordAsync(
+                Plan(), host, store,
+                _ => host.Delivered.Task,
+                DateTimeOffset.UtcNow,
+                publishEvery: TimeSpan.FromSeconds(30),
+                publishFirstAfter: first);
+            return (result.Publications, result.Generation!.Manifest.Dependencies
+                .Count(dependency => dependency.Kind == StoreDependencyKind.Journal));
+        }
+
+        // The whole recording is shorter than the interval: without the fast first publication it publishes once.
+        Assert.Equal((1, 1), await Record(null));
+
+        // With it, the first two records publish on their own soon after arriving; nothing else is published early.
+        Assert.Equal((2, 2), await Record(TimeSpan.FromMilliseconds(100)));
+
+        using var refused = new TemporaryDirectory();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => LiveRecorder.RecordAsync(
+            Plan(), new ScriptedHost(), SessionStore.Open(LocalOwnedDirectory.Open(refused.Path), Guid.NewGuid(), "x"),
+            _ => Task.CompletedTask, DateTimeOffset.UtcNow, publishEvery: TimeSpan.FromSeconds(1),
+            publishFirstAfter: TimeSpan.FromSeconds(2)));
+    }
+
     [Fact(DisplayName = "R16: a free-disk floor ends acquisition before InterCat's writes cross the reserve, and still finalizes")]
     public async Task DiskFloorStopsBeforeTheReserveAndFinalizes()
     {
