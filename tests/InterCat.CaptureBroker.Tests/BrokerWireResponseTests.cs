@@ -225,7 +225,7 @@ public sealed class BrokerWireResponseTests
             (read.OpenChunk, read.RetainedChunks, read.CountedRecords, read.UnbinnedRecords));
 
         // An empty open chunk is a preview with no counts, and a status without the fields has none.
-        BrokerCapturePreview empty = new(1_000_000, 1, 0, 0, 0, []);
+        BrokerCapturePreview empty = new(1_000_000, 1, 0, 0, 0, 0, []);
         Assert.Empty(Assert.IsType<BrokerCaptureStatusResponse>(BrokerWireResponseCodec.Decode(
             BrokerWireResponseCodec.Encode(status with { Preview = empty }, correlationId))).Preview!.Counts);
         BrokerWireFrame plain = BrokerWireResponseCodec.Encode(status, correlationId);
@@ -248,6 +248,7 @@ public sealed class BrokerWireResponseTests
             preview with { Counts = [.. preview.Counts, preview.Counts[0]], CountedRecords = preview.CountedRecords + preview.Counts[0].Count },
             preview with { Counts = [.. preview.Counts, new(preview.OpenChunk, 22 + BrokerCapturePreview.MaximumBinSpan + 1, Mechanism.Tcp, 1)], CountedRecords = preview.CountedRecords + 1 },
             preview with { RetainedChunks = preview.OpenChunk },
+            preview with { JournaledRecords = preview.CountedRecords - 1 },
             preview with { Counts = [new(preview.OpenChunk, 20, Mechanism.Tcp, 0)], CountedRecords = preview.UnbinnedRecords },
         })
         {
@@ -273,6 +274,7 @@ public sealed class BrokerWireResponseTests
         1_000_000,
         5,
         2,
+        40,
         21,
         3,
         [

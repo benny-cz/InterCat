@@ -51,6 +51,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private SessionOverviewBundle? displayedOverview;
     private DateTimeOffset? lastPublicationUtc;
     private BrokerCaptureHealth? liveHealth;
+
+    // The broker's latest live preview, and how many published chunks the displayed generation was derived from: the
+    // preview draws the chunks after those (§12, §19.3).
+    private BrokerCapturePreview? livePreview;
+    private int displayedChunks;
     private string? appliedDetail;
     private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -727,6 +732,8 @@ public sealed partial class MainWindow : Window, IDisposable
         followLatest = true;
         displayedOverview = null;
         lastPublicationUtc = null;
+        livePreview = null;
+        displayedChunks = 0;
         UpdateHeldBanner();
         UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
@@ -788,6 +795,7 @@ public sealed partial class MainWindow : Window, IDisposable
             && captureStop?.IsCancellationRequested != true;
         FollowButton.IsVisible = IsLive;
         liveHealth = IsLive ? update.LiveHealth : null;
+        livePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview : null;
         if (update.Overview is not null && !forceOverview && IsLive)
         {
             lastPublicationUtc = DateTimeOffset.UtcNow;
@@ -810,10 +818,20 @@ public sealed partial class MainWindow : Window, IDisposable
             ReplaceWorkspace(update, overview, forceOverview);
         }
 
+        UpdateLivePreview();
         UpdateHealthStrip();
         ToolTip.SetTip(HealthStateText, unavailable ? update.Detail : null);
         UpdateEvidenceAction();
     }
+
+    /// <summary>
+    /// Hands the live preview to a workspace that follows the recording. A paused or held view shows an older generation
+    /// whose gap to the preview is not previewed, so it shows none rather than a misleading edge.
+    /// </summary>
+    private void UpdateLivePreview() => workspace.ShowLivePreview(
+        phase == CaptureUiPhase.Recording && followLatest && heldUpdate is null && !workspace.HoldsGeneration
+            ? livePreview : null,
+        displayedChunks);
 
     /// <summary>Whether a live capture is being followed, as opposed to a saved session or nothing.</summary>
     private bool IsLive => phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
@@ -837,6 +855,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _ = ApplyHeldUpdate();
         }
 
+        UpdateLivePreview();
         UpdateHeldBanner();
         UpdateHealthStrip();
         return true;
@@ -850,6 +869,7 @@ public sealed partial class MainWindow : Window, IDisposable
         displayedSessionId = overview.SessionId;
         displayedGeneration = overview.Generation;
         displayedOverview = overview;
+        displayedChunks = update.OverviewChunks ?? 0;
         currentSessionPath = update.SessionPath ?? currentSessionPath;
         SessionEvidenceSource? evidence = currentSessionPath is { } path
             ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
@@ -875,6 +895,7 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace = replacement;
         workspace.PropertyChanged += OnWorkspaceChanged;
         DataContext = workspace;
+        UpdateLivePreview();
         UpdateHeldBanner();
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
@@ -1023,6 +1044,9 @@ public sealed partial class MainWindow : Window, IDisposable
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration))
         {
             UpdateHealthStrip();
+
+            // Reading records holds this generation, so the live edge, which continues the newest one, steps aside.
+            UpdateLivePreview();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.Crumbs))

@@ -75,7 +75,7 @@ public sealed class BrokerConnectionDispatcherTests
         using var preparation = new BrokerPreparationCoordinator(source, registry, Runtime);
         using var lifecycle = new BrokerLifecycleCoordinator(registry, new InMemoryBrokerLifecycleStore(), runtime);
         var counters = new BrokerCaptureHealth(12, 15, 1, 2, 0, 3, 64);
-        var preview = new BrokerCapturePreview(1_000_000, 2, 1, 12, 0,
+        var preview = new BrokerCapturePreview(1_000_000, 2, 1, 12, 12, 0,
             [new(2, 40, Mechanism.Tcp, 9), new(1, 38, Mechanism.Tcp, 3)]);
         var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters, _ => preview);
         await CompleteHello(dispatcher);

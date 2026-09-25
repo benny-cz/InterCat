@@ -35,6 +35,12 @@ public sealed record SessionOverviewBundle(
     SessionRedaction? Redaction = null)
 {
     public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+
+    /// <summary>
+    /// The clock this generation's readings are on, which places anything else read on it - such as a live preview's
+    /// bins - on the same presentation axis as the timeline.
+    /// </summary>
+    public SourceClockDescriptor? Clock { get; init; }
 }
 
 /// <summary>
@@ -205,6 +211,7 @@ public static class SessionOverviewProjector
             redaction)
         {
             MechanismLanes = Array.AsReadOnly(lanes),
+            Clock = clock,
         };
     }
 

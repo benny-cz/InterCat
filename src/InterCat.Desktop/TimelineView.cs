@@ -53,6 +53,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     // Hover (§6.2): the tick under the pointer and where the pointer is. The card is described from the bucket drawn there
     // at each frame, so it follows a count that arrives while the pointer rests. Hover never selects or brushes.
     private long? hoverTick;
+    private bool hoverLive;
     private Point hoverPoint;
     private double peakRate;
 
@@ -179,7 +180,56 @@ public sealed class TimelineView : Control, IHoverCardSource
     private double PlotLeft => ShowingMechanismLanes ? LanePlotLeft
         : FocusRows is not null ? ProcessPlotLeft : AggregatePlotLeft;
 
-    private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin);
+    /// <summary>The published plot's width: the whole plot, less the live edge while one is drawn.</summary>
+    private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin
+        - (LiveEdgePlacement is { } live ? live.Width + LiveEdgeGap : 0));
+
+    /// <summary>Space between the published plot and the live edge, where a dashed rule marks the published end.</summary>
+    private const double LiveEdgeGap = 8;
+
+    private const double MinimumLiveEdgeWidth = 36;
+
+    /// <summary>
+    /// Where the live edge is drawn: following a live capture at the whole extent, the time after the last published
+    /// record gets the right-hand part of the plot, on the published scale where that leaves both parts legible (§12,
+    /// §19.3). Null when the view is zoomed or panned, which is no longer following, or when there is nothing to preview.
+    /// </summary>
+    private LiveEdgeArea? LiveEdgePlacement
+    {
+        get
+        {
+            if (!IsFit || DataContext is not WorkspaceViewModel { LiveEdge: { Bins.Count: > 0 } edge } viewModel)
+            {
+                return null;
+            }
+
+            double available = Bounds.Width - PlotLeft - PlotRightMargin;
+            if (available < 3 * MinimumLiveEdgeWidth)
+            {
+                return null;
+            }
+
+            TimeRange extent = viewModel.Snapshot.Extent;
+            long end = Math.Max(edge.Bins[^1].Interval.EndTicks, extent.EndTicks + edge.Bins[^1].Interval.SpanTicks);
+            double share = (double)(end - extent.EndTicks) / (end - extent.StartTicks);
+            double width = Math.Clamp(available * share, MinimumLiveEdgeWidth, available * 0.4);
+            return new(edge, new TimeRange(extent.EndTicks, end), PlotLeft + available - width, width);
+        }
+    }
+
+    /// <summary>The live edge's place: its preview, the time it spans and where on the control it is drawn.</summary>
+    private readonly record struct LiveEdgeArea(LiveEdge Edge, TimeRange Span, double Left, double Width)
+    {
+        /// <summary>A preview bin's columns; one earlier than the published end is drawn at the edge's start.</summary>
+        public (double X1, double X2) Columns(LiveEdgeBin bin)
+        {
+            double x1 = X(bin.Interval.StartTicks);
+            return (x1, Math.Max(x1 + 2, X(bin.Interval.EndTicks)));
+        }
+
+        private double X(long tick) =>
+            Left + (Width * (Math.Clamp(tick, Span.StartTicks, Span.EndTicks) - Span.StartTicks) / Math.Max(1, Span.SpanTicks));
+    }
 
     /// <summary>The plotted span in control coordinates, shared with precise headless gesture checks.</summary>
     internal double PlotStart => PlotLeft;
@@ -286,7 +336,7 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         TimeRange visible = Viewport;
         double left = PlotLeft;
-        double right = Math.Max(left + 1, Bounds.Width - PlotRightMargin);
+        double right = left + PlotWidth;
         double top = PlotTop;
         double bottom = Math.Max(top + 1, Bounds.Height - PlotBottomMargin);
         double plotWidth = right - left;
@@ -395,6 +445,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             DrawFocus(context, focus.Where(bucket => Intersects(bucket.Interval, visible)), scale);
         }
 
+        if (LiveEdgePlacement is { } live)
+        {
+            DrawLiveEdge(context, viewModel, live, rows, top, bottom, maximumRate);
+        }
+
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
@@ -414,6 +469,18 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 context.DrawRectangle(Brushes.Transparent, HoverPen,
                     new Rect(x1 - 1, row.Top, Math.Max(2, x2 - x1), row.Height));
+            }
+        }
+
+        if (HoveredLiveBin is { } hoveredLive && LiveEdgePlacement is { } liveArea)
+        {
+            (double x1, double x2) = liveArea.Columns(hoveredLive);
+            Rect row = ShowingLanes && LaneIndexAt(hoverPoint.Y) is { } index
+                ? LaneRow(index, LaneCount, top, bottom)
+                : new Rect(liveArea.Left, top, liveArea.Width, bottom - top);
+            using (context.PushOpacity(0.5))
+            {
+                context.DrawRectangle(Brushes.Transparent, HoverPen, new Rect(x1 - 1, row.Top, Math.Max(2, x2 - x1), row.Height));
             }
         }
     }
@@ -467,6 +534,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         get
         {
+            if (HoveredLiveBin is { } liveBin && DataContext is WorkspaceViewModel live)
+            {
+                return live.DescribeLiveEdgeHover(liveBin, ShowingMechanismLanes && LaneIndexAt(hoverPoint.Y) is { } lane
+                    ? live.Snapshot.MechanismLanes[lane].Mechanism : null);
+            }
+
             if (HoveredBucket is not { } bucket || DataContext is not WorkspaceViewModel viewModel)
                 return null;
             int? index = HoveredLaneIndex;
@@ -755,6 +828,77 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DrawText(context, label, new(9, row.Center.Y - 7));
             DrawLaneSeries(context, viewModel, null, drawn, rowScale, row);
+        }
+    }
+
+    /// <summary>
+    /// The live edge (§12, §19.3): the broker's preview counts for the chunks not yet published here, beyond a dashed rule
+    /// at the published end, at half strength so they never read as published bars. At L0 each lane shows its own
+    /// mechanism; a focused rung shows them only in its machine row, because a preview is not attributed to processes or
+    /// channels yet. Heights share the published rate scale, and a bar above it is drawn full height rather than rescaling
+    /// the published timeline every quarter second.
+    /// </summary>
+    private void DrawLiveEdge(DrawingContext context, WorkspaceViewModel viewModel, LiveEdgeArea live,
+        FocusRowSet? rows, double top, double bottom, double maximumRate)
+    {
+        double scaleRate = maximumRate > 0
+            ? maximumRate
+            : live.Edge.Bins.Select(bin => (double)bin.Total / Math.Max(1, bin.Interval.SpanTicks)).DefaultIfEmpty(0).Max();
+        double ruleX = live.Left - (LiveEdgeGap / 2);
+        context.DrawLine(new Pen(TextBrush, 1, new DashStyle([3, 3], 0)), new(ruleX, top), new(ruleX, bottom));
+        if (ShowingMechanismLanes)
+        {
+            // A mechanism first seen after the last publication has no lane until it publishes; the label names it, and
+            // hovering the edge on any lane lists it, so no previewed record is silently undrawn.
+            IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
+            Mechanism[] unlaned = [.. live.Edge.Bins.SelectMany(bin => bin.Counts.Select(count => count.Mechanism)).Distinct()
+                .Where(mechanism => lanes.All(lane => lane.Mechanism != mechanism)).Order()];
+            DrawText(context, unlaned.Length switch
+            {
+                0 => "live",
+                1 => $"live · +{EvidenceRowText.MechanismName(unlaned[0])}",
+                _ => $"live · +{unlaned.Length} mechanisms",
+            }, new(live.Left, top - 16));
+            for (int index = 0; index < lanes.Count; index++)
+            {
+                Rect row = LaneRow(index, lanes.Count, top, bottom);
+                Mechanism mechanism = lanes[index].Mechanism;
+                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, 0.42, bin => (bin.CountOf(mechanism), mechanism));
+            }
+        }
+        else if (rows is not null)
+        {
+            DrawText(context, "live", new(live.Left, top - 16));
+            Rect machine = LaneRow(0, rows.Rows.Count + 1, top, bottom);
+            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, 0.42, bin => (bin.Total, null));
+        }
+        else
+        {
+            DrawText(context, "live", new(live.Left, top - 16));
+            DrawLiveBars(context, live, top, bottom, scaleRate, 0, bin => (bin.Total, bin.Counts[0].Mechanism));
+        }
+    }
+
+    /// <summary>One row of preview bars; a null hue draws them as the machine row's context grey.</summary>
+    private static void DrawLiveBars(DrawingContext context, LiveEdgeArea live, double top, double bottom, double scaleRate,
+        double floor, Func<LiveEdgeBin, (int Count, Mechanism? Hue)> read)
+    {
+        double height = Math.Max(1, bottom - top);
+        foreach (LiveEdgeBin bin in live.Edge.Bins)
+        {
+            (int count, Mechanism? hue) = read(bin);
+            if (count == 0)
+            {
+                continue;
+            }
+
+            (double x1, double x2) = live.Columns(bin);
+            double rate = (double)count / Math.Max(1, bin.Interval.SpanTicks);
+            double bar = Math.Clamp(height * rate / Math.Max(double.Epsilon, scaleRate), Math.Min(height, Math.Max(3, height * floor)), height);
+            IBrush fill = hue is { } mechanism
+                ? new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode), 0.5)
+                : new SolidColorBrush(ContextBarBrush.Color, 0.25);
+            context.DrawRectangle(fill, null, new Rect(x1, bottom - bar, Math.Max(1, x2 - x1 - 1), bar));
         }
     }
 
@@ -1122,13 +1266,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         if (brushAnchor is null)
         {
-            // No press: the pointer only explains the bucket under it, and the card follows it across the plot.
+            // No press: the pointer only explains the bucket - or live preview bin - under it, and the card follows it.
             Point position = e.GetPosition(this);
-            long? tick = OnPlot(position) && (!ShowingLanes || LaneIndexAt(position.Y) is not null)
+            bool overLive = OverLiveEdge(position);
+            long? tick = !overLive && OnPlot(position) && (!ShowingLanes || LaneIndexAt(position.Y) is not null)
                 ? TickAt(position.X) : null;
-            if (tick != hoverTick || (tick is not null && position != hoverPoint))
+            if (tick != hoverTick || overLive != hoverLive || ((tick is not null || overLive) && position != hoverPoint))
             {
                 hoverTick = tick;
+                hoverLive = overLive;
                 hoverPoint = position;
                 InvalidateVisual();
                 HoverChanged?.Invoke(this, EventArgs.Empty);
@@ -1198,12 +1344,61 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        if (hoverTick is not null)
+        if (hoverTick is not null || hoverLive)
         {
             hoverTick = null;
+            hoverLive = false;
             InvalidateVisual();
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>Whether a point is on the live edge, on a row that draws a preview there.</summary>
+    private bool OverLiveEdge(Point point) =>
+        LiveEdgePlacement is { } live
+        && point.X >= live.Left && point.X <= live.Left + live.Width
+        && point.Y >= PlotTop && point.Y <= Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)
+        && (!ShowingLanes || LaneIndexAt(point.Y) is { } row && (ShowingMechanismLanes || row == 0));
+
+    /// <summary>The preview bin drawn under the pointer on the live edge, snapping to the nearest within a few pixels.</summary>
+    internal LiveEdgeBin? HoveredLiveBin
+    {
+        get
+        {
+            if (!hoverLive || LiveEdgePlacement is not { } live)
+            {
+                return null;
+            }
+
+            LiveEdgeBin? nearest = null;
+            double best = 6;
+            foreach (LiveEdgeBin bin in live.Edge.Bins)
+            {
+                (double x1, double x2) = live.Columns(bin);
+                double distance = hoverPoint.X < x1 ? x1 - hoverPoint.X : hoverPoint.X > x2 ? hoverPoint.X - x2 : 0;
+                if (distance < best)
+                {
+                    best = distance;
+                    nearest = bin;
+                }
+            }
+
+            return nearest;
+        }
+    }
+
+    /// <summary>Where a preview bin is drawn on the live edge, for pointing at it; null when no live edge is drawn.</summary>
+    internal Point? PointOfLive(LiveEdgeBin bin, int row = 0)
+    {
+        ArgumentNullException.ThrowIfNull(bin);
+        if (LiveEdgePlacement is not { } live || !live.Edge.Bins.Contains(bin))
+        {
+            return null;
+        }
+
+        (double x1, double x2) = live.Columns(bin);
+        double bottom = Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
+        return new((x1 + x2) / 2, ShowingLanes ? LaneRow(row, LaneCount, PlotTop, bottom).Center.Y : (PlotTop + bottom) / 2);
     }
 
     /// <summary>Whether a point lies on the plot, between the axis gutter, the right margin, the rate label and the axis.</summary>

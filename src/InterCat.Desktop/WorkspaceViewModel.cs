@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using InterCat.Application;
+using InterCat.CaptureBroker;
 using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -141,6 +142,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<ProcessTimelineLane>? timelineProcessLanes;
     private IReadOnlyList<DirectionTimelineLane>? timelineDirectionLanes;
     private IReadOnlyList<ChannelEndTimelineLane>? timelineChannelEnds;
+    private LiveEdge? liveEdge;
     private IReadOnlyList<ChannelEndOption> channelEndOptions = [new(null, "Both ends")];
     private int? selectedChannelEnd;
     private IReadOnlyList<ProcessTimelineLane> processLaneDisplay = [];
@@ -660,6 +662,61 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         if (directionLaneOptions.FirstOrDefault(option => option.Direction == direction) is { } option)
             SelectedDirectionLane = option;
+    }
+
+    /// <summary>
+    /// What a live capture has journaled after the chunks this workspace shows, on the timeline's own axis; null when
+    /// nothing is live, the view is paused or held, or there is nothing yet to preview (§12, §19.3).
+    /// </summary>
+    public LiveEdge? LiveEdge => liveEdge;
+
+    /// <summary>
+    /// Shows the broker's live preview for the chunks after <paramref name="shownChunks"/>, or none. It never changes a
+    /// published count, a selection or a table: a preview is drawn and explained, nothing more.
+    /// </summary>
+    public void ShowLivePreview(BrokerCapturePreview? preview, int shownChunks)
+    {
+        LiveEdge? edge = preview is not null && wholeSnapshot.Clock is { } clock
+            ? LiveEdge.From(preview, shownChunks, clock)
+            : null;
+        if (edge is null && liveEdge is null)
+        {
+            return;
+        }
+
+        liveEdge = edge;
+        OnPropertyChanged(nameof(LiveEdge));
+    }
+
+    /// <summary>A live edge bin's card: what it counts, where the counts come from, and what they are not yet (§19.3).</summary>
+    public HoverCard DescribeLiveEdgeHover(LiveEdgeBin bin, Mechanism? lane = null)
+    {
+        ArgumentNullException.ThrowIfNull(bin);
+        int count = lane is { } mechanism ? bin.CountOf(mechanism) : bin.Total;
+        var lines = new List<string>
+        {
+            (count == 0 ? "No record" : Counted(count, "record", "records")) + " journaled here and not yet published"
+                + (lane is { } laneMechanism ? $" · {EvidenceRowText.MechanismName(laneMechanism)} lane" : string.Empty),
+            "By mechanism: " + string.Join(" · ", bin.Counts.Select(entry => string.Create(CultureInfo.CurrentCulture,
+                $"{EvidenceRowText.MechanismName(entry.Mechanism)} {entry.Count:N0}"))),
+            "Basis: live preview · unit: records · counted by the broker as each record was journaled, before derivation",
+            "Exact records replace this preview when the chunk holding them is published and derived here, "
+                + "about every 2 s while recording",
+            "Not yet attributed to processes or channels, and not in tables, rankings, selections or exports",
+        };
+        if (liveEdge is { UncoveredChunks: > 0 } behind)
+        {
+            lines.Add(string.Create(CultureInfo.CurrentCulture,
+                $"{behind.UncoveredChunks:N0} published chunks are neither shown nor previewed yet: this view is behind the capture"));
+        }
+
+        if (liveEdge is { UnbinnedRecords: > 0 } unbinned)
+        {
+            lines.Add(string.Create(CultureInfo.CurrentCulture,
+                $"Up to {unbinned.UnbinnedRecords:N0} previewed records fall outside the preview's bins"));
+        }
+
+        return new(WorkspaceTime.FormatHalfOpenRange(bin.Interval, CultureInfo.CurrentCulture) + " · live preview", lines);
     }
 
     /// <summary>The focused channel's two ends, first end first, held with their focus and generation.</summary>

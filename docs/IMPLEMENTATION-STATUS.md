@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 125 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 126 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -14,7 +14,9 @@ physical store, commit/recovery, and leases exist, but canonical import reuse, o
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
 overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline, and interactive
 L0 mechanism lanes, exact L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by
-direction; L4 lanes wait on derived operations, and the operation view and the steady-state feedback budget are open.
+direction. While recording, a labelled **live edge** previews records not yet published, which brings real-ETW
+event-to-visible to p95 0.72–0.77 s and meets §12's steady-state budget. Exact results still arrive about 2.6 s after
+an event (p95). L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -48,13 +50,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | L4 operation lanes and byte composition once IC-015 derives operations. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, and a labelled live edge that previews unpublished records within §12's steady-state budget | L4 operation lanes and byte composition once IC-015 derives operations. Persisted overview pyramid (S4) and exact live cadence at scale. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 126 — the live edge, and §12's steady-state budget met (§6.2, §12, §19.3):**
+  - **Drawing:** while the view follows a recording, the time after the last published record takes the plot's right
+    edge beyond a dashed rule. It carries the broker preview's chunks after those shown, in 100 ms bins at half
+    strength, on the published scale where legible. At L0 each lane shows its own mechanism, and the label names a
+    mechanism with no lane yet. A focused rung shows it only in its machine row.
+  - **Behaviour:** hover explains a bin as a preview; a press selects nothing. A paused, held or zoomed view hides it,
+    and the publication holding its chunk retires it. The Desktop runner passes a changed preview at 4 Hz.
+  - **Wire:** field 28 carries the capture's journaled records. A preview therefore holds exactly journal indexes
+    `[journaled − counted, journaled)`.
+  - **Measured:** `first-feedback` v2 times every record to its first preview and its first overview. Three 15 s
+    real-ETW runs met every budget:
+    - event-to-visible p95 717–766 ms, p99 799–924 ms;
+    - every record previewed;
+    - exact still p95 2.6 s.
+  - **Tests:** a Desktop conversion test and a 1080×700 window test (+2).
 - **Revision 125 — broker live preview, and what live projection costs (§12, §19.3, broker-v1 §5.9):**
   - **Measured first:** the steady-state miss is not what a timeline pyramid would fix. On synthetic TCP sessions, a
     new generation's overview took 0.33 s at 100,000 rows and 1.0 s at 1,000,000. A plain pass over the time and
@@ -69,8 +86,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   - **Tests:** tally bounds, a recording read mid-capture across chunk publications, wire round trip and refusals,
     the dispatcher only while recording, and a real runtime preview through the codec (+4).
   - **Qualification:** real-ETW broker qualification passed (`bench/results/broker-qualification-20260925T163744Z`).
-  - **Not yet:** the Desktop draws nothing from it until revision 126, and the budget row stays a measured miss until
-    first-feedback measures the preview.
+  - Revision 126 draws it and measures it.
 - **Revision 124 — L3 channel-end lanes banded by direction (§3.2, §6.2, §6.6):**
   - **Lanes:** the channel rung draws one lane per end under the machine-context row. Each lane is named by the
     process holding the end and the end's own endpoint.
@@ -305,10 +321,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Draw revision 125's live preview in the Desktop as a labelled live edge beside the published timeline. Then
-   extend `first-feedback` to measure event-to-preview on real ETW, and restate §12's budget row with that evidence.
-   Afterwards: S4's persisted pyramid for bounded reopen, and incremental process/relation derivation (IC-015) for
-   live cadence at scale, per revision 125's measurement.
+1. Make large sessions bounded, per revision 125's measurement:
+   - S4's persisted overview pyramid, so the minimap and L0 of a 100 GiB session open without a whole-session scan
+     (P25);
+   - incremental process and relation derivation (IC-015), so exact live results keep a sub-second cadence as a
+     capture grows.
+   Measure §6.8's interactive windows at 1M and 10M rows as each lands. The steady-state preview budget is met
+   (revision 126).
 2. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
    119–124), and add pin/collapse/search as the observed lane count requires. L4's operation lanes, with duration
    bars and byte projections where a derivation supports them, wait on item 3's operations; L5 keeps its marks.
@@ -325,8 +344,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 125): **950 passed, 1 skipped, in Debug and Release**, zero failures.
-  Revision 125 adds two recorder, one wire and one theory case (+4); the real-ETW broker qualification passed.
+- Last executed clean baseline (revision 126): **952 passed, 1 skipped, in Debug and Release**, zero failures.
+  Revision 126 adds one Desktop and one UI test (+2); real-ETW first-feedback met every budget
+  (`bench/results/first-feedback-20260925T203141Z`).
+  - Revision 125 adds two recorder, one wire and one theory case (+4); the real-ETW broker qualification passed.
   - Revision 124 adds one Application, one Desktop and one UI test (+3) and extends the opt-in real-session check to
     L3, which passed separately in Release on the saved Explore session.
   - Revision 123 adds two Application, one Desktop and one UI test (+4) and extends the opt-in real-session check to
@@ -385,9 +406,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   - A brush keeps the drawing's structure.
   - Headless cold timings: overview 271 ms, graph projection 32 ms, layout 13 ms, group open plus layout 47 ms.
   Revision 107 alone drew 197 nodes and 1 edge there.
-- Recent real evidence: `bench/results/first-feedback-20260924T140714Z-minimap` (live projection p50 16–32 ms,
-  p95 21–129 ms; first overview 0.9–1.1 s after first record). The event-to-visible steady-state budget still
-  missed in the prior run (`first-feedback-20260924T132726Z-live-counters`: p95 2.6–3.2 s).
+- Recent real evidence: `bench/results/first-feedback-20260925T203141Z` (schema v2).
+  - First overview 0.97–1.36 s after the first record; derivation p95 174–250 ms and projection p95 22–134 ms.
+  - Event-to-visible p95 717–766 ms through the live preview; exact p95 2.57–2.59 s.
+  - Before the preview, event-to-visible missed at p95 2.6–3.2 s (`first-feedback-20260924T132726Z-live-counters`).
 - On a 94,694-record session, a one-pass evidence export took 2.9 s instead of 83.5 s through 474 page reads;
   the output was identical. This is not a whole-product scale qualification.
 - The broker/source measurements are on one pre-release Windows build; do not generalize capture overhead or

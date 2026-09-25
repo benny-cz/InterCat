@@ -36,6 +36,7 @@ public static class OverviewWorkspace
             overview.Redaction)
         {
             MechanismLanes = overview.MechanismLanes,
+            Clock = overview.Clock,
         };
     }
 

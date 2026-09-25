@@ -53,7 +53,7 @@ internal static partial class Qualification
         Directory.CreateDirectory(output);
         var report = new FirstFeedbackReport
         {
-            Schema = "intercat.first-feedback.v1",
+            Schema = "intercat.first-feedback.v2",
             StartedUtc = DateTimeOffset.UtcNow,
             Environment = CapabilityInventoryProbe.DescribeEnvironment(etw.IsElevated),
             QpcFrequency = Stopwatch.Frequency,
@@ -71,9 +71,14 @@ internal static partial class Qualification
                 "The Desktop's DesktopCaptureRunner runs unchanged except for three options: this tool as its broker "
                     + "(the production composition over a qualification root, never the production root), a session "
                     + "root in the output directory, and a 120-second quota.",
-                "Visible means the overview was projected and handed to the window; drawing it is not included. A "
-                    + "record's delay is the QPC reading at hand-off of the first overview whose derived records "
+                "Exact means the overview was projected and handed to the window; drawing it is not included. A "
+                    + "record's exact delay is the QPC reading at hand-off of the first overview whose derived records "
                     + "include it, minus the record's own QPC reading.",
+                "Previewed means a live preview (broker-v1 §5.9) holding the record was handed to the window: its "
+                    + "capture-wide journal index lies in [journaled - counted, journaled) of that preview. Visible is "
+                    + "whichever came first, preview or exact, and is what the event-to-visible budget is judged on "
+                    + "(plan §12, §19.3's labelled preview). Schema v2 added the preview; v1's event-to-visible is v2's "
+                    + "event-to-exact.",
                 "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the "
                     + "ordinary-integrity first run is not measured here.",
                 "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, "
@@ -90,7 +95,8 @@ internal static partial class Qualification
                 report.Runs.Add(result);
                 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                     $"run {run}: first overview {result.FirstOverviewAfterFirstDeliveredMs} ms after first record; "
-                    + $"event to visible p95 {result.EventToVisible?.P95Ms} ms, p99 {result.EventToVisible?.P99Ms} ms"));
+                    + $"event to visible p95 {result.EventToVisible?.P95Ms} ms, p99 {result.EventToVisible?.P99Ms} ms "
+                    + $"(preview p95 {result.EventToPreview?.P95Ms} ms, exact p95 {result.EventToExact?.P95Ms} ms)"));
                 await WaitForCliBrokerExitAsync(cancellationToken);
             }
         }
@@ -168,6 +174,12 @@ internal static partial class Qualification
             .Distinct()];
         result.LiveCounterReadings = live.Length;
         result.LastLiveCounters = live.LastOrDefault();
+        (BrokerCapturePreview Preview, long Qpc)[] previews = [.. all
+            .Where(update => update.PreviewObservedQpc is not null && update.LivePreview is not null)
+            .Select(update => (update.LivePreview!, update.PreviewObservedQpc!.Value))
+            .OrderBy(entry => entry.Item2)];
+        result.PreviewsHandedOff = previews.Length;
+        result.LargestUnbinnedPreviewRecords = previews.Length == 0 ? 0 : previews.Max(entry => entry.Preview.UnbinnedRecords);
         result.Derivation = Summarize(visible.Select(visibility => visibility.Derivation.TotalMilliseconds));
         result.Projection = Summarize(visible.Select(visibility => visibility.Projection.TotalMilliseconds));
         string? sessionPath = all.LastOrDefault(update => update.SessionPath is not null)?.SessionPath;
@@ -177,8 +189,10 @@ internal static partial class Qualification
             return result;
         }
 
-        // Each record's delay: from its own QPC reading to the first overview that included it.
-        var delays = new List<double>();
+        // Each record's delays: from its own QPC reading to the first live preview, and to the first overview, that held it.
+        var exactDelays = new List<double>();
+        var previewDelays = new List<double>();
+        var firstSight = new List<double>();
         long firstDelivered = long.MaxValue;
         long negative = 0;
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(sessionPath));
@@ -199,24 +213,29 @@ internal static partial class Qualification
                     }
 
                     int covering = FirstCovering(visible, index);
-                    if (covering < 0)
+                    double? exact = covering < 0 ? null : (visible[covering].ObservedQpc - native) * 1000d / Stopwatch.Frequency;
+                    double? previewed = FirstPreviewCovering(previews, index) is { } at
+                        ? (at - native) * 1000d / Stopwatch.Frequency : null;
+                    if (exact is null) result.RecordsFirstVisibleAfterStop++;
+                    if (previewed is null) result.RecordsNeverPreviewed++;
+                    if (exact < 0 || previewed < 0) negative++;
+                    if (exact is { } exactDelay) exactDelays.Add(exactDelay);
+                    if (previewed is { } previewDelay) previewDelays.Add(previewDelay);
+                    if (exact is not null || previewed is not null)
                     {
-                        result.RecordsFirstVisibleAfterStop++;
-                        continue;
+                        firstSight.Add(Math.Min(exact ?? double.MaxValue, previewed ?? double.MaxValue));
                     }
-
-                    long delay = visible[covering].ObservedQpc - native;
-                    if (delay < 0) negative++;
-                    delays.Add(delay * 1000d / Stopwatch.Frequency);
                 }
             }
         }
 
         result.RecordsWithNegativeDelay = negative;
-        result.EventToVisible = Summarize(delays);
+        result.EventToExact = Summarize(exactDelays);
+        result.EventToPreview = Summarize(previewDelays);
+        result.EventToVisible = Summarize(firstSight);
         result.FirstOverviewAfterFirstDeliveredMs = (long)Math.Round(
             (visible[0].ObservedQpc - firstDelivered) * 1000d / Stopwatch.Frequency);
-        result.Valid = negative == 0 && result.Records > 0 && delays.Count > 0 && live.Length > 0;
+        result.Valid = negative == 0 && result.Records > 0 && exactDelays.Count > 0 && live.Length > 0 && previews.Length > 0;
         result.MeetsBudgets = result.Valid
             && result.FirstOverviewAfterFirstDeliveredMs <= FirstUsefulOverviewBudgetMilliseconds
             && result.EventToVisible!.P95Ms <= EventToVisibleP95BudgetMilliseconds
@@ -228,7 +247,31 @@ internal static partial class Qualification
                 + "are not this machine's QPC clock, so no delay is reported as measured.";
         else if (live.Length == 0)
             result.FailureReason = "No live acquisition counters reached the viewer while it recorded.";
+        else if (previews.Length == 0)
+            result.FailureReason = "No live preview reached the viewer while it recorded.";
         return result;
+    }
+
+    /// <summary>
+    /// The QPC reading at hand-off of the first live preview that held this capture-wide journal index, or null. Previews
+    /// are in hand-off order, so the journaled count only grows; the first to pass the index is the first that could hold
+    /// it, and it holds it when the index is among the records its covered chunks count.
+    /// </summary>
+    private static long? FirstPreviewCovering((BrokerCapturePreview Preview, long Qpc)[] previews, ulong index)
+    {
+        int low = 0;
+        int high = previews.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) >> 1);
+            if ((ulong)previews[middle].Preview.JournaledRecords > index) high = middle;
+            else low = middle + 1;
+        }
+
+        return low < previews.Length
+            && (ulong)(previews[low].Preview.JournaledRecords - previews[low].Preview.CountedRecords) <= index
+            ? previews[low].Qpc
+            : null;
     }
 
     /// <summary>The first overview whose derived records include this capture-wide journal index, or -1.</summary>
@@ -367,7 +410,18 @@ internal sealed class FirstFeedbackRun
     public long RecordsWithoutJournalIndex { get; set; }
     public long RecordsFirstVisibleAfterStop { get; set; }
     public long RecordsWithNegativeDelay { get; set; }
+
+    /// <summary>Distinct live previews handed to the window while recording, and the most records one left unbinned.</summary>
+    public int PreviewsHandedOff { get; set; }
+    public long LargestUnbinnedPreviewRecords { get; set; }
+    public long RecordsNeverPreviewed { get; set; }
+
+    /// <summary>To the first preview or overview holding the record, whichever came first: what the budget is judged on.</summary>
     public LatencySummary? EventToVisible { get; set; }
+    public LatencySummary? EventToPreview { get; set; }
+
+    /// <summary>To the first overview holding the record: schema v1's event-to-visible.</summary>
+    public LatencySummary? EventToExact { get; set; }
     public LatencySummary? Derivation { get; set; }
     public LatencySummary? Projection { get; set; }
 }

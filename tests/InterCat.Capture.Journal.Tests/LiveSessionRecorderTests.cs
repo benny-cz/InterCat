@@ -540,7 +540,7 @@ public sealed class LiveSessionRecorderTests
         // Every journaled record is counted once, in the chunk it went to, at its own time on the capture's clock.
         Assert.Equal(6, result.JournaledRecords);
         LivePreviewSnapshot preview = Assert.IsType<LivePreviewSnapshot>(during);
-        Assert.Equal((6L, 0L), (preview.CountedRecords, preview.UnbinnedRecords));
+        Assert.Equal((6L, 6L, 0L), (preview.JournaledRecords, preview.CountedRecords, preview.UnbinnedRecords));
         Assert.Equal(6, preview.Counts.Sum(count => count.Count));
         Assert.All(preview.Counts, count => Assert.Equal(Mechanism.Tcp, count.Mechanism));
         Assert.True(preview.OpenChunk >= 2, "The pause must have published the first chunk.");
@@ -577,6 +577,9 @@ public sealed class LiveSessionRecorderTests
         LivePreviewSnapshot later = tally.Read();
         Assert.Equal((LivePreviewTally.RetainedPublishedChunks + 2, LivePreviewTally.RetainedPublishedChunks),
             (later.OpenChunk, later.RetainedChunks));
+
+        // The first chunk's three records are journaled but no longer covered: the covered chunks hold the last five.
+        Assert.Equal((8L, 5L), (later.JournaledRecords, later.CountedRecords));
         Assert.DoesNotContain(later.Counts, count => count.Chunk < later.FirstChunk);
         Assert.Equal(later.CountedRecords, later.Counts.Sum(count => count.Count) + later.UnbinnedRecords);
 

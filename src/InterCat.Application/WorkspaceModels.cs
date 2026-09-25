@@ -188,4 +188,7 @@ public sealed record WorkspaceSnapshot(
 {
     /// <summary>Whole-session L0 mechanism lanes from the same leased overview, not guessed from dominant hues.</summary>
     public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+
+    /// <summary>The clock the snapshot's readings are on; null for a snapshot that was not projected from a session.</summary>
+    public SourceClockDescriptor? Clock { get; init; }
 }

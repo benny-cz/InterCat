@@ -402,7 +402,7 @@ most once a second, and only until it sends stop.
 A viewer sees a record exactly only once the chunk holding it publishes and is derived, which the 2-second publication
 floor bounds from below (plan §12). While a capture is `Recording`, `GetStatus` therefore also returns a **live
 preview**: its journaled records counted by chunk, mechanism and time, for the viewer to draw, labelled as a preview,
-until the chunk that holds them is derived. All seven fields are optional and arrive together or not at all:
+until the chunk that holds them is derived. All eight fields are optional and arrive together or not at all:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -413,6 +413,7 @@ until the chunk that holds them is derived. All seven fields are optional and ar
 | 25 | Int64 | Covered records no count places in a bin |
 | 26 | Int64 | The earliest bin any count names |
 | 27 | Int32 list | Two values per count: `(chunk back from field 22) << 24 \| mechanism << 16 \| bin offset from field 26`, then the count |
+| 28 | Int64 | Every record the capture has journaled, in every chunk; at least field 24 |
 
 A record is counted once it is journaled, in the chunk it was written to, in the bin of its own native reading; a
 record refused by a journal or disk bound is never counted. A chunk keeps its newest 256 bins, and a status carries at
@@ -422,7 +423,9 @@ up, name a chunk outside `[field 22 - field 23, field 22]`, repeat a chunk-mecha
 mechanism or a non-positive count, or span more than 65,535 bins is refused.
 
 A viewer that shows chunks `1..k` draws the counts of chunks after `k` only. It knows the covered range, so a viewer more
-than the retained chunks behind can state that part of what it has not yet derived is not previewed. The preview holds
+than the retained chunks behind can state that part of what it has not yet derived is not previewed. The covered chunks
+hold the records whose capture-wide journal indexes are `[field 28 - field 24, field 28)`, which is how a measurement
+tells exactly when a record first reached a viewer in a preview. The preview holds
 counts only: no record, name, address, process or byte count, so it discloses no more than the mechanism of a record
 and when it happened. It is never an exact result: a viewer never exports it, ranks by it or adds it to a published
 count (plan §19.3). No other lifecycle state returns it, and a broker that predates it simply omits it.

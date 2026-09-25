@@ -15,12 +15,17 @@ public readonly record struct LivePreviewCount(int Chunk, long Bin, Mechanism Me
 /// <param name="BinNativeTicks">The width of one bin in native clock ticks.</param>
 /// <param name="OpenChunk">The sequence number of the chunk being written.</param>
 /// <param name="RetainedChunks">How many published chunks before it the counts still cover.</param>
+/// <param name="JournaledRecords">
+/// Every record the capture has journaled, in every chunk. The covered chunks hold the last <see cref="CountedRecords"/>
+/// of them, so a record's capture-wide journal index says exactly whether a preview holds it.
+/// </param>
 /// <param name="CountedRecords">Every record of the covered chunks, binned or not.</param>
 /// <param name="UnbinnedRecords">Covered records no bin holds: outside the time window, or past the entry bound.</param>
 public sealed record LivePreviewSnapshot(
     long BinNativeTicks,
     int OpenChunk,
     int RetainedChunks,
+    long JournaledRecords,
     long CountedRecords,
     long UnbinnedRecords,
     IReadOnlyList<LivePreviewCount> Counts)
@@ -53,6 +58,7 @@ public sealed class LivePreviewTally
     private readonly Lock gate = new();
     private readonly Queue<ChunkCounts> published = new();
     private ChunkCounts open;
+    private long journaled;
 
     public LivePreviewTally(long nativeTicksPerSecond)
     {
@@ -68,6 +74,7 @@ public sealed class LivePreviewTally
     {
         lock (gate)
         {
+            journaled++;
             open.Add(nativeTicks < 0 ? null : nativeTicks / BinNativeTicks, mechanism);
         }
     }
@@ -111,7 +118,7 @@ public sealed class LivePreviewTally
                 }
             }
 
-            return new(BinNativeTicks, open.Sequence, published.Count, counted, unbinned, counts.AsReadOnly());
+            return new(BinNativeTicks, open.Sequence, published.Count, journaled, counted, unbinned, counts.AsReadOnly());
         }
     }
 

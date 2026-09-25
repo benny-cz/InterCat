@@ -11,6 +11,12 @@ namespace InterCat.Desktop;
 
 public enum CaptureUiPhase { Starting, Recording, Finishing, Complete, Unavailable }
 
+/// <param name="LivePreview">The broker's latest live preview while recording (broker-v1 §5.9); null otherwise.</param>
+/// <param name="OverviewChunks">How many published chunks <paramref name="Overview"/> was derived from.</param>
+/// <param name="PreviewObservedQpc">
+/// The machine's QPC reading when a newly read preview was handed to the window; null on an update that only repeats the
+/// last one. Records carry readings of the same clock, so a record's delay to its first preview is exact.
+/// </param>
 public sealed record CaptureUiUpdate(
     CaptureUiPhase Phase,
     string Headline,
@@ -20,7 +26,10 @@ public sealed record CaptureUiUpdate(
     SessionOverviewBundle? Overview = null,
     CaptureMilestones? Milestones = null,
     CaptureVisibility? Visibility = null,
-    BrokerCaptureHealth? LiveHealth = null);
+    BrokerCaptureHealth? LiveHealth = null,
+    BrokerCapturePreview? LivePreview = null,
+    int? OverviewChunks = null,
+    long? PreviewObservedQpc = null);
 
 /// <summary>
 /// Elapsed time from the user's start action to each first-run step of section 3.1, so first feedback is measured
@@ -73,6 +82,12 @@ public static class DesktopCaptureRunner
     private static readonly TimeSpan HealthReport = TimeSpan.FromSeconds(1);
 
     /// <summary>
+    /// How often a changed live preview is passed on: the 4 Hz live-snapshot cadence of §19.3, so a record reaches the
+    /// timeline's live edge well inside §12's event-to-visible budget while its chunk is still being written.
+    /// </summary>
+    private static readonly TimeSpan PreviewReport = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
     /// How often the viewer looks for a new publication. A look reads a small pointer file, so a short poll costs little and
     /// keeps the viewer's share of the event-to-visible delay small (plan §12, measured in first-feedback qualification).
     /// </summary>
@@ -108,17 +123,25 @@ public static class DesktopCaptureRunner
         Action<CaptureUiUpdate> inner = report;
         CaptureUiUpdate? lastLive = null;
         BrokerCaptureHealth? health = null;
+        BrokerCapturePreview? preview = null;
         report = update =>
         {
-            update = update with { Milestones = milestones, LiveHealth = update.LiveHealth ?? health };
+            // Only a recording has something to preview: once stopping begins, every chunk is on its way to the viewer.
+            update = update with
+            {
+                Milestones = milestones,
+                LiveHealth = update.LiveHealth ?? health,
+                LivePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview ?? preview : null,
+            };
             if (update.Phase == CaptureUiPhase.Recording)
             {
-                lastLive = update with { Overview = null, Visibility = null };
+                lastLive = update with { Overview = null, Visibility = null, OverviewChunks = null, PreviewObservedQpc = null };
             }
 
             inner(update);
         };
         DateTimeOffset healthReported = DateTimeOffset.MinValue;
+        DateTimeOffset previewReported = DateTimeOffset.MinValue;
         if (!OperatingSystem.IsWindows())
         {
             report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
@@ -260,7 +283,8 @@ public static class DesktopCaptureRunner
                                     + "Graph edges are paired TCP only; other observations remain in the timeline.",
                                     summary, sessionPath, overview,
                                     Visibility: new(current.Generation, step.DerivedRecords, Stopwatch.GetTimestamp(),
-                                        derivation, projection)));
+                                        derivation, projection),
+                                    OverviewChunks: step.DerivedChunks));
                             }
                             catch (InvalidOperationException exception)
                             {
@@ -273,14 +297,36 @@ public static class DesktopCaptureRunner
 
                     status = await StatusAsync(client, started, work).ConfigureAwait(false);
 
-                    // Live counters change continuously; they are passed on at most once a second, only while recording.
-                    // Once stop is sent the window shows finishing, and a re-sent recording update would undo that.
-                    if (!stopSent && status.Health is { } live && live != health && lastLive is { } recording
-                        && DateTimeOffset.UtcNow - healthReported >= HealthReport)
+                    // Live counters change continuously; they are passed on at most once a second, and the live preview at
+                    // most four times a second, only while recording. Once stop is sent the window shows finishing, and a
+                    // re-sent recording update would undo that.
+                    if (!stopSent && lastLive is { } recording)
                     {
-                        health = live;
-                        healthReported = DateTimeOffset.UtcNow;
-                        report(recording with { LiveHealth = live });
+                        DateTimeOffset now = DateTimeOffset.UtcNow;
+                        bool healthDue = status.Health is { } live && live != health && now - healthReported >= HealthReport;
+                        bool previewDue = status.Preview is { } fresh && !SamePreview(fresh, preview)
+                            && now - previewReported >= PreviewReport;
+                        if (healthDue)
+                        {
+                            health = status.Health;
+                            healthReported = now;
+                        }
+
+                        if (previewDue)
+                        {
+                            preview = status.Preview;
+                            previewReported = now;
+                        }
+
+                        if (healthDue || previewDue)
+                        {
+                            report(recording with
+                            {
+                                LiveHealth = health,
+                                LivePreview = preview,
+                                PreviewObservedQpc = previewDue ? Stopwatch.GetTimestamp() : null,
+                            });
+                        }
                     }
 
                     if (status.State == CaptureLifecycle.Closed)
@@ -361,6 +407,14 @@ public static class DesktopCaptureRunner
             }
         }
     }
+
+    /// <summary>
+    /// Whether a preview says nothing new: the same chunk, records and unbinned records. A count moves only with a record,
+    /// so an unchanged total means unchanged counts.
+    /// </summary>
+    private static bool SamePreview(BrokerCapturePreview fresh, BrokerCapturePreview? previous) =>
+        previous is not null && fresh.OpenChunk == previous.OpenChunk && fresh.RetainedChunks == previous.RetainedChunks
+        && fresh.CountedRecords == previous.CountedRecords && fresh.UnbinnedRecords == previous.UnbinnedRecords;
 
     /// <summary>The user's own session folder; a viewer never writes derived sessions into broker-owned space (ADR-027).</summary>
     private static string LocalSessionRoot()

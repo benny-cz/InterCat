@@ -658,6 +658,76 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§12/§19.3: a live preview continues the published timeline, labelled, inert and retired by publication")]
+    public void ALivePreviewContinuesThePublishedTimeline()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        CaptureUiUpdate published = Update(session) with { OverviewChunks = 2 };
+        window.ApplyCaptureUpdate(published);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        double whole = timeline.PlotSpan;
+        Assert.Null(workspace.LiveEdge);
+
+        // The published extent ends at tick 210. Chunk 2 is shown; chunk 3 is not, and continues the timeline after it.
+        var preview = new BrokerCapturePreview(20, 3, 1, 11, 11, 0,
+            [new(2, 10, Mechanism.Tcp, 5), new(3, 11, Mechanism.Tcp, 4), new(3, 12, Mechanism.Tcp, 2)]);
+        window.ApplyCaptureUpdate(published with { Overview = null, OverviewChunks = null, LivePreview = preview });
+        Dispatch();
+        LiveEdge edge = Assert.IsType<LiveEdge>(workspace.LiveEdge);
+        Assert.Equal(new[] { new TimeRange(220, 240), new TimeRange(240, 260) }, edge.Bins.Select(bin => bin.Interval));
+        Assert.True(timeline.PlotSpan < whole - 30, $"The live edge must take its own part of the plot: {timeline.PlotSpan} of {whole}.");
+
+        // Hover explains the preview in its own words; a press on it selects nothing.
+        Point at = timeline.TranslatePoint(timeline.PointOfLive(edge.Bins[0])!.Value, window)!.Value;
+        window.MouseMove(at);
+        Dispatch();
+        Assert.Equal(edge.Bins[0], timeline.HoveredLiveBin);
+        Assert.Null(timeline.HoveredBucket);
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.EndsWith(" · live preview", card.Title, StringComparison.Ordinal);
+        Assert.Equal("4 records journaled here and not yet published · TCP lane", card.Lines[0]);
+        Assert.Contains(card.Lines, line => line.StartsWith("Not yet attributed to processes or channels", StringComparison.Ordinal));
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Assert.Null(workspace.SelectedInterval);
+        Save(window.CaptureRenderedFrame()!, "live-edge-1080x700.png");
+        window.MouseMove(new Point(1, 1));
+        Dispatch();
+
+        // A paused view shows an older generation, so it draws no edge; following again brings it back.
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Assert.Null(workspace.LiveEdge);
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Assert.NotNull(workspace.LiveEdge);
+
+        // Zoomed or panned, the view no longer follows the capture's end, and the published plot gets the width back.
+        TimeRange extent = timeline.Viewport;
+        timeline.SetViewport(new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2)));
+        Dispatch();
+        Assert.Equal(whole, timeline.PlotSpan, 0.5);
+        timeline.SetViewport(null);
+        Dispatch();
+        Assert.True(timeline.PlotSpan < whole - 30);
+
+        // The publication that holds chunk 3 retires its preview; a finishing capture previews nothing.
+        Publish(session.Store, Exchange(100, 20));
+        window.ApplyCaptureUpdate(Update(session) with { OverviewChunks = 3, LivePreview = preview });
+        Dispatch();
+        var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.NotSame(workspace, next);
+        Assert.Null(next.LiveEdge);
+        window.ApplyCaptureUpdate(published with { Phase = CaptureUiPhase.Finishing, Overview = null, LivePreview = preview });
+        Dispatch();
+        Assert.Null(next.LiveEdge);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
     public void APlainDragPansAndKeysMoveTheViewport()
     {

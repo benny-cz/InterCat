@@ -85,8 +85,8 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
             counts.Add(new(count.Chunk, count.Bin, count.Mechanism, count.Count));
         }
 
-        return new(snapshot.BinNativeTicks, snapshot.OpenChunk, snapshot.RetainedChunks, snapshot.CountedRecords,
-            unbinned, counts.AsReadOnly());
+        return new(snapshot.BinNativeTicks, snapshot.OpenChunk, snapshot.RetainedChunks, snapshot.JournaledRecords,
+            snapshot.CountedRecords, unbinned, counts.AsReadOnly());
     }
 
     public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
