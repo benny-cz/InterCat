@@ -118,6 +118,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private string? timelineFocusDescription;
     private IReadOnlyList<TimelineBucket>? timelineFocusBuckets;
     private IReadOnlyList<ProcessTimelineLane>? timelineProcessLanes;
+    private IReadOnlyList<ProcessTimelineLane> processLaneDisplay = [];
     private string? processLaneProblem;
     private bool timelineFocusLoading;
     private string? timelineFocusProblem;
@@ -438,13 +439,25 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineDetail = detail;
         timelineFocusBuckets = focus;
         timelineProcessLanes = processLanes;
+        processLaneDisplay = processLanes is null ? [] : OrderProcessLanes(processLanes);
         processLaneProblem = laneProblem;
         RefreshIntervalRows(focus);
 
         OnPropertyChanged(nameof(TimelineDetail));
         OnPropertyChanged(nameof(TimelineFocusBuckets));
         OnPropertyChanged(nameof(TimelineProcessLanes));
+        OnPropertyChanged(nameof(ProcessLaneDisplay));
+        OnPropertyChanged(nameof(ShowsProcessLanes));
+        OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(ProcessLaneProblem));
+    }
+
+    private IReadOnlyList<ProcessTimelineLane> OrderProcessLanes(IReadOnlyList<ProcessTimelineLane> lanes)
+    {
+        Dictionary<ProcessInstanceId, int> processIds = wholeSnapshot.Processes
+            .ToDictionary(process => process.Id, process => process.ProcessId);
+        return [.. lanes.OrderBy(lane => processIds.GetValueOrDefault(lane.ProcessId, int.MaxValue))
+            .ThenBy(lane => lane.ProcessId.Value)];
     }
 
     private bool HasCompleteLaneDetail => timelineDetail is { } detail
@@ -455,12 +468,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private void RefreshIntervalRows(IReadOnlyList<TimelineBucket>? focus = null)
     {
         Mechanism? selected = ShowsMechanismLanes ? selectedTimelineLane.Mechanism : null;
-        IReadOnlyList<TimelineBucket> buckets = selected is { } mechanism
+        ProcessTimelineLane? processLane = SelectedProcessLane;
+        IReadOnlyList<TimelineBucket> buckets = processLane is not null
+            ? processLane.Buckets
+            : selected is { } mechanism
             ? (HasCompleteLaneDetail
                 ? timelineDetail!.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
-        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark, selected is null ? focus : null);
+        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark,
+            selected is null && processLane is null ? focus : null);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -543,6 +560,23 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Exact L1 owner rows held with their focus and generation, ready for the rung renderer.</summary>
     public IReadOnlyList<ProcessTimelineLane>? TimelineProcessLanes => timelineProcessLanes;
 
+    /// <summary>L1 process rows ordered by PID and stable instance ID, independent of query/ranking order.</summary>
+    public IReadOnlyList<ProcessTimelineLane> ProcessLaneDisplay => processLaneDisplay;
+
+    public bool ShowsProcessLanes => ladder.Current.Level == DetailLevel.Group && processLaneDisplay.Count > 0
+        && timelineFocusProblem is null;
+
+    private ProcessTimelineLane? SelectedProcessLane => ShowsProcessLanes && selectedProcess is { } process
+        ? processLaneDisplay.FirstOrDefault(lane => lane.ProcessId == process.Id) : null;
+
+    public bool HasSelectedProcessLane => SelectedProcessLane is not null;
+
+    public void ClearProcessLaneFocus()
+    {
+        SelectedRung = null;
+        SelectedProcess = null;
+    }
+
     /// <summary>When an L1 group exceeds the query budget, the exact aggregate remains and this says why.</summary>
     public string? ProcessLaneProblem => processLaneProblem;
 
@@ -588,6 +622,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             : "Observed records · Shift+drag brushes a range · unknown stays unknown"
         : timelineFocusProblem is { } problem
             ? $"{focus} could not be counted: {problem.TrimEnd('.')}. Every observed record is shown."
+            : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
+                ? $"{focus} · process lanes unavailable: {laneProblem}"
+            : ShowsProcessLanes
+                ? $"{focus} · {processLaneDisplay.Count:N0} process lanes · machine context above · scroll names for more"
             : timelineFocusLoading && timelineFocusBuckets is null
                 ? $"Counting {char.ToLowerInvariant(focus[0])}{focus[1..]}… · the rest of the machine in grey"
                 : $"{focus} in colour, the rest of the machine in grey · Shift+drag brushes a range";
@@ -1541,6 +1579,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
+            if (SelectedProcessLane is { } processLane)
+            {
+                string owner = selectedProcess is { } process
+                    ? $"{process.Name} · PID {process.ProcessId}" : processLane.ProcessId.ToString();
+                return string.Create(CultureInfo.CurrentCulture,
+                    $"{owner} owner records · {intervals.Count:N0} exact intervals");
+            }
             string lane = ShowsMechanismLanes && SelectedTimelineMechanism is { } mechanism
                 ? $" · {EvidenceRowText.MechanismName(mechanism)} lane" : string.Empty;
             return timelineDetail is { } detail
@@ -1771,6 +1816,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged();
             selection.SelectProcess(value?.Id);
             RaiseGraphSelectionChanged();
+            if (ladder.Current.Level == DetailLevel.Group)
+            {
+                RefreshIntervalRows(timelineFocusBuckets);
+                OnPropertyChanged(nameof(HasSelectedProcessLane));
+            }
         }
     }
 
@@ -1963,11 +2013,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// unmeasured, its coverage, and the scale its height is read against: <paramref name="peakPerSecond"/>, the busiest
     /// visible bar. Hover only describes; it never selects or brushes.
     /// </summary>
-    public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond, Mechanism? lane = null)
+    public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond,
+        Mechanism? lane = null, ProcessNode? ownerLane = null)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
-            || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket)));
+            || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket))
+            || ownerLane is not null && processLaneDisplay.Any(candidate =>
+                candidate.ProcessId == ownerLane.Id && candidate.Buckets.Contains(bucket)));
         string mechanism = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
         double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
         var lines = new List<string>
@@ -1975,8 +2028,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             bucket.ObservationCount == 0
                 ? "No record observed · an empty bucket is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
-                    + (lane is { } selected ? $" · {EvidenceRowText.MechanismName(selected)} lane" : $" · mostly {mechanism}"),
-            lane is { } laneMechanism
+                    + (ownerLane is { } owner
+                        ? $" · {owner.Name} · PID {owner.ProcessId} lane"
+                        : lane is { } selected ? $" · {EvidenceRowText.MechanismName(selected)} lane" : $" · mostly {mechanism}"),
+            ownerLane is { } ownerProcess
+                ? $"Basis: source observations · unit: records · domain: records canonically owned by {ownerProcess.Name}, PID {ownerProcess.ProcessId}, instance {ownerProcess.Id} · accounting: one owner per record"
+                : lane is { } laneMechanism
                 ? $"Basis: source observations · unit: records · domain: {EvidenceRowText.MechanismName(laneMechanism)} records with session time · accounting: not applicable to a count"
                 : realOverview
                 ? "Basis: source observations · unit: records · domain: every admitted record with a session time, all "
@@ -1987,11 +2044,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         if (timelineFocusDescription is { } focus && TimelineShowsFocus)
         {
             lines.Add(timelineFocusBuckets?.FirstOrDefault(candidate => candidate.Interval == bucket.Interval) is { } focused
-                ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
+                ? ownerLane is null
+                    ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
+                    : $"{focus}: " + Counted(focused.ObservationCount, "record", "records")
+                        + " in this interval across the group"
                 : $"{focus}: being counted");
         }
 
-        lines.Add(lane is null
+        lines.Add(ownerLane is not null
+            ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible lane including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)"
+            : lane is null
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
             : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
         lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
@@ -2321,6 +2383,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(DescendHint));
         OnPropertyChanged(nameof(IntervalLabel));
         OnPropertyChanged(nameof(ShowsMechanismLanes));
+        OnPropertyChanged(nameof(ShowsProcessLanes));
+        OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(OffersEvidenceStep));
         OnPropertyChanged(nameof(HighlightedEdgeKey));

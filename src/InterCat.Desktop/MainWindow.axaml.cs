@@ -260,6 +260,9 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private void ClearTimelineProcessFocus(object? sender, RoutedEventArgs eventArgs) =>
+        workspace.ClearProcessLaneFocus();
+
     private void StartExploring(object? sender, RoutedEventArgs eventArgs) => BeginCapture();
 
     /// <summary>The pointer equivalent of E: one step to the current rung's source records (section 3.2).</summary>
@@ -997,11 +1000,16 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
     {
-        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ShowsMechanismLanes))
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ShowsMechanismLanes)
+            or nameof(WorkspaceViewModel.ShowsProcessLanes))
         {
-            // The same workspace can descend and ascend without replacing DataContext. Release the L0 minimum height
-            // on deeper rungs so their aggregate timeline fills the pane instead of inheriting a long lane scroller.
+            // A rung or asynchronous lane query can change the row count without replacing DataContext.
             TimelineSurface.RefreshLaneLayout();
+        }
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.SelectedProcess)
+            or nameof(WorkspaceViewModel.ShowsProcessLanes))
+        {
+            Dispatcher.UIThread.Post(TimelineSurface.BringSelectedProcessLaneIntoView);
         }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();

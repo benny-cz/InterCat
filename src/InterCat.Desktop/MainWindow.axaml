@@ -452,7 +452,7 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <Grid Grid.Row="3" Margin="0,16,0,0" ColumnDefinitions="Auto,*,Auto">
+        <Grid Grid.Row="3" Margin="0,16,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
           <TextBlock Text="INTERVAL TABLE" Classes="eyebrow" VerticalAlignment="Center" />
           <TextBlock Grid.Column="1" Margin="10,0" Text="{Binding IntervalTableScope}" Classes="muted"
                      FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -468,6 +468,9 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
+          <Button x:Name="GroupTotalsButton" Grid.Column="3" Margin="8,0,0,0" Content="Group totals"
+                  Click="ClearTimelineProcessFocus" IsVisible="{Binding HasSelectedProcessLane}"
+                  AutomationProperties.Name="Clear the selected process lane and show group interval totals" />
         </Grid>
         <Grid Grid.Row="4" ColumnDefinitions="18,160,180,150,150" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Window" Classes="columnHeader" />

@@ -329,6 +329,111 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: a group's process lanes hover, select and name their canonical owners")]
+    public async Task AGroupDrawsExactOwnerLanesWithMachineContext()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        Dispatch();
+
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        Assert.True(workspace.ShowsProcessLanes, workspace.TimelineCaption);
+        Assert.Equal(2, workspace.ProcessLaneDisplay.Count);
+        Assert.Contains("machine context", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Contains("2 process lanes", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(3 * 30 + 54, timeline.MinHeight);
+        Assert.Equal(workspace.TimelineFocusBuckets!.Sum(bucket => bucket.ObservationCount),
+            workspace.ProcessLaneDisplay.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
+
+        foreach (ProcessTimelineLane lane in workspace.ProcessLaneDisplay)
+        {
+            TimelineBucket bucket = lane.Buckets.First(candidate => candidate.ObservationCount > 0);
+            Point at = timeline.TranslatePoint(timeline.PointOf(lane.ProcessId, bucket)!.Value, window)!.Value;
+            window.MouseMove(at);
+            Dispatch();
+            Assert.Equal(bucket, timeline.HoveredBucket);
+            HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+            Assert.Contains("canonically owned", card.Lines[1], StringComparison.Ordinal);
+            Assert.Contains(lane.ProcessId.ToString(), card.Lines[1], StringComparison.Ordinal);
+            Assert.Contains(card.Lines, line => line.Contains("shared scale", StringComparison.Ordinal));
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Assert.Equal(bucket.Interval, workspace.SelectedInterval);
+        }
+
+        ProcessTimelineLane first = workspace.ProcessLaneDisplay[0];
+        TimelineBucket firstBucket = first.Buckets.First(candidate => candidate.ObservationCount > 0);
+        Point lanePoint = timeline.PointOf(first.ProcessId, firstBucket)!.Value;
+        Point label = timeline.TranslatePoint(new(30, lanePoint.Y), window)!.Value;
+        window.MouseDown(label, MouseButton.Left);
+        window.MouseUp(label, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(first.ProcessId, workspace.SelectedProcess?.Id);
+        Assert.True(timeline.MinHeight > 0, "Selecting an owner must not collapse the L1 rows.");
+        TimelineBucket nextOwnerBucket = first.Buckets.First(bucket =>
+            bucket.Interval.StartTicks >= workspace.SelectedInterval!.Value.EndTicks && bucket.ObservationCount > 0);
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(nextOwnerBucket.Interval, workspace.SelectedInterval);
+        workspace.ShowTables = true;
+        Dispatch();
+        Assert.True(workspace.HasSelectedProcessLane);
+        Assert.Equal(firstBucket.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.Intervals.Single(row => row.Interval == firstBucket.Interval).Observations);
+        Assert.Contains("owner records", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Button groupTotals = window.GetControl<Button>("GroupTotalsButton");
+        Assert.True(groupTotals.IsVisible);
+        Assert.True(groupTotals.Bounds.Width > 0 && groupTotals.Bounds.Height > 0);
+        Point clear = groupTotals.TranslatePoint(
+            new Point(groupTotals.Bounds.Width / 2, groupTotals.Bounds.Height / 2), window)!.Value;
+        Assert.True(clear.X >= 0 && clear.X <= window.Bounds.Width,
+            $"Group totals must be reachable in the {window.Bounds.Width:0}-pixel window, at {clear}");
+        Assert.InRange(clear.Y, 0, window.Bounds.Height);
+        window.MouseDown(clear, MouseButton.Left);
+        window.MouseUp(clear, MouseButton.Left);
+        Dispatch();
+        Assert.False(workspace.HasSelectedProcessLane);
+        Assert.Null(workspace.SelectedProcess);
+        Assert.Contains("in focus", workspace.Intervals.Single(row => row.Interval == firstBucket.Interval).Observations,
+            StringComparison.Ordinal);
+
+        workspace.ShowTables = false;
+        Point firstLabel = timeline.TranslatePoint(new(30, lanePoint.Y), window)!.Value;
+        window.MouseDown(firstLabel, MouseButton.Left);
+        window.MouseUp(firstLabel, MouseButton.Left);
+        Assert.Equal(first.ProcessId, workspace.SelectedProcess?.Id);
+        Point contextLabel = timeline.TranslatePoint(
+            new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y), window)!.Value;
+        window.MouseDown(contextLabel, MouseButton.Left);
+        window.MouseUp(contextLabel, MouseButton.Left);
+        Assert.Null(workspace.SelectedProcess);
+        TimeRange extent = timeline.Viewport;
+        timeline.SetViewport(new TimeRange(extent.StartTicks + extent.SpanTicks / 4,
+            extent.EndTicks - extent.SpanTicks / 4));
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Assert.True(workspace.ShowsProcessLanes);
+        Assert.Equal(2, workspace.ProcessLaneDisplay.Count);
+        ProcessTimelineLane zoomedLane = workspace.ProcessLaneDisplay[0];
+        TimelineBucket zoomedBucket = zoomedLane.Buckets.First(candidate => candidate.ObservationCount > 0);
+        Point zoomedAt = timeline.TranslatePoint(timeline.PointOf(zoomedLane.ProcessId, zoomedBucket)!.Value, window)!.Value;
+        window.MouseMove(zoomedAt);
+        Dispatch();
+        Assert.Equal(zoomedBucket, timeline.HoveredBucket);
+        Assert.Contains(Assert.IsType<HoverCard>(timeline.HoverCard).Lines,
+            line => line.Contains("this view's own count", StringComparison.Ordinal));
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
     public void APlainDragPansAndKeysMoveTheViewport()
     {

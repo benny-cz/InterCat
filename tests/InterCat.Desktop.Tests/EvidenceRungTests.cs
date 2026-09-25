@@ -135,7 +135,11 @@ public sealed class EvidenceRungTests
             workspace.TimelineFocusBuckets!.Select(bucket => bucket.Interval));
         Assert.Null(workspace.TimelineDetail);
         Assert.StartsWith("Records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
-        Assert.Contains("in colour, the rest of the machine in grey", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.True(workspace.ShowsProcessLanes);
+        Assert.Equal(members.Length, workspace.ProcessLaneDisplay.Count);
+        Assert.Contains("process lanes · machine context above", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(FocusTotal(workspace), workspace.ProcessLaneDisplay
+            .Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
         Assert.Contains(workspace.Intervals, row => row.Observations.EndsWith(" in focus", StringComparison.Ordinal));
 
         // An instance counts its own records, and a channel both ends' transfers.

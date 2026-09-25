@@ -186,6 +186,35 @@ public sealed class RealSessionGraphTests
                 Assert.All(focus.Select((bucket, index) => (bucket, index)), pair =>
                     Assert.Equal(pair.bucket.ObservationCount, lanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
                 report.AppendLine(CultureInfo.InvariantCulture, $"L1 process lanes: {lanes.Count} exact owner rows");
+                Assert.True(viewModel.ShowsProcessLanes);
+                ScrollViewer laneScroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
+                if (lanes.Count > 12)
+                {
+                    Assert.True(timeline.Bounds.Height > laneScroller.Bounds.Height);
+                    TimeRange beforeWheel = timeline.Viewport;
+                    Point gutter = timeline.TranslatePoint(new(30, 50), window)!.Value;
+                    window.MouseWheel(gutter, new Vector(0, -1));
+                    Dispatch();
+                    Assert.True(laneScroller.Offset.Y > 0);
+                    Assert.Equal(beforeWheel, timeline.Viewport);
+                }
+
+                ProcessTimelineLane observed = lanes.First(lane =>
+                    lane.Buckets.Any(bucket => bucket.ObservationCount > 0));
+                TimelineBucket observedBucket = observed.Buckets.First(bucket => bucket.ObservationCount > 0);
+                Point local = timeline.PointOf(observed.ProcessId, observedBucket)!.Value;
+                laneScroller.Offset = new Vector(laneScroller.Offset.X,
+                    Math.Clamp(local.Y - (laneScroller.Bounds.Height / 2), 0,
+                        Math.Max(0, laneScroller.Extent.Height - laneScroller.Viewport.Height)));
+                Dispatch();
+                Point onOwner = timeline.TranslatePoint(local, window)!.Value;
+                window.MouseMove(onOwner);
+                Dispatch();
+                Assert.Equal(observedBucket, timeline.HoveredBucket);
+                Assert.Contains(observed.ProcessId.ToString(),
+                    Assert.IsType<HoverCard>(timeline.HoverCard).Lines[1], StringComparison.Ordinal);
+                laneScroller.Offset = new Vector(laneScroller.Offset.X, 0);
+                Dispatch();
                 using var carried = new WorkspaceViewModel(snapshot, overview.GraphIdentity,
                     new SessionEvidenceSource(path, overview.SessionId, overview.Generation));
                 Assert.Null(carried.RestoreNavigation(viewModel.CaptureNavigation()));
@@ -211,6 +240,20 @@ public sealed class RealSessionGraphTests
         Assert.Equal(0, Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.GetControl<ListBox>("RungList"))
             .OfType<ScrollViewer>().First().Offset.Y);
         Save(window, "group-open.png");
+
+        if (viewModel.ShowsProcessLanes && viewModel.ProcessLaneDisplay.Count > 12)
+        {
+            ScrollViewer laneScroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
+            ProcessTimelineLane farOwner = viewModel.ProcessLaneDisplay[^1];
+            viewModel.SelectedRung = viewModel.RungRows.First(row => row.Key == farOwner.ProcessId.ToString());
+            Dispatch();
+            Assert.True(laneScroller.Offset.Y > 0, "Selecting a ranked process must reveal its off-screen lane.");
+            viewModel.ClearProcessLaneFocus();
+            Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.GetControl<ListBox>("RungList"))
+                .OfType<ScrollViewer>().First().Offset = new Vector(0, 0);
+            laneScroller.Offset = new Vector(laneScroller.Offset.X, 0);
+            Dispatch();
+        }
 
         // A brush re-counts the drawing; it must not re-cluster it under the hand (§6.4).
         string[] structure = [.. display.Nodes.Select(node => node.Key)];

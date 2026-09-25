@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 121 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 122 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -13,7 +13,7 @@ M0 and its IC-010a capture-impact follow-on are complete on the measured develop
 physical store, commit/recovery, and leases exist, but canonical import reuse, operation/entity checkpointing, and
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
 overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline, and interactive
-L0 mechanism lanes; deeper-rung timeline lanes, the operation view and the steady-state feedback budget are open.
+L0 mechanism lanes and exact L1 process-owner lanes; L2–L5 lanes, the operation view and the steady-state feedback budget are open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -47,21 +47,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes with shared scale, per-lane coverage, hover/time selection, persistent table/step lane focus and keyboard/wheel scrolling, exact bounded L1 process-lane query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Draw and interact with L1 process rows; derive bounded L2–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism and L1 process-owner lanes with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L2–L5 lanes, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 122 — interactive L1 process-owner lanes (§3.2, §6.2, §6.7):** A group now draws one row per
+  canonical owner, plus a separate machine-context row, on one shared visible rate scale with each owner's own
+  coverage. Hover explains exact owner, interval, count and scale; clicking a label selects that process, including
+  offscreen rows reached from the ranked table or graph. The interval table lists the selected owner's buckets;
+  Group totals restores the aggregate. Bracket keys step through that owner's occupied buckets. A 96-row real
+  Explore group passed the opt-in scroll, hover and selection check; a headless 1080×700 case exercises context,
+  table, label, stepping and zoom. **939 passed, 1 skipped** in serial Debug and Release runs.
 - **Revision 121 — exact bounded L1 owner-lane data (§3.2, §6.2):** A multi-instance group focus now counts each
   admitted record into its canonical owner's row in the existing leased timeline scan. Rows partition the exact
   focus on identical columns; each row judges coverage from its own observed mechanisms, including an explicit
   unknown for an empty bucket. The query allocates no more than **200 lanes / 20,000 cells**; over-budget groups
   keep their exact aggregate and a refusal reason rather than dropping marks. Desktop carries rows only with their
   focus across a same-session live publication. A real saved Explore group of **96 svchost.exe instances** produced
-  96 exact owner rows and 137 focused records (105 ms in the opt-in UI run). **Rendering and lane interaction at L1
-  remain open.** One new Application budget test; **938 passed, 1 skipped** in serial Debug and Release runs.
+  96 exact owner rows and 137 focused records (105 ms in the opt-in UI run). Rendering and interaction followed in
+  revision 122. One new Application budget test; **938 passed, 1 skipped** in serial Debug and Release runs.
 - **Revision 120 — keyboard/table access to L0 lanes (§6.2, §6.5, §6.7):** A lane name can now be clicked to focus
   it; the table's keyboard-accessible selector chooses the same focus. The interval table then lists that lane's exact
   buckets and coverage, including zoomed detail, while graph and ranking stay unfiltered. `[`/`]` step only through
@@ -246,12 +253,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Draw the exact L1 process rows now available from revision 121 with bounded scrolling, hover, selection and
-   table access. Then give L2–L5 their own lanes (§3.2's timeline column): channel/peer, channel end, operation and
+1. Give L2–L5 their own lanes (§3.2's timeline column): channel/peer, channel end, operation and
    evidence, within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include
    operation/byte projections where derivations actually support them, and state unavailable where they do not.
-   The focus overlay from revision 112 is the single-lane step toward this; revision 119 provides the L0 renderer. Audit keyboard and
-   screen-reader/UI Automation access to individual lane names and the new selector, and add pin/collapse/search as
+   The focus overlay from revision 112 is the single-lane step toward this; revision 119 provides the L0 renderer
+   and revision 122 the exact L1 rows. Audit keyboard and screen-reader/UI Automation access to individual lane
+   names and the new selector, and add pin/collapse/search as
    the observed lane count requires.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
@@ -268,7 +275,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 121): **938 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 122): **939 passed, 1 skipped, in Debug and Release**, zero failures.
+  Revision 122 adds one UI case and extends the opt-in real-session check, which passed separately in Release.
   - Revision 121 adds one Application lane-budget test (+1), strengthens the focused query partition check and
     exercises 96 owner lanes and same-focus carry on the user's real saved Explore session. A Debug follower test
     failed once while Debug and Release suites ran concurrently; it passed alone and on a serial full Debug rerun.
@@ -328,7 +336,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - The broker/source measurements are on one pre-release Windows build; do not generalize capture overhead or
   capability tier to retail builds. The report is pseudonymized, **not anonymous**: times, counts and workload
   shapes may identify a machine. The detailed export is sensitive. Screen-reader audit is still open.
-- Keep the user-owned untracked `Zip-GitFiles.ps1` and `InterCat.zip` untouched and uncommitted. Before each slice,
+- Keep user-owned untracked files (currently `Zip-GitFiles.ps1`) untouched and uncommitted. Before each slice,
   inspect `git status` and these tables. After each coherent slice, build and run the full suite in both
   configurations: the analyzers treat warnings as errors, and revision 107 shows that an uncompiled slice hides failures.
   Then update this file and the plan if needed, commit and push `main`.
