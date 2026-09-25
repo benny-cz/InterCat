@@ -148,6 +148,23 @@ public sealed class RealSessionGraphTests
         Assert.All(overview.Nodes.Where(node => neighbourhood.Contains(node.Id)),
             node => Assert.NotEqual(GraphNodeKind.Context, display.NodeOf(node.Id)!.Kind));
         Describe(report, "group opened", display);
+
+        // The timeline follows the rung: the group's own records in colour, inside the whole timeline's grey (§3.2).
+        clock.Restart();
+        await viewModel.TimelineDetailReady;
+        Dispatch();
+        Assert.True(viewModel.TimelineShowsFocus, viewModel.TimelineCaption);
+        IReadOnlyList<TimelineBucket> focus = Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(viewModel.TimelineFocusBuckets);
+        IReadOnlyList<TimelineBucket> whole = viewModel.TimelineDetail?.Buckets ?? viewModel.Snapshot.Timeline;
+        Assert.Equal(whole.Select(bucket => bucket.Interval), focus.Select(bucket => bucket.Interval));
+        Assert.All(whole.Zip(focus), pair => Assert.InRange(pair.Second.ObservationCount, 0, pair.First.ObservationCount));
+        report.AppendLine(CultureInfo.InvariantCulture,
+            $"group timeline counted in {clock.ElapsedMilliseconds} ms more: {focus.Sum(bucket => (long)bucket.ObservationCount)} of "
+            + $"{whole.Sum(bucket => (long)bucket.ObservationCount)} records · {viewModel.TimelineCaption}");
+
+        // The opened group's table starts at its first row, whatever row of the machine rung was scrolled to.
+        Assert.Equal(0, Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.GetControl<ListBox>("RungList"))
+            .OfType<ScrollViewer>().First().Offset.Y);
         Save(window, "group-open.png");
 
         // A brush re-counts the drawing; it must not re-cluster it under the hand (§6.4).

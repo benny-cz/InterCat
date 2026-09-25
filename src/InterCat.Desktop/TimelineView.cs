@@ -20,6 +20,10 @@ public sealed class TimelineView : Control
     private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
     private static readonly SolidColorBrush DimBrush = Token(ThemePalette.Surfaces(Mode).Plot);
 
+    /// <summary>A focused rung's rest of the machine: muted ink, so no bar of it is read as a mechanism's hue (§6.6).</summary>
+    private static readonly SolidColorBrush ContextBarBrush =
+        new(ThemeResources.ToColor(ThemePalette.Surfaces(Mode).MutedInk), 0.4);
+
     private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
 
     /// <summary>A press that moves at least this far brushes a range; a shorter one selects the bucket under it.</summary>
@@ -147,7 +151,11 @@ public sealed class TimelineView : Control
                 && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
         TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
         double maximumRate = coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
-        var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate);
+
+        // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
+        // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
+        bool focused = viewModel.TimelineShowsFocus;
+        var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused);
         if (detail is null)
         {
             DrawBuckets(context, viewModel, coarse, scale);
@@ -179,6 +187,11 @@ public sealed class TimelineView : Control
             }
         }
 
+        if (focused && viewModel.TimelineFocusBuckets is { } focus)
+        {
+            DrawFocus(context, focus.Where(bucket => Intersects(bucket.Interval, visible)), scale);
+        }
+
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
@@ -200,9 +213,30 @@ public sealed class TimelineView : Control
     };
 
     private readonly record struct BarScale(
-        TimeRange Visible, double Left, double PlotWidth, double Top, double Bottom, double MaximumRate)
+        TimeRange Visible, double Left, double PlotWidth, double Top, double Bottom, double MaximumRate, bool Focused)
     {
         public double X(long tick) => Left + ViewportMath.PixelAtTick(Visible, tick, PlotWidth);
+
+        /// <summary>A bar for this bucket: its rate's share of the plot, never under 3 px so a lone record stays visible.</summary>
+        public Rect Bar(TimelineBucket bucket)
+        {
+            double x1 = X(Math.Max(bucket.Interval.StartTicks, Visible.StartTicks));
+            double x2 = X(Math.Min(bucket.Interval.EndTicks, Visible.EndTicks));
+            double height = Math.Max(3, (Bottom - Top) * Rate(bucket) / Math.Max(double.Epsilon, MaximumRate));
+            return new(x1, Bottom - height, Math.Max(1, x2 - x1 - 2), height);
+        }
+    }
+
+    /// <summary>A focused rung's own records, each in its bucket's dominant mechanism's hue over the grey of all records.</summary>
+    private static void DrawFocus(DrawingContext context, IEnumerable<TimelineBucket> buckets, BarScale scale)
+    {
+        foreach (TimelineBucket bucket in buckets)
+        {
+            if (bucket.ObservationCount > 0)
+            {
+                context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, scale.Bar(bucket));
+            }
+        }
     }
 
     private static void DrawBuckets(
@@ -218,9 +252,8 @@ public sealed class TimelineView : Control
             {
                 // Coverage and observation are separate facts. A gap or unknown coverage cannot erase records that
                 // were actually seen; the hatch crosses their bar without claiming unseen activity (P1, P26).
-                double height = Math.Max(3, plotHeight * Rate(bucket) / Math.Max(double.Epsilon, scale.MaximumRate));
-                var rectangle = new Rect(x1, scale.Bottom - height, width, height);
-                context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, rectangle);
+                Rect rectangle = scale.Bar(bucket);
+                context.DrawRectangle(scale.Focused ? ContextBarBrush : BrushFor(bucket.DominantMechanism), null, rectangle);
                 if (viewModel.SelectedInterval == bucket.Interval)
                 {
                     context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), rectangle.Inflate(2));

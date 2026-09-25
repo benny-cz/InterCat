@@ -228,6 +228,19 @@ public sealed class LadderKeyboardTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(40, viewModel.RungRows.Count);
         Assert.Equal(0, scroller.Offset.Y);
+
+        // The keyboard path: the table has focus on the scrolled-to row when Enter opens it.
+        viewModel.ReturnTo(0);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        viewModel.SelectedRung = viewModel.RungRows.Single(candidate => candidate.Key == pool.Key);
+        list.ScrollIntoView(viewModel.SelectedRung!);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        list.ContainerFromItem(viewModel.SelectedRung!)?.Focus();
+        Assert.True(scroller.Offset.Y > 0);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
+        Assert.Equal(0, scroller.Offset.Y);
         window.Close();
     }
 

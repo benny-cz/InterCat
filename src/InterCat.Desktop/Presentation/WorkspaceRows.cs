@@ -119,20 +119,29 @@ public static class WorkspaceRowBuilder
 
     /// <summary>
     /// The interval table for the buckets the timeline draws. Each window is stated in the unit its span needs, so a
-    /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way).
+    /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way). A focused rung's count for the same
+    /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2).
     /// </summary>
-    public static IReadOnlyList<IntervalRow> Intervals(IReadOnlyList<TimelineBucket> buckets, ThemeMode mode)
+    public static IReadOnlyList<IntervalRow> Intervals(
+        IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null)
     {
         ArgumentNullException.ThrowIfNull(buckets);
 
+        Dictionary<TimeRange, int>? inFocus = focus?.ToDictionary(bucket => bucket.Interval, bucket => bucket.ObservationCount);
         var rows = new List<IntervalRow>(buckets.Count);
         foreach (TimelineBucket bucket in buckets)
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(bucket.DominantMechanism));
+            string observations = bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture);
+            if (inFocus is not null && inFocus.TryGetValue(bucket.Interval, out int focused))
+            {
+                observations += string.Create(CultureInfo.CurrentCulture, $" · {focused:N0} in focus");
+            }
+
             rows.Add(new(
                 bucket.Interval,
                 WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
-                bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
+                observations,
                 DescribeBytes(bucket.KnownBytes),
                 tokens.Label,
                 tokens.Glyph,

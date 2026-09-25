@@ -51,6 +51,66 @@ public sealed class SessionTimelineTests
             SessionTimelineQuery.Detail(session.Store, interval, SessionTimelineQuery.MaximumColumns + 1));
     }
 
+    [Fact(DisplayName = "§3.2: a focused timeline counts exactly the records its rung's evidence scope reads")]
+    public void AFocusedTimelineCountsWhatItsEvidenceReads()
+    {
+        const int exchanges = 40;
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1)),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2)),
+            .. Enumerable.Range(0, exchanges).SelectMany(index => new[]
+            {
+                Timed(Transfer(10 + (50 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100,
+                    (ulong)(100 + (2 * index))).Between(ClientEnd, ServerEnd)),
+                Timed(Transfer(11 + (50 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
+                    (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd)),
+            }),
+
+            // A one-sided flow elsewhere: a record of the whole timeline that neither focus reads.
+            Timed(Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 3, 300, 8_000)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090")),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        TimeRange extent = overview.Extent!.Value;
+        ProcessNode client = overview.Nodes.Single(node => node.ProcessId == 100);
+        Channel channel = overview.Channels.Single();
+        SessionTimelineDetail whole = SessionTimelineQuery.Detail(session.Store, extent, 16);
+
+        // The client owns its creation and its sends; the channel holds both ends' transfers.
+        foreach ((TimelineFocus focus, int expected) in new[]
+        {
+            (new TimelineFocus(null, [client.Id]), exchanges + 1),
+            (new TimelineFocus(channel.Key, []), 2 * exchanges),
+        })
+        {
+            SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(session.Store, extent, 16, focus);
+
+            // The focus leaves the whole timeline as it is, on the same columns, and never exceeds it.
+            Assert.Equal(whole.Buckets, timeline.Whole.Buckets);
+            Assert.Equal(whole.Buckets.Select(bucket => bucket.Interval), timeline.Focus.Select(bucket => bucket.Interval));
+            Assert.All(whole.Buckets.Zip(timeline.Focus), pair =>
+                Assert.InRange(pair.Second.ObservationCount, 0, pair.First.ObservationCount));
+
+            // Each focus bucket holds exactly the records E lists for the scope inside that bucket.
+            SessionEvidencePage read = SessionEvidenceQuery.ReadScope(session.Store, 10_000, focus.ChannelKey,
+                ownerProcesses: focus.OwnerProcesses.Count == 0 ? null : focus.OwnerProcesses);
+            long[] ticks = [.. read.Records.Select(record => record.Observation.SessionRelativeTicks!.Value / 100)];
+            Assert.Equal(expected, ticks.Length);
+            Assert.All(timeline.Focus, bucket => Assert.Equal(ticks.Count(bucket.Interval.Contains), bucket.ObservationCount));
+            Assert.Equal(expected, timeline.Focus.Sum(bucket => bucket.ObservationCount));
+        }
+
+        // A focus this generation cannot resolve is refused with a reason, never counted as nothing.
+        Assert.Throws<InvalidOperationException>(() => SessionTimelineQuery.Focused(session.Store, extent, 16,
+            new TimelineFocus(null, [new ProcessInstanceId(Guid.Parse("0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9"))])));
+        Assert.Throws<InvalidOperationException>(() => SessionTimelineQuery.Focused(session.Store, extent, 16,
+            new TimelineFocus("tcp:no-such-channel", [])));
+        Assert.Throws<ArgumentException>(() => new TimelineFocus(null, []));
+        Assert.Equal(new TimelineFocus(null, [client.Id, client.Id]).Key, new TimelineFocus(null, [client.Id]).Key);
+    }
+
     [Fact(DisplayName = "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed")]
     public void TheMinimapShowsTheCapturesOwnCoverage()
     {

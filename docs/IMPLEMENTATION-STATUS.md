@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 111 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 112 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -12,8 +12,8 @@ The product contract and milestone gates remain in [the implementation plan](des
 M0 and its IC-010a capture-impact follow-on are complete on the measured development build. M1's journal, profiles,
 physical store, commit/recovery, and leases exist, but canonical import reuse, operation/entity checkpointing, and
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
-overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline; the per-rung
-timeline/operation view and steady-state feedback budget are open. M3–M5 are not complete. Two of §11.3's three sharing
+overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline; per-rung
+timeline lanes, the operation view and the steady-state feedback budget are open. M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
@@ -21,7 +21,8 @@ collapse only under budget pressure. Hubs draw as stars with components apart, e
 and positions survive descents and live publications. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
 Below the machine rung the graph draws only the rung's neighbourhood, and one **Rest of the machine** node counts every
-other process. Double-clicking a relationship's edge opens its channel.
+other process. Double-clicking a relationship's edge opens its channel. The timeline draws in colour the records E would
+list for the rung, over every record in grey.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -44,13 +45,32 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, and §6.7's edge double-click | Per-rung timeline, coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Per-rung timeline lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 112 — the timeline follows the rung (§3.2, §6.2):**
+  - **Focus:** from L1 down, the timeline draws in colour the records E reads from the rung:
+    - L1: the records the group's members own.
+    - L2: the records the instance owns.
+    - L3: the records of the channel's two ends.
+    - L5: its evidence scope.
+  - **Context:** every record stays behind as grey context on one rate scale. The caption names the focus.
+  - **Counting:** `SessionTimelineQuery.Focused` counts the focus in the same pass and on the same columns as the whole
+    timeline, with the evidence rung's own row rules and policy. At the whole extent it uses the overview's columns.
+  - **Interval table:** each window's focus count stands beside its own count.
+  - **Failure:** a focus the generation cannot resolve is named with its reason, and every record is drawn in its hue.
+  - **Live refresh:** a new publication shows the previous zoomed detail and focus counts until its own arrive, so a
+    focused timeline does not blink every publication.
+  - **Fixed:** revision 111's reset of the ranked table's scroll ran after the list's layout. On the sparse import it
+    once left an opened `svchost.exe` scrolled mid-list. The offset now returns to the top before layout, and the
+    real-session test asserts it.
+  - **Tests:**
+    - Each focus bucket equals the records the evidence query returns in its interval.
+    - The per-rung Desktop flow, unresolvable focus, live carry, and the keyboard path of the scroll reset.
 - **Revision 111 — the graph follows the rung (§3.2, §6.3, §6.7):**
   - **Neighbourhoods:**
     - L1 draws the opened group's members and their peers.
@@ -142,10 +162,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Make the rest of each rung follow its focus, as the graph now does: timeline lanes and coverage, numeric ranking
-   and evidence, as one eligible generation/scope bundle. From L1 down, the timeline still shows the whole session's
-   activity. Include operation/byte projections where derivations actually support them, and state unavailable where
-   they do not.
+1. Give each rung its own timeline lanes (§3.2's timeline column): a lane per group, instance, or channel end, within
+   §6.2's mark budget. Coverage should be judged on the focus's own mechanisms. Include operation/byte projections
+   where derivations actually support them, and state unavailable where they do not. The focus overlay from revision
+   112 is the single-lane step toward this.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
@@ -160,13 +180,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 111): **911 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 112): **915 passed, 1 skipped, in Debug and Release**, zero failures.
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).
   - Revision 110 added hover, pin, label-slot, half-open, keyboard, drag and R3 tests.
   - Revision 111 added one Application, three Desktop and one UI test (+5).
+  - Revision 112 added one Application and three Desktop tests (+4).
   - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
     variable it reports skipped, never passed.
+- Revision 112 real check: both sessions passed in Release, and the frames were inspected.
+  - Dense session: opening `worker.exe` colours 2,866 of 17,350 records, all inside the workers' burst early in the
+    session, counted 35 ms after the group opened.
+  - Sparse import: `svchost.exe` owns 98 of 852 records, counted in 8 ms.
 - Revision 111 real check: both sessions passed the opt-in test in Release, and the frames were inspected.
   - Dense session: opening `worker.exe` now draws 29 nodes and 27 edges, a 27-worker star around its `queue.exe` hub.
     The header reads "worker.exe and its peers: 28 processes drawn · 593 more in Rest of the machine". The context node

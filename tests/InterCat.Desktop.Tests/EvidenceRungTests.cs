@@ -105,6 +105,133 @@ public sealed class EvidenceRungTests
         Assert.StartsWith("Every admitted record", workspace.EvidenceScopeText, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§3.2: a rung's timeline counts the records E reads from it, over every record in the session")]
+    public async Task EachRungsTimelineCountsWhatItsEvidenceReads()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        TimeRange extent = workspace.Snapshot.Extent;
+
+        // The view asks for the whole extent. The machine rung has no focus, and the overview's buckets need no count.
+        workspace.RequestTimelineDetail(extent, 80);
+        await workspace.TimelineDetailReady;
+        Assert.False(workspace.TimelineShowsFocus);
+        Assert.Null(workspace.TimelineFocusBuckets);
+        Assert.StartsWith("Observed records", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // A group counts the records its members own, on the overview's own columns, beside the whole timeline.
+        DescendTo(workspace, client.GroupKey);
+        Assert.True(workspace.TimelineShowsFocus);
+        Assert.StartsWith("Counting records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
+        await workspace.TimelineDetailReady;
+        ProcessInstanceId[] members = [.. workspace.Snapshot.Processes
+            .Where(node => node.GroupKey == client.GroupKey).Select(node => node.Id)];
+        Assert.Equal(SessionEvidenceQuery.ReadScope(session.Store, 10_000, ownerProcesses: members).Records.Count,
+            FocusTotal(workspace));
+        Assert.Equal(workspace.Snapshot.Timeline.Select(bucket => bucket.Interval),
+            workspace.TimelineFocusBuckets!.Select(bucket => bucket.Interval));
+        Assert.Null(workspace.TimelineDetail);
+        Assert.StartsWith("Records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Contains("in colour, the rest of the machine in grey", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Contains(workspace.Intervals, row => row.Observations.EndsWith(" in focus", StringComparison.Ordinal));
+
+        // An instance counts its own records, and a channel both ends' transfers.
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+        Assert.Equal(Exchanges + 1, FocusTotal(workspace));
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        Assert.Equal(2 * Exchanges, FocusTotal(workspace));
+
+        // Zoomed, the whole timeline and the focus are counted on the viewport's own columns.
+        workspace.RequestTimelineDetail(new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2)), 20);
+        await workspace.TimelineDetailReady;
+        SessionTimelineDetail detail = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.Equal(detail.Buckets.Select(bucket => bucket.Interval),
+            workspace.TimelineFocusBuckets!.Select(bucket => bucket.Interval));
+        Assert.All(detail.Buckets.Zip(workspace.TimelineFocusBuckets!), pair =>
+            Assert.InRange(pair.Second.ObservationCount, 0, pair.First.ObservationCount));
+
+        // The evidence rung reads the channel it was reached from, so its timeline keeps that count without a new one.
+        IReadOnlyList<TimelineBucket> channelFocus = workspace.TimelineFocusBuckets!;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        await workspace.TimelineDetailReady;
+        Assert.Same(channelFocus, workspace.TimelineFocusBuckets);
+        Assert.StartsWith("Paired TCP channel", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // The machine rung has no focus and draws every record in its hue again.
+        workspace.ReturnTo(0);
+        await workspace.TimelineDetailReady;
+        Assert.False(workspace.TimelineShowsFocus);
+        Assert.Null(workspace.TimelineFocusBuckets);
+        Assert.NotNull(workspace.TimelineDetail);
+        Assert.StartsWith("Observed records", workspace.TimelineCaption, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§3.2: a focus the session cannot count says why and falls back to every record")]
+    public async Task AFocusThatCannotBeCountedSaysWhy()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+
+        // The records are read from a session that does not hold the process this view focuses.
+        using var other = new TemporarySession();
+        Publish(other.Store, [Timed(Lifecycle(1, ObservationKind.Create, 900, 1))]);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(other.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        Assert.False(workspace.TimelineShowsFocus);
+        Assert.Null(workspace.TimelineFocusBuckets);
+        Assert.StartsWith("Records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Contains("could not be counted: The focused process instance is not in this generation.",
+            workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.EndsWith("Every observed record is shown.", workspace.TimelineCaption, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§3.2: a live refresh keeps the rung's timeline counts until its own arrive, and only for the same focus")]
+    public async Task ALiveRefreshKeepsTheTimelineFocusUntilItsOwnCountArrives()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel first = Open(session);
+        ProcessNode client = first.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        first.RequestTimelineDetail(first.Snapshot.Extent, 80);
+        DescendTo(first, client.GroupKey);
+        DescendTo(first, client.Id.ToString());
+        await first.TimelineDetailReady;
+        IReadOnlyList<TimelineBucket> counted = first.TimelineFocusBuckets!;
+
+        // The next publication restores the rung, shows the earlier counts at once, and says nothing is missing.
+        using WorkspaceViewModel next = Open(session);
+        Assert.Null(next.RestoreNavigation(first.CaptureNavigation()));
+        next.AdoptTimeline(first.CarryTimeline());
+        Assert.Same(counted, next.TimelineFocusBuckets);
+        next.RequestTimelineDetail(next.Snapshot.Extent, 80);
+        Assert.DoesNotContain("Counting", next.TimelineCaption, StringComparison.Ordinal);
+        await next.TimelineDetailReady;
+        Assert.NotSame(counted, next.TimelineFocusBuckets);
+        Assert.Equal(Exchanges + 1, FocusTotal(next));
+
+        // A publication shown at another rung does not adopt counts that describe other records.
+        using WorkspaceViewModel machine = Open(session);
+        machine.AdoptTimeline(first.CarryTimeline());
+        Assert.Null(machine.TimelineFocusBuckets);
+        Assert.False(machine.TimelineShowsFocus);
+    }
+
+    private static int FocusTotal(WorkspaceViewModel workspace) =>
+        Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineFocusBuckets).Sum(bucket => bucket.ObservationCount);
+
     [Fact]
     public async Task ASelectedProcessAtMachineAndAChannelFromTheListScopeTheRungVisibly()
     {

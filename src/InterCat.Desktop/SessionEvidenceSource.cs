@@ -35,6 +35,16 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             columns,
             cancellationToken), cancellationToken);
 
+    /// <summary>The timeline over a viewport together with the records a focused rung reads, counted in one pass.</summary>
+    public Task<SessionFocusedTimeline> FocusedTimelineAsync(
+        TimeRange interval, int columns, TimelineFocus focus, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionTimelineQuery.Focused(
+            Store(),
+            interval,
+            columns,
+            focus,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>
     /// The session's store, opened once and shared by every read. Opening verifies the pointer, the manifest and the
     /// directory, which costs several times more than a timeline or page read itself; each read still leases whichever

@@ -28,6 +28,60 @@ public sealed record SessionTimelineDetail(
     TimeRange Interval,
     IReadOnlyList<TimelineBucket> Buckets);
 
+/// <summary>
+/// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
+/// paired channel, the rows canonically owned by a set of process instances, or both at once. A rung's timeline therefore
+/// counts what E lists for it, never a guessed superset.
+/// </summary>
+public sealed class TimelineFocus
+{
+    public TimelineFocus(string? channelKey, IReadOnlyCollection<ProcessInstanceId> ownerProcesses)
+    {
+        ArgumentNullException.ThrowIfNull(ownerProcesses);
+        if (channelKey is not null && string.IsNullOrWhiteSpace(channelKey))
+        {
+            throw new ArgumentException("A channel key cannot be empty.", nameof(channelKey));
+        }
+
+        if (ownerProcesses.Any(owner => owner.Value == Guid.Empty))
+        {
+            throw new ArgumentException("An owner process needs a non-empty instance ID.", nameof(ownerProcesses));
+        }
+
+        if (channelKey is null && ownerProcesses.Count == 0)
+        {
+            throw new ArgumentException("A timeline focus names a channel, owner processes or both; the whole session is no focus.",
+                nameof(ownerProcesses));
+        }
+
+        ChannelKey = channelKey;
+        OwnerProcesses = Array.AsReadOnly([.. ownerProcesses.Distinct().OrderBy(owner => owner.Value.ToString("N"), StringComparer.Ordinal)]);
+        Key = $"channel:{channelKey?.Length ?? 0}:{channelKey}|owners:"
+            + string.Join(",", OwnerProcesses.Select(owner => owner.Value.ToString("N")));
+    }
+
+    public string? ChannelKey { get; }
+
+    /// <summary>The owner instances, distinct and in a stable order.</summary>
+    public IReadOnlyList<ProcessInstanceId> OwnerProcesses { get; }
+
+    /// <summary>What the focus reads, as one comparable string: two focuses with the same key count the same rows.</summary>
+    public string Key { get; }
+
+    /// <summary>The focus of an evidence scope; null for the whole session or for a scope that cannot be read.</summary>
+    public static TimelineFocus? Of(EvidenceScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return scope.Problem is null && !scope.IsWholeSession ? new(scope.ChannelKey, scope.OwnerProcesses) : null;
+    }
+}
+
+/// <summary>
+/// A viewport's timeline and the part of it one focus reads, counted in one pass into the same columns, so each focus
+/// bucket lies inside the whole-timeline bucket of the same interval and never exceeds it.
+/// </summary>
+public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOnlyList<TimelineBucket> Focus);
+
 public static class SessionTimelineQuery
 {
     /// <summary>A viewport never needs more columns than the minimap holds for the whole session.</summary>
@@ -42,38 +96,178 @@ public static class SessionTimelineQuery
         SessionStore store,
         TimeRange interval,
         int columns,
+        CancellationToken cancellationToken = default) =>
+        Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, cancellationToken).Whole;
+
+    /// <summary>
+    /// <see cref="Detail"/> together with the rows <paramref name="focus"/> reads, under the evidence rung's own rules and
+    /// policy. A focus this generation cannot resolve - an instance it does not hold, a channel it does not admit
+    /// uniquely - is refused with the evidence rung's reason rather than counted as nothing.
+    /// </summary>
+    public static SessionFocusedTimeline Focused(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        TimelineFocus focus,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(focus);
+        (SessionTimelineDetail whole, TimelineBucket[]? focused) = Count(store, interval, columns, focus, policy, cancellationToken);
+        return new(whole, Array.AsReadOnly(focused!));
+    }
+
+    private static (SessionTimelineDetail Whole, TimelineBucket[]? Focus) Count(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        TimelineFocus? focus,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, MaximumColumns);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its timeline cannot be placed.");
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
+            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
-        foreach (string name in SessionSegments.Names(manifest))
+        TimelineColumns? focused = rows is null ? null : new TimelineColumns(interval, columns, tallyMechanisms: true);
+        foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, name);
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            FocusRows.SegmentRows? inFocus = null;
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (times.SignedAt(row) is { } nanoseconds && counted.ColumnOf(nanoseconds / 100) is { } column)
+                if (times.SignedAt(row) is not { } nanoseconds || counted.ColumnOf(nanoseconds / 100) is not { } column)
                 {
-                    counted.Add(column, (Mechanism)mechanisms.UnsignedAt(row)!.Value);
+                    continue;
+                }
+
+                var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                counted.Add(column, mechanism);
+                if (rows is not null)
+                {
+                    // Bindings are derived only for a segment that has a row inside the interval.
+                    inFocus ??= rows.Of(segment);
+                    if (inFocus.Includes(row)) focused!.Add(column, mechanism);
                 }
             }
         }
 
-        return new(
-            manifest.SessionId,
-            manifest.Generation,
-            interval,
-            Array.AsReadOnly(counted.Buckets(SessionSegments.CoverageLedger(store.Root, manifest), clock)));
+        CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
+        return (
+            new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly(counted.Buckets(coverage, clock))),
+            focused?.Buckets(coverage, clock));
+    }
+}
+
+/// <summary>
+/// A <see cref="TimelineFocus"/> resolved against one leased generation, testing rows by the evidence rung's rules
+/// (<see cref="SessionEvidenceQuery"/>): a channel keeps the rows of its one admitted paired incarnation, and owner
+/// processes keep the rows canonically bound to one of them and admitted under the policy.
+/// </summary>
+internal sealed class FocusRows
+{
+    private readonly ProcessInstanceIndex? processes;
+    private readonly TransportRelationIndex? relations;
+    private readonly HashSet<int> owners;
+    private readonly int? channel;
+    private readonly EvidencePolicy policy;
+
+    private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners, int? channel,
+        EvidencePolicy policy)
+    {
+        this.processes = processes;
+        this.relations = relations;
+        this.owners = owners;
+        this.channel = channel;
+        this.policy = policy;
+    }
+
+    public static FocusRows Resolve(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        SegmentReaderV1[] segments,
+        SourceClockDescriptor clock,
+        TimelineFocus focus,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
+            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        ProcessInstanceIndex? processes = null;
+        HashSet<int> owners = [];
+        if (focus.OwnerProcesses.Count > 0)
+        {
+            processes = derivation.Processes(segments, clock, fields, cancellationToken);
+            var indexes = new Dictionary<ProcessInstanceId, int>(processes.Instances.Count);
+            for (int index = 0; index < processes.Instances.Count; index++)
+            {
+                indexes.TryAdd(processes.Instances[index].Id, index);
+            }
+
+            foreach (ProcessInstanceId owner in focus.OwnerProcesses)
+            {
+                if (!indexes.TryGetValue(owner, out int index))
+                {
+                    throw new InvalidOperationException(focus.OwnerProcesses.Count == 1
+                        ? "The focused process instance is not in this generation."
+                        : "A process instance of the focused group is not in this generation.");
+                }
+
+                owners.Add(index);
+            }
+        }
+
+        TransportRelationIndex? relations = null;
+        int? channel = null;
+        if (focus.ChannelKey is { } key)
+        {
+            relations = derivation.Relations(segments, clock, fields, cancellationToken);
+            TransportRelation[] matching = [.. relations.Relations.Where(relation =>
+                relation.Mechanism == Mechanism.Tcp && relation.StableKey == key
+                && SessionOverviewProjector.Admitted(relation.Strength, policy))];
+            if (matching.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    "The focused paired TCP channel is not uniquely admitted in this generation and evidence policy.");
+            }
+
+            channel = matching[0].Channel;
+        }
+
+        return new(processes, relations, owners, channel, policy);
+    }
+
+    /// <summary>The row test for one segment, with the bindings it needs derived once.</summary>
+    public SegmentRows Of(SegmentReaderV1 segment) => new(
+        this,
+        channel is null ? null : relations!.ChannelsOf(segment),
+        owners.Count == 0 ? null : processes!.OwnersOf(segment));
+
+    internal sealed class SegmentRows(FocusRows scope, ChannelBinding[]? channels, ProcessBinding[]? bindings)
+    {
+        public bool Includes(int row)
+        {
+            if (channels is not null && channels[row].Channel != scope.channel)
+            {
+                return false;
+            }
+
+            return bindings is null
+                || (scope.owners.Contains(bindings[row].Instance) && bindings[row].IsAdmittedUnder(scope.policy));
+        }
     }
 }
 

@@ -27,6 +27,15 @@ public sealed record WorkspaceNavigationMemento(
     bool ShowTables,
     string? SelectedGraphAggregate = null);
 
+/// <summary>
+/// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
+/// for, by that focus's key. The next publication of the same session shows them until its own counts arrive.
+/// </summary>
+public sealed record TimelineCarry(
+    SessionTimelineDetail? Detail,
+    string? FocusKey,
+    IReadOnlyList<TimelineBucket>? Focus);
+
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly GraphLayoutScheduler graphLayout;
@@ -81,8 +90,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private string? intervalProblem;
     private IReadOnlyList<RelationshipRow> relationships;
     private CancellationTokenSource? timelineQuery;
-    private (TimeRange Viewport, int Columns)? requestedTimeline;
+
+    // The count the timeline last asked for, and the viewport and columns the view last drew, which a new rung replays
+    // with its own focus.
+    private (TimeRange Viewport, int Columns, string? Focus)? requestedTimeline;
+    private (TimeRange Viewport, int Columns)? drawnTimeline;
     private SessionTimelineDetail? timelineDetail;
+
+    // The rung's timeline focus: what E would read from it, counted beside the whole timeline (§3.2).
+    private TimelineFocus? timelineFocus;
+    private string? timelineFocusDescription;
+    private IReadOnlyList<TimelineBucket>? timelineFocusBuckets;
+    private bool timelineFocusLoading;
+    private string? timelineFocusProblem;
     private IReadOnlyList<IntervalRow> intervals;
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
@@ -289,73 +309,197 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public void RequestTimelineDetail(TimeRange viewport, int columns)
     {
         columns = Math.Clamp(columns, 1, SessionTimelineQuery.MaximumColumns);
-        if (disposed || requestedTimeline == (viewport, columns))
+        if (disposed)
         {
             return;
         }
 
-        requestedTimeline = (viewport, columns);
+        drawnTimeline = (viewport, columns);
+        TimeRange extent = wholeSnapshot.Extent;
+        bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
+        if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
+        {
+            // At the whole extent the focus is counted on the overview's own columns, so each focus bar stands inside
+            // the bar drawn for the same interval.
+            viewport = extent;
+            columns = wholeSnapshot.Timeline.Count;
+        }
+
+        (TimeRange, int, string?) request = (viewport, columns, timelineFocus?.Key);
+        if (requestedTimeline == request)
+        {
+            return;
+        }
+
+        requestedTimeline = request;
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
-        TimeRange extent = wholeSnapshot.Extent;
-        if (evidenceSource is null || (viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks))
+        if (evidenceSource is null || (whole && timelineFocus is null))
         {
-            SetTimelineDetail(null);
+            SetTimelineDetail(null, null);
             TimelineDetailReady = Task.CompletedTask;
             return;
         }
 
         var query = new CancellationTokenSource();
         timelineQuery = query;
-        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, query);
+        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, whole, timelineFocus, query);
     }
 
     private async Task LoadTimelineDetailAsync(
-        SessionEvidenceSource source, TimeRange viewport, int columns, CancellationTokenSource query)
+        SessionEvidenceSource source,
+        TimeRange viewport,
+        int columns,
+        bool whole,
+        TimelineFocus? focus,
+        CancellationTokenSource query)
     {
+        if (focus is not null)
+        {
+            SetTimelineFocusState(loading: true, problem: null);
+        }
+
         try
         {
-            SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token);
+            if (focus is null)
+            {
+                SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token);
+                if (!disposed && ReferenceEquals(timelineQuery, query))
+                {
+                    SetTimelineDetail(detail.SessionId == source.SessionId ? detail : null, null);
+                }
+
+                return;
+            }
+
+            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token);
             if (!disposed && ReferenceEquals(timelineQuery, query))
             {
-                SetTimelineDetail(detail.SessionId == source.SessionId ? detail : null);
+                bool sameSession = counted.Whole.SessionId == source.SessionId;
+
+                // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
+                SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null);
+                SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
             }
         }
         catch (OperationCanceledException) when (query.IsCancellationRequested)
         {
-            // A newer viewport or a closed workspace superseded this count.
+            // A newer viewport, a new rung or a closed workspace superseded this count.
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
             if (!disposed && ReferenceEquals(timelineQuery, query))
             {
-                SetTimelineDetail(null);
+                SetTimelineDetail(null, null);
+                if (focus is not null)
+                {
+                    SetTimelineFocusState(loading: false, exception.Message);
+                }
             }
         }
     }
 
-    private void SetTimelineDetail(SessionTimelineDetail? detail)
+    private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus)
     {
-        if (ReferenceEquals(timelineDetail, detail))
+        if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus))
         {
             return;
         }
 
         timelineDetail = detail;
-        intervals = WorkspaceRowBuilder.Intervals(detail?.Buckets ?? wholeSnapshot.Timeline, ThemeMode.Dark);
-        if (selectedIntervalRow is { } row && !intervals.Contains(row))
+        timelineFocusBuckets = focus;
+        intervals = WorkspaceRowBuilder.Intervals(detail?.Buckets ?? wholeSnapshot.Timeline, ThemeMode.Dark, focus);
+        if (selectedIntervalRow is { } row)
         {
-            // The analysis interval stays selected; only the table row that named it is gone at this resolution.
-            selectedIntervalRow = null;
+            // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
+            // only a row gone at a new resolution is dropped.
+            selectedIntervalRow = intervals.FirstOrDefault(candidate => candidate.Interval == row.Interval);
             OnPropertyChanged(nameof(SelectedIntervalRow));
         }
 
         OnPropertyChanged(nameof(TimelineDetail));
+        OnPropertyChanged(nameof(TimelineFocusBuckets));
         OnPropertyChanged(nameof(Intervals));
         OnPropertyChanged(nameof(IntervalTableScope));
     }
+
+    private void SetTimelineFocusState(bool loading, string? problem)
+    {
+        if (timelineFocusLoading == loading && timelineFocusProblem == problem)
+        {
+            return;
+        }
+
+        timelineFocusLoading = loading;
+        timelineFocusProblem = problem;
+        OnPropertyChanged(nameof(TimelineCaption));
+        OnPropertyChanged(nameof(TimelineShowsFocus));
+    }
+
+    /// <summary>
+    /// The records the rung's timeline draws in colour: what E reads from this rung (§3.2), so a group's timeline shows
+    /// its members' records, an instance its own and a channel its two ends'. The machine rung, a rung whose filters were
+    /// removed and a workspace with no published session have no focus, and draw every record in its mechanism's hue.
+    /// </summary>
+    private void UpdateTimelineFocus()
+    {
+        EvidenceScope scope = EvidenceScopes.Resolve(wholeSnapshot, ladder.Current with { Viewport = wholeSnapshot.Extent });
+        TimelineFocus? focus = evidenceSource is null ? null : TimelineFocus.Of(scope);
+        if (focus?.Key == timelineFocus?.Key)
+        {
+            return;
+        }
+
+        timelineFocus = focus;
+        timelineFocusDescription = focus is null ? null : scope.Description;
+        timelineFocusLoading = false;
+        timelineFocusProblem = null;
+
+        // The previous focus's counts describe other records; the whole timeline beside them is still true.
+        SetTimelineDetail(timelineDetail, null);
+        OnPropertyChanged(nameof(TimelineCaption));
+        OnPropertyChanged(nameof(TimelineShowsFocus));
+        if (drawnTimeline is { } drawn)
+        {
+            RequestTimelineDetail(drawn.Viewport, drawn.Columns);
+        }
+    }
+
+    /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
+    public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets);
+
+    /// <summary>
+    /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
+    /// refresh does not blink the timeline back to coarse bars or drop the focus's colour for the length of a count.
+    /// The focus counts are kept only for the same focus; a stand-in is replaced, never merged.
+    /// </summary>
+    public void AdoptTimeline(TimelineCarry carry)
+    {
+        ArgumentNullException.ThrowIfNull(carry);
+        IReadOnlyList<TimelineBucket>? focus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key ? carry.Focus : null;
+        SetTimelineDetail(carry.Detail, focus);
+        OnPropertyChanged(nameof(TimelineCaption));
+    }
+
+    /// <summary>
+    /// The focus's counts, one per bucket of the whole timeline drawn over the same interval: the overview's buckets at
+    /// the whole extent, the zoomed detail's when zoomed. Null at a rung without a focus and until its count arrives.
+    /// </summary>
+    public IReadOnlyList<TimelineBucket>? TimelineFocusBuckets => timelineFocusBuckets;
+
+    /// <summary>Whether the timeline draws the rung's focus in colour over the rest of the machine in grey.</summary>
+    public bool TimelineShowsFocus => timelineFocus is not null && timelineFocusProblem is null;
+
+    /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
+    public string TimelineCaption => timelineFocusDescription is not { } focus
+        ? "Observed records · Shift+drag brushes a range · unknown stays unknown"
+        : timelineFocusProblem is { } problem
+            ? $"{focus} could not be counted: {problem.TrimEnd('.')}. Every observed record is shown."
+            : timelineFocusLoading && timelineFocusBuckets is null
+                ? $"Counting {char.ToLowerInvariant(focus[0])}{focus[1..]}… · the rest of the machine in grey"
+                : $"{focus} in colour, the rest of the machine in grey · Shift+drag brushes a range";
 
     /// <summary>Whether the ranking is scoped to the brushed interval rather than the whole session.</summary>
     public bool IsRankedWithinInterval => scopedSnapshot is not null;
@@ -1876,6 +2020,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         // A group selected by its row is left with that row; a descent into it makes it the ladder's focus instead.
         selectedGroupKey = null;
         RefreshGraphDisplay();
+        UpdateTimelineFocus();
         SyncEvidence();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));

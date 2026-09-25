@@ -1,8 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -794,6 +796,13 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             CaptureDetail.Text += " " + navigationNotice;
         }
+
+        if (savedNavigation is not null)
+        {
+            // The timeline keeps what it drew until this generation's own counts replace it, as the graph keeps its layout.
+            replacement.AdoptTimeline(workspace.CarryTimeline());
+        }
+
         workspace.PropertyChanged -= OnWorkspaceChanged;
         workspace.Dispose();
         workspace = replacement;
@@ -937,7 +946,7 @@ public sealed partial class MainWindow : Window, IDisposable
             // The user moved to another rung. Its table starts at its busiest rows, or at the row it selected, never at
             // the scroll offset of the rung it left, which would open it part-way down with its first row cut off. A
             // publication restores navigation before this window listens, so live updates never move the table.
-            Dispatcher.UIThread.Post(ShowRankedTableStart);
+            ShowRankedTableStart();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration) && !workspace.HoldsGeneration
@@ -951,20 +960,23 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    /// <summary>
+    /// The new rows are not laid out yet. The offset returns to the top at once, before the layout pass would clamp the
+    /// old offset against the new rows. A selected row is brought into view once it has a place.
+    /// </summary>
     private void ShowRankedTableStart()
     {
-        if (RungList.ItemCount == 0)
+        if (RungList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } scroller)
         {
-            return;
+            scroller.Offset = new Vector(scroller.Offset.X, 0);
         }
 
-        if (RungList.SelectedItem is { } selected)
+        if (RungList.SelectedItem is not null)
         {
-            RungList.ScrollIntoView(selected);
-        }
-        else
-        {
-            RungList.ScrollIntoView(0);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (RungList.SelectedItem is { } selected) RungList.ScrollIntoView(selected);
+            }, DispatcherPriority.Background);
         }
     }
 
