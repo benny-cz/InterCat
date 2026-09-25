@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 112 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 113 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -22,7 +22,7 @@ and positions survive descents and live publications. Graph marks now explain th
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
 Below the machine rung the graph draws only the rung's neighbourhood, and one **Rest of the machine** node counts every
 other process. Double-clicking a relationship's edge opens its channel. The timeline draws in colour the records E would
-list for the rung, over every record in grey.
+list for the rung, over every record in grey. A timeline bucket explains itself on hover, as graph marks do.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -52,6 +52,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 113 — timeline hover (§6.2):**
+  - **Hover:** a timeline bucket under the pointer is outlined and explained, and hover never selects or brushes. A
+    press removes the card.
+  - **Card contents:** the bucket's half-open interval and record count; the count's basis, unit, domain and
+    accounting; the rung's focus count inside it; its rate against the busiest visible bar; what is unmeasured, which
+    for a records timeline is only records with no session time; bytes; coverage; its resolution and generation; and
+    whether a click would make it the analysis interval.
+  - **Hover layer:** one window-level layer, which takes no input, now draws both the graph's and the timeline's cards,
+    using a shared painter. At the minimum window a complete card is taller than the timeline pane and would otherwise
+    be clipped. `GraphHoverCard` became `HoverCard`.
+  - **Tests:** the card contract on a real session's focused rung, and a UI test at 1080×700. It checks that the card
+    lies whole inside the window, that hover selects nothing, and that the axis gutter shows no card.
 - **Revision 112 — the timeline follows the rung (§3.2, §6.2):**
   - **Focus:** from L1 down, the timeline draws in colour the records E reads from the rung:
     - L1: the records the group's members own.
@@ -175,17 +187,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 5. Graph follow-ups with no dependents:
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
-   - Hover for the timeline, which §6.2's contract also covers.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 112): **915 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 113): **917 passed, 1 skipped, in Debug and Release**, zero failures.
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).
   - Revision 110 added hover, pin, label-slot, half-open, keyboard, drag and R3 tests.
   - Revision 111 added one Application, three Desktop and one UI test (+5).
   - Revision 112 added one Application and three Desktop tests (+4).
+  - Revision 113 added one Desktop and one UI hover test (+2).
   - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
     variable it reports skipped, never passed.
 - Revision 112 real check: both sessions passed in Release, and the frames were inspected.

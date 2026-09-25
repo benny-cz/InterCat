@@ -10,7 +10,7 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
-public sealed class TimelineView : Control
+public sealed class TimelineView : Control, IHoverCardSource
 {
     private const ThemeMode Mode = ThemeMode.Dark;
 
@@ -38,6 +38,14 @@ public sealed class TimelineView : Control
 
     /// <summary>How long the viewport must rest before the timeline asks for its own resolution (§6.2, P25).</summary>
     private static readonly TimeSpan DetailSettle = TimeSpan.FromMilliseconds(150);
+
+    private static readonly Pen HoverPen = new(Token(ThemePalette.Surfaces(Mode).Ink), 1.5);
+
+    // Hover (§6.2): the tick under the pointer and where the pointer is. The card is described from the bucket drawn there
+    // at each frame, so it follows a count that arrives while the pointer rests. Hover never selects or brushes.
+    private long? hoverTick;
+    private Point hoverPoint;
+    private double peakRate;
 
     private readonly DispatcherTimer detailTimer;
     private TimeRange? viewport;
@@ -151,6 +159,7 @@ public sealed class TimelineView : Control
                 && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
         TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
         double maximumRate = coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
+        peakRate = maximumRate;
 
         // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
@@ -198,6 +207,44 @@ public sealed class TimelineView : Control
         string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
         DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
         DrawText(context, RateText(maximumRate * WorkspaceTime.TicksPerSecond), new(4, top - 4));
+
+        if (HoveredBucket is { } hovered)
+        {
+            // The hovered bucket is outlined in ink over its whole column, lighter than the selection's accent.
+            double x1 = scale.X(Math.Max(hovered.Interval.StartTicks, visible.StartTicks));
+            double x2 = scale.X(Math.Min(hovered.Interval.EndTicks, visible.EndTicks));
+            using (context.PushOpacity(0.5))
+            {
+                context.DrawRectangle(Brushes.Transparent, HoverPen, new Rect(x1 - 1, top, Math.Max(2, x2 - x1), bottom - top));
+            }
+        }
+    }
+
+    /// <summary>The bucket drawn under the pointer, if it rests on the plot; hover never changes selection (§6.4).</summary>
+    internal TimelineBucket? HoveredBucket => hoverTick is { } tick && DataContext is WorkspaceViewModel viewModel
+        ? BucketAt(viewModel, tick)
+        : null;
+
+    /// <summary>The card the hovered bucket draws, as the view model describes it against the visible peak.</summary>
+    public HoverCard? HoverCard => HoveredBucket is { } bucket && DataContext is WorkspaceViewModel viewModel
+        ? viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond)
+        : null;
+
+    /// <inheritdoc />
+    public Point HoverPoint => hoverPoint;
+
+    /// <inheritdoc />
+    public event EventHandler? HoverChanged;
+
+    /// <summary>Where on the plot a bucket's column is, in this control's coordinates, for pointing at it.</summary>
+    internal Point? PointOf(TimelineBucket bucket)
+    {
+        ArgumentNullException.ThrowIfNull(bucket);
+        TimeRange visible = Viewport;
+        if (!Intersects(bucket.Interval, visible)) return null;
+        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
+        return new(PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
+            Math.Max(24, Bounds.Height - 40));
     }
 
     /// <summary>Records per presentation tick: what a bar's height states, comparable across bucket widths.</summary>
@@ -388,6 +435,13 @@ public sealed class TimelineView : Control
         }
 
         PointerPoint point = e.GetCurrentPoint(this);
+        if (hoverTick is not null)
+        {
+            // A press begins a gesture; its card would describe a bucket the gesture is about to change.
+            hoverTick = null;
+            HoverChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         pressX = point.Position.X;
         brushing = e.KeyModifiers.HasFlag(KeyModifiers.Shift) || point.Properties.IsMiddleButtonPressed;
         moved = false;
@@ -401,8 +455,24 @@ public sealed class TimelineView : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (brushAnchor is null || DataContext is not WorkspaceViewModel viewModel)
+        if (DataContext is not WorkspaceViewModel viewModel)
         {
+            return;
+        }
+
+        if (brushAnchor is null)
+        {
+            // No press: the pointer only explains the bucket under it, and the card follows it across the plot.
+            Point position = e.GetPosition(this);
+            long? tick = OnPlot(position) ? TickAt(position.X) : null;
+            if (tick != hoverTick || (tick is not null && position != hoverPoint))
+            {
+                hoverTick = tick;
+                hoverPoint = position;
+                InvalidateVisual();
+                HoverChanged?.Invoke(this, EventArgs.Empty);
+            }
+
             return;
         }
 
@@ -463,6 +533,21 @@ public sealed class TimelineView : Control
         (viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
             ? detail.Buckets
             : viewModel.Snapshot.Timeline).FirstOrDefault(candidate => candidate.Interval.Contains(tick));
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (hoverTick is not null)
+        {
+            hoverTick = null;
+            InvalidateVisual();
+            HoverChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Whether a point lies on the plot, between the axis gutter, the right margin, the rate label and the axis.</summary>
+    private bool OnPlot(Point point) =>
+        point.X >= PlotLeft && point.X <= PlotLeft + PlotWidth && point.Y >= 24 && point.Y <= Math.Max(25, Bounds.Height - 30);
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {

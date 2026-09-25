@@ -30,7 +30,7 @@ public sealed class GraphHoverTests
         window.MouseMove(At(graph, window, graph.PointOf(node.Key)!.Value));
         Dispatch();
         Assert.Equal(node.Key, graph.HoveredKey);
-        GraphHoverCard nodeCard = Assert.IsType<GraphHoverCard>(graph.HoverCard);
+        HoverCard nodeCard = Assert.IsType<HoverCard>(graph.HoverCard);
         Assert.StartsWith(node.Label, nodeCard.Title, StringComparison.Ordinal);
         // The scope is the exact half-open range the numbers answer (§6.2), here the whole session.
         Assert.Contains(nodeCard.Lines, line => line.StartsWith("Scope: [", StringComparison.Ordinal)
@@ -45,7 +45,7 @@ public sealed class GraphHoverTests
         window.MouseMove(At(graph, window, new((source.X + target.X) / 2, (source.Y + target.Y) / 2)));
         Dispatch();
         Assert.Equal(edge.Key, graph.HoveredKey);
-        GraphHoverCard edgeCard = Assert.IsType<GraphHoverCard>(graph.HoverCard);
+        HoverCard edgeCard = Assert.IsType<HoverCard>(graph.HoverCard);
         Assert.Contains(" ↔ ", edgeCard.Title, StringComparison.Ordinal);
         Assert.Contains(edgeCard.Lines, line => line.StartsWith("Thickness: log scale", StringComparison.Ordinal));
         Assert.Same(selected, viewModel.SelectedProcess);

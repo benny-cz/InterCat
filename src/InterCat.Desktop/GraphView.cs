@@ -16,7 +16,7 @@ namespace InterCat.Desktop;
 /// hue is the mechanism, and the dash pattern of an edge is its evidence quality. Aggregates state their counts in
 /// selection detail and in their canvas label whenever that label is placed.
 /// </summary>
-public sealed class GraphView : Control
+public sealed class GraphView : Control, IHoverCardSource
 {
     private const ThemeMode Mode = ThemeMode.Dark;
 
@@ -53,7 +53,6 @@ public sealed class GraphView : Control
     private static readonly Pen PartialSelectionPen = new(SelectedBrush, 2) { DashStyle = new DashStyle([3, 3], 0) };
     private static readonly Pen HoverPen = new(TextBrush, 1.5);
     private static readonly Pen HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
-    private static readonly Pen CardPen = new(MutedTextBrush, 1);
     private static readonly Pen PinHeadPen = new(PlotBrush, 1.5);
     private static readonly Pen ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
     private static readonly Pen ContextRimPen = new(MutedTextBrush, 1);
@@ -71,7 +70,7 @@ public sealed class GraphView : Control
     // drawing, not on every move. Hover only highlights; it never changes selection or filters.
     private string? hovered;
     private Point hoverPoint;
-    private GraphHoverCard? hoverCard;
+    private HoverCard? hoverCard;
     private GraphDisplay? hoverCardDisplay;
     private bool hoverCardPinned;
 
@@ -79,7 +78,6 @@ public sealed class GraphView : Control
     private static readonly Dictionary<Mechanism, SolidColorBrush> MechanismBrushes = [];
     private static readonly Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens = [];
     private readonly Dictionary<(string Text, double Width, double Size, bool Strong), FormattedText> labels = [];
-    private readonly Dictionary<(string Text, double Width, double Size, bool Strong, int Lines), FormattedText> cardLabels = [];
     private int keyboardIndex;
 
     private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
@@ -288,20 +286,22 @@ public sealed class GraphView : Control
                 new(12, Math.Max(0, Bounds.Height - 22)));
         }
 
-        if (HoverCard is { } card)
-        {
-            DrawHoverCard(context, card);
-        }
     }
 
     /// <summary>The node or edge under the pointer, if any; hover never changes selection (§6.4).</summary>
     internal string? HoveredKey => hovered;
 
+    /// <inheritdoc />
+    public Point HoverPoint => hoverPoint;
+
+    /// <inheritdoc />
+    public event EventHandler? HoverChanged;
+
     /// <summary>Where a drawn node is, in this control's coordinates; null when it is not drawn.</summary>
     internal Point? PointOf(string nodeKey) => DataContext is WorkspaceViewModel viewModel ? Position(nodeKey, viewModel) : null;
 
     /// <summary>The card for the hovered mark, described once per key and drawing - a brush re-describes it.</summary>
-    internal GraphHoverCard? HoverCard
+    public HoverCard? HoverCard
     {
         get
         {
@@ -319,41 +319,6 @@ public sealed class GraphView : Control
             }
 
             return hoverCard;
-        }
-    }
-
-    /// <summary>A card beside the pointer, flipped to stay inside the pane, in the ink and surface of the inspector.</summary>
-    private void DrawHoverCard(DrawingContext context, GraphHoverCard card)
-    {
-        const double Padding = 8;
-        const double Gap = 14;
-        if (Bounds.Width < 80 || Bounds.Height < 60)
-        {
-            return;
-        }
-
-        // Stay inside the pane even in a transiently narrow layout; semantic text wraps instead of pushing the card off-screen.
-        double width = Math.Min(460, Bounds.Width - 16);
-        double textWidth = Math.Max(1, width - (2 * Padding));
-        FormattedText title = CardText(card.Title, 12, strong: true, textWidth, 2);
-        double bodyHeight = 0;
-        for (int i = 0; i < card.Lines.Count; i++)
-        {
-            bodyHeight += CardText(card.Lines[i], 11, strong: false, textWidth, 2).Height;
-        }
-
-        double height = Padding + title.Height + 4 + bodyHeight + Padding;
-        double x = hoverPoint.X + Gap + width <= Bounds.Width ? hoverPoint.X + Gap : Math.Max(0, hoverPoint.X - Gap - width);
-        double y = Math.Clamp(hoverPoint.Y + Gap, 0, Math.Max(0, Bounds.Height - height));
-        context.DrawRectangle(NodeBrush, CardPen, new Rect(x, y, width, height), 6, 6);
-        double top = y + Padding;
-        context.DrawText(title, new(x + Padding, top));
-        top += title.Height + 4;
-        for (int i = 0; i < card.Lines.Count; i++)
-        {
-            FormattedText line = CardText(card.Lines[i], 11, strong: false, textWidth, 2);
-            context.DrawText(line, new(x + Padding, top));
-            top += line.Height;
         }
     }
 
@@ -379,6 +344,7 @@ public sealed class GraphView : Control
             hovered = null;
             hoverCard = null;
             InvalidateVisual();
+            HoverChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -389,12 +355,13 @@ public sealed class GraphView : Control
             hoverCard = null;
             hoverPoint = pointer;
             InvalidateVisual();
+            HoverChanged?.Invoke(this, EventArgs.Empty);
         }
         else if (under is not null)
         {
             // The card follows the pointer across the mark it describes.
             hoverPoint = pointer;
-            InvalidateVisual();
+            HoverChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -406,6 +373,7 @@ public sealed class GraphView : Control
             hovered = null;
             hoverCard = null;
             InvalidateVisual();
+            HoverChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -821,28 +789,6 @@ public sealed class GraphView : Control
                 Trimming = TextTrimming.CharacterEllipsis,
             };
             labels[(text, width, size, strong)] = formatted;
-        }
-
-        return formatted;
-    }
-
-    /// <summary>
-    /// Hover text may wrap: clipping the semantic/accounting line would defeat the card's purpose. Canvas labels remain
-    /// one line through <see cref="Text"/>; cards get a small bounded line count so a narrow pane stays readable.
-    /// </summary>
-    private FormattedText CardText(string text, double size, bool strong, double width, int lines)
-    {
-        if (!cardLabels.TryGetValue((text, width, size, strong, lines), out FormattedText? formatted))
-        {
-            if (cardLabels.Count > 256) cardLabels.Clear();
-            formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), size,
-                strong ? TextBrush : MutedTextBrush)
-            {
-                MaxTextWidth = width,
-                MaxLineCount = lines,
-                Trimming = TextTrimming.WordEllipsis,
-            };
-            cardLabels[(text, width, size, strong, lines)] = formatted;
         }
 
         return formatted;

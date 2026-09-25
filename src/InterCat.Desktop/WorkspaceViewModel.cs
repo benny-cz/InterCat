@@ -14,8 +14,11 @@ namespace InterCat.Desktop;
 /// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
 public sealed record EvidenceField(string Label, string Value);
 
-/// <summary>What a hover over a drawn node or edge states (§6.2's hover contract, §6.3): a title and one fact per line.</summary>
-public sealed record GraphHoverCard(string Title, IReadOnlyList<string> Lines);
+/// <summary>
+/// What a hover over a drawn mark states - a graph node or edge (§6.3) or a timeline bucket - under §6.2's hover
+/// contract: a title and one fact per line.
+/// </summary>
+public sealed record HoverCard(string Title, IReadOnlyList<string> Lines);
 
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
@@ -1610,7 +1613,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// exact scope its numbers answer, the metric and its value, what is unmeasured, its evidence and coverage, and the
     /// scale its size or thickness is read against. Hover only describes: it never changes selection or filters.
     /// </summary>
-    public GraphHoverCard? DescribeGraphHover(string key)
+    public HoverCard? DescribeGraphHover(string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         string metric = realOverview ? "Paired TCP observations" : "Observations";
@@ -1730,6 +1733,55 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ? measured + " · no contributing observation is on a relationship with an unknown byte total"
             : measured + string.Create(CultureInfo.CurrentCulture,
                 $" · {unknownObservations:N0} contributing observations are on relationships with an unknown byte total");
+    }
+
+    /// <summary>
+    /// The hover card for a timeline bucket as drawn (§6.2's hover contract). It states the bucket's exact half-open
+    /// interval, what its bar counts and in which unit, its value, what the rung's focus holds of it, what is
+    /// unmeasured, its coverage, and the scale its height is read against: <paramref name="peakPerSecond"/>, the busiest
+    /// visible bar. Hover only describes; it never selects or brushes.
+    /// </summary>
+    public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond)
+    {
+        ArgumentNullException.ThrowIfNull(bucket);
+        bool zoomed = timelineDetail is { } detail && detail.Buckets.Contains(bucket);
+        string mechanism = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
+        double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
+        var lines = new List<string>
+        {
+            bucket.ObservationCount == 0
+                ? "No record observed · an empty bucket is not proof of inactivity"
+                : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · mostly {mechanism}",
+            realOverview
+                ? "Basis: source observations · unit: records · domain: every admitted record with a session time, all "
+                    + "mechanisms · accounting: not applicable to a count"
+                : "Basis: source observations · unit: records · domain: the tour's records · accounting: not applicable to a count",
+        };
+
+        if (timelineFocusDescription is { } focus && TimelineShowsFocus)
+        {
+            lines.Add(timelineFocusBuckets?.FirstOrDefault(candidate => candidate.Interval == bucket.Interval) is { } focused
+                ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
+                : $"{focus}: being counted");
+        }
+
+        lines.Add($"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}");
+        lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
+        lines.Add(bucket.KnownBytes is { } bytes
+            ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
+            : "Bytes: unknown · this timeline counts records");
+        lines.Add("Coverage: " + DescribeCoverage(bucket.Coverage)
+            + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));
+        lines.Add(zoomed
+            ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own count, {timelineDetail!.Buckets.Count:N0} buckets")
+                + (timelineDetail.Generation != DisplayedGeneration
+                    ? string.Create(CultureInfo.CurrentCulture, $" from generation {timelineDetail.Generation:N0}")
+                    : string.Empty)
+            : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} buckets over the whole session"));
+        lines.Add(selectedInterval == bucket.Interval
+            ? "This bucket is the analysis interval"
+            : "Click makes it the analysis interval · Shift+drag brushes a range");
+        return new(WorkspaceTime.FormatHalfOpenRange(bucket.Interval, CultureInfo.CurrentCulture), lines);
     }
 
     private static CoverageState Worst(IEnumerable<CoverageState> states)

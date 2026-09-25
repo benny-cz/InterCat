@@ -63,6 +63,10 @@ public sealed partial class MainWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
 
+        // The graph's and the timeline's hover cards are drawn by one layer above every pane (section 6.2).
+        HoverLayer.Track(GraphSurface);
+        HoverLayer.Track(TimelineSurface);
+
         // Window shortcuts are handled while the key tunnels down, because a focused list would otherwise
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
@@ -936,6 +940,9 @@ public sealed partial class MainWindow : Window, IDisposable
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();
         MinimapSurface.InvalidateVisual();
+
+        // A card describes what is drawn now, so a count or brush arriving under a resting pointer redraws it.
+        HoverLayer.InvalidateVisual();
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration))
         {
             UpdateHealthStrip();

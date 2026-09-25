@@ -229,6 +229,41 @@ public sealed class EvidenceRungTests
         Assert.False(machine.TimelineShowsFocus);
     }
 
+    [Fact(DisplayName = "§6.2: a timeline bucket's hover states its interval, value, the focus's share, unmeasured part, coverage and scale")]
+    public async Task ATimelineBucketsHoverStatesTheContract()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        TimelineBucket bucket = workspace.Snapshot.Timeline.OrderByDescending(candidate => candidate.ObservationCount).First();
+        TimelineBucket focused = workspace.TimelineFocusBuckets!.Single(candidate => candidate.Interval == bucket.Interval);
+        HoverCard card = workspace.DescribeTimelineHover(bucket, 1_000);
+        Assert.Equal(WorkspaceTime.FormatHalfOpenRange(bucket.Interval, System.Globalization.CultureInfo.CurrentCulture), card.Title);
+        Assert.Equal($"{bucket.ObservationCount:N0} observed records · mostly TCP", card.Lines[0]);
+        Assert.Equal("Basis: source observations · unit: records · domain: every admitted record with a session time, all "
+            + "mechanisms · accounting: not applicable to a count", card.Lines[1]);
+        Assert.StartsWith("Records owned by", card.Lines[2], StringComparison.Ordinal);
+        Assert.EndsWith($": {focused.ObservationCount:N0} {(focused.ObservationCount == 1 ? "record" : "records")} of them",
+            card.Lines[2], StringComparison.Ordinal);
+        Assert.StartsWith("Rate: ", card.Lines[3], StringComparison.Ordinal);
+        Assert.EndsWith("height against the busiest visible bar, " + TimelineView.RateText(1_000), card.Lines[3],
+            StringComparison.Ordinal);
+        Assert.Equal("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket", card.Lines[4]);
+        Assert.Equal("Bytes: unknown · this timeline counts records", card.Lines[5]);
+        Assert.StartsWith("Coverage: ", card.Lines[6], StringComparison.Ordinal);
+        Assert.Equal($"Resolution: the overview's {workspace.Snapshot.Timeline.Count:N0} buckets over the whole session", card.Lines[7]);
+
+        // A bucket that is the analysis interval says so instead of offering the click that would make it one.
+        workspace.SelectInterval(bucket.Interval);
+        Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(bucket, 1_000).Lines[^1]);
+    }
+
     private static int FocusTotal(WorkspaceViewModel workspace) =>
         Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineFocusBuckets).Sum(bucket => bucket.ObservationCount);
 

@@ -473,5 +473,8 @@
                    AutomationProperties.Name="How recent the last publication is" />
       </Grid>
     </Border>
+
+    <!-- Hover cards are drawn above every pane, so a card is never clipped by the pane its mark is in (section 6.2). -->
+    <local:HoverOverlay x:Name="HoverLayer" Grid.RowSpan="4" Grid.ColumnSpan="3" />
   </Grid>
 </Window>

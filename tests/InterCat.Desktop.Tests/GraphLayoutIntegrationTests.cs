@@ -355,7 +355,7 @@ public sealed class GraphLayoutIntegrationTests
         using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
         await viewModel.LayoutReady;
 
-        GraphHoverCard process = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover(processes[0].Id.ToString()));
+        HoverCard process = Assert.IsType<HoverCard>(viewModel.DescribeGraphHover(processes[0].Id.ToString()));
         // A PID is an identifier, written as the canvas label and Task Manager write it: without a group separator.
         Assert.Equal("Process 1 · PID 2001", process.Title);
         Assert.Equal("Process instance · 1 relationship", process.Lines[0]);
@@ -369,12 +369,12 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("Size: log scale against the busiest drawn node, 10", process.Lines[6]);
 
         GraphDisplayNode quiet = Assert.Single(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Quiet);
-        GraphHoverCard aggregate = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover(quiet.Key));
+        HoverCard aggregate = Assert.IsType<HoverCard>(viewModel.DescribeGraphHover(quiet.Key));
         Assert.Equal("No relationships", aggregate.Title);
         Assert.Equal("3 processes with no admitted relationship", aggregate.Lines[0]);
         Assert.Equal("Bytes: unknown · 0 contributing observations in this scope", aggregate.Lines[4]);
 
-        GraphHoverCard edge = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover("pair"));
+        HoverCard edge = Assert.IsType<HoverCard>(viewModel.DescribeGraphHover("pair"));
         Assert.Equal("Process 1 ↔ Process 2", edge.Title);
         Assert.Equal("TCP · direct evidence · 1 relationship · 0 channels", edge.Lines[0]);
         Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[3]);
