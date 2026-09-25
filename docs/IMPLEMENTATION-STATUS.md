@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 109 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 110 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -18,7 +18,8 @@ presets exist: a metadata-only **report** and a reopenable redacted **session pa
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
 collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
-and positions survive descents and live publications.
+and positions survive descents and live publications. Graph marks now explain their scope and evidence on hover; nodes
+can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -41,13 +42,43 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with a relationship-first layout qualified on sparse and dense real sessions (quiet fold, group collapse, table-shared selection, anchored carried layout) | Per-rung eligible graph/operation/byte composition; graph hover card, manual pins and explicit re-layout; persisted overview pyramid, bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, and anchored carried layout | Per-rung eligible graph/operation/byte composition; §6.7's double-click on an edge; persisted overview pyramid and bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
-## Recent completed slices
+## Recent slices
 
+- **Revision 110 — graph interaction contract (§6.2, §6.3, §19.4), verified:**
+  - **Hover semantics:** node and edge cards state the exact applied half-open scope, source basis, metric/unit/domain,
+    accounting applicability, observation value, byte availability at the granularity the source actually supports, coverage,
+    and the visible size/thickness scale. They do not fabricate an operation interval, byte precision, or transfer direction.
+  - **Direct manipulation:** dragging a node pins its stable graph key; `P` pins/unpins the selected node without requiring
+    precise pointer input; `L` explicitly re-lays out the graph while retaining pins. Pins carry across rung changes and
+    later publications of the same open session. Reopen persistence remains gated on `.icat-workspace` (§26.3), so the UI
+    does not claim it yet.
+  - **Crowded labels:** label placement searches deterministic outward and diagonal slots before omission; selection/focus
+    still receives an in-pane fallback rather than becoming nameless. Hover-card text wraps within a bounded card instead
+    of silently truncating the semantic contract.
+  - **Plan repair:** §19.4 no longer mandates a spatial index at the hard 200-node/500-edge drawing bound; a measured
+    bounded geometry scan is allowed, with indexing required if scale or input-budget measurements justify it. The plan's
+    former claim that pins survive reopen was reconciled with §26.3: reopen persistence begins only with workspace-state
+    persistence. The semantic-channel table now also limits arrowheads to relations whose derivation actually supports
+    direction; paired-TCP display order is not promoted into initiator/sender evidence.
+  - **Tests added:** hard pin constraints through re-layout/publication, crowded-hub label fallback, hover-contract wording
+    and half-open range formatting, plus keyboard-only pin/re-layout reachability.
+  - **Verification on the pinned SDK:** the slice was written partly without an SDK. On .NET 10.0.401 it compiled
+    cleanly, and every new test passed.
+    - The ledger lacked the new R15 test, so the traceability check failed.
+    - A hover-test expectation still used the old scope wording.
+    - On a comma-decimal machine, `[0,0, 24,0) s` read ambiguously, so half-open ranges now part their bounds with the
+      culture's list separator (`[0,0; 24,0) s`).
+    - "Known bytes: 7,24 MB known" became "Bytes: 7,24 MB known".
+    - An older R3 defect surfaced in a rendered frame: a synthetic process with no measured bytes read "0,00 MB known"
+      and now reads "bytes unknown".
+    - A headless drag test now proves that a click only selects and a drag pins exactly at the drop point.
+    - On the dense real capture, the wider label search names the hubs. Only the queue hub, ringed by 27 workers, stays
+      unlabelled; it is named on hover and selection.
 - **Revision 109 — relationship-first layout on a dense real capture (§19.4):**
   - **Why:** `tools/Record-DenseGraphCapture.ps1` recorded a busy machine with `icat record`: nine loopback hubs and
     their clients under 13 executable names, plus a 27-process worker pool, for 621 processes and 56 relationships.
@@ -89,26 +120,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. **Finish the graph's interaction contract (§6.2 hover, §6.3).** Four gaps remain:
-   - A hover card that states a node's or edge's evidence and time scope.
-   - Manual pins and an explicit re-layout command. §19.4 already honours pins; nothing sets them yet.
-   - A label for a hub whose every side is taken by its peers. It is still named on selection.
-   - The **Other processes** remainder is exercised only synthetically; the dense capture needs no remainder.
-2. Make the Desktop's per-rung graph, numeric ranking, timeline, evidence and coverage one eligible generation/scope
+1. Make the Desktop's per-rung graph, numeric ranking, timeline, evidence and coverage one eligible generation/scope
    bundle. Eliminate the whole-machine graph at a channel rung. Include operation/byte projections where derivations
-   actually support them, and say unavailable otherwise.
-3. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
+   actually support them, and state unavailable where they do not. Wire §6.7's double-click on an edge to that
+   relationship's channel view.
+2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
-4. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
+3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-5. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
+4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
    rows.
+5. Graph follow-ups with no dependents:
+   - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
+     fallback, covered synthetically; the dense capture never needs it.
+   - Hover for the timeline, which §6.2's contract also covers.
+   - Pins that survive reopening, once §26.3's workspace persistence exists.
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 109): **899 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 110): **906 passed, 1 skipped, in Debug and Release**, zero failures.
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).
+  - Revision 110 added hover, pin, label-slot, half-open, keyboard, drag and R3 tests.
   - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
     variable it reports skipped, never passed.
 - Revision 109 dense real check: `tools/Record-DenseGraphCapture.ps1` recorded a local-only session of 621 processes,

@@ -104,6 +104,29 @@ public static class WorkspaceTime
             $"{(range.StartTicks / divisor).ToString(format, provider)} – {(range.EndTicks / divisor).ToString(format, provider)} {unit}");
     }
 
+    /// <summary>
+    /// The same range with the half-open boundary made visible. Use this where inclusion at an interval edge matters,
+    /// such as a hover or inspector; an en-dash range is easier to scan on an axis but does not say whether its end is
+    /// included (§6.2, R13).
+    /// </summary>
+    public static string FormatHalfOpenRange(TimeRange range, IFormatProvider? culture = null)
+    {
+        (decimal divisor, string unit, string format) = Unit(range.EndTicks - range.StartTicks);
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+
+        // The bounds are parted by the culture's list separator: a comma-decimal culture writes "[0,5; 2,0)", so the
+        // separator never reads as a decimal comma. It is never the decimal separator itself.
+        System.Globalization.NumberFormatInfo number = System.Globalization.NumberFormatInfo.GetInstance(provider);
+        string separator = provider is System.Globalization.CultureInfo info ? info.TextInfo.ListSeparator : ",";
+        if (string.IsNullOrWhiteSpace(separator) || separator == number.NumberDecimalSeparator)
+        {
+            separator = number.NumberDecimalSeparator == "," ? ";" : ",";
+        }
+
+        return string.Create(provider,
+            $"[{(range.StartTicks / divisor).ToString(format, provider)}{separator} {(range.EndTicks / divisor).ToString(format, provider)}) {unit}");
+    }
+
     /// <summary>One instant, in the unit a visible span of <paramref name="span"/> ticks needs, as an axis labels its edges.</summary>
     public static string FormatInstant(long ticks, long span, IFormatProvider? culture = null)
     {

@@ -44,6 +44,37 @@ public sealed class LadderKeyboardTests
         Assert.False(viewModel.ShowTables);
     }
 
+    [AvaloniaFact(DisplayName = "R15: graph pin and re-layout commands have keyboard paths and a button equivalent")]
+    public async Task GraphPlacementCommandsAreReachableWithoutDragging()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        await viewModel.LayoutReady;
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        graph.Focus();
+        GraphDisplayNode node = viewModel.GraphDisplay.Nodes.First(candidate => candidate.Kind == GraphNodeKind.Process);
+        viewModel.SelectGraphNode(node.Key);
+
+        Button pin = window.GetControl<Button>("PinNodeButton");
+        Button relayout = window.GetControl<Button>("RelayoutButton");
+        Assert.True(pin.IsEnabled);
+        Assert.Equal("Pin node (P)", pin.Content);
+        Assert.True(relayout.IsEnabled);
+
+        window.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
+        await viewModel.LayoutReady;
+        Assert.Contains(node.Key, viewModel.PinnedGraphNodeKeys);
+        Assert.Equal("Unpin node (P)", pin.Content);
+
+        window.KeyPressQwerty(PhysicalKey.L, RawInputModifiers.None);
+        await viewModel.LayoutReady;
+        Assert.Contains(node.Key, viewModel.PinnedGraphNodeKeys);
+
+        window.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
+        await viewModel.LayoutReady;
+        Assert.DoesNotContain(node.Key, viewModel.PinnedGraphNodeKeys);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R13: Enter descends a rung and Escape returns to exactly where it was")]
     public void EnterDescendsAndEscapeRestores()
     {

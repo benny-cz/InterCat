@@ -143,6 +143,12 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.F when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = ToggleFollowLatest();
                 break;
+            case Key.P when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = viewModel.TogglePinSelectedGraphNode();
+                break;
+            case Key.L when e.KeyModifiers == KeyModifiers.None:
+                e.Handled = viewModel.RelayoutGraph();
+                break;
             case Key.Escape:
                 _ = viewModel.Ascend();
                 e.Handled = true;
@@ -201,6 +207,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ShowSourceRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ShowEvidence();
 
     private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreEvidenceAsync();
+
+    /// <summary>The pointer equivalent of P: pins the selected graph node where it is drawn, or releases its pin.</summary>
+    private void TogglePinNode(object? sender, RoutedEventArgs eventArgs) => _ = workspace.TogglePinSelectedGraphNode();
+
+    /// <summary>The pointer equivalent of L: lays the graph out afresh, keeping pinned nodes where they are.</summary>
+    private void RelayoutGraph(object? sender, RoutedEventArgs eventArgs) => _ = workspace.RelayoutGraph();
 
     private void ExportView(object? sender, RoutedEventArgs eventArgs) => ExportView();
 
@@ -775,7 +787,8 @@ public sealed partial class MainWindow : Window, IDisposable
             : null;
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
         var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence,
-            savedNavigation is null ? null : workspace.LaidOutPositions);
+            savedNavigation is null ? null : workspace.LaidOutPositions,
+            savedNavigation is null ? null : workspace.GraphPins);
         if (savedNavigation is not null
             && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
         {

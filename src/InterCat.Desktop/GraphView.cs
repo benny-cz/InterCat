@@ -50,11 +50,33 @@ public sealed class GraphView : Control
     private static readonly Pen RemainderPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([4, 3], 0) };
     private static readonly Pen QuietPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([1, 3], 0) };
     private static readonly Pen PartialSelectionPen = new(SelectedBrush, 2) { DashStyle = new DashStyle([3, 3], 0) };
+    private static readonly Pen HoverPen = new(TextBrush, 1.5);
+    private static readonly Pen HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
+    private static readonly Pen CardPen = new(MutedTextBrush, 1);
+    private static readonly Pen PinHeadPen = new(Token(ThemePalette.Surfaces(Mode).Plot), 1.5);
+
+    /// <summary>A press moves this far before it is a drag that pins, so a slightly unsteady click still only selects.</summary>
+    private const double DragThreshold = 4;
+
+    // A drag in progress: the node, where the press began, whether it has moved enough, and where it is now.
+    private string? dragKey;
+    private Point dragFrom;
+    private Point dragAt;
+    private bool dragging;
+
+    // Hover (§6.2): the node or edge under the pointer, where the pointer is, and its card - described once per key and
+    // drawing, not on every move. Hover only highlights; it never changes selection or filters.
+    private string? hovered;
+    private Point hoverPoint;
+    private GraphHoverCard? hoverCard;
+    private GraphDisplay? hoverCardDisplay;
+    private bool hoverCardPinned;
 
     // Paint resources are cached per semantic key, so a frame allocates no brush or pen per edge (R11, §19.4).
     private static readonly Dictionary<Mechanism, SolidColorBrush> MechanismBrushes = [];
     private static readonly Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens = [];
     private readonly Dictionary<(string Text, double Width, double Size, bool Strong), FormattedText> labels = [];
+    private readonly Dictionary<(string Text, double Width, double Size, bool Strong, int Lines), FormattedText> cardLabels = [];
     private int keyboardIndex;
 
     private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
@@ -122,6 +144,13 @@ public sealed class GraphView : Control
             if (Position(node.Key, viewModel) is { } point) points[node.Key] = point;
         }
 
+        if (dragging && dragKey is { } moving && points.ContainsKey(moving))
+        {
+            points[moving] = dragAt;
+        }
+
+        IReadOnlySet<string> pinned = viewModel.PinnedGraphNodeKeys;
+
         string? highlightedRelationship = viewModel.HighlightedEdgeKey;
         string? highlighted = highlightedRelationship is { } relationship
             ? display.EdgeOf(relationship)?.Key
@@ -141,6 +170,14 @@ public sealed class GraphView : Control
                 // The edge that contributes to the rung is haloed in the accent under its own stroke, so its hue,
                 // thickness and dash keep their meanings (section 3.2 L3 and L5, section 6.6).
                 context.DrawLine(HaloPen, source, target);
+            }
+            else if (edge.Key == hovered)
+            {
+                // Hover highlights in the ink, lighter than the selection's accent, under the edge's own stroke.
+                using (context.PushOpacity(0.35))
+                {
+                    context.DrawLine(HoverHaloPen, source, target);
+                }
             }
 
             // Hue states the mechanism, thickness states magnitude and the dash pattern states evidence quality. No
@@ -195,25 +232,37 @@ public sealed class GraphView : Control
                 // it instead, so evidence navigation still has a visible graph counterpart without inventing topology.
                 context.DrawEllipse(Brushes.Transparent, InternalRelationshipPen, point, radius + 3, radius + 3);
             }
+            else if (node.Key == hovered)
+            {
+                context.DrawEllipse(Brushes.Transparent, HoverPen, point, radius + 3, radius + 3);
+            }
 
             if (node.Kind == GraphNodeKind.Process)
             {
                 context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : NodePen, point, radius, radius);
-                continue;
+            }
+            else
+            {
+                // A stack: two offset rims behind the face say "several" without relying on colour (R14). The face's
+                // stroke says which kind of several: a collapsed group, an opened group's other members, the cross-group
+                // remainder, or processes with no relationship at all.
+                context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 5, point.Y - 5), radius, radius);
+                context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
+                context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : node.Kind switch
+                {
+                    GraphNodeKind.Group => NodePen,
+                    GraphNodeKind.OtherMembers => MutedPen,
+                    GraphNodeKind.Remainder => RemainderPen,
+                    _ => QuietPen,
+                }, point, radius, radius);
             }
 
-            // A stack: two offset rims behind the face say "several" without relying on colour (R14). The face's stroke
-            // says which kind of several: a collapsed group, an opened group's other members, the cross-group remainder,
-            // or processes with no relationship at all.
-            context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 5, point.Y - 5), radius, radius);
-            context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
-            context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : node.Kind switch
+            if (pinned.Contains(node.Key) || (dragging && node.Key == dragKey))
             {
-                GraphNodeKind.Group => NodePen,
-                GraphNodeKind.OtherMembers => MutedPen,
-                GraphNodeKind.Remainder => RemainderPen,
-                _ => QuietPen,
-            }, point, radius, radius);
+                // A pin's head at the upper left, clear of an aggregate's rims: this node stays where it was placed.
+                context.DrawEllipse(SelectedBrush, PinHeadPen,
+                    new Point(point.X - (radius * 0.75), point.Y - (radius * 0.75)), 3.5, 3.5);
+            }
         }
 
         DrawLabels(context, display, order, points, radii, selected, partlySelected, focused);
@@ -222,11 +271,167 @@ public sealed class GraphView : Control
             context.DrawText(Text($"Layout unavailable: {problem}", 10, strong: false, Math.Max(1, Bounds.Width - 24)),
                 new(12, Math.Max(0, Bounds.Height - 22)));
         }
+
+        if (HoverCard is { } card)
+        {
+            DrawHoverCard(context, card);
+        }
+    }
+
+    /// <summary>The node or edge under the pointer, if any; hover never changes selection (§6.4).</summary>
+    internal string? HoveredKey => hovered;
+
+    /// <summary>Where a drawn node is, in this control's coordinates; null when it is not drawn.</summary>
+    internal Point? PointOf(string nodeKey) => DataContext is WorkspaceViewModel viewModel ? Position(nodeKey, viewModel) : null;
+
+    /// <summary>The card for the hovered mark, described once per key and drawing - a brush re-describes it.</summary>
+    internal GraphHoverCard? HoverCard
+    {
+        get
+        {
+            if (hovered is null || DataContext is not WorkspaceViewModel viewModel)
+            {
+                return null;
+            }
+
+            bool pinned = viewModel.IsGraphNodePinned(hovered);
+            if (hoverCard is null || !ReferenceEquals(hoverCardDisplay, viewModel.GraphDisplay) || hoverCardPinned != pinned)
+            {
+                hoverCard = viewModel.DescribeGraphHover(hovered);
+                hoverCardDisplay = viewModel.GraphDisplay;
+                hoverCardPinned = pinned;
+            }
+
+            return hoverCard;
+        }
+    }
+
+    /// <summary>A card beside the pointer, flipped to stay inside the pane, in the ink and surface of the inspector.</summary>
+    private void DrawHoverCard(DrawingContext context, GraphHoverCard card)
+    {
+        const double Padding = 8;
+        const double Gap = 14;
+        if (Bounds.Width < 80 || Bounds.Height < 60)
+        {
+            return;
+        }
+
+        // Stay inside the pane even in a transiently narrow layout; semantic text wraps instead of pushing the card off-screen.
+        double width = Math.Min(460, Bounds.Width - 16);
+        double textWidth = Math.Max(1, width - (2 * Padding));
+        FormattedText title = CardText(card.Title, 12, strong: true, textWidth, 2);
+        double bodyHeight = 0;
+        for (int i = 0; i < card.Lines.Count; i++)
+        {
+            bodyHeight += CardText(card.Lines[i], 11, strong: false, textWidth, 2).Height;
+        }
+
+        double height = Padding + title.Height + 4 + bodyHeight + Padding;
+        double x = hoverPoint.X + Gap + width <= Bounds.Width ? hoverPoint.X + Gap : Math.Max(0, hoverPoint.X - Gap - width);
+        double y = Math.Clamp(hoverPoint.Y + Gap, 0, Math.Max(0, Bounds.Height - height));
+        context.DrawRectangle(NodeBrush, CardPen, new Rect(x, y, width, height), 6, 6);
+        double top = y + Padding;
+        context.DrawText(title, new(x + Padding, top));
+        top += title.Height + 4;
+        for (int i = 0; i < card.Lines.Count; i++)
+        {
+            FormattedText line = CardText(card.Lines[i], 11, strong: false, textWidth, 2);
+            context.DrawText(line, new(x + Padding, top));
+            top += line.Height;
+        }
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        Point pointer = e.GetPosition(this);
+        if (dragKey is not null)
+        {
+            // A drag carries its node under the pointer. It is the one gesture on this pane, so hover waits for it to end.
+            if (!dragging && Math.Sqrt(Math.Pow(pointer.X - dragFrom.X, 2) + Math.Pow(pointer.Y - dragFrom.Y, 2)) < DragThreshold)
+            {
+                return;
+            }
+
+            dragging = true;
+            dragAt = pointer;
+            hovered = null;
+            hoverCard = null;
+            InvalidateVisual();
+            return;
+        }
+
+        string? under = HitTest(viewModel, pointer) ?? EdgeHitTest(viewModel, pointer);
+        if (under != hovered)
+        {
+            hovered = under;
+            hoverCard = null;
+            hoverPoint = pointer;
+            InvalidateVisual();
+        }
+        else if (under is not null)
+        {
+            // The card follows the pointer across the mark it describes.
+            hoverPoint = pointer;
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (hovered is not null)
+        {
+            hovered = null;
+            hoverCard = null;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
+    private string? EdgeHitTest(WorkspaceViewModel viewModel, Point pointer)
+    {
+        GraphDisplay display = viewModel.GraphDisplay;
+        long scale = display.Edges.Count == 0 ? 0 : display.Edges.Max(edge => edge.ObservationCount);
+        string? best = null;
+        double bestDistance = double.MaxValue;
+        foreach (GraphDisplayEdge edge in display.Edges)
+        {
+            if (Position(edge.SourceKey, viewModel) is not { } source || Position(edge.TargetKey, viewModel) is not { } target)
+            {
+                continue;
+            }
+
+            double distance = DistanceToSegment(pointer, source, target);
+            if (distance <= (ThicknessOf(edge, scale) / 2) + HitSlop && distance < bestDistance)
+            {
+                best = edge.Key;
+                bestDistance = distance;
+            }
+        }
+
+        return best;
+    }
+
+    private static double DistanceToSegment(Point point, Point start, Point end)
+    {
+        double vx = end.X - start.X;
+        double vy = end.Y - start.Y;
+        double length = (vx * vx) + (vy * vy);
+        double t = length <= 0 ? 0 : Math.Clamp((((point.X - start.X) * vx) + ((point.Y - start.Y) * vy)) / length, 0, 1);
+        double dx = start.X + (t * vx) - point.X;
+        double dy = start.Y + (t * vy) - point.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy));
     }
 
     /// <summary>
     /// Labels are a last pass, so no circle overdraws a name, and each is placed where it collides with no label already
-    /// placed: below its node, above, right or left, avoiding other nodes where it can. The selection and keyboard focus
+    /// placed: nearest cardinal slots first, then wider and diagonal slots, avoiding other nodes where it can. The selection and keyboard focus
     /// are placed first, then the busiest nodes, up to the label budget; a node left unlabelled is named when selected or
     /// focused and in the ranked table (R15). Names take one line and end in an ellipsis rather than wrap mid-word.
     /// </summary>
@@ -289,8 +494,10 @@ public sealed class GraphView : Control
     }
 
     /// <summary>
-    /// Where a label block fits beside its node: the first side, in reading order, that stays in the pane and overlaps
-    /// no placed label, preferring one that covers no other node. A label that must show takes the first side in the pane.
+    /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
+    /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
+    /// A clear label never hides another node or label. A selected/focused label may fall back to a merely in-pane slot,
+    /// because the user explicitly asked which node has focus (§6.3, R15).
     /// </summary>
     private Rect? Place(
         Point point,
@@ -303,31 +510,95 @@ public sealed class GraphView : Control
         List<Rect> placed,
         bool mustShow)
     {
-        const double Gap = 3;
-        Rect[] sides =
-        [
-            new(point.X - (width / 2), point.Y + radius + Gap, width, height),
-            new(point.X - (width / 2), point.Y - radius - Gap - height, width, height),
-            new(point.X + radius + Gap + 3, point.Y - (height / 2), width, height),
-            new(point.X - radius - Gap - 3 - width, point.Y - (height / 2), width, height),
-        ];
-        var pane = new Rect(Bounds.Size);
-        Rect[] inPane = [.. sides.Where(side => pane.Contains(side))];
+        return FindLabelBox(new Rect(Bounds.Size), point, radius, width, height, key, points, radii, placed, mustShow);
+    }
 
-        // A label never hides another node or another label: an unnamed node is still named on selection and in the
-        // table, but a hidden one cannot be seen at all. Only a label that must show may fall back to overlapping.
-        foreach (Rect side in inPane)
+    /// <summary>
+    /// Pure label-placement core, exposed internally so the crowded-hub fallback has a deterministic regression test.
+    /// Candidates stay close to the node first, then search outward; this is label placement only and never moves a node.
+    /// </summary>
+    internal static Rect? FindLabelBox(
+        Rect pane,
+        Point point,
+        double radius,
+        double width,
+        double height,
+        string key,
+        IReadOnlyDictionary<string, Point> points,
+        IReadOnlyDictionary<string, double> radii,
+        IReadOnlyList<Rect> placed,
+        bool mustShow)
+    {
+        const double Gap = 3;
+        const double SideBias = 3;
+        ReadOnlySpan<double> rings = [0, 18, 42];
+        Span<Rect> candidates = stackalloc Rect[rings.Length * 8];
+        int candidateCount = 0;
+        foreach (double ring in rings)
         {
-            if (!placed.Any(other => other.Intersects(side))
-                && !points.Any(entry => entry.Key != key && Covers(side, entry.Value, radii[entry.Key])))
-            {
-                return side;
-            }
+            double vertical = radius + Gap + ring;
+            double horizontal = radius + Gap + SideBias + ring;
+            candidates[candidateCount++] = new Rect(point.X - (width / 2), point.Y + vertical, width, height);
+            candidates[candidateCount++] = new Rect(point.X - (width / 2), point.Y - vertical - height, width, height);
+            candidates[candidateCount++] = new Rect(point.X + horizontal, point.Y - (height / 2), width, height);
+            candidates[candidateCount++] = new Rect(point.X - horizontal - width, point.Y - (height / 2), width, height);
+
+            // Diagonal callouts make a dense star nameable without taking a cardinal slot from one of its leaves.
+            candidates[candidateCount++] = new Rect(point.X + horizontal, point.Y + vertical, width, height);
+            candidates[candidateCount++] = new Rect(point.X - horizontal - width, point.Y + vertical, width, height);
+            candidates[candidateCount++] = new Rect(point.X + horizontal, point.Y - vertical - height, width, height);
+            candidates[candidateCount++] = new Rect(point.X - horizontal - width, point.Y - vertical - height, width, height);
         }
 
-        return !mustShow ? null
-            : inPane.FirstOrDefault(side => !placed.Any(other => other.Intersects(side))) is { Width: > 0 } clear ? clear
-            : inPane.Length > 0 ? inPane[0] : null;
+        for (int i = 0; i < candidateCount; i++)
+        {
+            Rect candidate = candidates[i];
+            if (!pane.Contains(candidate)) continue;
+            bool overlapsLabel = false;
+            for (int placedIndex = 0; placedIndex < placed.Count; placedIndex++)
+            {
+                if (!placed[placedIndex].Intersects(candidate)) continue;
+                overlapsLabel = true;
+                break;
+            }
+
+            if (overlapsLabel) continue;
+
+            bool coversNode = false;
+            foreach ((string nodeKey, Point nodePoint) in points)
+            {
+                if (nodeKey == key || !radii.TryGetValue(nodeKey, out double otherRadius)
+                    || !Covers(candidate, nodePoint, otherRadius)) continue;
+                coversNode = true;
+                break;
+            }
+
+            if (!coversNode) return candidate;
+        }
+
+        if (!mustShow) return null;
+
+        for (int i = 0; i < candidateCount; i++)
+        {
+            Rect candidate = candidates[i];
+            if (!pane.Contains(candidate)) continue;
+            bool overlapsLabel = false;
+            for (int placedIndex = 0; placedIndex < placed.Count; placedIndex++)
+            {
+                if (!placed[placedIndex].Intersects(candidate)) continue;
+                overlapsLabel = true;
+                break;
+            }
+
+            if (!overlapsLabel) return candidate;
+        }
+
+        for (int i = 0; i < candidateCount; i++)
+        {
+            if (pane.Contains(candidates[i])) return candidates[i];
+        }
+
+        return null;
     }
 
     private static bool Covers(Rect box, Point centre, double radius) =>
@@ -371,9 +642,55 @@ public sealed class GraphView : Control
         IReadOnlyList<GraphDisplayNode> order = Traversal(viewModel.GraphDisplay);
         keyboardIndex = Math.Max(0, order.ToList().FindIndex(node => node.Key == key));
         viewModel.SelectGraphNode(key);
+
+        // A press may become a drag that pins the node where it is dropped; until it moves, it is only a selection.
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            dragKey = key;
+            dragFrom = e.GetPosition(this);
+            dragging = false;
+            e.Pointer.Capture(this);
+        }
+
         InvalidateVisual();
         e.Handled = true;
     }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (dragKey is not { } key)
+        {
+            return;
+        }
+
+        bool dropped = dragging;
+        Point at = e.GetPosition(this);
+        dragKey = null;
+        dragging = false;
+        e.Pointer.Capture(null);
+        if (dropped && DataContext is WorkspaceViewModel viewModel)
+        {
+            viewModel.PinGraphNode(key, GraphPointAt(at));
+            e.Handled = true;
+        }
+
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        // A drag cancelled by the system leaves the node where it was: nothing is pinned by a gesture that did not end.
+        base.OnPointerCaptureLost(e);
+        dragKey = null;
+        dragging = false;
+        InvalidateVisual();
+    }
+
+    /// <summary>The graph coordinates of a point in this control: the inverse of <see cref="Position"/>, kept in [0,1].</summary>
+    private GraphPoint GraphPointAt(Point point) => new(
+        Math.Clamp((point.X - LabelInset) / Math.Max(1, Bounds.Width - (LabelInset * 2)), 0, 1),
+        Math.Clamp((point.Y - 28) / Math.Max(1, Bounds.Height - 72), 0, 1));
 
     public GraphView() => DoubleTapped += OpenGroup;
 
@@ -473,6 +790,28 @@ public sealed class GraphView : Control
                 Trimming = TextTrimming.CharacterEllipsis,
             };
             labels[(text, width, size, strong)] = formatted;
+        }
+
+        return formatted;
+    }
+
+    /// <summary>
+    /// Hover text may wrap: clipping the semantic/accounting line would defeat the card's purpose. Canvas labels remain
+    /// one line through <see cref="Text"/>; cards get a small bounded line count so a narrow pane stays readable.
+    /// </summary>
+    private FormattedText CardText(string text, double size, bool strong, double width, int lines)
+    {
+        if (!cardLabels.TryGetValue((text, width, size, strong, lines), out FormattedText? formatted))
+        {
+            if (cardLabels.Count > 256) cardLabels.Clear();
+            formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), size,
+                strong ? TextBrush : MutedTextBrush)
+            {
+                MaxTextWidth = width,
+                MaxLineCount = lines,
+                Trimming = TextTrimming.WordEllipsis,
+            };
+            cardLabels[(text, width, size, strong, lines)] = formatted;
         }
 
         return formatted;

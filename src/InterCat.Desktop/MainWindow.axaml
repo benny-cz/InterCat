@@ -250,9 +250,10 @@
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="COMMUNICATION GRAPH" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
-                         Text="Click a node · arrows move focus · Enter opens a group · Tab reaches the table"
+                         Text="Hover explains · drag to pin · P pin/unpin · L re-layout · Enter opens a group"
                          Classes="muted" FontSize="11" VerticalAlignment="Center" TextAlignment="Right"
-                         TextTrimming="CharacterEllipsis" />
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="Hover explains a node or relationship. Click selects. Drag a node to place and pin it. P pins or unpins the selection; L lays the graph out again while keeping pins. Arrow keys move graph focus; Enter opens a group; Tab reaches the equivalent table." />
               <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding GraphSummary}" Classes="muted" FontSize="11"
                          TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GraphSummary}"
                          AutomationProperties.Name="{Binding GraphSummary}" />
@@ -359,6 +360,14 @@
               <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
                       Click="ShowSourceRecords"
                       AutomationProperties.Name="Show this rung's source records in the ladder" />
+              <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
+              <WrapPanel>
+                <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"
+                        Click="TogglePinNode" Margin="0,0,8,0"
+                        AutomationProperties.Name="Pin the selected graph node where it is drawn, or release its pin" />
+                <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
+                        AutomationProperties.Name="Lay the graph out afresh, keeping pinned nodes where they are" />
+              </WrapPanel>
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
                       Click="BrowseChannels"
                       AutomationProperties.Name="Browse all admitted paired TCP channels" />

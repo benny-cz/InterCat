@@ -68,6 +68,13 @@ public sealed class SessionIntervalQueryTests
         Assert.Equal("1.234 – 3.456 s", WorkspaceTime.FormatRange(new(1_234 * Second / 1_000, 3_456 * Second / 1_000), invariant));
         Assert.Equal("1.000 – 3.000 ms", WorkspaceTime.FormatRange(new(10_000, 30_000), invariant));
         Assert.Equal("1.0 – 3.0 µs", WorkspaceTime.FormatRange(new(10, 30), invariant));
+        Assert.Equal("[1.234, 3.456) s", WorkspaceTime.FormatHalfOpenRange(
+            new(1_234 * Second / 1_000, 3_456 * Second / 1_000), invariant));
+        Assert.Equal("[1.000, 3.000) ms", WorkspaceTime.FormatHalfOpenRange(new(10_000, 30_000), invariant));
+
+        // A comma-decimal culture parts the bounds with its list separator, so "[0,0, 24,0)" cannot be misread.
+        Assert.Equal("[1,234; 3,456) s", WorkspaceTime.FormatHalfOpenRange(
+            new(1_234 * Second / 1_000, 3_456 * Second / 1_000), System.Globalization.CultureInfo.GetCultureInfo("cs-CZ")));
         Assert.Equal("300.0 s", WorkspaceTime.FormatDuration(300 * Second, invariant));
         Assert.Equal("0.020 ms", WorkspaceTime.FormatDuration(200, invariant));
         Assert.Equal("12.3 s", WorkspaceTime.FormatInstant(123 * Second / 10, 60 * Second, invariant));

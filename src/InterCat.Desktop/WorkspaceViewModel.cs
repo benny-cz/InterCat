@@ -14,6 +14,9 @@ namespace InterCat.Desktop;
 /// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
 public sealed record EvidenceField(string Label, string Value);
 
+/// <summary>What a hover over a drawn node or edge states (§6.2's hover contract, §6.3): a title and one fact per line.</summary>
+public sealed record GraphHoverCard(string Title, IReadOnlyList<string> Lines);
+
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 public sealed record WorkspaceNavigationMemento(
@@ -96,8 +99,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         WorkspaceSnapshot snapshot,
         string graphIdentity,
         SessionEvidenceSource? evidenceSource = null,
-        IReadOnlyDictionary<string, GraphPoint>? carriedLayout = null)
-        : this(snapshot, graphIdentity, evidenceSource, carriedLayout, new GraphLayoutScheduler())
+        IReadOnlyDictionary<string, GraphPoint>? carriedLayout = null,
+        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null)
+        : this(snapshot, graphIdentity, evidenceSource, carriedLayout, new GraphLayoutScheduler(), carriedPins)
     {
     }
 
@@ -107,7 +111,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         string graphIdentity,
         SessionEvidenceSource? evidenceSource,
         IReadOnlyDictionary<string, GraphPoint>? carriedLayout,
-        GraphLayoutScheduler layoutScheduler)
+        GraphLayoutScheduler layoutScheduler,
+        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null)
     {
         graphLayout = layoutScheduler ?? throw new ArgumentNullException(nameof(layoutScheduler));
         wholeSnapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
@@ -134,6 +139,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         foreach ((string key, GraphPoint point) in carriedLayout ?? new Dictionary<string, GraphPoint>())
         {
             if (point.IsValid) layoutMemory[key] = point;
+        }
+
+        // A pin is where the user put a node; a later publication keeps it, and the first frame already shows it there.
+        foreach ((string key, GraphPoint point) in carriedPins ?? new Dictionary<string, GraphPoint>())
+        {
+            if (!point.IsValid) continue;
+            graphPins[key] = point;
+            layoutMemory[key] = point;
         }
 
         Dictionary<string, GraphPoint> kept = Remembered(wholeDisplay);
@@ -709,6 +722,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectionSubtitle));
         OnPropertyChanged(nameof(EvidenceHeading));
         OnPropertyChanged(nameof(EvidenceSummary));
+        OnPropertyChanged(nameof(PinActionLabel));
+        OnPropertyChanged(nameof(CanTogglePin));
     }
 
     private ReadOnlyDictionary<ProcessInstanceId, GraphPoint> ProcessPositions() =>
@@ -796,6 +811,107 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private readonly Dictionary<string, GraphPoint> layoutMemory = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Nodes the user placed by hand, by the same stable keys, in graph coordinates. They are hard constraints (§19.4)
+    /// and are kept for as long as the session is open, across refreshes and rungs. Workspaces are not saved yet, so
+    /// pins do not survive closing the session (§26.3); nothing claims that they do.
+    /// </summary>
+    private readonly Dictionary<string, GraphPoint> graphPins = new(StringComparer.Ordinal);
+
+    /// <summary>The identity the current drawing is laid out under: the graph's, qualified by the ladder's focus.</summary>
+    private string layoutIdentity = string.Empty;
+
+    /// <summary>Every pin this workspace holds, copied for a later publication of the same session to keep.</summary>
+    public IReadOnlyDictionary<string, GraphPoint> GraphPins =>
+        new ReadOnlyDictionary<string, GraphPoint>(new Dictionary<string, GraphPoint>(graphPins, StringComparer.Ordinal));
+
+    /// <summary>The drawn nodes the user pinned.</summary>
+    public IReadOnlySet<string> PinnedGraphNodeKeys =>
+        graphPins.Keys.Where(key => graphDisplay.Node(key) is not null).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>True when this stable graph key has a user placement constraint.</summary>
+    public bool IsGraphNodePinned(string key) => graphPins.ContainsKey(key);
+
+    /// <summary>The inspector's pin action for the selected node, in words, with its key.</summary>
+    public string PinActionLabel => SelectedGraphNodeKey is { } key && IsGraphNodePinned(key) ? "Unpin node (P)" : "Pin node (P)";
+
+    public bool CanTogglePin => SelectedGraphNodeKey is { } key && graphDisplay.Node(key) is not null;
+
+    /// <summary>
+    /// Pins a drawn node where the user put it. The drawing shows it there at once; the layout keeps it there and settles
+    /// the rest around it, anchored as for any refresh.
+    /// </summary>
+    public bool PinGraphNode(string key, GraphPoint at)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (wholeDisplay.Node(key) is null || !at.IsValid)
+        {
+            return false;
+        }
+
+        graphPins[key] = at;
+        layoutMemory[key] = at;
+        provisionalKeys.Remove(key);
+        displayPositions = new ReadOnlyDictionary<string, GraphPoint>(
+            new Dictionary<string, GraphPoint>(displayPositions, StringComparer.Ordinal) { [key] = at });
+        AfterPinsChanged();
+        return true;
+    }
+
+    /// <summary>Releases a pin; the node stays where it is until the layout moves it.</summary>
+    public bool UnpinGraphNode(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (!graphPins.Remove(key))
+        {
+            return false;
+        }
+
+        AfterPinsChanged();
+        return true;
+    }
+
+    /// <summary>P: pins the selected node where it is drawn, or releases its pin.</summary>
+    public bool TogglePinSelectedGraphNode() =>
+        SelectedGraphNodeKey is { } key && graphDisplay.Node(key) is not null
+        && (graphPins.ContainsKey(key)
+            ? UnpinGraphNode(key)
+            : displayPositions.TryGetValue(key, out GraphPoint at) && PinGraphNode(key, at));
+
+    /// <summary>
+    /// L: lays the drawn graph out afresh, as when it was first drawn, forgetting where its nodes were remembered. Pins
+    /// stay: they are the user's placements, not the layout's.
+    /// </summary>
+    public bool RelayoutGraph()
+    {
+        if (wholeDisplay.Nodes.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (GraphDisplayNode node in wholeDisplay.Nodes)
+        {
+            if (!graphPins.ContainsKey(node.Key))
+            {
+                layoutMemory.Remove(node.Key);
+                provisionalKeys.Add(node.Key);
+            }
+        }
+
+        LayoutReady = BuildLayoutAsync(layoutIdentity, wholeDisplay);
+        return true;
+    }
+
+    private void AfterPinsChanged()
+    {
+        GraphPositions = ProcessPositions();
+        OnPropertyChanged(nameof(DisplayPositions));
+        OnPropertyChanged(nameof(GraphPositions));
+        OnPropertyChanged(nameof(PinnedGraphNodeKeys));
+        OnPropertyChanged(nameof(PinActionLabel));
+        LayoutReady = BuildLayoutAsync(layoutIdentity, wholeDisplay);
+    }
+
     /// <summary>Coverage is derived from the snapshot's intervals, never from a prototype constant.</summary>
     public string CoverageSummary
     {
@@ -839,12 +955,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task BuildLayoutAsync(string identity, GraphDisplay display)
     {
+        layoutIdentity = identity;
         try
         {
-            // A node that existed before keeps its place; a node new to this drawing is seeded in its band.
-            GraphDisplayLayout? result = await graphLayout.RequestDisplayAsync(identity, display, previous: displayPositions
-                .Where(entry => display.Node(entry.Key) is not null && !provisionalKeys.Contains(entry.Key))
-                .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
+            // A node that existed before keeps its place, a node new to this drawing is seeded beside its neighbours, and
+            // a node the user pinned stays exactly where it was put (§19.4 hard constraints).
+            GraphDisplayLayout? result = await graphLayout.RequestDisplayAsync(identity, display,
+                previous: displayPositions
+                    .Where(entry => display.Node(entry.Key) is not null && !provisionalKeys.Contains(entry.Key))
+                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
+                pins: graphPins
+                    .Where(entry => display.Node(entry.Key) is not null)
+                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
             if (disposed || result is null || result.GraphIdentity != identity || !ReferenceEquals(display, wholeDisplay))
             {
                 return;
@@ -1166,6 +1288,147 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         };
     }
 
+    /// <summary>
+    /// The hover card for a drawn node or edge key (§6.2's hover contract, §6.3). It states what the mark stands for, the
+    /// exact scope its numbers answer, the metric and its value, what is unmeasured, its evidence and coverage, and the
+    /// scale its size or thickness is read against. Hover only describes: it never changes selection or filters.
+    /// </summary>
+    public GraphHoverCard? DescribeGraphHover(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        string metric = realOverview ? "Paired TCP observations" : "Observations";
+        string semantics = realOverview
+            ? "Basis: source observations · unit: observations · domain: paired TCP transport evidence · accounting: not applicable to a count; both witnessed endpoints contribute"
+            : "Basis: source observations · unit: observations · domain: relationship evidence · accounting: not applicable to a count";
+        string scope = appliedInterval is { } interval
+            ? "Scope: " + WorkspaceTime.FormatHalfOpenRange(interval, CultureInfo.CurrentCulture) + " · brushed interval"
+            : "Scope: " + WorkspaceTime.FormatHalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
+        if (graphDisplay.Node(key) is { } node)
+        {
+            long scale = graphDisplay.Nodes.Max(candidate => candidate.Observations);
+            string title = node.ProcessId is { } pid
+                ? string.Create(CultureInfo.CurrentCulture, $"{node.Label} · PID {pid}")
+                : node.Label;
+            string what = node.Kind switch
+            {
+                GraphNodeKind.Process => "Process instance · " + Counted(node.Relationships, "relationship", "relationships"),
+                GraphNodeKind.Group => Counted(node.Members.Count, "process", "processes") + " of this executable, drawn as one node · "
+                    + Counted(node.Relationships, "relationship", "relationships"),
+                GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
+                GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
+                _ => Counted(node.Members.Count, "process", "processes") + " with no admitted relationship",
+            };
+            HashSet<ProcessInstanceId> members = [.. node.Members];
+            CoverageState coverage = Worst(Snapshot.Processes.Where(process => members.Contains(process.Id))
+                .Select(process => process.Coverage));
+            var nodeLines = new List<string>
+            {
+                what,
+                scope,
+                semantics,
+                string.Create(CultureInfo.CurrentCulture, $"{metric} on its relationships: {node.Observations:N0}"),
+                HoverBytes(Snapshot.Edges.Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId)),
+                    node.Observations),
+                "Coverage: " + DescribeCoverage(coverage),
+                string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}"),
+            };
+            if (graphPins.ContainsKey(node.Key))
+            {
+                nodeLines.Add("Pinned where it was placed · P releases it");
+            }
+
+            return new(title, nodeLines);
+        }
+
+        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == key) is not { } drawn)
+        {
+            return null;
+        }
+
+        long edgeScale = graphDisplay.Edges.Max(edge => edge.ObservationCount);
+        HashSet<string> relationships = [.. drawn.Relationships];
+        Channel[] channels = [.. Snapshot.Channels.Where(channel => relationships.Contains(channel.EdgeKey))];
+        var lines = new List<string>
+        {
+            $"{ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(drawn.Mechanism)).Label} · {DescribeStrength(drawn.Strength)} evidence · "
+                + Counted(drawn.Relationships.Count, "relationship", "relationships") + " · "
+                + Counted(channels.Length, "channel", "channels"),
+            scope,
+            semantics,
+            string.Create(CultureInfo.CurrentCulture, $"{metric}: {drawn.ObservationCount:N0}")
+                + (realOverview ? " · from both ends" : string.Empty)
+                + (drawn.ObservationCount == 0 && appliedInterval is not null
+                    ? " · none in this interval; the relationship exists in the session"
+                    : string.Empty),
+            HoverBytes(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key)), drawn.ObservationCount),
+        };
+        if (realOverview)
+        {
+            lines.Add("Direction: display order only, not who initiated or sent");
+        }
+
+        lines.Add("Coverage: " + DescribeCoverage(channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
+        lines.Add(string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}"));
+        string source = graphDisplay.Node(drawn.SourceKey)?.Label ?? drawn.SourceKey;
+        string target = graphDisplay.Node(drawn.TargetKey)?.Label ?? drawn.TargetKey;
+        return new($"{source} ↔ {target}", lines);
+    }
+
+    /// <summary>
+    /// Bytes a mark's relationships measured, and how many observations belong to relationships whose byte total is
+    /// unknown. The model has relationship-level byte availability, not a per-observation byte-known bit, so the card
+    /// states that granularity rather than fabricating a more precise denominator (R21).
+    /// </summary>
+    private static string HoverBytes(IEnumerable<CommunicationEdge> edges, long observations)
+    {
+        CommunicationEdge[] all = [.. edges];
+        CommunicationEdge[] known = [.. all.Where(edge => edge.KnownBytes.HasValue)];
+        long unknownObservations = all.Where(edge => !edge.KnownBytes.HasValue).Sum(edge => edge.ObservationCount);
+        if (known.Length == 0)
+        {
+            return observations == 0
+                ? "Bytes: unknown · 0 contributing observations in this scope"
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"Bytes: unknown · {unknownObservations:N0} contributing observations are on relationships with no byte total");
+        }
+
+        // DescribeBytes already says "known"; the prefix names the quantity only.
+        string measured = "Bytes: " + WorkspaceRowBuilder.DescribeBytes(known.Sum(edge => edge.KnownBytes!.Value));
+        return unknownObservations == 0
+            ? measured + " · no contributing observation is on a relationship with an unknown byte total"
+            : measured + string.Create(CultureInfo.CurrentCulture,
+                $" · {unknownObservations:N0} contributing observations are on relationships with an unknown byte total");
+    }
+
+    private static CoverageState Worst(IEnumerable<CoverageState> states)
+    {
+        CoverageState worst = CoverageState.Covered;
+        foreach (CoverageState state in states)
+        {
+            if (state > worst) worst = state;
+        }
+
+        return worst;
+    }
+
+    private static string DescribeCoverage(CoverageState coverage) => coverage switch
+    {
+        CoverageState.Covered => "covered",
+        CoverageState.ReducedFidelity => "reduced fidelity",
+        CoverageState.PartialGap => "partial gap, not extrapolated",
+        CoverageState.NotCollected => "not collected",
+        _ => "unknown",
+    };
+
+    private static string DescribeStrength(RelationStrength strength) => strength switch
+    {
+        RelationStrength.Direct => "direct",
+        RelationStrength.Correlated => "correlated",
+        RelationStrength.Candidate => "candidate",
+        RelationStrength.Unresolved => "unresolved",
+        _ => "conflicting",
+    };
+
     /// <summary>A selected executable group: its size, where its members are drawn, and the path its name stands for.</summary>
     private string DescribeGroup(ProcessGroup group)
     {
@@ -1271,8 +1534,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                         : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} paired TCP observations on ")
                             + Counted(edges.Length, "relationship", "relationships") + " · bytes unknown";
             }
-            long knownBytes = edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value);
-            return $"{observations:N0} observations · {knownBytes / 1_000_000m:N2} MB known";
+            // Bytes nothing measured are unknown, never zero (R3): a sum over no known value is no sum at all.
+            long? knownBytes = edges.Any(edge => edge.KnownBytes.HasValue)
+                ? edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value)
+                : null;
+            return $"{observations:N0} observations · {WorkspaceRowBuilder.DescribeBytes(knownBytes)}";
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia;
 using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Domain;
@@ -224,6 +225,70 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Null(viewModel.GraphLayoutProblem);
     }
 
+    [Fact(DisplayName = "§6.3: a manual pin is a hard constraint through re-layout and a later publication")]
+    public async Task ManualPinSurvivesRelayoutAndLaterPublication()
+    {
+        (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
+        using var first = new WorkspaceViewModel(snapshot, "session:test:generation:1");
+        await first.LayoutReady;
+        string key = processes[0].Id.ToString();
+        first.SelectGraphNode(key);
+        var pin = new GraphPoint(0.17, 0.23);
+
+        Assert.True(first.PinGraphNode(key, pin));
+        await first.LayoutReady;
+        Assert.Equal(pin, first.DisplayPositions[key]);
+        Assert.Equal(pin, first.GraphPins[key]);
+        Assert.Contains(key, first.PinnedGraphNodeKeys);
+        Assert.Equal("Unpin node (P)", first.PinActionLabel);
+        Assert.Contains(first.DescribeGraphHover(key)!.Lines,
+            line => line.StartsWith("Pinned where it was placed", StringComparison.Ordinal));
+
+        Assert.True(first.RelayoutGraph());
+        await first.LayoutReady;
+        Assert.Equal(pin, first.DisplayPositions[key]);
+
+        using var second = new WorkspaceViewModel(snapshot, "session:test:generation:2",
+            carriedLayout: first.LaidOutPositions, carriedPins: first.GraphPins);
+        await second.LayoutReady;
+        Assert.Equal(pin, second.DisplayPositions[key]);
+        Assert.Equal(pin, second.GraphPins[key]);
+
+        second.SelectGraphNode(key);
+        Assert.True(second.TogglePinSelectedGraphNode());
+        await second.LayoutReady;
+        Assert.DoesNotContain(key, second.GraphPins.Keys);
+        Assert.Equal("Pin node (P)", second.PinActionLabel);
+    }
+
+    [Fact(DisplayName = "§6.3: a hub label searches beyond four occupied sides instead of disappearing")]
+    public void CrowdedHubStillGetsAClearLabelSlot()
+    {
+        var pane = new Rect(0, 0, 500, 300);
+        var hub = new Point(250, 150);
+        const double radius = 12;
+        var points = new Dictionary<string, Point>(StringComparer.Ordinal)
+        {
+            ["hub"] = hub,
+            ["below"] = new(250, 174),
+            ["above"] = new(250, 126),
+            ["right"] = new(282, 150),
+            ["left"] = new(218, 150),
+        };
+        var radii = points.Keys.ToDictionary(key => key, _ => 9d, StringComparer.Ordinal);
+        radii["hub"] = radius;
+
+        Rect? label = GraphView.FindLabelBox(
+            pane, hub, radius, 100, 18, "hub", points, radii, [], mustShow: false);
+
+        Assert.True(label.HasValue);
+        Rect box = label.GetValueOrDefault();
+        Assert.True(pane.Contains(box));
+        Assert.All(points.Where(entry => entry.Key != "hub"), entry =>
+            Assert.False(box.Inflate(radii[entry.Key]).Contains(entry.Value),
+                $"label covered {entry.Key} at {entry.Value}"));
+    }
+
     /// <summary>A layout scheduler whose drawn-graph layouts wait while <see cref="Holding"/>, so a test reads the first frame.</summary>
     private sealed class HeldLayouts
     {
@@ -267,6 +332,51 @@ public sealed class GraphLayoutIntegrationTests
 
         Assert.Equal(quiet, second.SelectedCluster?.Key);
         Assert.Equal("No relationships", second.SelectionTitle);
+    }
+
+    [Fact(DisplayName = "§6.3: a graph hover card states half-open scope, semantics, value, unknowns, coverage and scale")]
+    public async Task HoverCardsStateTheContract()
+    {
+        (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
+        using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
+        await viewModel.LayoutReady;
+
+        GraphHoverCard process = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover(processes[0].Id.ToString()));
+        // A PID is an identifier, written as the canvas label and Task Manager write it: without a group separator.
+        Assert.Equal("Process 1 · PID 2001", process.Title);
+        Assert.Equal("Process instance · 1 relationship", process.Lines[0]);
+        Assert.StartsWith("Scope: [", process.Lines[1], StringComparison.Ordinal);
+        Assert.EndsWith(" · whole session", process.Lines[1], StringComparison.Ordinal);
+        Assert.Contains("Basis: source observations", process.Lines[2], StringComparison.Ordinal);
+        Assert.Contains("accounting: not applicable to a count", process.Lines[2], StringComparison.Ordinal);
+        Assert.Equal("Paired TCP observations on its relationships: 10", process.Lines[3]);
+        Assert.Equal("Bytes: unknown · 10 contributing observations are on relationships with no byte total", process.Lines[4]);
+        Assert.Equal("Coverage: covered", process.Lines[5]);
+        Assert.Equal("Size: log scale against the busiest drawn node, 10", process.Lines[6]);
+
+        GraphDisplayNode quiet = Assert.Single(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Quiet);
+        GraphHoverCard aggregate = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover(quiet.Key));
+        Assert.Equal("No relationships", aggregate.Title);
+        Assert.Equal("3 processes with no admitted relationship", aggregate.Lines[0]);
+        Assert.Equal("Bytes: unknown · 0 contributing observations in this scope", aggregate.Lines[4]);
+
+        GraphHoverCard edge = Assert.IsType<GraphHoverCard>(viewModel.DescribeGraphHover("pair"));
+        Assert.Equal("Process 1 ↔ Process 2", edge.Title);
+        Assert.Equal("TCP · direct evidence · 1 relationship · 0 channels", edge.Lines[0]);
+        Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[3]);
+        Assert.Contains("Direction: display order only, not who initiated or sent", edge.Lines);
+        Assert.Null(viewModel.DescribeGraphHover("no such mark"));
+    }
+
+    [Fact(DisplayName = "R3: a process whose relationships measured no bytes reads bytes unknown, never 0 MB")]
+    public async Task UnmeasuredBytesAreUnknownNotZero()
+    {
+        using var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
+        await viewModel.LayoutReady;
+
+        // The tour's cache talks over a pipe and a shared section, neither of which measured a byte.
+        viewModel.SelectProcess(new ProcessInstanceId(Guid.Parse("25ecf72c-7d72-4421-943e-eb6d66cd2fe8")));
+        Assert.Equal("188 observations · bytes unknown", viewModel.EvidenceSummary);
     }
 
     /// <summary>
