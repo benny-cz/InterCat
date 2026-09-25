@@ -434,6 +434,121 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: an instance's source-direction lanes hover, select and step in the minimum window")]
+    public async Task AnInstanceDrawsSourceDirectionLanesWithMachineContext()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversation(60));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+            await workspace.TimelineDetailReady;
+        }
+
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ScrollViewer scroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
+        Assert.True(workspace.ShowsDirectionLanes, workspace.TimelineCaption);
+        Assert.Contains("by source direction", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(((SessionTimelineQuery.LaneDirections.Count + 1) * 30) + 54, timeline.MinHeight);
+        DirectionTimelineLane outbound = Lane(Direction.Outbound);
+        DirectionTimelineLane inbound = Lane(Direction.Inbound);
+        Assert.Equal(30, outbound.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(30, inbound.Buckets.Sum(bucket => bucket.ObservationCount));
+
+        // Each row has its own hit target and names itself; a click on a bar selects its interval.
+        foreach (DirectionTimelineLane lane in new[] { outbound, inbound })
+        {
+            TimelineBucket bucket = lane.Buckets.First(candidate => candidate.ObservationCount > 0);
+            Point at = Reveal(window, timeline, scroller, timeline.PointOf(lane.Direction, bucket)!.Value);
+            window.MouseMove(at);
+            Dispatch();
+            Assert.Equal(bucket, timeline.HoveredBucket);
+            HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+            string name = WorkspaceViewModel.DirectionLabel(lane.Direction);
+            Assert.EndsWith($" · {name} lane", card.Lines[0], StringComparison.Ordinal);
+            Assert.Contains($" marked {name.ToLowerInvariant()} · accounting:", card.Lines[1], StringComparison.Ordinal);
+            Assert.StartsWith($"Direction: {name.ToLowerInvariant()}, as the source marks", card.Lines[2], StringComparison.Ordinal);
+            Assert.Contains(card.Lines, line => line.EndsWith("(shared scale)", StringComparison.Ordinal));
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Assert.Equal(bucket.Interval, workspace.SelectedInterval);
+        }
+
+        // A row's name makes it the table and step focus: brackets then visit only its occupied buckets.
+        TimelineBucket firstSent = outbound.Buckets.First(bucket => bucket.ObservationCount > 0);
+        Point label = Reveal(window, timeline, scroller, new(30, timeline.PointOf(Direction.Outbound, firstSent)!.Value.Y));
+        window.MouseDown(label, MouseButton.Left);
+        window.MouseUp(label, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(Direction.Outbound, workspace.SelectedTimelineDirection);
+        TimeRange received = workspace.SelectedInterval!.Value;
+        TimelineBucket lastSent = outbound.Buckets.Last(bucket => bucket.ObservationCount > 0
+            && bucket.Interval.EndTicks <= received.StartTicks);
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketLeft, RawInputModifiers.None);
+        Assert.Equal(lastSent.Interval, workspace.SelectedInterval);
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal((outbound.Buckets.FirstOrDefault(bucket => bucket.ObservationCount > 0
+            && bucket.Interval.StartTicks >= lastSent.Interval.EndTicks) ?? lastSent).Interval, workspace.SelectedInterval);
+
+        // The same focus has a keyboard-reachable table equivalent inside the minimum window.
+        workspace.ShowTables = true;
+        Dispatch();
+        ComboBox selector = window.GetControl<ComboBox>("DirectionLaneSelector");
+        Assert.True(selector.IsVisible);
+        Assert.False(window.GetControl<ComboBox>("TimelineLaneSelector").IsVisible);
+        Assert.Equal(Direction.Outbound, Assert.IsType<DirectionLaneOption>(selector.SelectedItem).Direction);
+        Point selectorCentre = selector.TranslatePoint(new(selector.Bounds.Width / 2, selector.Bounds.Height / 2), window)!.Value;
+        Assert.InRange(selectorCentre.X, 0, window.Bounds.Width);
+        Assert.InRange(selectorCentre.Y, 0, window.Bounds.Height);
+        selector.SelectedItem = workspace.DirectionLaneOptions.Single(option => option.Direction == Direction.Inbound);
+        Dispatch();
+        Assert.Equal(Direction.Inbound, workspace.SelectedTimelineDirection);
+        Assert.StartsWith("Inbound source-direction records", workspace.IntervalTableScope, StringComparison.Ordinal);
+        TimelineBucket firstReceived = inbound.Buckets.First(bucket => bucket.ObservationCount > 0);
+        Assert.Equal(firstReceived.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.Intervals.Single(row => row.Interval == firstReceived.Interval).Observations);
+        workspace.ShowTables = false;
+        Dispatch();
+
+        // The machine row's name returns to all directions.
+        Point machine = Reveal(window, timeline, scroller,
+            new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y));
+        window.MouseDown(machine, MouseButton.Left);
+        window.MouseUp(machine, MouseButton.Left);
+        Dispatch();
+        Assert.Null(workspace.SelectedTimelineDirection);
+
+        // Zoomed, every row is re-counted on the viewport's own columns.
+        TimeRange extent = timeline.Viewport;
+        timeline.SetViewport(new TimeRange(extent.StartTicks + (extent.SpanTicks / 4), extent.EndTicks - (extent.SpanTicks / 4)));
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Assert.True(workspace.ShowsDirectionLanes);
+        DirectionTimelineLane zoomed = Lane(Direction.Inbound);
+        TimelineBucket zoomedBucket = zoomed.Buckets.First(bucket => bucket.ObservationCount > 0);
+        Point zoomedAt = Reveal(window, timeline, scroller, timeline.PointOf(Direction.Inbound, zoomedBucket)!.Value);
+        window.MouseMove(zoomedAt);
+        Dispatch();
+        Assert.Equal(zoomedBucket, timeline.HoveredBucket);
+        Assert.Contains(Assert.IsType<HoverCard>(timeline.HoverCard).Lines,
+            line => line.Contains("this view's own count", StringComparison.Ordinal));
+        Save(window.CaptureRenderedFrame()!, "l2-direction-lanes-1080x700.png");
+        window.Close();
+
+        DirectionTimelineLane Lane(Direction direction) =>
+            workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == direction);
+    }
+
     [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
     public void APlainDragPansAndKeysMoveTheViewport()
     {
@@ -833,6 +948,35 @@ public sealed class EvidenceRungWindowTests
                 (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
         }),
     ];
+
+    /// <summary>
+    /// A client that sends for the first half of <paramref name="count"/> exchanges and receives for the second, so its
+    /// instance's outbound and inbound rows are busy at different times.
+    /// </summary>
+    private static ObservationRowV1[] Conversation(int count) =>
+    [
+        .. Enumerable.Range(0, count).SelectMany(index =>
+        {
+            (int sender, int receiver) = index < count / 2 ? (100, 200) : (200, 100);
+            (string from, string to) = sender == 100 ? (ClientEnd, ServerEnd) : (ServerEnd, ClientEnd);
+            return new[]
+            {
+                Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, sender,
+                    (ulong)(100 + (2 * index))).Between(from, to) with { SessionRelativeTicks = (10 + (2 * index)) * 100L },
+                Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, receiver,
+                    (ulong)(101 + (2 * index))).Between(to, from) with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
+            };
+        }),
+    ];
+
+    /// <summary>Scrolls a timeline point into the lane scroller's view and returns it in window coordinates.</summary>
+    private static Point Reveal(Window window, TimelineView timeline, ScrollViewer scroller, Point local)
+    {
+        scroller.Offset = new Vector(scroller.Offset.X, Math.Clamp(local.Y - (scroller.Bounds.Height / 2), 0,
+            Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height)));
+        Dispatch();
+        return timeline.TranslatePoint(local, window)!.Value;
+    }
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 }

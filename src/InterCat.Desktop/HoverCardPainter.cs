@@ -55,8 +55,9 @@ internal sealed class HoverCardPainter(IBrush surface, IBrush ink, IBrush mutedI
     }
 
     /// <summary>
-    /// Hover text may wrap to two lines: clipping a semantic or accounting line would defeat the card's purpose, and a
-    /// small bound keeps a narrow pane readable.
+    /// Hover text may wrap to three lines: clipping a semantic or accounting line would defeat the card's purpose, and a
+    /// small bound keeps a narrow pane readable. A basis line naming an owner by executable, PID and a 36-character
+    /// instance ID needs the third line at the card's full width.
     /// </summary>
     private FormattedText Text(string text, double size, bool strong, double width)
     {
@@ -67,7 +68,7 @@ internal sealed class HoverCardPainter(IBrush surface, IBrush ink, IBrush mutedI
                 strong ? ink : mutedInk)
             {
                 MaxTextWidth = width,
-                MaxLineCount = 2,
+                MaxLineCount = 3,
                 Trimming = TextTrimming.WordEllipsis,
             };
             texts[(text, width, size, strong)] = formatted;

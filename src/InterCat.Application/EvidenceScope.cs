@@ -49,9 +49,7 @@ public static class EvidenceScopes
                     if (!Guid.TryParse(processKey, out Guid id) || id == Guid.Empty)
                         return Unreadable($"The process filter '{filter.Value}' names no process instance.", interval);
                     ProcessNode? process = snapshot.Processes.FirstOrDefault(node => node.Id.Value == id);
-                    string name = process is null
-                        ? filter.Value
-                        : string.Create(CultureInfo.CurrentCulture, $"{process.Name} · PID {process.ProcessId}");
+                    string name = process is null ? filter.Value : process.NameWithPid;
                     return new($"Records owned by {name}{time}", null, [new(id)], interval, null);
                 case DetailLevel.Group when filter.Key is { } groupKey:
                     ProcessInstanceId[] members = [.. snapshot.Processes

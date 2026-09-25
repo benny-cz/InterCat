@@ -468,6 +468,17 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
+          <ComboBox x:Name="DirectionLaneSelector" Grid.Column="2" Width="175" MinHeight="32"
+                    ItemsSource="{Binding DirectionLaneOptions}"
+                    SelectedItem="{Binding SelectedDirectionLane, Mode=TwoWay}"
+                    IsVisible="{Binding ShowsDirectionLanes}"
+                    AutomationProperties.Name="Source direction lane for the interval table and bracket-key stepping">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="local:DirectionLaneOption">
+                <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
           <Button x:Name="GroupTotalsButton" Grid.Column="3" Margin="8,0,0,0" Content="Group totals"
                   Click="ClearTimelineProcessFocus" IsVisible="{Binding HasSelectedProcessLane}"
                   AutomationProperties.Name="Clear the selected process lane and show group interval totals" />

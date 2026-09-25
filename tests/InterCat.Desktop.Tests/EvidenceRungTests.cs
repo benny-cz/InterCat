@@ -146,9 +146,13 @@ public sealed class EvidenceRungTests
         DescendTo(workspace, client.Id.ToString());
         await workspace.TimelineDetailReady;
         Assert.Equal(Exchanges + 1, FocusTotal(workspace));
+        Assert.NotNull(workspace.TimelineDirectionLanes);
+        Assert.Equal(FocusTotal(workspace), workspace.TimelineDirectionLanes!
+            .Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
         DescendTo(workspace, channel.Key);
         await workspace.TimelineDetailReady;
         Assert.Equal(2 * Exchanges, FocusTotal(workspace));
+        Assert.Empty(workspace.TimelineDirectionLanes!);
 
         // Zoomed, the whole timeline and the focus are counted on the viewport's own columns.
         workspace.RequestTimelineDetail(new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2)), 20);
@@ -214,22 +218,26 @@ public sealed class EvidenceRungTests
         DescendTo(first, client.Id.ToString());
         await first.TimelineDetailReady;
         IReadOnlyList<TimelineBucket> counted = first.TimelineFocusBuckets!;
+        IReadOnlyList<DirectionTimelineLane> directions = first.TimelineDirectionLanes!;
 
         // The next publication restores the rung, shows the earlier counts at once, and says nothing is missing.
         using WorkspaceViewModel next = Open(session);
         Assert.Null(next.RestoreNavigation(first.CaptureNavigation()));
         next.AdoptTimeline(first.CarryTimeline());
         Assert.Same(counted, next.TimelineFocusBuckets);
+        Assert.Same(directions, next.TimelineDirectionLanes);
         next.RequestTimelineDetail(next.Snapshot.Extent, 80);
         Assert.DoesNotContain("Counting", next.TimelineCaption, StringComparison.Ordinal);
         await next.TimelineDetailReady;
         Assert.NotSame(counted, next.TimelineFocusBuckets);
+        Assert.NotSame(directions, next.TimelineDirectionLanes);
         Assert.Equal(Exchanges + 1, FocusTotal(next));
 
         // A publication shown at another rung does not adopt counts that describe other records.
         using WorkspaceViewModel machine = Open(session);
         machine.AdoptTimeline(first.CarryTimeline());
         Assert.Null(machine.TimelineFocusBuckets);
+        Assert.Null(machine.TimelineDirectionLanes);
         Assert.False(machine.TimelineShowsFocus);
     }
 
@@ -266,6 +274,85 @@ public sealed class EvidenceRungTests
         // A bucket that is the analysis interval says so instead of offering the click that would make it one.
         workspace.SelectInterval(bucket.Interval);
         Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(bucket, 1_000).Lines[^1]);
+    }
+
+    [Fact(DisplayName = "§3.2/§6.2: an instance's source-direction rows state their domain and scope the table, and survive a refresh")]
+    public async Task AnInstancesSourceDirectionRowsStateTheirDomainAndScopeTheTable()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        // Every direction code has a row, in one order; the client's sends and its creation land in their own rows.
+        Assert.True(workspace.ShowsDirectionLanes);
+        IReadOnlyList<DirectionTimelineLane> lanes = workspace.TimelineDirectionLanes!;
+        Assert.Equal(SessionTimelineQuery.LaneDirections, lanes.Select(lane => lane.Direction));
+        Assert.Equal(Exchanges, Total(Direction.Outbound));
+        Assert.Equal(1, Total(Direction.DirectionNotApplicable));
+        Assert.Equal(0, Total(Direction.Inbound) + Total(Direction.Bidirectional) + Total(Direction.UnknownDirection));
+        Assert.Contains("by source direction · machine context above · click a lane name", workspace.TimelineCaption,
+            StringComparison.Ordinal);
+
+        // Hover names the row, what the source's direction means for it, and the instance's count across every row.
+        TimelineBucket sent = lanes[0].Buckets.First(bucket => bucket.ObservationCount > 0);
+        TimelineBucket focused = workspace.TimelineFocusBuckets!.Single(bucket => bucket.Interval == sent.Interval);
+        HoverCard card = workspace.DescribeTimelineHover(sent, 1_000, directionLane: Direction.Outbound);
+        Assert.EndsWith(" · Outbound lane", card.Lines[0], StringComparison.Ordinal);
+        Assert.Equal($"Basis: source observations · unit: records · domain: records owned by {client.NameWithPid} "
+            + "marked outbound · accounting: one owner and one source direction per record", card.Lines[1]);
+        Assert.Equal("Direction: outbound, as the source marks sends, connection attempts and client calls · it does "
+            + "not say who initiated the conversation", card.Lines[2]);
+        Assert.EndsWith($": {focused.ObservationCount:N0} {(focused.ObservationCount == 1 ? "record" : "records")} "
+            + "in this interval across all directions", card.Lines[3], StringComparison.Ordinal);
+        Assert.EndsWith("(shared scale)", card.Lines[4], StringComparison.Ordinal);
+        TimelineBucket created = lanes[^1].Buckets.First(bucket => bucket.ObservationCount > 0);
+        HoverCard creation = workspace.DescribeTimelineHover(created, 1_000, directionLane: Direction.DirectionNotApplicable);
+        Assert.EndsWith(" with no data direction · accounting: one owner and one source direction per record",
+            creation.Lines[1], StringComparison.Ordinal);
+        Assert.StartsWith("Direction: none · process lifecycle records", creation.Lines[2], StringComparison.Ordinal);
+
+        // A chosen row scopes the interval table and the caption; the graph and ranking are untouched.
+        string[] ranked = [.. workspace.RungRows.Select(row => row.Key)];
+        workspace.SelectDirectionLane(Direction.Outbound);
+        Assert.Equal(Direction.Outbound, workspace.SelectedTimelineDirection);
+        Assert.StartsWith("Outbound source-direction records", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Assert.Equal(lanes[0].Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        Assert.Equal(sent.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.Intervals.Single(row => row.Interval == sent.Interval).Observations);
+        Assert.Contains("Outbound table/step focus", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(ranked, workspace.RungRows.Select(row => row.Key));
+
+        // The choice is navigation state: a same-session publication restores it with the rung.
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        Assert.Equal(Direction.Outbound, saved.SelectedTimelineDirection);
+        using (WorkspaceViewModel next = Open(session))
+        {
+            Assert.Null(next.RestoreNavigation(saved));
+            Assert.Equal(Direction.Outbound, next.SelectedTimelineDirection);
+            next.RequestTimelineDetail(next.Snapshot.Extent, 80);
+            await next.TimelineDetailReady;
+            Assert.StartsWith("Outbound source-direction records", next.IntervalTableScope, StringComparison.Ordinal);
+        }
+
+        // All directions returns the instance's own counts beside the machine's.
+        workspace.SelectDirectionLane(null);
+        Assert.StartsWith("Whole session in", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Assert.Contains(workspace.Intervals, row => row.Observations.EndsWith(" in focus", StringComparison.Ordinal));
+
+        // The rows belong to the instance rung; the group above draws its own.
+        workspace.SelectDirectionLane(Direction.Outbound);
+        Assert.True(workspace.Ascend());
+        await workspace.TimelineDetailReady;
+        Assert.False(workspace.ShowsDirectionLanes);
+        Assert.DoesNotContain("source-direction", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        int Total(Direction direction) => lanes.Single(lane => lane.Direction == direction).Buckets
+            .Sum(bucket => bucket.ObservationCount);
     }
 
     private static int FocusTotal(WorkspaceViewModel workspace) =>

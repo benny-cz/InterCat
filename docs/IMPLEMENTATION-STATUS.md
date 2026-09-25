@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 122 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 123 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -13,7 +13,8 @@ M0 and its IC-010a capture-impact follow-on are complete on the measured develop
 physical store, commit/recovery, and leases exist, but canonical import reuse, operation/entity checkpointing, and
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
 overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline, and interactive
-L0 mechanism lanes and exact L1 process-owner lanes; L2–L5 lanes, the operation view and the steady-state feedback budget are open.
+L0 mechanism lanes, exact L1 process-owner lanes and L2 source-direction rows; L3–L5 lanes, the operation view and the
+steady-state feedback budget are open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -47,13 +48,31 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism and L1 process-owner lanes with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L2–L5 lanes, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes and L2 source-direction rows with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L3–L5 lanes, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 123 — L2 source-direction rows (§3.2, §6.2, §6.6, §23):** An instance's focus now splits into one row
+  per `EN-Direction` code (Outbound, Inbound, Bidirectional, Unknown direction, No data direction). The rows sit under
+  a machine-context row and are counted in the same leased pass as the focus. They partition the instance's records
+  bucket by bucket, and each row judges its own coverage. All five rows are always drawn, so none moves under a zoom.
+  An empty row reads "· none". Hover gives the row and a separate *Direction:* line. A row follows the source
+  catalog's direction, so a connection attempt counts as outbound; the card says it does not tell who initiated the
+  conversation. A row's name, or the tables' direction selector, scopes the interval table and `[`/`]`. The choice
+  survives a same-session publication. Found while qualifying it, and fixed:
+  - Hover lines were cut at two wrapped lines, which dropped an L1 or L2 basis line's accounting clause. They now
+    wrap to three.
+  - A process with no witnessed executable read "PID 812 · PID 812" in captions, search hits, owner rows and cards.
+    `ProcessNode.NameWithPid` now names it once.
+  - Plan §23 said a connect has no data direction while the catalog marks it `Outbound`. It now states which field
+    means what, and the §3.2 table no longer asks for "one lane per process instance" at a one-instance rung.
+
+  Real check: on the saved Explore session, python.exe PID 90424 splits into Outbound 32 · Inbound 84 · No data
+  direction 5, counted in 181 ms at 1080×700. Tests: two Application, one Desktop and one UI test (+4), and the opt-in
+  real-session test now qualifies L2. **943 passed, 1 skipped** in both Debug and Release.
 - **Revision 122 — interactive L1 process-owner lanes (§3.2, §6.2, §6.7):** A group now draws one row per
   canonical owner, plus a separate machine-context row, on one shared visible rate scale with each owner's own
   coverage. Hover explains exact owner, interval, count and scale; clicking a label selects that process, including
@@ -253,12 +272,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Give L2–L5 their own lanes (§3.2's timeline column): channel/peer, channel end, operation and
-   evidence, within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include
+1. Give L3–L5 their own lanes (§3.2's timeline column): the channel's two ends banded by direction, operations
+   and evidence marks, within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include
    operation/byte projections where derivations actually support them, and state unavailable where they do not.
-   The focus overlay from revision 112 is the single-lane step toward this; revision 119 provides the L0 renderer
-   and revision 122 the exact L1 rows. Audit keyboard and screen-reader/UI Automation access to individual lane
-   names and the new selector, and add pin/collapse/search as
+   Revisions 119, 122 and 123 provide the L0, L1 and L2 rows and their table/step selectors. Audit keyboard and
+   screen-reader/UI Automation access to individual lane names and the selectors, and add pin/collapse/search as
    the observed lane count requires.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
@@ -275,8 +293,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 122): **939 passed, 1 skipped, in Debug and Release**, zero failures.
-  Revision 122 adds one UI case and extends the opt-in real-session check, which passed separately in Release.
+- Last executed clean baseline (revision 123): **943 passed, 1 skipped, in Debug and Release**, zero failures.
+  Revision 123 adds two Application, one Desktop and one UI test (+4) and extends the opt-in real-session check to
+  L2, which passed separately in Release on the saved Explore session.
+  - Caution from revision 123: a filtered `dotnet test` whose build fails still runs the previous binary. Grep its
+    output for `error` or build the test project first, as the opt-in run showed before its compile error was seen.
+  - Revision 122 adds one UI case and extends the opt-in real-session check, which passed separately in Release.
   - Revision 121 adds one Application lane-budget test (+1), strengthens the focused query partition check and
     exercises 96 owner lanes and same-focus carry on the user's real saved Explore session. A Debug follower test
     failed once while Debug and Release suites ran concurrently; it passed alone and on a serial full Debug rerun.

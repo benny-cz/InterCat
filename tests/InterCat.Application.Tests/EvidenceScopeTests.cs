@@ -55,6 +55,22 @@ public sealed class EvidenceScopeTests
         Assert.StartsWith("Every admitted record", whole.Description, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§6.5: a process whose executable was not witnessed is named by its PID once")]
+    public void AnUnwitnessedProcessIsNamedByItsPidOnce()
+    {
+        var unnamed = new ProcessNode(new(Guid.Parse("44444444-4444-4444-8444-444444444444")), 812,
+            ProcessNode.PidName(812), "ActivityOnly", "executable:C:\\OTHER.EXE", 0, 0, CoverageState.UnknownCoverage);
+        WorkspaceSnapshot snapshot = Snapshot with { Processes = [.. Snapshot.Processes, unnamed] };
+
+        Assert.Equal("PID 812", unnamed.NameWithPid);
+        Assert.Equal("app.exe · PID 100", snapshot.Processes[0].NameWithPid);
+        Assert.Equal("Records owned by PID 812", EvidenceScopes.Resolve(snapshot,
+            Rung(Filter("process", "PID 812", DetailLevel.ProcessInstance, unnamed.Id.ToString()))).Description);
+
+        // Only the exact fallback name collapses: an executable whose name merely looks like a PID keeps its own PID.
+        Assert.Equal("PID 9 · PID 812", (unnamed with { Name = "PID 9" }).NameWithPid);
+    }
+
     [Fact]
     public void AMachineStepReadsTheWholeSessionAndABrushNarrowsItsTime()
     {

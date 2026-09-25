@@ -35,6 +35,12 @@ public sealed record SessionTimelineDetail(
 public sealed record ProcessTimelineLane(ProcessInstanceId ProcessId, IReadOnlyList<TimelineBucket> Buckets);
 
 /// <summary>
+/// One L2 owner's source-reported direction, including unknown and not-applicable rather than silently folding
+/// either into inbound or outbound. These rows partition the owner's admitted timed records.
+/// </summary>
+public sealed record DirectionTimelineLane(Direction Direction, IReadOnlyList<TimelineBucket> Buckets);
+
+/// <summary>
 /// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
 /// paired channel, the rows canonically owned by a set of process instances, or both at once. A rung's timeline therefore
 /// counts what E lists for it, never a guessed superset.
@@ -91,12 +97,23 @@ public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOn
     /// <summary>When a group fits the lane budget, these owner rows partition Focus on the same columns.</summary>
     public IReadOnlyList<ProcessTimelineLane> ProcessLanes { get; init; } = [];
 
+    /// <summary>At a single-owner process focus, exact rows split by each observed source direction.</summary>
+    public IReadOnlyList<DirectionTimelineLane> DirectionLanes { get; init; } = [];
+
     /// <summary>Why L1 rows were not made; the aggregate focus count remains available and exact.</summary>
     public string? ProcessLaneProblem { get; init; }
 }
 
 public static class SessionTimelineQuery
 {
+    /// <summary>
+    /// L2's source-direction rows, in drawing order: the two data directions first, then the rows that name none. Every
+    /// `EN-Direction` code has a row, so the rows partition the owner's records and never fold unknown into a direction.
+    /// </summary>
+    public static IReadOnlyList<Direction> LaneDirections { get; } = Array.AsReadOnly(
+        [Direction.Outbound, Direction.Inbound, Direction.Bidirectional,
+            Direction.UnknownDirection, Direction.DirectionNotApplicable]);
+
     /// <summary>A viewport never needs more columns than the minimap holds for the whole session.</summary>
     public const int MaximumColumns = SessionMinimap.MaximumColumns;
 
@@ -130,17 +147,19 @@ public static class SessionTimelineQuery
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(focus);
-        (SessionTimelineDetail whole, TimelineBucket[]? focused, ProcessTimelineLane[] lanes, string? problem) =
+        (SessionTimelineDetail whole, TimelineBucket[]? focused, ProcessTimelineLane[] lanes,
+            DirectionTimelineLane[] directions, string? problem) =
             Count(store, interval, columns, focus, policy, cancellationToken);
         return new(whole, Array.AsReadOnly(focused!))
         {
             ProcessLanes = Array.AsReadOnly(lanes),
+            DirectionLanes = Array.AsReadOnly(directions),
             ProcessLaneProblem = problem,
         };
     }
 
     private static (SessionTimelineDetail Whole, TimelineBucket[]? Focus,
-        ProcessTimelineLane[] ProcessLanes, string? ProcessLaneProblem) Count(
+        ProcessTimelineLane[] ProcessLanes, DirectionTimelineLane[] DirectionLanes, string? ProcessLaneProblem) Count(
         SessionStore store,
         TimeRange interval,
         int columns,
@@ -174,11 +193,16 @@ public static class SessionTimelineQuery
         Dictionary<ProcessInstanceId, TimelineColumns>? processColumns = groupFocus && laneProblem is null
             ? focus!.OwnerProcesses.ToDictionary(owner => owner, _ => new TimelineColumns(interval, columns, tallyMechanisms: true))
             : null;
+        // At most five direction codes and 2,000 columns: no extra segment pass or unbounded owner-by-peer matrix.
+        Dictionary<Direction, TimelineColumns>? directionColumns = focus is { ChannelKey: null, OwnerProcesses.Count: 1 }
+            ? LaneDirections.ToDictionary(direction => direction,
+                _ => new TimelineColumns(interval, columns, tallyMechanisms: true)) : null;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
             FocusRows.SegmentRows? inFocus = null;
             for (int row = 0; row < segment.RowCount; row++)
             {
@@ -201,6 +225,13 @@ public static class SessionTimelineQuery
                         {
                             processColumns[owner].Add(column, mechanism);
                         }
+                        if (directionColumns is not null)
+                        {
+                            Direction direction = (Direction)directions.UnsignedAt(row)!.Value;
+                            if (!Enum.IsDefined(direction))
+                                throw new InvalidDataException($"The focused record has an unknown direction code: {(int)direction}.");
+                            directionColumns[direction].Add(column, mechanism);
+                        }
                     }
                 }
             }
@@ -216,6 +247,9 @@ public static class SessionTimelineQuery
             focused?.Buckets(coverage, clock),
             processColumns is null ? [] : [.. focus!.OwnerProcesses.Select(owner =>
                 new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))],
+            directionColumns is null ? [] : [.. LaneDirections.Select(direction =>
+                new DirectionTimelineLane(direction,
+                    Array.AsReadOnly(directionColumns[direction].Buckets(coverage, clock))))],
             laneProblem);
     }
 }

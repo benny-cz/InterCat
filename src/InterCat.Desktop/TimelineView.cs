@@ -132,11 +132,35 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     private bool ShowingProcessLanes => ProcessContextBuckets is not null;
 
-    private bool ShowingLanes => ShowingMechanismLanes || ShowingProcessLanes;
+    private IReadOnlyList<DirectionTimelineLane>? DirectionLanesForViewport =>
+        DataContext is WorkspaceViewModel { ShowsDirectionLanes: true } viewModel
+        && viewModel.TimelineDirectionLanes is { Count: > 0 } lanes
+        && lanes.All(lane => lane.Buckets.Count > 0
+            && lane.Buckets[0].Interval.StartTicks <= Viewport.StartTicks
+            && lane.Buckets[^1].Interval.EndTicks >= Viewport.EndTicks)
+            ? lanes : null;
+
+    private IReadOnlyList<TimelineBucket>? DirectionContextBuckets
+    {
+        get
+        {
+            if (DirectionLanesForViewport is not { } lanes || DataContext is not WorkspaceViewModel viewModel)
+                return null;
+            IReadOnlyList<TimelineBucket> first = lanes[0].Buckets;
+            if (viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets))
+                return detail.Buckets;
+            return MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
+        }
+    }
+
+    private bool ShowingDirectionLanes => DirectionContextBuckets is not null;
+
+    private bool ShowingLanes => ShowingMechanismLanes || ShowingProcessLanes || ShowingDirectionLanes;
 
     private int LaneCount => ShowingMechanismLanes
         ? ((WorkspaceViewModel)DataContext!).Snapshot.MechanismLanes.Count
-        : ShowingProcessLanes ? ProcessLanesForViewport!.Count + 1 : 0;
+        : ShowingProcessLanes ? ProcessLanesForViewport!.Count + 1
+        : ShowingDirectionLanes ? DirectionLanesForViewport!.Count + 1 : 0;
 
     private static bool MatchingIntervals(IReadOnlyList<TimelineBucket> left, IReadOnlyList<TimelineBucket> right)
     {
@@ -150,7 +174,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     private double PlotLeft => ShowingMechanismLanes ? LanePlotLeft
-        : ShowingProcessLanes ? ProcessPlotLeft : AggregatePlotLeft;
+        : ShowingProcessLanes || ShowingDirectionLanes ? ProcessPlotLeft : AggregatePlotLeft;
 
     private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin);
 
@@ -213,7 +237,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>
-    /// Keep every L0 or L1 row addressable. A long list grows inside the pane's vertical ScrollViewer instead of
+    /// Keep every L0–L2 row addressable. A long list grows inside the pane's vertical ScrollViewer instead of
     /// compressing records into unpointable slivers; the aggregate fallback keeps its ordinary stretch height.
     /// </summary>
     internal void RefreshLaneLayout()
@@ -300,6 +324,10 @@ public sealed class TimelineView : Control, IHoverCardSource
                 ? ProcessContextBuckets!.Concat(ProcessLanesForViewport!.SelectMany(lane => lane.Buckets))
                     .Where(bucket => Intersects(bucket.Interval, visible))
                     .Select(Rate).DefaultIfEmpty(0).Max()
+            : ShowingDirectionLanes
+                ? DirectionContextBuckets!.Concat(DirectionLanesForViewport!.SelectMany(lane => lane.Buckets))
+                    .Where(bucket => Intersects(bucket.Interval, visible))
+                    .Select(Rate).DefaultIfEmpty(0).Max()
             : coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
         peakRate = maximumRate;
 
@@ -319,6 +347,15 @@ public sealed class TimelineView : Control, IHoverCardSource
         else if (ShowingProcessLanes)
         {
             DrawProcessLanes(context, viewModel, ProcessContextBuckets!, ProcessLanesForViewport!, scale);
+            if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
+            {
+                string note = $"zoomed detail from generation {detail.Generation:N0}";
+                DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
+            }
+        }
+        else if (ShowingDirectionLanes)
+        {
+            DrawDirectionLanes(context, viewModel, DirectionContextBuckets!, DirectionLanesForViewport!, scale);
             if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
             {
                 string note = $"zoomed detail from generation {detail.Generation:N0}";
@@ -356,7 +393,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
-        if (!ShowingProcessLanes && focused && viewModel.TimelineFocusBuckets is { } focus)
+        if (!ShowingProcessLanes && !ShowingDirectionLanes && focused
+            && viewModel.TimelineFocusBuckets is { } focus)
         {
             DrawFocus(context, focus.Where(bucket => Intersects(bucket.Interval, visible)), scale);
         }
@@ -406,6 +444,13 @@ public sealed class TimelineView : Control, IHoverCardSource
                     : ProcessLanesForViewport![index - 1].Buckets;
                 return buckets.FirstOrDefault(bucket => bucket.Interval.Contains(tick));
             }
+            if (ShowingDirectionLanes)
+            {
+                IReadOnlyList<TimelineBucket> buckets = index == 0
+                    ? DirectionContextBuckets!
+                    : DirectionLanesForViewport![index - 1].Buckets;
+                return buckets.FirstOrDefault(bucket => bucket.Interval.Contains(tick));
+            }
 
             Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
             IReadOnlyList<MechanismTimelineLane> lanes = viewModel.TimelineDetail is { } detail
@@ -444,7 +489,10 @@ public sealed class TimelineView : Control, IHoverCardSource
                 ? viewModel.Snapshot.Processes.FirstOrDefault(process =>
                     process.Id == ProcessLanesForViewport![index.Value - 1].ProcessId)
                 : null;
-            return viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond, mechanism, owner);
+            Direction? direction = ShowingDirectionLanes && index is > 0
+                ? DirectionLanesForViewport![index.Value - 1].Direction : null;
+            return viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
+                mechanism, owner, direction);
         }
     }
 
@@ -473,6 +521,13 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (processIndex >= 0) index = processIndex + 1;
             else if (ProcessContextBuckets!.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
         }
+        if (ShowingDirectionLanes && DirectionLanesForViewport is { } directions)
+        {
+            int directionIndex = directions.ToList().FindIndex(lane =>
+                lane.Buckets.Any(candidate => ReferenceEquals(candidate, bucket)));
+            if (directionIndex >= 0) index = directionIndex + 1;
+            else if (DirectionContextBuckets!.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
+        }
 
         double y = index >= 0
             ? LaneRow(index, LaneCount, PlotTop,
@@ -487,6 +542,21 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         if (!ShowingProcessLanes || ProcessLanesForViewport is not { } lanes) return null;
         int index = lanes.ToList().FindIndex(lane => lane.ProcessId == processId);
+        if (index < 0 || !lanes[index].Buckets.Contains(bucket)) return null;
+        TimeRange visible = Viewport;
+        if (!Intersects(bucket.Interval, visible)) return null;
+        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
+        return new(PlotLeft + ViewportMath.PixelAtTick(visible,
+                Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
+            LaneRow(index + 1, lanes.Count + 1, PlotTop,
+                Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y);
+    }
+
+    /// <summary>The direction names the row, because empty buckets of two rows over one interval are equal values.</summary>
+    internal Point? PointOf(Direction direction, TimelineBucket bucket)
+    {
+        if (!ShowingDirectionLanes || DirectionLanesForViewport is not { } lanes) return null;
+        int index = lanes.ToList().FindIndex(lane => lane.Direction == direction);
         if (index < 0 || !lanes[index].Buckets.Contains(bucket)) return null;
         TimeRange visible = Viewport;
         if (!Intersects(bucket.Interval, visible)) return null;
@@ -646,6 +716,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             string name = process?.Name ?? "Process";
             string shortName = name.Length > 14 ? name[..13] + "…" : name;
             string label = process is null ? $"{shortName} · {lane.ProcessId.Value.ToString("N")[..6]}"
+                : name == ProcessNode.PidName(process.ProcessId) ? name
                 : $"{shortName} · PID {process.ProcessId}";
             if (viewModel.SelectedProcess?.Id == lane.ProcessId)
             {
@@ -656,6 +727,44 @@ public sealed class TimelineView : Control, IHoverCardSource
             DrawText(context, label, new(9, row.Center.Y - 7));
             DrawLaneSeries(context, viewModel, null,
                 lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible)), rowScale, row);
+        }
+    }
+
+    /// <summary>L2's exact source-direction partition; the machine row is context, never added to the owner total.</summary>
+    private static void DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
+        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<DirectionTimelineLane> lanes, BarScale scale)
+    {
+        int count = lanes.Count + 1;
+        for (int index = 0; index < count; index++)
+        {
+            Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
+            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+                new(scale.Left + scale.PlotWidth, row.Bottom));
+            var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
+                row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
+            if (index == 0)
+            {
+                DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
+                DrawLaneSeries(context, viewModel, null,
+                    machine.Where(bucket => Intersects(bucket.Interval, scale.Visible)), rowScale, row, contextRow: true);
+                continue;
+            }
+
+            DirectionTimelineLane lane = lanes[index - 1];
+            TimelineBucket[] drawn = [.. lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible))];
+
+            // A row with nothing drawn still carries its coverage strip; naming it empty keeps that strip from being
+            // read as records, and says the source reported no record of this direction here.
+            string label = WorkspaceViewModel.DirectionLabel(lane.Direction)
+                + (drawn.Any(bucket => bucket.ObservationCount > 0) ? string.Empty : " · none");
+            if (viewModel.SelectedTimelineDirection == lane.Direction)
+            {
+                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                    new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
+            }
+
+            DrawText(context, label, new(9, row.Center.Y - 7));
+            DrawLaneSeries(context, viewModel, null, drawn, rowScale, row);
         }
     }
 
@@ -869,7 +978,12 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
             else if (laneIndex == 0)
             {
-                viewModel.ClearProcessLaneFocus();
+                if (ShowingProcessLanes) viewModel.ClearProcessLaneFocus();
+                else viewModel.SelectDirectionLane(null);
+            }
+            else if (ShowingDirectionLanes && DirectionLanesForViewport is { } directions)
+            {
+                viewModel.SelectDirectionLane(directions[laneIndex - 1].Direction);
             }
             else if (laneIndex > 0 && ProcessLanesForViewport is { } lanes)
             {
@@ -1125,8 +1239,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// [ and ] (§6.7): at the evidence rung, the previous or next record, which the timeline marks; elsewhere, the
     /// previous or next drawn bucket holding a record of the rung's focus - or of the machine at a rung without one -
     /// becomes the analysis interval. At L0 a selected mechanism lane supplies those buckets; at L1 a selected
-    /// process supplies its canonical-owner buckets. Otherwise the rung's focus or whole machine does. The viewport
-    /// follows a step that leaves it.
+    /// process supplies its canonical-owner buckets, and at L2 a selected source direction its row's. Otherwise the
+    /// rung's focus or whole machine does. The viewport follows a step that leaves it.
     /// </summary>
     private bool Step(WorkspaceViewModel viewModel, int direction)
     {
@@ -1166,6 +1280,14 @@ public sealed class TimelineView : Control, IHoverCardSource
             focus = null; // These buckets already contain only the selected canonical owner.
             zoomed = viewModel.TimelineDetail is { } ownerDetail
                 && MatchingIntervals(ownerLane.Buckets, ownerDetail.Buckets);
+        }
+        if (ShowingDirectionLanes && viewModel.SelectedTimelineDirection is { } selectedDirection
+            && DirectionLanesForViewport?.FirstOrDefault(lane => lane.Direction == selectedDirection) is { } directionLane)
+        {
+            buckets = directionLane.Buckets;
+            focus = null; // The source-direction row is already an exact subset of this owner's focus.
+            zoomed = viewModel.TimelineDetail is { } directionDetail
+                && MatchingIntervals(directionLane.Buckets, directionDetail.Buckets);
         }
         HashSet<TimeRange>? held = focus?.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval).ToHashSet();
         long anchor = viewModel.SelectedInterval is { } selected

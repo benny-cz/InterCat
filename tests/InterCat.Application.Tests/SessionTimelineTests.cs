@@ -173,6 +173,43 @@ public sealed class SessionTimelineTests
         Assert.Equal(new TimelineFocus(null, [client.Id, client.Id]).Key, new TimelineFocus(null, [client.Id]).Key);
     }
 
+    [Fact(DisplayName = "§3.2: one process's source-direction rows partition its exact focus without guessing unknown direction")]
+    public void ProcessDirectionLanesPartitionOwnerEvidence()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(100, ObservationKind.Create, 100, 1)),
+            Timed(Transfer(1_100, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2)
+                .Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(2_100, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 100, 3)
+                .Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(3_100, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4)
+                .Between(ClientEnd, ServerEnd) with { Direction = Direction.UnknownDirection }),
+            Timed(Transfer(4_100, ObservationKind.Send, AccountingSide.SendSide, 8, 200, 5)
+                .Between(ClientEnd, ServerEnd)),
+        ], coverage: TwoEpochs());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessInstanceId owner = overview.Nodes.Single(node => node.ProcessId == 100).Id;
+        TimeRange extent = overview.Extent!.Value;
+        SessionFocusedTimeline result = SessionTimelineQuery.Focused(session.Store, extent, 5,
+            new TimelineFocus(null, [owner]));
+
+        Assert.Empty(result.ProcessLanes);
+        Assert.Equal([Direction.Outbound, Direction.Inbound, Direction.Bidirectional,
+                Direction.UnknownDirection, Direction.DirectionNotApplicable],
+            result.DirectionLanes.Select(lane => lane.Direction));
+        Assert.All(result.Focus.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount,
+                result.DirectionLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+        Assert.Equal(4, result.DirectionLanes.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
+        Assert.Equal(1, result.DirectionLanes.Single(lane => lane.Direction == Direction.UnknownDirection)
+            .Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.All(result.DirectionLanes.SelectMany(lane => lane.Buckets)
+            .Where(bucket => bucket.ObservationCount == 0),
+            bucket => Assert.Equal(CoverageState.UnknownCoverage, bucket.Coverage));
+    }
+
     [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]
     public void ProcessLaneBudgetFallsBackToAnExactAggregate()
     {

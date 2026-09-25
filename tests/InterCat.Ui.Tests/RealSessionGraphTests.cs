@@ -255,6 +255,25 @@ public sealed class RealSessionGraphTests
             Dispatch();
         }
 
+        // §3.2 L2: the group's first ranked member, its records split by the source's direction. The rows partition the
+        // instance's own count bucket by bucket, and the group rung comes back as it was.
+        if (viewModel.RungRows.FirstOrDefault(row => Guid.TryParse(row.Key, out Guid id)
+            && members.Contains(new ProcessInstanceId(id))) is { } memberRow)
+        {
+            viewModel.SelectedRung = memberRow;
+            clock.Restart();
+            Assert.True(viewModel.Descend());
+            string rows = await QualifyDirectionRows(window, viewModel, "process-open.png");
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"L2 {memberRow.Label} ({memberRow.Detail}) counted in {clock.ElapsedMilliseconds} ms: {rows}");
+            Assert.True(viewModel.Ascend());
+            await viewModel.LayoutReady;
+            await viewModel.TimelineDetailReady;
+            Dispatch();
+            Assert.Equal(largest.Key, viewModel.GraphDisplay.ExpandedGroup);
+            display = viewModel.GraphDisplay;
+        }
+
         // A brush re-counts the drawing; it must not re-cluster it under the hand (§6.4).
         string[] structure = [.. display.Nodes.Select(node => node.Key)];
         if (overview.Extent is { } extent && extent.EndTicks - extent.StartTicks > 4)
@@ -275,11 +294,72 @@ public sealed class RealSessionGraphTests
         small.Show();
         small.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Real-session qualification.",
             SessionPath: path, Overview: overview), forceOverview: true);
-        await Assert.IsType<WorkspaceViewModel>(small.DataContext).LayoutReady;
+        var smallModel = Assert.IsType<WorkspaceViewModel>(small.DataContext);
+        await smallModel.LayoutReady;
         Dispatch();
         Save(small, "machine-1080x700.png");
+
+        // §3.2 L2 at the minimum window, on the process with the most relationships: real sends and receives in rows.
+        if (overview.Edges.Count > 0)
+        {
+            ProcessInstanceId talker = overview.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })
+                .GroupBy(id => id).OrderByDescending(group => group.Count()).ThenBy(group => group.Key.Value).First().Key;
+            ProcessNode talking = overview.Nodes.Single(node => node.Id == talker);
+            smallModel.SelectedRung = smallModel.RungRows.First(row => row.Key == talking.GroupKey);
+            Assert.True(smallModel.Descend());
+            await smallModel.LayoutReady;
+            smallModel.SelectedRung = smallModel.RungRows.First(row => row.Key == talker.ToString());
+            clock.Restart();
+            Assert.True(smallModel.Descend());
+            string rows = await QualifyDirectionRows(small, smallModel, "process-directions-1080x700.png");
+            report.AppendLine(CultureInfo.InvariantCulture,
+                $"L2 {talking.NameWithPid}, the busiest relationship end, counted in {clock.ElapsedMilliseconds} ms: {rows}");
+        }
+
         small.Close();
         File.WriteAllText(Path.Combine(Output, "report.txt"), report.ToString());
+    }
+
+    /// <summary>
+    /// At an instance rung: its source-direction rows partition its own count bucket by bucket, and the busiest row's
+    /// first occupied bucket hovers with its row's name and direction word. Returns the rows' totals for the report.
+    /// </summary>
+    private static async Task<string> QualifyDirectionRows(Window window, WorkspaceViewModel viewModel, string frame)
+    {
+        await viewModel.TimelineDetailReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        Assert.True(viewModel.ShowsDirectionLanes, viewModel.TimelineCaption);
+        IReadOnlyList<TimelineBucket> own = Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(viewModel.TimelineFocusBuckets);
+        IReadOnlyList<DirectionTimelineLane> directions = viewModel.TimelineDirectionLanes!;
+        Assert.Equal(SessionTimelineQuery.LaneDirections, directions.Select(lane => lane.Direction));
+        Assert.All(own.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount, directions.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+
+        DirectionTimelineLane busiest = directions
+            .OrderByDescending(lane => lane.Buckets.Sum(bucket => (long)bucket.ObservationCount)).First();
+        if (busiest.Buckets.FirstOrDefault(bucket => bucket.ObservationCount > 0) is { } busiestBucket)
+        {
+            ScrollViewer laneScroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
+            Point local = timeline.PointOf(busiest.Direction, busiestBucket)!.Value;
+            laneScroller.Offset = new Vector(laneScroller.Offset.X, Math.Clamp(local.Y - (laneScroller.Bounds.Height / 2),
+                0, Math.Max(0, laneScroller.Extent.Height - laneScroller.Viewport.Height)));
+            Dispatch();
+            window.MouseMove(timeline.TranslatePoint(local, window)!.Value);
+            Dispatch();
+            Assert.Equal(busiestBucket, timeline.HoveredBucket);
+            HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+            Assert.EndsWith($" · {WorkspaceViewModel.DirectionLabel(busiest.Direction)} lane", card.Lines[0],
+                StringComparison.Ordinal);
+            Assert.StartsWith("Direction: ", card.Lines[2], StringComparison.Ordinal);
+            Save(window, frame);
+            laneScroller.Offset = new Vector(laneScroller.Offset.X, 0);
+            window.MouseMove(new Point(0, 0));
+            Dispatch();
+        }
+
+        return string.Join(" · ", directions.Select(lane => string.Create(CultureInfo.InvariantCulture,
+            $"{WorkspaceViewModel.DirectionLabel(lane.Direction)} {lane.Buckets.Sum(bucket => (long)bucket.ObservationCount)}")));
     }
 
     private static void AssertComplete(SessionOverviewBundle overview, GraphDisplay display)

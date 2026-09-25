@@ -28,6 +28,14 @@ public sealed record TimelineLaneOption(Mechanism? Mechanism, string Label)
         : $"{Label} mechanism lane; show its exact interval counts and step within this lane";
 }
 
+/// <summary>A keyboard-addressable L2 source-direction row; null shows the whole owner focus.</summary>
+public sealed record DirectionLaneOption(Direction? Direction, string Label)
+{
+    public string AccessibleName => Direction is null
+        ? "All directions; show this process's complete interval counts"
+        : $"{Label} source-direction lane; show its exact interval counts and step within this lane";
+}
+
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 public sealed record WorkspaceNavigationMemento(
@@ -39,7 +47,8 @@ public sealed record WorkspaceNavigationMemento(
     string? SelectedGraphAggregate = null,
     string SearchText = "",
     string? SelectedSearchKey = null,
-    Mechanism? SelectedTimelineMechanism = null);
+    Mechanism? SelectedTimelineMechanism = null,
+    Direction? SelectedTimelineDirection = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -50,7 +59,8 @@ public sealed record TimelineCarry(
     string? FocusKey,
     IReadOnlyList<TimelineBucket>? Focus,
     IReadOnlyList<ProcessTimelineLane>? ProcessLanes = null,
-    string? ProcessLaneProblem = null);
+    string? ProcessLaneProblem = null,
+    IReadOnlyList<DirectionTimelineLane>? DirectionLanes = null);
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -118,6 +128,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private string? timelineFocusDescription;
     private IReadOnlyList<TimelineBucket>? timelineFocusBuckets;
     private IReadOnlyList<ProcessTimelineLane>? timelineProcessLanes;
+    private IReadOnlyList<DirectionTimelineLane>? timelineDirectionLanes;
     private IReadOnlyList<ProcessTimelineLane> processLaneDisplay = [];
     private string? processLaneProblem;
     private bool timelineFocusLoading;
@@ -125,6 +136,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<IntervalRow> intervals;
     private readonly ReadOnlyCollection<TimelineLaneOption> timelineLaneOptions;
     private TimelineLaneOption selectedTimelineLane = new(null, "All mechanisms");
+    private readonly ReadOnlyCollection<DirectionLaneOption> directionLaneOptions;
+    private DirectionLaneOption selectedDirectionLane = new(null, "All directions");
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -212,6 +225,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             .. wholeSnapshot.MechanismLanes.Select(lane =>
                 new TimelineLaneOption(lane.Mechanism, EvidenceRowText.MechanismName(lane.Mechanism)))]);
         selectedTimelineLane = timelineLaneOptions[0];
+        directionLaneOptions = Array.AsReadOnly([
+            new DirectionLaneOption(null, "All directions"),
+            .. SessionTimelineQuery.LaneDirections.Select(direction =>
+                new DirectionLaneOption(direction, DirectionLabel(direction))),
+        ]);
+        selectedDirectionLane = directionLaneOptions[0];
         intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
@@ -405,7 +424,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
                 // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
                 SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null,
-                    sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null);
+                    sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null,
+                    sameSession ? counted.DirectionLanes : null);
                 SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
             }
         }
@@ -428,10 +448,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus,
-        IReadOnlyList<ProcessTimelineLane>? processLanes = null, string? laneProblem = null)
+        IReadOnlyList<ProcessTimelineLane>? processLanes = null, string? laneProblem = null,
+        IReadOnlyList<DirectionTimelineLane>? directionLanes = null)
     {
         if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus)
-            && ReferenceEquals(timelineProcessLanes, processLanes) && processLaneProblem == laneProblem)
+            && ReferenceEquals(timelineProcessLanes, processLanes) && processLaneProblem == laneProblem
+            && ReferenceEquals(timelineDirectionLanes, directionLanes))
         {
             return;
         }
@@ -439,6 +461,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineDetail = detail;
         timelineFocusBuckets = focus;
         timelineProcessLanes = processLanes;
+        timelineDirectionLanes = directionLanes;
         processLaneDisplay = processLanes is null ? [] : OrderProcessLanes(processLanes);
         processLaneProblem = laneProblem;
         RefreshIntervalRows(focus);
@@ -446,6 +469,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TimelineDetail));
         OnPropertyChanged(nameof(TimelineFocusBuckets));
         OnPropertyChanged(nameof(TimelineProcessLanes));
+        OnPropertyChanged(nameof(TimelineDirectionLanes));
+        OnPropertyChanged(nameof(ShowsDirectionLanes));
         OnPropertyChanged(nameof(ProcessLaneDisplay));
         OnPropertyChanged(nameof(ShowsProcessLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
@@ -469,7 +494,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         Mechanism? selected = ShowsMechanismLanes ? selectedTimelineLane.Mechanism : null;
         ProcessTimelineLane? processLane = SelectedProcessLane;
-        IReadOnlyList<TimelineBucket> buckets = processLane is not null
+        DirectionTimelineLane? directionLane = SelectedDirectionBucketLane;
+        IReadOnlyList<TimelineBucket> buckets = directionLane is not null
+            ? directionLane.Buckets
+            : processLane is not null
             ? processLane.Buckets
             : selected is { } mechanism
             ? (HasCompleteLaneDetail
@@ -477,7 +505,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark,
-            selected is null && processLane is null ? focus : null);
+            selected is null && processLane is null && directionLane is null ? focus : null);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -501,6 +529,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineFocusProblem = problem;
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(TimelineShowsFocus));
+        OnPropertyChanged(nameof(ShowsDirectionLanes));
     }
 
     /// <summary>
@@ -534,7 +563,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
-        timelineProcessLanes, processLaneProblem);
+        timelineProcessLanes, processLaneProblem, timelineDirectionLanes);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -547,7 +576,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         IReadOnlyList<TimelineBucket>? focus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key ? carry.Focus : null;
         bool sameFocus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key;
         SetTimelineDetail(carry.Detail, focus, sameFocus ? carry.ProcessLanes : null,
-            sameFocus ? carry.ProcessLaneProblem : null);
+            sameFocus ? carry.ProcessLaneProblem : null, sameFocus ? carry.DirectionLanes : null);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -559,6 +588,39 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Exact L1 owner rows held with their focus and generation, ready for the rung renderer.</summary>
     public IReadOnlyList<ProcessTimelineLane>? TimelineProcessLanes => timelineProcessLanes;
+
+    /// <summary>Exact L2 source-direction rows held with their single-owner focus and generation.</summary>
+    public IReadOnlyList<DirectionTimelineLane>? TimelineDirectionLanes => timelineDirectionLanes;
+
+    public bool ShowsDirectionLanes => ladder.Current.Level == DetailLevel.ProcessInstance
+        && timelineDirectionLanes is { Count: > 0 } && timelineFocusProblem is null;
+
+    private DirectionTimelineLane? SelectedDirectionBucketLane => ShowsDirectionLanes
+        && selectedDirectionLane.Direction is { } direction
+            ? timelineDirectionLanes!.FirstOrDefault(lane => lane.Direction == direction) : null;
+
+    public IReadOnlyList<DirectionLaneOption> DirectionLaneOptions => directionLaneOptions;
+
+    public DirectionLaneOption SelectedDirectionLane
+    {
+        get => selectedDirectionLane;
+        set
+        {
+            if (value is null || !directionLaneOptions.Contains(value) || selectedDirectionLane == value) return;
+            selectedDirectionLane = value;
+            RefreshIntervalRows(timelineFocusBuckets);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TimelineCaption));
+        }
+    }
+
+    public Direction? SelectedTimelineDirection => selectedDirectionLane.Direction;
+
+    public void SelectDirectionLane(Direction? direction)
+    {
+        if (directionLaneOptions.FirstOrDefault(option => option.Direction == direction) is { } option)
+            SelectedDirectionLane = option;
+    }
 
     /// <summary>L1 process rows ordered by PID and stable instance ID, independent of query/ranking order.</summary>
     public IReadOnlyList<ProcessTimelineLane> ProcessLaneDisplay => processLaneDisplay;
@@ -626,6 +688,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
                 ? $"{focus} · {processLaneDisplay.Count:N0} process lanes · machine context above · scroll names for more"
+            : ShowsDirectionLanes
+                ? $"{focus} · by source direction · machine context above"
+                    + (SelectedTimelineDirection is { } direction
+                        ? $" · {DirectionLabel(direction)} table/step focus"
+                        : " · click a lane name or choose one in tables (T)")
             : timelineFocusLoading && timelineFocusBuckets is null
                 ? $"Counting {char.ToLowerInvariant(focus[0])}{focus[1..]}… · the rest of the machine in grey"
                 : $"{focus} in colour, the rest of the machine in grey · Shift+drag brushes a range";
@@ -652,7 +719,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public WorkspaceNavigationMemento CaptureNavigation() => new(
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
-        searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism);
+        searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -746,6 +813,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 notices.Add("The selected mechanism lane is not observed in this generation; showing all mechanisms.");
             }
         }
+        if (saved.SelectedTimelineDirection is { } savedDirection)
+            SelectDirectionLane(savedDirection);
         SelectedRung = ladder.Depth == old.Length - 1
             ? RungRows.FirstOrDefault(row => row.Key == saved.SelectedRungKey)
             : null;
@@ -1266,8 +1335,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             expanded is not null && process.GroupKey == expanded ? expanded : null,
             process.Id,
             neighborhood,
-            AndItsPeers(string.Create(CultureInfo.InvariantCulture, $"{process.Name} · PID {process.ProcessId}"),
-                neighborhood.Count > 1));
+            AndItsPeers(process.NameWithPid, neighborhood.Count > 1));
     }
 
     /// <summary>A focus's name, which claims peers only when some process outside the focus is one relationship away.</summary>
@@ -1581,11 +1649,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SelectedProcessLane is { } processLane)
             {
-                string owner = selectedProcess is { } process
-                    ? $"{process.Name} · PID {process.ProcessId}" : processLane.ProcessId.ToString();
+                string owner = selectedProcess is { } process ? process.NameWithPid : processLane.ProcessId.ToString();
                 return string.Create(CultureInfo.CurrentCulture,
                     $"{owner} owner records · {intervals.Count:N0} exact intervals");
             }
+            if (SelectedDirectionBucketLane is { } directionLane)
+            {
+                return string.Create(CultureInfo.CurrentCulture,
+                    $"{selectedDirectionLane.Label} source-direction records · {directionLane.Buckets.Count:N0} exact intervals");
+            }
+
             string lane = ShowsMechanismLanes && SelectedTimelineMechanism is { } mechanism
                 ? $" · {EvidenceRowText.MechanismName(mechanism)} lane" : string.Empty;
             return timelineDetail is { } detail
@@ -1898,7 +1971,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         if (graphDisplay.Node(key) is { } node)
         {
             long scale = GraphEncoding.NodeScale(graphDisplay);
-            string title = node.ProcessId is { } pid
+            string title = node.ProcessId is { } pid && node.Label != ProcessNode.PidName(pid)
                 ? string.Create(CultureInfo.CurrentCulture, $"{node.Label} · PID {pid}")
                 : node.Label;
             string what = node.Kind switch
@@ -2014,13 +2087,15 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// visible bar. Hover only describes; it never selects or brushes.
     /// </summary>
     public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond,
-        Mechanism? lane = null, ProcessNode? ownerLane = null)
+        Mechanism? lane = null, ProcessNode? ownerLane = null, Direction? directionLane = null)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
             || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket))
             || ownerLane is not null && processLaneDisplay.Any(candidate =>
-                candidate.ProcessId == ownerLane.Id && candidate.Buckets.Contains(bucket)));
+                candidate.ProcessId == ownerLane.Id && candidate.Buckets.Contains(bucket))
+            || directionLane is { } zoomedDirection && timelineDirectionLanes is { } directionRows
+                && directionRows.Any(candidate => candidate.Direction == zoomedDirection && candidate.Buckets.Contains(bucket)));
         string mechanism = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
         double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
         var lines = new List<string>
@@ -2029,10 +2104,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 ? "No record observed · an empty bucket is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + (ownerLane is { } owner
-                        ? $" · {owner.Name} · PID {owner.ProcessId} lane"
+                        ? $" · {owner.NameWithPid} lane"
+                        : directionLane is { } countedDirection ? $" · {DirectionLabel(countedDirection)} lane"
                         : lane is { } selected ? $" · {EvidenceRowText.MechanismName(selected)} lane" : $" · mostly {mechanism}"),
             ownerLane is { } ownerProcess
-                ? $"Basis: source observations · unit: records · domain: records canonically owned by {ownerProcess.Name}, PID {ownerProcess.ProcessId}, instance {ownerProcess.Id} · accounting: one owner per record"
+                ? $"Basis: source observations · unit: records · domain: records canonically owned by {ownerProcess.NameWithPid}, instance {ownerProcess.Id} · accounting: one owner per record"
+                : directionLane is { } rowDirection
+                ? $"Basis: source observations · unit: records · domain: {LowerFirst(timelineFocusDescription ?? "the instance's records")} {SourceDirectionDomain(rowDirection)} · accounting: one owner and one source direction per record"
                 : lane is { } laneMechanism
                 ? $"Basis: source observations · unit: records · domain: {EvidenceRowText.MechanismName(laneMechanism)} records with session time · accounting: not applicable to a count"
                 : realOverview
@@ -2041,17 +2119,25 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 : "Basis: source observations · unit: records · domain: the tour's records · accounting: not applicable to a count",
         };
 
+        if (directionLane is { } meaning)
+        {
+            lines.Add(DescribeSourceDirection(meaning));
+        }
+
         if (timelineFocusDescription is { } focus && TimelineShowsFocus)
         {
             lines.Add(timelineFocusBuckets?.FirstOrDefault(candidate => candidate.Interval == bucket.Interval) is { } focused
-                ? ownerLane is null
-                    ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
-                    : $"{focus}: " + Counted(focused.ObservationCount, "record", "records")
+                ? ownerLane is not null
+                    ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records")
                         + " in this interval across the group"
+                    : directionLane is not null
+                    ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records")
+                        + " in this interval across all directions"
+                    : $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
                 : $"{focus}: being counted");
         }
 
-        lines.Add(ownerLane is not null
+        lines.Add(ownerLane is not null || directionLane is not null
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible lane including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)"
             : lane is null
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
@@ -2093,6 +2179,45 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         CoverageState.NotCollected => "not collected",
         _ => "unknown",
     };
+
+    /// <summary>The name an L2 source-direction row, its selector entry and its table scope share.</summary>
+    internal static string DirectionLabel(Direction direction) => direction switch
+    {
+        Direction.Outbound => "Outbound",
+        Direction.Inbound => "Inbound",
+        Direction.Bidirectional => "Bidirectional",
+        Direction.UnknownDirection => "Unknown direction",
+        _ => "No data direction",
+    };
+
+    /// <summary>Which of the instance's records an L2 row holds, as the basis line's domain.</summary>
+    private static string SourceDirectionDomain(Direction direction) => direction switch
+    {
+        Direction.Outbound => "marked outbound",
+        Direction.Inbound => "marked inbound",
+        Direction.Bidirectional => "marked bidirectional",
+        Direction.UnknownDirection => "with no stated direction",
+        _ => "with no data direction",
+    };
+
+    /// <summary>
+    /// §6.6's direction word for an L2 row. The row follows each record's source-catalog direction (`EN-Direction`),
+    /// which marks a connection attempt outbound and an accept inbound, so it never says who initiated a conversation;
+    /// and a record the source gave no direction is never guessed into one.
+    /// </summary>
+    private static string DescribeSourceDirection(Direction direction) => direction switch
+    {
+        Direction.Outbound => "Direction: outbound, as the source marks sends, connection attempts and client calls · "
+            + "it does not say who initiated the conversation",
+        Direction.Inbound => "Direction: inbound, as the source marks receives, accepted connections and server calls · "
+            + "it does not say who initiated the conversation",
+        Direction.Bidirectional => "Direction: bidirectional, as the source marked these records",
+        Direction.UnknownDirection => "Direction: unknown · the source stated none for these records, and none is inferred",
+        _ => "Direction: none · process lifecycle records, disconnects and other records that carry no data",
+    };
+
+    private static string LowerFirst(string text) =>
+        text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 
     private static string DescribeStrength(RelationStrength strength) => strength switch
     {
@@ -2384,6 +2509,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IntervalLabel));
         OnPropertyChanged(nameof(ShowsMechanismLanes));
         OnPropertyChanged(nameof(ShowsProcessLanes));
+        OnPropertyChanged(nameof(ShowsDirectionLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(OffersEvidenceStep));

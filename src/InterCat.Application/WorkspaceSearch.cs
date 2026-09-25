@@ -88,8 +88,7 @@ public static class WorkspaceSearch
                 : Rank(text, process.Name, null);
             if (rank < 0) continue;
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
-            candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(),
-                string.Create(CultureInfo.InvariantCulture, $"{process.Name} · PID {process.ProcessId}"),
+            candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
                 $"Process instance of {groupName}",
                 processObservations.GetValueOrDefault(process.Id),
                 [process.GroupKey, process.Id.ToString()])));
@@ -108,9 +107,8 @@ public static class WorkspaceSearch
 
             // The channel is reached through its relationship's source process, as a double click on its edge reaches it.
             string between = processes.TryGetValue(edge.TargetId, out ProcessNode? target)
-                ? string.Create(CultureInfo.InvariantCulture,
-                    $"{source.Name} · PID {source.ProcessId} and {target.Name} · PID {target.ProcessId}")
-                : string.Create(CultureInfo.InvariantCulture, $"{source.Name} · PID {source.ProcessId}");
+                ? $"{source.NameWithPid} and {target.NameWithPid}"
+                : source.NameWithPid;
             // Endpoint strings can be matched, but never copied into a search snippet (P16). The channel view
             // reveals the endpoint in context after the person opens this hit.
             candidates.Add((rank, new(SearchHitKind.Channel, channel.Key, "Channel", "Channel between " + between,

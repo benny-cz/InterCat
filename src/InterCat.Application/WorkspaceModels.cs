@@ -24,7 +24,20 @@ public sealed record ProcessNode(
     string GroupKey,
     double X,
     double Y,
-    CoverageState Coverage);
+    CoverageState Coverage)
+{
+    /// <summary>
+    /// The process as a caption names it: its name and its PID, each once. A process whose executable was not witnessed
+    /// is already named by its PID, so it reads "PID 812" rather than "PID 812 · PID 812".
+    /// </summary>
+    public string NameWithPid => string.Equals(Name, PidName(ProcessId), StringComparison.Ordinal)
+        ? Name
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} · PID {ProcessId}");
+
+    /// <summary>The name an instance gets when no executable was witnessed for it.</summary>
+    public static string PidName(int processId) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PID {processId}");
+}
 
 public sealed record CommunicationEdge(
     string Key,

@@ -89,7 +89,7 @@ public static class SessionOverviewProjector
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
-            instance.ImageName ?? $"PID {instance.ProcessId}",
+            instance.ImageName ?? ProcessNode.PidName(instance.ProcessId),
             instance.Witness.ToString(),
             GroupKey(instance),
             0.5 + 0.38 * Math.Cos(2 * Math.PI * index / Math.Max(1, ordered.Length)),
