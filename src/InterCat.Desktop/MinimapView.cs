@@ -312,6 +312,6 @@ public sealed class MinimapView : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (timeline?.Navigate(e.Key) == true) e.Handled = true;
+        if (timeline?.Navigate(e.Key, e.KeyModifiers) == true) e.Handled = true;
     }
 }

@@ -36,6 +36,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>The narrowest viewport a zoom may reach: 10 ms of presentation ticks, or the extent when shorter.</summary>
     private const long MinimumSpanTicks = 100_000;
 
+    /// <summary>§6.7 and §26.2: a double click zooms in by this factor around the pointer.</summary>
+    private const decimal DoubleClickZoom = 2.0m;
+
     /// <summary>How long the viewport must rest before the timeline asks for its own resolution (§6.2, P25).</summary>
     private static readonly TimeSpan DetailSettle = TimeSpan.FromMilliseconds(150);
 
@@ -60,6 +63,31 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         detailTimer = new DispatcherTimer { Interval = DetailSettle };
         detailTimer.Tick += (_, _) => RequestDetailNow();
+        DoubleTapped += ZoomAtDoubleClick;
+        GestureRecognizers.Add(new PinchGestureRecognizer());
+        AddHandler(Gestures.PinchEvent, ZoomByPinch);
+        AddHandler(Gestures.PinchEndedEvent, (_, _) => pinchStart = null);
+    }
+
+    // The viewport a pinch began from: every scale of one gesture is applied to it, so a long pinch accumulates no drift.
+    private TimeRange? pinchStart;
+
+    /// <summary>
+    /// §6.7: a pinch zooms against the viewport it began from, around its current focal point, by the gesture's scale.
+    /// </summary>
+    private void ZoomByPinch(object? sender, PinchEventArgs e)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel || e.Scale <= 0 || !double.IsFinite(e.Scale))
+        {
+            return;
+        }
+
+        // The recognizer states the gesture's centre in this control's own coordinates.
+        pinchStart ??= Viewport;
+        double focus = Math.Clamp(e.ScaleOrigin.X - PlotLeft, 0, PlotWidth);
+        SetViewport(ViewportMath.ZoomAtPixel(pinchStart.Value, focus, PlotWidth, (decimal)Math.Clamp(e.Scale, 0.01, 100),
+            viewModel.Snapshot.Extent, MinimumSpanTicks));
+        e.Handled = true;
     }
 
     /// <summary>Raised whenever the visible range changes, by a gesture, a key, or <see cref="SetViewport"/>.</summary>
@@ -414,9 +442,49 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
 
+        // A horizontal wheel, a two-finger horizontal scroll or Shift with the wheel pans a tenth of the span per notch;
+        // the vertical wheel zooms at the pointer (§6.7).
+        bool horizontal = Math.Abs(e.Delta.X) > Math.Abs(e.Delta.Y);
+        if (horizontal || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            double notches = horizontal ? -e.Delta.X : -e.Delta.Y;
+            if (notches != 0)
+            {
+                SetViewport(ViewportMath.PanByFraction(Viewport, (decimal)Math.Clamp(notches, -10, 10) * 0.1m,
+                    viewModel.Snapshot.Extent));
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Delta.Y == 0)
+        {
+            return;
+        }
+
         double pixel = Math.Clamp(e.GetPosition(this).X - PlotLeft, 0, PlotWidth);
         decimal factor = e.Delta.Y > 0 ? 1.25m : 0.8m;
         SetViewport(ViewportMath.ZoomAtPixel(Viewport, pixel, PlotWidth, factor, viewModel.Snapshot.Extent, MinimumSpanTicks));
+        e.Handled = true;
+    }
+
+    /// <summary>§6.7: a double click zooms in by 2 around the pointer, keeping the instant under it where it is.</summary>
+    private void ZoomAtDoubleClick(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        Point position = e.GetPosition(this);
+        if (!OnPlot(position))
+        {
+            return;
+        }
+
+        SetViewport(ViewportMath.ZoomAtPixel(Viewport, position.X - PlotLeft, PlotWidth, DoubleClickZoom,
+            viewModel.Snapshot.Extent, MinimumSpanTicks));
         e.Handled = true;
     }
 
@@ -563,11 +631,16 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (Navigate(e.Key)) e.Handled = true;
+        if (Navigate(e.Key, e.KeyModifiers)) e.Handled = true;
     }
 
-    /// <summary>Shared timeline/minimap keyboard navigation over one viewport and one retained extent.</summary>
-    internal bool Navigate(Key key)
+    /// <summary>
+    /// Shared timeline/minimap keyboard navigation over one viewport and one retained extent (§6.7): arrows pan by a
+    /// tenth of the span, or with Shift by one drawn bucket; + and - zoom around the analysis interval, else the
+    /// viewport's centre; Home and End go to the extent's edges; 0 fits the analysis scope; [ and ] step to the previous
+    /// or next record.
+    /// </summary>
+    internal bool Navigate(Key key, KeyModifiers modifiers = KeyModifiers.None)
     {
         if (DataContext is not WorkspaceViewModel viewModel)
         {
@@ -591,25 +664,123 @@ public sealed class TimelineView : Control, IHoverCardSource
                 next = viewModel.SelectedInterval;
                 break;
             case Key.Left:
-                next = ViewportMath.PanByFraction(current, -0.1m, extent);
-                break;
             case Key.Right:
-                next = ViewportMath.PanByFraction(current, 0.1m, extent);
+                next = modifiers.HasFlag(KeyModifiers.Shift)
+                    ? PanByTicks(current, (key == Key.Left ? -1 : 1) * CellSpan(viewModel, current), extent)
+                    : ViewportMath.PanByFraction(current, key == Key.Left ? -0.1m : 0.1m, extent);
                 break;
             case Key.Add:
             case Key.OemPlus:
-                next = ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, 1.25m, extent, MinimumSpanTicks);
+                next = ZoomAroundSelection(viewModel, current, 1.25m);
                 break;
             case Key.Subtract:
             case Key.OemMinus:
-                next = ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, 0.8m, extent, MinimumSpanTicks);
+                next = ZoomAroundSelection(viewModel, current, 0.8m);
                 break;
+            case Key.OemOpenBrackets:
+            case Key.OemCloseBrackets:
+                return Step(viewModel, key == Key.OemCloseBrackets ? 1 : -1);
             default:
                 return false;
         }
 
         SetViewport(next);
         return true;
+    }
+
+    /// <summary>
+    /// Zooms around the analysis interval when there is one, so the range being studied stays where it is on screen,
+    /// else around the viewport's centre (§6.7). An interval out of view is brought to the centre first.
+    /// </summary>
+    private TimeRange ZoomAroundSelection(WorkspaceViewModel viewModel, TimeRange current, decimal factor)
+    {
+        TimeRange extent = viewModel.Snapshot.Extent;
+        if (viewModel.SelectedInterval is not { } selected)
+        {
+            return ViewportMath.ZoomAtPixel(current, PlotWidth / 2, PlotWidth, factor, extent, MinimumSpanTicks);
+        }
+
+        long middle = selected.StartTicks + (selected.SpanTicks / 2);
+        if (!current.Contains(middle))
+        {
+            current = ViewportMath.CenterOnTick(current, middle, extent);
+        }
+
+        return ViewportMath.ZoomAtPixel(current, ViewportMath.PixelAtTick(current, middle, PlotWidth), PlotWidth, factor,
+            extent, MinimumSpanTicks);
+    }
+
+    /// <summary>The span of one drawn bucket: the zoomed detail's where it has arrived, else the overview's.</summary>
+    private static long CellSpan(WorkspaceViewModel viewModel, TimeRange visible)
+    {
+        IReadOnlyList<TimelineBucket> buckets = viewModel.TimelineDetail is { } detail && Intersects(detail.Interval, visible)
+            ? detail.Buckets
+            : viewModel.Snapshot.Timeline;
+        return Math.Max(1, buckets.Count == 0 ? visible.SpanTicks / 10 : buckets[0].Interval.SpanTicks);
+    }
+
+    private static TimeRange PanByTicks(TimeRange viewport, long ticks, TimeRange extent) =>
+        new TimeRange(checked(viewport.StartTicks + ticks), checked(viewport.EndTicks + ticks)).ClampInside(extent);
+
+    /// <summary>
+    /// [ and ] (§6.7): at the evidence rung, the previous or next record, which the timeline marks; elsewhere, the
+    /// previous or next drawn bucket holding a record of the rung's focus - or of the machine at a rung without one -
+    /// becomes the analysis interval. Until the timeline has lanes the step is by bucket, the finest the rung draws. The
+    /// viewport follows a step that leaves it.
+    /// </summary>
+    private bool Step(WorkspaceViewModel viewModel, int direction)
+    {
+        TimeRange visible = Viewport;
+        TimeRange extent = viewModel.Snapshot.Extent;
+        if (viewModel.IsEvidenceRung)
+        {
+            if (!viewModel.StepEvidence(direction))
+            {
+                return false;
+            }
+
+            if (viewModel.SelectedEvidenceTick is { } tick && !visible.Contains(tick))
+            {
+                SetViewport(ViewportMath.CenterOnTick(visible, tick, extent));
+            }
+
+            return true;
+        }
+
+        bool zoomed = viewModel.TimelineDetail is { } detail && Intersects(detail.Interval, visible);
+        IReadOnlyList<TimelineBucket> buckets = zoomed ? viewModel.TimelineDetail!.Buckets : viewModel.Snapshot.Timeline;
+        IReadOnlyList<TimelineBucket>? focus = viewModel.TimelineShowsFocus ? viewModel.TimelineFocusBuckets : null;
+        HashSet<TimeRange>? held = focus?.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval).ToHashSet();
+        long anchor = viewModel.SelectedInterval is { } selected
+            ? (direction > 0 ? selected.EndTicks : selected.StartTicks)
+            : (direction > 0 ? visible.StartTicks : visible.EndTicks);
+        TimelineBucket? found = direction > 0
+            ? buckets.FirstOrDefault(bucket => bucket.Interval.StartTicks >= anchor && Holds(bucket))
+            : buckets.LastOrDefault(bucket => bucket.Interval.EndTicks <= anchor && Holds(bucket));
+        if (found is null)
+        {
+            // Nothing further is drawn in a zoomed view: page it on toward the extent's edge, where its own count will
+            // show the next record. At the whole extent there is nothing further.
+            bool atEdge = direction > 0 ? visible.EndTicks >= extent.EndTicks : visible.StartTicks <= extent.StartTicks;
+            if (!zoomed || atEdge)
+            {
+                return false;
+            }
+
+            SetViewport(ViewportMath.PanByFraction(visible, direction, extent));
+            return true;
+        }
+
+        viewModel.SelectInterval(found.Interval);
+        if (!visible.Contains(found.Interval.StartTicks) || found.Interval.EndTicks > visible.EndTicks)
+        {
+            SetViewport(ViewportMath.CenterOnTick(visible, found.Interval.StartTicks + (found.Interval.SpanTicks / 2), extent));
+        }
+
+        InvalidateVisual();
+        return true;
+
+        bool Holds(TimelineBucket bucket) => held is null ? bucket.ObservationCount > 0 : held.Contains(bucket.Interval);
     }
 
     private static bool Intersects(TimeRange left, TimeRange right) =>

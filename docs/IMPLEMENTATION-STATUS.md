@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 113 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 114 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -52,6 +52,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 114 — the timeline's remaining §6.7 gestures:**
+  - **New gestures:**
+    - A double click zooms in by 2 at the pointer.
+    - A pinch zooms against the viewport it began from, so a long gesture does not drift.
+    - `Shift`+arrow pans one drawn bucket.
+    - A horizontal wheel, or `Shift` with the wheel, pans a tenth of the span per notch.
+  - **Changed:** `+`/`-` now zoom around the analysis interval rather than the viewport's centre.
+  - **`[`/`]`:** at the evidence rung they select the previous or next record, which the timeline marks. Elsewhere they
+    make the previous or next drawn bucket holding a record of the rung's focus the analysis interval, skipping empty
+    buckets. In a zoomed view with nothing further, they page on.
+  - The minimap's keyboard path shares these. The header hint and its tooltip name every gesture.
+  - **Tests:** four UI tests covering stepping over empty buckets and back, zoom around the interval, one-bucket and
+    sideways-wheel pans, double click, pinch without drift, and record stepping at the evidence rung.
+  - **Still open in §6.7's table:** `Ctrl`+click multi-selection, `Alt`+`Right` forward history, `Ctrl`+`F` search, and
+    the lane rows.
 - **Revision 113 — timeline hover (§6.2):**
   - **Hover:** a timeline bucket under the pointer is outlined and explained, and hover never selects or brushes. A
     press removes the card.
@@ -184,20 +199,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
 4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
    rows.
-5. Graph follow-ups with no dependents:
+5. Interaction follow-ups with no dependents:
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
+   - §6.7's remaining rows: `Ctrl`+click multi-selection as an explicit predicate, forward navigation history
+     (`Alt`+`Right`), and `Ctrl`+`F` search.
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 113): **917 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 114): **921 passed, 1 skipped, in Debug and Release**, zero failures.
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).
   - Revision 110 added hover, pin, label-slot, half-open, keyboard, drag and R3 tests.
   - Revision 111 added one Application, three Desktop and one UI test (+5).
   - Revision 112 added one Application and three Desktop tests (+4).
   - Revision 113 added one Desktop and one UI hover test (+2).
+  - Revision 114 added four UI gesture tests (+4).
   - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
     variable it reports skipped, never passed.
 - Revision 112 real check: both sessions passed in Release, and the frames were inspected.

@@ -325,6 +325,150 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: ] and [ step over empty buckets, + zooms around the interval, Shift+arrow pans a bucket, a sideways wheel pans")]
+    public void TheTimelineStepsZoomsAroundTheIntervalAndPans()
+    {
+        using var session = new TemporarySession();
+        // Two bursts far apart, so most of the session's buckets are empty between them.
+        Publish(session.Store, [.. Exchange(0, 20).Concat(Exchange(400, 20))
+            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        timeline.Focus();
+        TimeRange extent = workspace.Snapshot.Extent;
+        TimeRange[] held = [.. workspace.Snapshot.Timeline.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval)];
+        Assert.True(held.Length >= 2 && workspace.Snapshot.Timeline.Count > held.Length + 10);
+
+        // ] walks the buckets that hold records in order, never an empty one, and stops after the last; [ walks back.
+        foreach (TimeRange expected in held)
+        {
+            window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+            Assert.Equal(expected, workspace.SelectedInterval);
+        }
+
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(held[^1], workspace.SelectedInterval);
+        window.KeyPressQwerty(PhysicalKey.BracketLeft, RawInputModifiers.None);
+        TimeRange selected = held[^2];
+        Assert.Equal(selected, workspace.SelectedInterval);
+
+        // + zooms around the analysis interval, which keeps its place on screen, not around the viewport's centre.
+        double plot = timeline.Bounds.Width - 52;
+        long middle = selected.StartTicks + (selected.SpanTicks / 2);
+        window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Assert.Equal(ViewportMath.ZoomAtPixel(extent, ViewportMath.PixelAtTick(extent, middle, plot), plot, 1.25m, extent, 100_000),
+            timeline.Viewport);
+
+        // Shift with an arrow pans one drawn bucket; a plain arrow still pans a tenth of the span.
+        window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        TimeRange before = timeline.Viewport;
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
+        Assert.Equal(before.StartTicks + workspace.Snapshot.Timeline[0].Interval.SpanTicks, timeline.Viewport.StartTicks);
+        Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
+
+        // A sideways wheel and Shift with the wheel pan a tenth of the span per notch, and never zoom.
+        before = timeline.Viewport;
+        Point onPlot = timeline.TranslatePoint(new(38 + (plot / 2), timeline.Bounds.Height / 2), window)!.Value;
+        window.MouseWheel(onPlot, new Vector(-1, 0));
+        Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
+        Assert.Equal(before.StartTicks + (before.SpanTicks / 10), timeline.Viewport.StartTicks);
+        before = timeline.Viewport;
+        window.MouseWheel(onPlot, new Vector(0, -1), RawInputModifiers.Shift);
+        Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
+        Assert.Equal(before.StartTicks + (before.SpanTicks / 10), timeline.Viewport.StartTicks);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: at the evidence rung ] and [ step record by record, and the timeline marks the one selected")]
+    public async Task BracketsStepThroughTheRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 30));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+
+        window.GetControl<TimelineView>("TimelineSurface").Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(workspace.RungRows[0].Key, workspace.SelectedRung?.Key);
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(workspace.RungRows[1].Key, workspace.SelectedRung?.Key);
+        Assert.Equal(workspace.EvidenceMarkTicks[1], workspace.SelectedEvidenceTick);
+        window.KeyPressQwerty(PhysicalKey.BracketLeft, RawInputModifiers.None);
+        Assert.Equal(workspace.RungRows[0].Key, workspace.SelectedRung?.Key);
+
+        // Before the first record there is nothing to step to; the selection stays.
+        Assert.False(workspace.StepEvidence(-1));
+        Assert.Equal(workspace.RungRows[0].Key, workspace.SelectedRung?.Key);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: a pinch zooms against the viewport it began from, so a long gesture does not drift")]
+    public void APinchZoomsAgainstItsStartingViewport()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        TimeRange fit = timeline.Viewport;
+        double plot = timeline.Bounds.Width - 52;
+        var centre = new Point(38 + (0.4 * plot), timeline.Bounds.Height / 2);
+
+        // Every scale of one gesture applies to the viewport it began from: 1.5 and then 2 is a zoom of 2, not of 3.
+        timeline.RaiseEvent(new PinchEventArgs(1.5, centre));
+        timeline.RaiseEvent(new PinchEventArgs(2.0, centre));
+        Assert.Equal(ViewportMath.ZoomAtPixel(fit, 0.4 * plot, plot, 2.0m, fit, 100_000), timeline.Viewport);
+
+        // The next gesture begins where this one left the viewport.
+        timeline.RaiseEvent(new PinchEndedEventArgs());
+        TimeRange after = timeline.Viewport;
+        timeline.RaiseEvent(new PinchEventArgs(0.5, centre));
+        Assert.Equal(ViewportMath.ZoomAtPixel(after, 0.4 * plot, plot, 0.5m, fit, 100_000), timeline.Viewport);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: a double click on the timeline zooms in by 2, keeping the instant under the pointer")]
+    public void ADoubleClickZoomsInAtThePointer()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        TimeRange fit = timeline.Viewport;
+        double plot = timeline.Bounds.Width - 52;
+        double pixel = 0.3 * plot;
+        long under = ViewportMath.TickAtPixel(fit, pixel, plot);
+        Point at = timeline.TranslatePoint(new(38 + pixel, timeline.Bounds.Height / 2), window)!.Value;
+
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Dispatch();
+
+        Assert.Equal(ViewportMath.ZoomAtPixel(fit, pixel, plot, 2.0m, fit, 100_000), timeline.Viewport);
+        Assert.InRange(ViewportMath.TickAtPixel(timeline.Viewport, pixel, plot) - under, -timeline.Viewport.SpanTicks / 100,
+            timeline.Viewport.SpanTicks / 100);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R7: pausing the live view holds its generation while recording continues, and F resumes it")]
     public void PausingTheLiveViewHoldsItAndFResumes()
     {

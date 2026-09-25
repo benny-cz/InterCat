@@ -2184,6 +2184,38 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : null;
 
     /// <summary>
+    /// [ and ] at the evidence rung (§6.7): selects the previous or next loaded record in reading order, or the first or
+    /// last when none is selected. False at either end of what is loaded; "Load more" continues the scope.
+    /// </summary>
+    public bool StepEvidence(int direction)
+    {
+        if (!IsEvidenceRung || direction == 0)
+        {
+            return false;
+        }
+
+        IReadOnlyList<RungRow> rows = RungRows;
+        int index = -1;
+        for (int i = 0; selectedRung is not null && i < rows.Count; i++)
+        {
+            if (rows[i].Key == selectedRung.Key)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        int next = index < 0 ? (direction > 0 ? 0 : rows.Count - 1) : index + Math.Sign(direction);
+        if (next < 0 || next >= rows.Count)
+        {
+            return false;
+        }
+
+        SelectedRung = rows[next];
+        return true;
+    }
+
+    /// <summary>
     /// The graph edge that contributes to what the rung shows: the focused channel's edge at the channel rung, and the
     /// scope's channel at the evidence rung. Null when the rung is not one channel.
     /// </summary>

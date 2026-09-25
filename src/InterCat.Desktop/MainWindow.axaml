@@ -273,9 +273,10 @@
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
-                         Text="Wheel zooms · drag or arrows pan · Home, End · 0 fits the scope"
+                         Text="Wheel or double-click zooms · drag, arrows or Shift+wheel pan · [ ] step · 0 fits"
                          Classes="muted" FontSize="11" VerticalAlignment="Center" TextAlignment="Right"
-                         TextTrimming="CharacterEllipsis" />
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="Wheel zooms at the pointer and a double click zooms in twice as far there. A drag, the arrow keys, a horizontal wheel or Shift with the wheel pan; Shift with an arrow moves one bucket. + and - zoom around the analysis interval. [ and ] step to the previous or next record. Home and End go to the session's edges, and 0 fits the analysis interval or the whole session. Shift+drag brushes a range; a click selects a bucket." />
               <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding TimelineCaption}"
                          Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
                          ToolTip.Tip="{Binding TimelineCaption}" AutomationProperties.Name="{Binding TimelineCaption}" />
