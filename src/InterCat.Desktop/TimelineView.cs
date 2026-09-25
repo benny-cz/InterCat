@@ -464,6 +464,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             double baseline = row.Bottom - 5;
             context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
+            if (viewModel.SelectedTimelineMechanism == lane.Mechanism)
+            {
+                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                    new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
+            }
             context.DrawRectangle(BrushFor(lane.Mechanism), null, new Rect(8, row.Center.Y - 3, 6, 6));
             DrawText(context, EvidenceRowText.MechanismName(lane.Mechanism), new(19, row.Center.Y - 7));
             var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
@@ -691,12 +696,19 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         base.OnPointerPressed(e);
         Focus();
-        if (DataContext is not WorkspaceViewModel)
+        if (DataContext is not WorkspaceViewModel viewModel)
         {
             return;
         }
 
         PointerPoint point = e.GetCurrentPoint(this);
+        if (ShowingLanes && point.Properties.IsLeftButtonPressed && point.Position.X < PlotLeft
+            && LaneIndexAt(point.Position.Y) is { } laneIndex)
+        {
+            viewModel.SelectTimelineLane(viewModel.Snapshot.MechanismLanes[laneIndex].Mechanism);
+            e.Handled = true;
+            return;
+        }
         if (!OnPlot(point.Position)) return;
         if (hoverTick is not null)
         {
@@ -938,8 +950,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>
     /// [ and ] (§6.7): at the evidence rung, the previous or next record, which the timeline marks; elsewhere, the
     /// previous or next drawn bucket holding a record of the rung's focus - or of the machine at a rung without one -
-    /// becomes the analysis interval. Until the timeline has lanes the step is by bucket, the finest the rung draws. The
-    /// viewport follows a step that leaves it.
+    /// becomes the analysis interval. At L0 a selected mechanism lane supplies the exact buckets stepped over; without
+    /// a lane focus the whole machine does. The viewport follows a step that leaves it.
     /// </summary>
     private bool Step(WorkspaceViewModel viewModel, int direction)
     {
@@ -962,6 +974,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         bool zoomed = viewModel.TimelineDetail is { } detail && Intersects(detail.Interval, visible);
         IReadOnlyList<TimelineBucket> buckets = zoomed ? viewModel.TimelineDetail!.Buckets : viewModel.Snapshot.Timeline;
+        if (viewModel.ShowsMechanismLanes && viewModel.SelectedTimelineMechanism is { } mechanism)
+        {
+            bool complete = zoomed && viewModel.TimelineDetail!.MechanismLanes.Count == viewModel.Snapshot.MechanismLanes.Count
+                && viewModel.Snapshot.MechanismLanes.All(lane => viewModel.TimelineDetail.MechanismLanes
+                    .Any(candidate => candidate.Mechanism == lane.Mechanism));
+            buckets = (complete ? viewModel.TimelineDetail!.MechanismLanes : viewModel.Snapshot.MechanismLanes)
+                .First(lane => lane.Mechanism == mechanism).Buckets;
+            zoomed = complete;
+        }
         IReadOnlyList<TimelineBucket>? focus = viewModel.TimelineShowsFocus ? viewModel.TimelineFocusBuckets : null;
         HashSet<TimeRange>? held = focus?.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval).ToHashSet();
         long anchor = viewModel.SelectedInterval is { } selected

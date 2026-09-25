@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Domain;
@@ -81,6 +82,69 @@ public sealed class MechanismLaneWindowTests
         Dispatch();
         Assert.True(scroller.Offset.Y > afterArrow, "Page Down must reach later lanes without changing time.");
         Assert.Equal(original, timeline.Viewport);
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        Dispatch();
+        Assert.False(workspace.ShowsMechanismLanes);
+        Assert.Equal(0, timeline.MinHeight);
+        Assert.True(workspace.Ascend());
+        Dispatch();
+        Assert.True(workspace.ShowsMechanismLanes);
+        Assert.True(timeline.MinHeight > scroller.Bounds.Height);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15/§6.7: L0 lane focus has a keyboard table equivalent and survives a publication")]
+    public async Task LaneFocusNarrowsTheTableAndBracketStep()
+    {
+        WorkspaceSnapshot snapshot = WithLanes([Mechanism.Tcp, Mechanism.Udp, Mechanism.NamedPipe, Mechanism.Rpc]);
+        using var workspace = new WorkspaceViewModel(snapshot, "synthetic-lanes");
+        var window = new MainWindow(workspace) { Width = 1080, Height = 700 };
+        window.Show();
+        await workspace.LayoutReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        workspace.ShowTables = true;
+        ComboBox selector = window.GetControl<ComboBox>("TimelineLaneSelector");
+        Assert.True(selector.IsVisible);
+        Assert.Equal(5, workspace.TimelineLaneOptions.Count);
+        selector.SelectedItem = workspace.TimelineLaneOptions.Single(option => option.Mechanism == Mechanism.Rpc);
+        Dispatch();
+        Assert.Equal(Mechanism.Rpc, workspace.SelectedTimelineMechanism);
+        Assert.Equal("0", workspace.Intervals[0].Observations);
+        Assert.Contains("RPC lane", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Rpc).Buckets[1].Interval,
+            workspace.SelectedInterval);
+
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        using var resumed = new WorkspaceViewModel(snapshot, "synthetic-lanes-next");
+        Assert.Null(resumed.RestoreNavigation(saved));
+        Assert.Equal(Mechanism.Rpc, resumed.SelectedTimelineMechanism);
+        Assert.Equal("0", resumed.Intervals[0].Observations);
+        using var changed = new WorkspaceViewModel(WithLanes([Mechanism.Tcp]), "synthetic-lanes-gone");
+        Assert.Contains("selected mechanism lane is not observed", changed.RestoreNavigation(saved),
+            StringComparison.Ordinal);
+        Assert.Null(changed.SelectedTimelineMechanism);
+
+        // The canvas's label gutter is a second path to the same focus, without selecting a time bucket.
+        workspace.ShowTables = false;
+        Dispatch();
+        TimelineBucket tcp = snapshot.MechanismLanes[0].Buckets[1];
+        Point label = timeline.TranslatePoint(new(30, timeline.PointOf(tcp)!.Value.Y), window)!.Value;
+        window.MouseDown(label, MouseButton.Left);
+        window.MouseUp(label, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(Mechanism.Tcp, workspace.SelectedTimelineMechanism);
+        Assert.Equal(tcp.Interval, workspace.SelectedInterval);
+        workspace.SelectTimelineLane(null);
+        workspace.ClearSelection();
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(snapshot.Timeline[0].Interval, workspace.SelectedInterval);
         window.Close();
     }
 

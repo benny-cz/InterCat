@@ -997,6 +997,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
     {
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ShowsMechanismLanes))
+        {
+            // The same workspace can descend and ascend without replacing DataContext. Release the L0 minimum height
+            // on deeper rungs so their aggregate timeline fills the pane instead of inheriting a long lane scroller.
+            TimelineSurface.RefreshLaneLayout();
+        }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
         TimelineSurface.InvalidateVisual();

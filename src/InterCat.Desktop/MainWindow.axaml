@@ -452,10 +452,23 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <StackPanel Grid.Row="3" Margin="0,16,0,0" Orientation="Horizontal" Spacing="10">
+        <Grid Grid.Row="3" Margin="0,16,0,0" ColumnDefinitions="Auto,*,Auto">
           <TextBlock Text="INTERVAL TABLE" Classes="eyebrow" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding IntervalTableScope}" Classes="muted" FontSize="11" VerticalAlignment="Center" />
-        </StackPanel>
+          <TextBlock Grid.Column="1" Margin="10,0" Text="{Binding IntervalTableScope}" Classes="muted"
+                     FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="{Binding IntervalTableScope}" />
+          <ComboBox x:Name="TimelineLaneSelector" Grid.Column="2" Width="175" MinHeight="32"
+                    ItemsSource="{Binding TimelineLaneOptions}"
+                    SelectedItem="{Binding SelectedTimelineLane, Mode=TwoWay}"
+                    IsVisible="{Binding ShowsMechanismLanes}"
+                    AutomationProperties.Name="Mechanism lane for the interval table and bracket-key stepping">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="local:TimelineLaneOption">
+                <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </Grid>
         <Grid Grid.Row="4" ColumnDefinitions="18,160,180,150,150" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Window" Classes="columnHeader" />
           <TextBlock Grid.Column="2" Text="Observations" Classes="columnHeader" />

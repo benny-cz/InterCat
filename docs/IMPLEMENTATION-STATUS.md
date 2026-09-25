@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 119 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 120 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -47,13 +47,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes with shared scale, per-lane coverage, hover/selection and keyboard/wheel scrolling, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L1–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Audit lane accessibility and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes with shared scale, per-lane coverage, hover/time selection, persistent table/step lane focus and keyboard/wheel scrolling, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L1–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 120 — keyboard/table access to L0 lanes (§6.2, §6.5, §6.7):** A lane name can now be clicked to focus
+  it; the table's keyboard-accessible selector chooses the same focus. The interval table then lists that lane's exact
+  buckets and coverage, including zoomed detail, while graph and ranking stay unfiltered. `[`/`]` step only through
+  occupied buckets of the focused lane; “All mechanisms” restores machine stepping. Focus survives a same-session
+  publication by mechanism identity; a vanished lane is explicitly reported and falls back to All mechanisms.
+  Descending releases a long L0 scroller's minimum height; ascending restores it.
+  One new headless UI test plus expanded zoom/layout checks. **937 passed, 1 skipped** in Debug and Release; the
+  opt-in UI test against the user's saved Explore session passed separately in Release.
 - **Revision 119 — draw and interact with L0 mechanism lanes (§3.2, §6.2):** The machine timeline now uses the
   overview's exact per-mechanism bucket series. Rows share a visible rate scale but retain their own coverage;
   unknown coverage does not paint an entire observed bar as lost. Hover names the mechanism, exact interval, count,
@@ -234,7 +242,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include operation/byte
    projections where derivations actually support them, and state unavailable where they do not. The focus overlay
    from revision 112 is the single-lane step toward this; revision 119 provides the L0 renderer. Audit keyboard and
-   screen-reader access to individual lane names, and add pin/collapse/search as the observed lane count requires.
+   screen-reader/UI Automation access to individual lane names and the new selector, and add pin/collapse/search as
+   the observed lane count requires.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
@@ -250,7 +259,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 119): **936 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 120): **937 passed, 1 skipped, in Debug and Release**, zero failures.
+  - Revision 120 adds one L0 lane-selection UI case (+1) and expands zoom/layout assertions. The opt-in real saved
+    Explore session UI test passed separately in Release.
   - Revision 119 adds two lane UI cases and one zoomed-detail UI case (+3). The user's finalized Desktop
     Explore session passed the opt-in mechanism-lane hover check in a separate Release run.
   - Revision 118 added one Desktop zero-edge regression (+1) and updated UI legend/loss assertions. The user's

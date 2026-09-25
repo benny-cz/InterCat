@@ -20,6 +20,14 @@ public sealed record EvidenceField(string Label, string Value);
 /// </summary>
 public sealed record HoverCard(string Title, IReadOnlyList<string> Lines);
 
+/// <summary>A keyboard-addressable counterpart of an L0 mechanism row; null means the whole timeline.</summary>
+public sealed record TimelineLaneOption(Mechanism? Mechanism, string Label)
+{
+    public string AccessibleName => Mechanism is null
+        ? "All mechanisms; show whole-session interval counts"
+        : $"{Label} mechanism lane; show its exact interval counts and step within this lane";
+}
+
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 public sealed record WorkspaceNavigationMemento(
@@ -30,7 +38,8 @@ public sealed record WorkspaceNavigationMemento(
     bool ShowTables,
     string? SelectedGraphAggregate = null,
     string SearchText = "",
-    string? SelectedSearchKey = null);
+    string? SelectedSearchKey = null,
+    Mechanism? SelectedTimelineMechanism = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -109,6 +118,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private bool timelineFocusLoading;
     private string? timelineFocusProblem;
     private IReadOnlyList<IntervalRow> intervals;
+    private readonly ReadOnlyCollection<TimelineLaneOption> timelineLaneOptions;
+    private TimelineLaneOption selectedTimelineLane = new(null, "All mechanisms");
 
     public WorkspaceViewModel() : this(SyntheticWorkspace.Create(), "synthetic-tour-v1")
     {
@@ -192,6 +203,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        timelineLaneOptions = Array.AsReadOnly([new TimelineLaneOption(null, "All mechanisms"),
+            .. wholeSnapshot.MechanismLanes.Select(lane =>
+                new TimelineLaneOption(lane.Mechanism, EvidenceRowText.MechanismName(lane.Mechanism)))]);
+        selectedTimelineLane = timelineLaneOptions[0];
         intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
@@ -415,7 +430,26 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         timelineDetail = detail;
         timelineFocusBuckets = focus;
-        intervals = WorkspaceRowBuilder.Intervals(detail?.Buckets ?? wholeSnapshot.Timeline, ThemeMode.Dark, focus);
+        RefreshIntervalRows(focus);
+
+        OnPropertyChanged(nameof(TimelineDetail));
+        OnPropertyChanged(nameof(TimelineFocusBuckets));
+    }
+
+    private bool HasCompleteLaneDetail => timelineDetail is { } detail
+        && detail.MechanismLanes.Count == wholeSnapshot.MechanismLanes.Count
+        && wholeSnapshot.MechanismLanes.All(lane =>
+            detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane.Mechanism));
+
+    private void RefreshIntervalRows(IReadOnlyList<TimelineBucket>? focus = null)
+    {
+        Mechanism? selected = ShowsMechanismLanes ? selectedTimelineLane.Mechanism : null;
+        IReadOnlyList<TimelineBucket> buckets = selected is { } mechanism
+            ? (HasCompleteLaneDetail
+                ? timelineDetail!.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets
+                : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
+            : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
+        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark, selected is null ? focus : null);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -424,8 +458,6 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(SelectedIntervalRow));
         }
 
-        OnPropertyChanged(nameof(TimelineDetail));
-        OnPropertyChanged(nameof(TimelineFocusBuckets));
         OnPropertyChanged(nameof(Intervals));
         OnPropertyChanged(nameof(IntervalTableScope));
     }
@@ -494,6 +526,30 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public IReadOnlyList<TimelineBucket>? TimelineFocusBuckets => timelineFocusBuckets;
 
+    /// <summary>All mechanism rows are reachable from the table; selecting one does not filter the graph or ranking.</summary>
+    public IReadOnlyList<TimelineLaneOption> TimelineLaneOptions => timelineLaneOptions;
+
+    public TimelineLaneOption SelectedTimelineLane
+    {
+        get => selectedTimelineLane;
+        set
+        {
+            if (value is null || !timelineLaneOptions.Contains(value) || selectedTimelineLane == value) return;
+            selectedTimelineLane = value;
+            RefreshIntervalRows(timelineFocusBuckets);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TimelineCaption));
+        }
+    }
+
+    public Mechanism? SelectedTimelineMechanism => selectedTimelineLane.Mechanism;
+
+    public void SelectTimelineLane(Mechanism? mechanism)
+    {
+        if (timelineLaneOptions.FirstOrDefault(option => option.Mechanism == mechanism) is { } option)
+            SelectedTimelineLane = option;
+    }
+
     /// <summary>L0 is the only rung with exact mechanism lane data so far.</summary>
     public bool ShowsMechanismLanes => ladder.Current.Level == DetailLevel.Machine
         && wholeSnapshot.MechanismLanes.Count > 0;
@@ -504,7 +560,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
     public string TimelineCaption => timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
-            ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes · scroll names for more · Shift+drag brushes"
+            ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes"
+                + (SelectedTimelineMechanism is { } mechanism
+                    ? $" · {EvidenceRowText.MechanismName(mechanism)} table/step focus"
+                    : " · click a lane name or choose one in tables (T)")
+                + " · Shift+drag brushes"
             : "Observed records · Shift+drag brushes a range · unknown stays unknown"
         : timelineFocusProblem is { } problem
             ? $"{focus} could not be counted: {problem.TrimEnd('.')}. Every observed record is shown."
@@ -534,7 +594,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public WorkspaceNavigationMemento CaptureNavigation() => new(
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
-        searchText, selectedSearchResult?.Hit.Key);
+        searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -617,6 +677,17 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         AfterNavigation();
+        if (saved.SelectedTimelineMechanism is { } savedMechanism)
+        {
+            if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))
+            {
+                SelectTimelineLane(savedMechanism);
+            }
+            else
+            {
+                notices.Add("The selected mechanism lane is not observed in this generation; showing all mechanisms.");
+            }
+        }
         SelectedRung = ladder.Depth == old.Length - 1
             ? RungRows.FirstOrDefault(row => row.Key == saved.SelectedRungKey)
             : null;
@@ -1446,10 +1517,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public IReadOnlyList<IntervalRow> Intervals => intervals;
 
     /// <summary>What the interval table lists, so a zoomed table is never read as the whole session.</summary>
-    public string IntervalTableScope => timelineDetail is { } detail
-        ? string.Create(CultureInfo.CurrentCulture,
-            $"Zoomed view {WorkspaceTime.FormatRange(detail.Interval, CultureInfo.CurrentCulture)} in {detail.Buckets.Count:N0} intervals")
-        : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervals.Count:N0} intervals");
+    public string IntervalTableScope
+    {
+        get
+        {
+            string lane = ShowsMechanismLanes && SelectedTimelineMechanism is { } mechanism
+                ? $" · {EvidenceRowText.MechanismName(mechanism)} lane" : string.Empty;
+            return timelineDetail is { } detail
+                && (!ShowsMechanismLanes || SelectedTimelineMechanism is null || HasCompleteLaneDetail)
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"Zoomed view {WorkspaceTime.FormatRange(detail.Interval, CultureInfo.CurrentCulture)} in {intervals.Count:N0} intervals{lane}")
+                : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervals.Count:N0} intervals{lane}");
+        }
+    }
 
     /// <summary>
     /// The ranked table of the rung the user is on. The same gesture works at every rung. At a published session's
@@ -2201,6 +2281,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         selectedGroupKey = null;
         RefreshGraphDisplay();
         UpdateTimelineFocus();
+        RefreshIntervalRows(timelineFocusBuckets);
         SyncEvidence();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
@@ -2219,6 +2300,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(AscendLabel));
         OnPropertyChanged(nameof(DescendHint));
         OnPropertyChanged(nameof(IntervalLabel));
+        OnPropertyChanged(nameof(ShowsMechanismLanes));
+        OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(OffersEvidenceStep));
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         RaiseEvidenceChanged();

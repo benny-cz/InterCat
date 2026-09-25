@@ -311,6 +311,10 @@ public sealed class EvidenceRungWindowTests
         SessionTimelineDetail detail = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
         MechanismTimelineLane tcp = Assert.Single(detail.MechanismLanes, lane => lane.Mechanism == Mechanism.Tcp);
         TimelineBucket bucket = tcp.Buckets.First(candidate => candidate.ObservationCount > 0);
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        Assert.Equal(bucket.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.Intervals.Single(row => row.Interval == bucket.Interval).Observations);
+        Assert.Contains("Zoomed view", workspace.IntervalTableScope, StringComparison.Ordinal);
         Point at = timeline.TranslatePoint(timeline.PointOf(bucket)!.Value, window)!.Value;
         window.MouseMove(at);
         Dispatch();
