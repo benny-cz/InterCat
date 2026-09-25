@@ -30,6 +30,44 @@ public static class TestApplication
 
 public sealed class LadderKeyboardTests
 {
+    [AvaloniaFact(DisplayName = "§6.7: Ctrl+F focuses search, Enter opens a hit through the ladder and Escape clears it")]
+    public void SearchHasKeyboardAndPointerEquivalent()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        FocusRankedTable(window);
+
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+
+        TextBox search = window.GetControl<TextBox>("SearchBox");
+        ListBox hits = window.GetControl<ListBox>("SearchResultsList");
+        ListBox ranked = window.GetControl<ListBox>("RungList");
+        Assert.True(search.IsFocused);
+        search.Text = "cache";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(hits.IsVisible);
+        Assert.False(ranked.IsVisible);
+        Assert.Contains(viewModel.SearchResults, row => row.Hit.Kind == SearchHitKind.Channel);
+        Assert.DoesNotContain(viewModel.SearchResults, row => row.Label.Contains("intercat-cache", StringComparison.Ordinal));
+
+        viewModel.SelectedSearchResult = viewModel.SearchResults.Single(row => row.Hit.Kind == SearchHitKind.Channel);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("L3 · CHANNEL", viewModel.LevelBadge);
+        Assert.Equal(string.Empty, viewModel.SearchText);
+        Assert.False(hits.IsVisible);
+        Assert.True(ranked.IsVisible || viewModel.ShowsEmptyReason);
+        Assert.Equal(4, viewModel.Crumbs.Count);
+
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+        search.Text = "not-an-entity";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("No matches · names, PIDs and channel endpoints are searched", viewModel.SearchSummary);
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Assert.Equal(string.Empty, viewModel.SearchText);
+        Assert.Equal("L3 · CHANNEL", viewModel.LevelBadge);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: the table toggle is reachable by keyboard while a list has focus")]
     public void TableToggleRespondsToItsKey()
     {

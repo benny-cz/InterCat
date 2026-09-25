@@ -28,7 +28,9 @@ public sealed record WorkspaceNavigationMemento(
     TimeRange? SelectedInterval,
     string? SelectedRungKey,
     bool ShowTables,
-    string? SelectedGraphAggregate = null);
+    string? SelectedGraphAggregate = null,
+    string SearchText = "",
+    string? SelectedSearchKey = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -525,7 +527,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Captures navigation independently of an evidence generation, for a same-session refresh only.</summary>
     public WorkspaceNavigationMemento CaptureNavigation() => new(
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
-        selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey);
+        selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
+        searchText, selectedSearchResult?.Hit.Key);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -648,6 +651,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
                 SelectInterval(new(start, end));
             }
+        }
+
+        SearchText = saved.SearchText;
+        if (saved.SelectedSearchKey is { } searchKey
+            && searchRows.FirstOrDefault(row => row.Hit.Key == searchKey) is { } hit)
+        {
+            SelectedSearchResult = hit;
         }
 
         return notices.Count == 0 ? null : string.Join(" ", notices);
@@ -873,26 +883,132 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
-        string[] path = channels.Length == 1
+        return DescendAlong(channels.Length == 1
             ? [source.GroupKey, source.Id.ToString(), channels[0].Key]
-            : [source.GroupKey, source.Id.ToString()];
-        if (!ladder.TryReturnTo(0, out _))
+            : [source.GroupKey, source.Id.ToString()]);
+    }
+
+    /// <summary>
+    /// Goes to an entity by the rows a person would choose. Validate the whole path before mutating the ladder so a
+    /// stale hit cannot send someone back to the machine rung and leave them there.
+    /// </summary>
+    private bool DescendAlong(IReadOnlyList<string> path)
+    {
+        if (!TryBuildDescents(path, Snapshot, out List<LadderDescent> descents)) return false;
+        if (!ladder.TryReturnTo(0, out _)) return false;
+        foreach (LadderDescent descent in descents) _ = ladder.TryDescend(descent, out _);
+        AfterNavigation();
+        return true;
+    }
+
+    private bool TryBuildDescents(IReadOnlyList<string> path, WorkspaceSnapshot snapshot,
+        out List<LadderDescent> descents)
+    {
+        descents = new(path.Count);
+        if (path.Count == 0) return false;
+        var preview = new DetailLadder(ladder.Breadcrumb[0]);
+        foreach (string key in path)
+        {
+            LadderRow? row = LadderProjection.Project(snapshot, preview.Current).Rows.FirstOrDefault(candidate => candidate.Key == key);
+            if (row is null)
+            {
+                return false;
+            }
+            LadderDescent descent = LadderProjection.DescentFor(row, preview.Current,
+                selectedInterval ?? preview.Current.Viewport);
+            if (!preview.TryDescend(descent, out _)) return false;
+            descents.Add(descent);
+        }
+        return true;
+    }
+
+    private string searchText = string.Empty;
+    private SearchResult searchResult = new(string.Empty, [], 0);
+    private IReadOnlyList<SearchRow> searchRows = [];
+    private SearchRow? selectedSearchResult;
+
+    /// <summary>
+    /// §6.7's search (Ctrl+F): names, PIDs and channel endpoints of the published session, never payloads. While it has
+    /// text the rail lists its hits instead of the rung's ranked table; opening a hit goes there and clears it.
+    /// </summary>
+    public string SearchText
+    {
+        get => searchText;
+        set
+        {
+            value ??= string.Empty;
+            if (searchText == value)
+            {
+                return;
+            }
+
+            searchText = value;
+            searchResult = WorkspaceSearch.Find(wholeSnapshot, value);
+            searchRows = [.. searchResult.Hits.Select(SearchRow.Of)];
+            selectedSearchResult = searchRows.Count > 0 ? searchRows[0] : null;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsSearching));
+            OnPropertyChanged(nameof(SearchResults));
+            OnPropertyChanged(nameof(SelectedSearchResult));
+            OnPropertyChanged(nameof(SearchSummary));
+            OnPropertyChanged(nameof(ShowsRankedTable));
+            OnPropertyChanged(nameof(ShowsEmptyReason));
+            OnPropertyChanged(nameof(ShowsLoadMoreEvidence));
+        }
+    }
+
+    public bool IsSearching => searchResult.Query.Length > 0;
+
+    public IReadOnlyList<SearchRow> SearchResults => searchRows;
+
+    public SearchRow? SelectedSearchResult
+    {
+        get => selectedSearchResult;
+        set
+        {
+            if (ReferenceEquals(selectedSearchResult, value)) return;
+            selectedSearchResult = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>How many entities matched, and what to do next; bounded results say how many more there are.</summary>
+    public string SearchSummary => !IsSearching
+        ? string.Empty
+        : searchResult.Matched == 0
+            ? "No matches · names, PIDs and channel endpoints are searched"
+            : searchResult.Matched > searchResult.Hits.Count
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{searchResult.Hits.Count:N0} of {searchResult.Matched:N0} matches · refine the search for the rest")
+                : Counted(searchResult.Matched, "match", "matches") + " · Enter opens the selected one, Esc clears";
+
+    /// <summary>Whether the rail shows the rung's ranked table: not while a search lists its hits there.</summary>
+    public bool ShowsRankedTable => !IsEmptyRung && !IsSearching;
+
+    /// <summary>Whether the rail explains an empty rung: not while a search lists its hits there.</summary>
+    public bool ShowsEmptyReason => IsEmptyRung && !IsSearching;
+
+    public bool ShowsLoadMoreEvidence => CanLoadMoreEvidence && !IsSearching;
+
+    /// <summary>Goes to a search hit - the selected one when none is named - and clears the search.</summary>
+    public bool OpenSearchResult(SearchRow? row = null)
+    {
+        row ??= selectedSearchResult;
+        if (row is null)
         {
             return false;
         }
 
-        foreach (string key in path)
+        // Search covers the whole published session, not only an analysis brush. Clear that brush before opening a
+        // match outside it so the hit is not silently missing from the ranked rung.
+        if (selectedInterval is not null)
         {
-            LadderRow? row = LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(candidate => candidate.Key == key);
-            if (row is null
-                || !ladder.TryDescend(LadderProjection.DescentFor(row, ladder.Current, selectedInterval ?? ladder.Current.Viewport), out _))
-            {
-                break;
-            }
+            if (!TryBuildDescents(row.Hit.Path, wholeSnapshot, out _)) return false;
+            selection.Clear();
         }
-
-        AfterNavigation();
-        return true;
+        bool opened = DescendAlong(row.Hit.Path);
+        if (opened) SearchText = string.Empty;
+        return opened;
     }
 
     /// <summary>Opens a collapsed executable group only where the ladder can actually descend into that group.</summary>
@@ -2085,6 +2201,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EmptyReason));
         OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(ShowsRankedTable));
+        OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(CanAscend));
         OnPropertyChanged(nameof(AscendLabel));
         OnPropertyChanged(nameof(DescendHint));
@@ -2412,10 +2530,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HoldsGeneration));
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(ShowsRankedTable));
+        OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(EmptyReason));
         OnPropertyChanged(nameof(EvidenceStatus));
         OnPropertyChanged(nameof(EvidenceScopeText));
         OnPropertyChanged(nameof(CanLoadMoreEvidence));
+        OnPropertyChanged(nameof(ShowsLoadMoreEvidence));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EvidenceMarkTicks));
@@ -2546,6 +2667,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EmptyReason));
         OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(ShowsRankedTable));
+        OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(EvidenceSummary));
     }
 

@@ -1,5 +1,6 @@
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using Xunit;
 
@@ -7,6 +8,45 @@ namespace InterCat.Desktop.Tests;
 
 public sealed class NavigationContinuityTests
 {
+    [Fact(DisplayName = "§6.7: a stale search hit preserves the brush; a real hit opens from the whole session")]
+    public void SearchNavigationValidatesBeforeClearingTheBrush()
+    {
+        using var workspace = new WorkspaceViewModel(SyntheticWorkspace.Create(), "session:one:generation:1");
+        TimeRange brush = new(WorkspaceTime.TicksPerSecond, 2 * WorkspaceTime.TicksPerSecond);
+        workspace.SelectInterval(brush);
+        workspace.SearchText = "cache";
+        SearchRow stale = new(new SearchHit(SearchHitKind.Channel, "missing", "Channel", "Gone", 1,
+            ["group.app", "missing-process", "missing-channel"]));
+
+        Assert.False(workspace.OpenSearchResult(stale));
+        Assert.Equal(brush, workspace.SelectedInterval);
+        Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
+        Assert.True(workspace.IsSearching);
+
+        SearchRow found = workspace.SearchResults.Single(row => row.Hit.Kind == SearchHitKind.Channel);
+        Assert.True(workspace.OpenSearchResult(found));
+        Assert.Null(workspace.SelectedInterval);
+        Assert.Equal("L3 · CHANNEL", workspace.LevelBadge);
+        Assert.False(workspace.IsSearching);
+    }
+
+    [Fact(DisplayName = "§6.7: live publication keeps a search query and the selected hit")]
+    public void SameSessionRefreshKeepsSearchSelection()
+    {
+        WorkspaceSnapshot source = SyntheticWorkspace.Create();
+        using var old = new WorkspaceViewModel(source, "session:one:generation:1");
+        old.SearchText = "cache";
+        old.SelectedSearchResult = old.SearchResults.Single(row => row.Hit.Kind == SearchHitKind.Channel);
+        WorkspaceNavigationMemento saved = old.CaptureNavigation();
+
+        using var refreshed = new WorkspaceViewModel(source, "session:one:generation:2");
+        Assert.Null(refreshed.RestoreNavigation(saved));
+        Assert.Equal("cache", refreshed.SearchText);
+        Assert.Equal(old.SelectedSearchResult.Hit.Key, refreshed.SelectedSearchResult?.Hit.Key);
+        Assert.True(refreshed.IsSearching);
+        Assert.False(refreshed.ShowsRankedTable);
+    }
+
     [Fact]
     public void SameSessionRefreshKeepsRungSelectionBrushAndTableMode()
     {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 114 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 115 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -18,7 +18,8 @@ presets exist: a metadata-only **report** and a reopenable redacted **session pa
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
 collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
-and positions survive descents and live publications. Graph marks now explain their scope and evidence on hover; nodes
+and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
+channels by name, PID or endpoint; endpoint strings can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
 Below the machine rung the graph draws only the rung's neighbourhood, and one **Rest of the machine** node counts every
 other process. Double-clicking a relationship's edge opens its channel. The timeline draws in colour the records E would
@@ -45,13 +46,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Per-rung timeline lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Per-rung timeline lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 115 — bounded, privacy-aware Desktop search (§6.7):** Ctrl+F focuses an always-visible search field;
+  groups, processes and channels rank by exact/prefix/substring metadata match, and a bounded list states the full
+  match count. Enter or double-click follows the ladder to a hit; Esc clears search. Search survives same-session live
+  publication. A stale hit cannot change the ladder, and opening a whole-session hit clears a brush that could hide it.
+  Endpoint strings may match but are not shown in search snippets (P16). The search uses the current in-memory snapshot,
+  not an indexed M4 full-content search. Three Application, two Desktop and one UI tests added; **927 passed, 1 skipped**
+  in both Debug and Release.
 - **Revision 114 — the timeline's remaining §6.7 gestures:**
   - **New gestures:**
     - A double click zooms in by 2 at the pointer.
@@ -203,12 +211,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
-   - §6.7's remaining rows: `Ctrl`+click multi-selection as an explicit predicate, forward navigation history
-     (`Alt`+`Right`), and `Ctrl`+`F` search.
+   - §6.7's remaining rows: `Ctrl`+click multi-selection as an explicit predicate and forward navigation history
+     (`Alt`+`Right`). Indexed/progressive search belongs to the later M4 scale gate.
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 114): **921 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 115): **927 passed, 1 skipped, in Debug and Release**, zero failures.
+  - Revision 115 added three Application, two Desktop and one UI search tests (+6).
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).
   - Revision 110 added hover, pin, label-slot, half-open, keyboard, drag and R3 tests.

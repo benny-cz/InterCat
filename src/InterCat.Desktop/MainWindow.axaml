@@ -41,6 +41,11 @@
                      TextWrapping="Wrap" IsVisible="{Binding IsRankedWithinInterval}"
                      AutomationProperties.Name="The time range the ranking counts" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
+                   Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint" />
+          <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                     IsVisible="{Binding IsSearching}" AutomationProperties.Name="Search result status" />
           <!-- While records are read, the view holds its generation; a newer one is offered, never forced (section 5.2). -->
           <Border x:Name="HeldBanner" IsVisible="False" Margin="0,6,0,0" Padding="8" CornerRadius="7"
                   Background="{DynamicResource Surface.Elevated}"
@@ -57,12 +62,29 @@
         </StackPanel>
 
         <Grid Grid.Row="2" RowDefinitions="*,Auto">
+          <ListBox x:Name="SearchResultsList" ItemsSource="{Binding SearchResults}"
+                   SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                   Background="Transparent" BorderThickness="0" IsVisible="{Binding IsSearching}"
+                   DoubleTapped="OpenSearchHit"
+                   AutomationProperties.Name="Search results; press Enter to open the selected result">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="pres:SearchRow">
+                <StackPanel Margin="2,5" Spacing="2" MinHeight="44"
+                            AutomationProperties.Name="{Binding AccessibleName}">
+                  <TextBlock Text="{Binding Kind}" Classes="eyebrow" />
+                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Observations}" Classes="muted" FontSize="10" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
           <ListBox x:Name="RungList"
                    ItemsSource="{Binding RungRows}"
                    SelectedItem="{Binding SelectedRung, Mode=TwoWay}"
                    Background="Transparent"
                    BorderThickness="0"
-                   IsVisible="{Binding !IsEmptyRung}"
+                   IsVisible="{Binding ShowsRankedTable}"
                    DoubleTapped="DescendFromRow"
                    AutomationProperties.Name="Ranked table for the current level">
             <ListBox.ItemTemplate>
@@ -86,7 +108,7 @@
 
           <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2).
                At the minimum window height the reason scrolls rather than being clipped. -->
-          <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding IsEmptyRung}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding ShowsEmptyReason}">
             <Border Padding="12" CornerRadius="8" VerticalAlignment="Top"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="6">
@@ -103,7 +125,7 @@
 
           <Button Grid.Row="1" Margin="0,8,0,0" HorizontalAlignment="Stretch"
                   Content="Load more records (M)" Click="LoadMoreRecords"
-                  IsVisible="{Binding CanLoadMoreEvidence}"
+                  IsVisible="{Binding ShowsLoadMoreEvidence}"
                   AutomationProperties.Name="Load the next page of source records" />
         </Grid>
 

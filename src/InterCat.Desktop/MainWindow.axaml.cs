@@ -103,10 +103,54 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void OnShortcutKey(object? sender, KeyEventArgs e)
     {
-        if (DataContext is not WorkspaceViewModel viewModel || e.Source is TextBox)
+        if (DataContext is not WorkspaceViewModel viewModel)
         {
             return;
         }
+
+        if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        if (SearchBox.IsKeyboardFocusWithin)
+        {
+            if (e.Key == Key.Escape)
+            {
+                viewModel.SearchText = string.Empty;
+                RungList.Focus();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter)
+            {
+                e.Handled = OpenSelectedSearchHit();
+            }
+            else if (e.Key == Key.Down && viewModel.SearchResults.Count > 0)
+            {
+                SearchResultsList.ContainerFromItem(viewModel.SelectedSearchResult!)?.Focus();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (SearchResultsList.IsKeyboardFocusWithin)
+        {
+            if (e.Key == Key.Enter) e.Handled = OpenSelectedSearchHit();
+            else if (e.Key == Key.Escape)
+            {
+                viewModel.SearchText = string.Empty;
+                SearchBox.Focus();
+                e.Handled = true;
+            }
+
+            if (e.Handled || e.Key is Key.Enter or Key.Escape) return;
+        }
+
+        if (e.Source is TextBox) return;
 
         switch (e.Key)
         {
@@ -189,6 +233,15 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             _ = viewModel.Descend();
         }
+    }
+
+    private void OpenSearchHit(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedSearchHit();
+
+    private bool OpenSelectedSearchHit()
+    {
+        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSearchResult()) return false;
+        RungList.Focus();
+        return true;
     }
 
     private void AscendOrClear(object? sender, RoutedEventArgs eventArgs)
