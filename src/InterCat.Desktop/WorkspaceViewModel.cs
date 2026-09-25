@@ -36,8 +36,17 @@ public sealed record DirectionLaneOption(Direction? Direction, string Label)
         : $"{Label} source-direction lane; show its exact interval counts and step within this lane";
 }
 
+/// <summary>A keyboard-addressable L3 channel end; a null End shows the whole channel's counts.</summary>
+public sealed record ChannelEndOption(int? End, string Label)
+{
+    public string AccessibleName => End is null
+        ? "Both ends; show the channel's complete interval counts"
+        : $"{Label} end; show its exact interval counts and step within this end";
+}
+
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
+/// <param name="SelectedChannelEnd">The L3 end chosen for the table and stepping: 0 the channel's first end, 1 its second.</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -48,7 +57,8 @@ public sealed record WorkspaceNavigationMemento(
     string SearchText = "",
     string? SelectedSearchKey = null,
     Mechanism? SelectedTimelineMechanism = null,
-    Direction? SelectedTimelineDirection = null);
+    Direction? SelectedTimelineDirection = null,
+    int? SelectedChannelEnd = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -60,7 +70,8 @@ public sealed record TimelineCarry(
     IReadOnlyList<TimelineBucket>? Focus,
     IReadOnlyList<ProcessTimelineLane>? ProcessLanes = null,
     string? ProcessLaneProblem = null,
-    IReadOnlyList<DirectionTimelineLane>? DirectionLanes = null);
+    IReadOnlyList<DirectionTimelineLane>? DirectionLanes = null,
+    IReadOnlyList<ChannelEndTimelineLane>? ChannelEndLanes = null);
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -129,6 +140,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<TimelineBucket>? timelineFocusBuckets;
     private IReadOnlyList<ProcessTimelineLane>? timelineProcessLanes;
     private IReadOnlyList<DirectionTimelineLane>? timelineDirectionLanes;
+    private IReadOnlyList<ChannelEndTimelineLane>? timelineChannelEnds;
+    private IReadOnlyList<ChannelEndOption> channelEndOptions = [new(null, "Both ends")];
+    private int? selectedChannelEnd;
     private IReadOnlyList<ProcessTimelineLane> processLaneDisplay = [];
     private string? processLaneProblem;
     private bool timelineFocusLoading;
@@ -425,7 +439,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
                 SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null,
                     sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null,
-                    sameSession ? counted.DirectionLanes : null);
+                    sameSession ? counted.DirectionLanes : null, sameSession ? counted.ChannelEndLanes : null);
                 SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
             }
         }
@@ -449,11 +463,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus,
         IReadOnlyList<ProcessTimelineLane>? processLanes = null, string? laneProblem = null,
-        IReadOnlyList<DirectionTimelineLane>? directionLanes = null)
+        IReadOnlyList<DirectionTimelineLane>? directionLanes = null,
+        IReadOnlyList<ChannelEndTimelineLane>? channelEnds = null)
     {
         if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus)
             && ReferenceEquals(timelineProcessLanes, processLanes) && processLaneProblem == laneProblem
-            && ReferenceEquals(timelineDirectionLanes, directionLanes))
+            && ReferenceEquals(timelineDirectionLanes, directionLanes)
+            && ReferenceEquals(timelineChannelEnds, channelEnds))
         {
             return;
         }
@@ -462,6 +478,15 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineFocusBuckets = focus;
         timelineProcessLanes = processLanes;
         timelineDirectionLanes = directionLanes;
+        if (!ReferenceEquals(timelineChannelEnds, channelEnds))
+        {
+            // The selector offers the ends this count names; an end chosen earlier keeps its place by its number.
+            timelineChannelEnds = channelEnds;
+            channelEndOptions = [new(null, "Both ends"), .. (channelEnds ?? []).Select(end => new ChannelEndOption(end.End, ChannelEndLabel(end)))];
+            OnPropertyChanged(nameof(ChannelEndOptions));
+            OnPropertyChanged(nameof(SelectedChannelEndOption));
+        }
+
         processLaneDisplay = processLanes is null ? [] : OrderProcessLanes(processLanes);
         processLaneProblem = laneProblem;
         RefreshIntervalRows(focus);
@@ -471,6 +496,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TimelineProcessLanes));
         OnPropertyChanged(nameof(TimelineDirectionLanes));
         OnPropertyChanged(nameof(ShowsDirectionLanes));
+        OnPropertyChanged(nameof(TimelineChannelEndLanes));
+        OnPropertyChanged(nameof(ShowsChannelEndLanes));
         OnPropertyChanged(nameof(ProcessLaneDisplay));
         OnPropertyChanged(nameof(ShowsProcessLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
@@ -495,7 +522,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         Mechanism? selected = ShowsMechanismLanes ? selectedTimelineLane.Mechanism : null;
         ProcessTimelineLane? processLane = SelectedProcessLane;
         DirectionTimelineLane? directionLane = SelectedDirectionBucketLane;
-        IReadOnlyList<TimelineBucket> buckets = directionLane is not null
+        ChannelEndTimelineLane? endLane = SelectedChannelEndLane;
+        IReadOnlyList<TimelineBucket> buckets = endLane is not null
+            ? endLane.Buckets
+            : directionLane is not null
             ? directionLane.Buckets
             : processLane is not null
             ? processLane.Buckets
@@ -505,7 +535,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark,
-            selected is null && processLane is null && directionLane is null ? focus : null);
+            selected is null && processLane is null && directionLane is null && endLane is null ? focus : null);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -530,6 +560,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(TimelineShowsFocus));
         OnPropertyChanged(nameof(ShowsDirectionLanes));
+        OnPropertyChanged(nameof(ShowsChannelEndLanes));
     }
 
     /// <summary>
@@ -551,6 +582,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineFocusLoading = false;
         timelineFocusProblem = null;
 
+        // An end is a place on one channel: the first end of another channel is unrelated to it.
+        if (selectedChannelEnd is not null)
+        {
+            selectedChannelEnd = null;
+            OnPropertyChanged(nameof(SelectedChannelEnd));
+            OnPropertyChanged(nameof(SelectedChannelEndOption));
+        }
+
         // The previous focus's counts describe other records; the whole timeline beside them is still true.
         SetTimelineDetail(timelineDetail, null);
         OnPropertyChanged(nameof(TimelineCaption));
@@ -563,7 +602,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
-        timelineProcessLanes, processLaneProblem, timelineDirectionLanes);
+        timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -576,7 +615,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         IReadOnlyList<TimelineBucket>? focus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key ? carry.Focus : null;
         bool sameFocus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key;
         SetTimelineDetail(carry.Detail, focus, sameFocus ? carry.ProcessLanes : null,
-            sameFocus ? carry.ProcessLaneProblem : null, sameFocus ? carry.DirectionLanes : null);
+            sameFocus ? carry.ProcessLaneProblem : null, sameFocus ? carry.DirectionLanes : null,
+            sameFocus ? carry.ChannelEndLanes : null);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -620,6 +660,52 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         if (directionLaneOptions.FirstOrDefault(option => option.Direction == direction) is { } option)
             SelectedDirectionLane = option;
+    }
+
+    /// <summary>The focused channel's two ends, first end first, held with their focus and generation.</summary>
+    public IReadOnlyList<ChannelEndTimelineLane>? TimelineChannelEndLanes => timelineChannelEnds;
+
+    /// <summary>Whether the channel rung draws one lane per end, banded by direction (§3.2 L3).</summary>
+    public bool ShowsChannelEndLanes => ladder.Current.Level == DetailLevel.Channel
+        && timelineChannelEnds is { Count: > 0 } && timelineFocusProblem is null;
+
+    private ChannelEndTimelineLane? SelectedChannelEndLane => ShowsChannelEndLanes && selectedChannelEnd is { } end
+        ? timelineChannelEnds!.FirstOrDefault(lane => lane.End == end) : null;
+
+    /// <summary>Both ends, then each end by its holder and endpoint: the table equivalent of the end lanes' names.</summary>
+    public IReadOnlyList<ChannelEndOption> ChannelEndOptions => channelEndOptions;
+
+    public ChannelEndOption SelectedChannelEndOption
+    {
+        get => channelEndOptions.FirstOrDefault(option => option.End == selectedChannelEnd) ?? channelEndOptions[0];
+        set
+        {
+            if (value is not null && channelEndOptions.Contains(value)) SelectChannelEnd(value.End);
+        }
+    }
+
+    /// <summary>The end chosen for the interval table and bracket stepping: 0 the first end, 1 the second.</summary>
+    public int? SelectedChannelEnd => selectedChannelEnd;
+
+    public void SelectChannelEnd(int? end)
+    {
+        if (end is not (null or 0 or 1) || selectedChannelEnd == end) return;
+        selectedChannelEnd = end;
+        RefreshIntervalRows(timelineFocusBuckets);
+        OnPropertyChanged(nameof(SelectedChannelEnd));
+        OnPropertyChanged(nameof(SelectedChannelEndOption));
+        OnPropertyChanged(nameof(TimelineCaption));
+    }
+
+    /// <summary>An end as a person reads it: who holds it and its own endpoint, which tells a looped process's ends apart.</summary>
+    public string ChannelEndLabel(ChannelEndTimelineLane end) => $"{ChannelEndHolder(end)} · {end.Endpoint}";
+
+    /// <summary>The process that holds an end, by name and PID; an instance this snapshot does not list, by its ID.</summary>
+    public string ChannelEndHolder(ChannelEndTimelineLane end)
+    {
+        ArgumentNullException.ThrowIfNull(end);
+        return wholeSnapshot.Processes.FirstOrDefault(process => process.Id == end.Holder)?.NameWithPid
+            ?? "instance " + end.Holder.ToString()[..8];
     }
 
     /// <summary>L1 process rows ordered by PID and stable instance ID, independent of query/ranking order.</summary>
@@ -693,6 +779,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     + (SelectedTimelineDirection is { } direction
                         ? $" · {DirectionLabel(direction)} table/step focus"
                         : " · click a lane name or choose one in tables (T)")
+            : ShowsChannelEndLanes
+                ? $"{focus} · one lane per end: outbound above its midline, inbound below · machine context above"
+                    + (SelectedChannelEndLane is { } end
+                        ? $" · {ChannelEndLabel(end)} table/step focus"
+                        : " · click an end's name or choose one in tables (T)")
             : timelineFocusLoading && timelineFocusBuckets is null
                 ? $"Counting {char.ToLowerInvariant(focus[0])}{focus[1..]}… · the rest of the machine in grey"
                 : $"{focus} in colour, the rest of the machine in grey · Shift+drag brushes a range";
@@ -719,7 +810,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public WorkspaceNavigationMemento CaptureNavigation() => new(
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
-        searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection);
+        searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
+        selectedChannelEnd);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -815,6 +907,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
         if (saved.SelectedTimelineDirection is { } savedDirection)
             SelectDirectionLane(savedDirection);
+        if (saved.SelectedChannelEnd is { } savedEnd)
+            SelectChannelEnd(savedEnd);
         SelectedRung = ladder.Depth == old.Length - 1
             ? RungRows.FirstOrDefault(row => row.Key == saved.SelectedRungKey)
             : null;
@@ -1659,6 +1753,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     $"{selectedDirectionLane.Label} source-direction records · {directionLane.Buckets.Count:N0} exact intervals");
             }
 
+            if (SelectedChannelEndLane is { } endLane)
+            {
+                return string.Create(CultureInfo.CurrentCulture,
+                    $"Records made at {ChannelEndLabel(endLane)} · {endLane.Buckets.Count:N0} exact intervals");
+            }
+
             string lane = ShowsMechanismLanes && SelectedTimelineMechanism is { } mechanism
                 ? $" · {EvidenceRowText.MechanismName(mechanism)} lane" : string.Empty;
             return timelineDetail is { } detail
@@ -2087,9 +2187,15 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// visible bar. Hover only describes; it never selects or brushes.
     /// </summary>
     public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond,
-        Mechanism? lane = null, ProcessNode? ownerLane = null, Direction? directionLane = null)
+        Mechanism? lane = null, ProcessNode? ownerLane = null, Direction? directionLane = null,
+        ChannelEndTimelineLane? endLane = null)
     {
         ArgumentNullException.ThrowIfNull(bucket);
+        if (endLane is not null)
+        {
+            return DescribeChannelEndHover(bucket, peakPerSecond, endLane);
+        }
+
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
             || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket))
             || ownerLane is not null && processLaneDisplay.Any(candidate =>
@@ -2142,6 +2248,50 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             : lane is null
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
             : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
+        return FinishTimelineHover(bucket, zoomed, lines);
+    }
+
+    /// <summary>
+    /// An L3 end lane's card. The end's records are split by source direction around its midline, so the card gives the
+    /// bucket's outbound, inbound and undirected counts and where each is drawn; the channel's count spans both ends.
+    /// </summary>
+    private HoverCard DescribeChannelEndHover(TimelineBucket bucket, double peakPerSecond, ChannelEndTimelineLane end)
+    {
+        int index = Enumerable.Range(0, end.Buckets.Count).FirstOrDefault(
+            candidate => end.Buckets[candidate].Interval == bucket.Interval, -1);
+        int outbound = index < 0 ? 0 : end.Outbound[index].ObservationCount;
+        int inbound = index < 0 ? 0 : end.Inbound[index].ObservationCount;
+        int undirected = bucket.ObservationCount - outbound - inbound;
+        long span = Math.Max(1, bucket.Interval.SpanTicks);
+        string holder = ChannelEndHolder(end);
+        var lines = new List<string>
+        {
+            bucket.ObservationCount == 0
+                ? "No record observed at this end · an empty bucket is not proof of inactivity"
+                : Counted(bucket.ObservationCount, "observed record", "observed records")
+                    + $" · the {end.Endpoint} end, held by {holder}",
+            $"Basis: source observations · unit: records · domain: records made at {end.Endpoint}, the end of this "
+                + $"paired TCP channel that {holder} holds · accounting: each record at exactly one end",
+            string.Create(CultureInfo.CurrentCulture,
+                $"Direction: {outbound:N0} outbound, drawn above the midline · {inbound:N0} inbound, below · ")
+                + string.Create(CultureInfo.CurrentCulture, $"{undirected:N0} with no data direction, marked on it"),
+        };
+        if (timelineFocusDescription is { } focus && TimelineShowsFocus)
+        {
+            lines.Add(timelineFocusBuckets?.FirstOrDefault(candidate => candidate.Interval == bucket.Interval) is { } focused
+                ? $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " in this interval at both ends"
+                : $"{focus}: being counted");
+        }
+
+        lines.Add($"Rate: {TimelineView.RateText((double)outbound * WorkspaceTime.TicksPerSecond / span)} outbound, "
+            + $"{TimelineView.RateText((double)inbound * WorkspaceTime.TicksPerSecond / span)} inbound · each band's height "
+            + $"against the busiest visible band including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)");
+        return FinishTimelineHover(bucket, timelineDetail is not null && end.Buckets.Contains(bucket), lines);
+    }
+
+    /// <summary>What every timeline card closes with: the unmeasured part, bytes, coverage, resolution and the click.</summary>
+    private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines)
+    {
         lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
         lines.Add(bucket.KnownBytes is { } bytes
             ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
@@ -2510,6 +2660,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShowsMechanismLanes));
         OnPropertyChanged(nameof(ShowsProcessLanes));
         OnPropertyChanged(nameof(ShowsDirectionLanes));
+        OnPropertyChanged(nameof(ShowsChannelEndLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(OffersEvidenceStep));

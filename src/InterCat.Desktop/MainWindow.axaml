@@ -479,6 +479,18 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
+          <ComboBox x:Name="ChannelEndSelector" Grid.Column="2" Width="175" MinHeight="32"
+                    ItemsSource="{Binding ChannelEndOptions}"
+                    SelectedItem="{Binding SelectedChannelEndOption, Mode=TwoWay}"
+                    IsVisible="{Binding ShowsChannelEndLanes}"
+                    AutomationProperties.Name="Channel end for the interval table and bracket-key stepping">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="local:ChannelEndOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
+                           AutomationProperties.Name="{Binding AccessibleName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
           <Button x:Name="GroupTotalsButton" Grid.Column="3" Margin="8,0,0,0" Content="Group totals"
                   Click="ClearTimelineProcessFocus" IsVisible="{Binding HasSelectedProcessLane}"
                   AutomationProperties.Name="Clear the selected process lane and show group interval totals" />

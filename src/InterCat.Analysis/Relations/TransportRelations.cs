@@ -244,6 +244,26 @@ public sealed class TransportRelationIndex
     }
 
     /// <summary>
+    /// Which end of its connection or flow each row of a segment was made at: <c>0</c> at the end whose own endpoint
+    /// sorts first, which is a <see cref="TransportRelation"/>'s <see cref="TransportRelation.First"/>, <c>1</c> at the
+    /// other, and <c>-1</c> for a row with no end of its own - another mechanism, or an incomplete endpoint. The two ends
+    /// of a channel therefore partition its records without reading who holds them, so a process connected to itself
+    /// still shows two ends.
+    /// </summary>
+    public static sbyte[] EndsOf(SegmentReaderV1 segment)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        EndKey?[] keys = KeysOf(segment);
+        var sides = new sbyte[keys.Length];
+        for (int row = 0; row < keys.Length; row++)
+        {
+            sides[row] = keys[row] is { } key ? (sbyte)(key.CompareTo(key.Mirror()) <= 0 ? 0 : 1) : (sbyte)-1;
+        }
+
+        return sides;
+    }
+
+    /// <summary>
     /// Numbers the channels in a stable order: by end, then by incarnation. A paired incarnation shares its partner's
     /// number, one whose other end is not observed has its own, and an undecided one has its own only on the side with
     /// more incarnations; the other side's undecided records have none.

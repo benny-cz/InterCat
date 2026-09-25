@@ -314,6 +314,39 @@ public sealed class RealSessionGraphTests
             string rows = await QualifyDirectionRows(small, smallModel, "process-directions-1080x700.png");
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"L2 {talking.NameWithPid}, the busiest relationship end, counted in {clock.ElapsedMilliseconds} ms: {rows}");
+
+            // §3.2 L3: its busiest channel, one lane per end. The ends partition the channel's count bucket by bucket,
+            // and each end's bands are its own outbound and inbound records.
+            smallModel.SelectedRung = smallModel.RungRows[0];
+            clock.Restart();
+            Assert.True(smallModel.Descend());
+            await smallModel.TimelineDetailReady;
+            Dispatch();
+            Assert.True(smallModel.ShowsChannelEndLanes, smallModel.TimelineCaption);
+            IReadOnlyList<TimelineBucket> channel = Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(smallModel.TimelineFocusBuckets);
+            IReadOnlyList<ChannelEndTimelineLane> ends = smallModel.TimelineChannelEndLanes!;
+            Assert.Equal([0, 1], ends.Select(end => end.End));
+            Assert.All(channel.Select((bucket, index) => (bucket, index)), pair =>
+                Assert.Equal(pair.bucket.ObservationCount, ends.Sum(end => end.Buckets[pair.index].ObservationCount)));
+            Assert.All(ends, end => Assert.All(end.Buckets.Select((bucket, index) => (bucket, index)), pair =>
+                Assert.InRange(end.Outbound[pair.index].ObservationCount + end.Inbound[pair.index].ObservationCount,
+                    0, pair.bucket.ObservationCount)));
+            string endTotals = string.Join(" | ", ends.Select(end => string.Create(CultureInfo.InvariantCulture,
+                $"{smallModel.ChannelEndLabel(end)}: out {end.Outbound.Sum(bucket => bucket.ObservationCount)} · "
+                + $"in {end.Inbound.Sum(bucket => bucket.ObservationCount)} · all {end.Buckets.Sum(bucket => bucket.ObservationCount)}")));
+            report.AppendLine(CultureInfo.InvariantCulture, $"L3 channel counted in {clock.ElapsedMilliseconds} ms: {endTotals}");
+
+            TimelineView smallTimeline = small.GetControl<TimelineView>("TimelineSurface");
+            ChannelEndTimelineLane busiestEnd = ends.OrderByDescending(end => end.Buckets.Sum(bucket => bucket.ObservationCount)).First();
+            TimelineBucket endBucket = busiestEnd.Buckets.First(bucket => bucket.ObservationCount > 0);
+            small.MouseMove(smallTimeline.TranslatePoint(smallTimeline.PointOfEnd(busiestEnd.End, endBucket)!.Value, small)!.Value);
+            Dispatch();
+            Assert.Equal(endBucket, smallTimeline.HoveredBucket);
+            Assert.EndsWith($" · the {busiestEnd.Endpoint} end, held by {smallModel.ChannelEndHolder(busiestEnd)}",
+                Assert.IsType<HoverCard>(smallTimeline.HoverCard).Lines[0], StringComparison.Ordinal);
+            small.MouseMove(new Point(1, 1));
+            Dispatch();
+            Save(small, "channel-ends-1080x700.png");
         }
 
         small.Close();

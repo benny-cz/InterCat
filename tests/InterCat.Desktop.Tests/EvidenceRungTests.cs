@@ -355,6 +355,83 @@ public sealed class EvidenceRungTests
             .Sum(bucket => bucket.ObservationCount);
     }
 
+    [Fact(DisplayName = "§3.2: a channel's two ends are lanes with their own table focus, kept by a refresh and reset by another focus")]
+    public async Task AChannelsEndsScopeTheTableAndSurviveARefresh()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        ProcessNode server = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+
+        // Each end is named by who holds it and its own endpoint; the client's sends and the server's receives.
+        Assert.True(workspace.ShowsChannelEndLanes);
+        IReadOnlyList<ChannelEndTimelineLane> ends = workspace.TimelineChannelEndLanes!;
+        ChannelEndTimelineLane clientEnd = ends.Single(end => end.Holder == client.Id);
+        ChannelEndTimelineLane serverEnd = ends.Single(end => end.Holder == server.Id);
+        Assert.Equal([null, 0, 1], workspace.ChannelEndOptions.Select(option => option.End));
+        Assert.Equal($"{client.NameWithPid} · {ClientEnd}", workspace.ChannelEndLabel(clientEnd));
+        Assert.Equal((Exchanges, 0), (Sum(clientEnd.Outbound), Sum(clientEnd.Inbound)));
+        Assert.Equal((0, Exchanges), (Sum(serverEnd.Outbound), Sum(serverEnd.Inbound)));
+        Assert.Contains("one lane per end: outbound above its midline, inbound below", workspace.TimelineCaption,
+            StringComparison.Ordinal);
+
+        // Hover names the end and splits its bucket by direction; the channel's count spans both ends.
+        TimelineBucket sent = clientEnd.Buckets.First(bucket => bucket.ObservationCount > 0);
+        HoverCard card = workspace.DescribeTimelineHover(sent, 1_000, endLane: clientEnd);
+        Assert.EndsWith($" · the {ClientEnd} end, held by {client.NameWithPid}", card.Lines[0], StringComparison.Ordinal);
+        Assert.Contains($"domain: records made at {ClientEnd}, the end of this paired TCP channel that {client.NameWithPid} holds",
+            card.Lines[1], StringComparison.Ordinal);
+        Assert.Equal($"Direction: {sent.ObservationCount:N0} outbound, drawn above the midline · 0 inbound, below · "
+            + "0 with no data direction, marked on it", card.Lines[2]);
+        Assert.EndsWith(" in this interval at both ends", card.Lines[3], StringComparison.Ordinal);
+        Assert.EndsWith("(shared scale)", card.Lines[4], StringComparison.Ordinal);
+
+        // A chosen end scopes the table and the caption.
+        workspace.SelectChannelEnd(clientEnd.End);
+        Assert.Equal(clientEnd.End, workspace.SelectedChannelEndOption.End);
+        Assert.StartsWith($"Records made at {client.NameWithPid} · {ClientEnd}", workspace.IntervalTableScope,
+            StringComparison.Ordinal);
+        Assert.Equal(clientEnd.Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        Assert.Equal(sent.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            workspace.Intervals.Single(row => row.Interval == sent.Interval).Observations);
+        Assert.Contains("table/step focus", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // A same-session publication restores the end with the rung and shows the carried lanes at once.
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        Assert.Equal(clientEnd.End, saved.SelectedChannelEnd);
+        using (WorkspaceViewModel next = Open(session))
+        {
+            Assert.Null(next.RestoreNavigation(saved));
+            next.AdoptTimeline(workspace.CarryTimeline());
+            Assert.Same(ends, next.TimelineChannelEndLanes);
+            Assert.Equal(clientEnd.End, next.SelectedChannelEnd);
+            Assert.StartsWith("Records made at", next.IntervalTableScope, StringComparison.Ordinal);
+        }
+
+        // The evidence rung keeps the channel's count but draws no end lanes, so the table lists the channel again.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.False(workspace.ShowsChannelEndLanes);
+        Assert.DoesNotContain("Records made at", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.ShowsChannelEndLanes);
+        Assert.StartsWith("Records made at", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        // An end is a place on one channel: another focus forgets it.
+        workspace.ReturnTo(2);
+        Assert.Null(workspace.SelectedChannelEnd);
+        Assert.Null(workspace.SelectedChannelEndOption.End);
+
+        static int Sum(IReadOnlyList<TimelineBucket> buckets) => buckets.Sum(bucket => bucket.ObservationCount);
+    }
+
     private static int FocusTotal(WorkspaceViewModel workspace) =>
         Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineFocusBuckets).Sum(bucket => bucket.ObservationCount);
 

@@ -173,6 +173,105 @@ public sealed class SessionTimelineTests
         Assert.Equal(new TimelineFocus(null, [client.Id, client.Id]).Key, new TimelineFocus(null, [client.Id]).Key);
     }
 
+    [Fact(DisplayName = "§3.2: a channel's two ends partition its records, each banded by its own source directions")]
+    public void ChannelEndLanesPartitionTheChannelByEnd()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1)),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2)),
+            Timed(Lifecycle(3, ObservationKind.Create, 300, 3)),
+
+            // The client sends for twenty exchanges, then receives for ten; then it disconnects, which has no direction.
+            .. Enumerable.Range(0, 30).SelectMany(index =>
+            {
+                (int sender, int receiver, string from, string to) = index < 20
+                    ? (100, 200, ClientEnd, ServerEnd)
+                    : (200, 100, ServerEnd, ClientEnd);
+                return new[]
+                {
+                    Timed(Transfer(10 + (20 * index), ObservationKind.Send, AccountingSide.SendSide, 64, sender,
+                        (ulong)(100 + (2 * index))).Between(from, to)),
+                    Timed(Transfer(11 + (20 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, receiver,
+                        (ulong)(101 + (2 * index))).Between(to, from)),
+                };
+            }),
+            Timed(Transfer(700, ObservationKind.Disconnect, AccountingSide.CanonicalOwner, null, 100, 900)
+                .Between(ClientEnd, ServerEnd) with { Direction = Direction.DirectionNotApplicable }),
+
+            // A process connected to itself over loopback, and a one-sided flow that no channel focus reads.
+            Timed(Transfer(750, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 901)
+                .Between("127.0.0.1:50002", "127.0.0.1:9091")),
+            Timed(Transfer(751, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 300, 902)
+                .Between("127.0.0.1:9091", "127.0.0.1:50002")),
+            Timed(Transfer(800, ObservationKind.Send, AccountingSide.SendSide, 3, 400, 903)
+                .Between("127.0.0.1:50001", "127.0.0.1:9090")),
+        ], coverage: TwoEpochs());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        TimeRange extent = overview.Extent!.Value;
+        ProcessNode client = overview.Nodes.Single(node => node.ProcessId == 100);
+        ProcessNode server = overview.Nodes.Single(node => node.ProcessId == 200);
+        ProcessNode looped = overview.Nodes.Single(node => node.ProcessId == 300);
+        CommunicationEdge selfEdge = overview.Edges.Single(edge => edge.SourceId == edge.TargetId);
+        Channel channel = overview.Channels.Single(candidate => candidate.EdgeKey != selfEdge.Key);
+        SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(session.Store, extent, 16,
+            new TimelineFocus(channel.Key, []));
+
+        // Two ends, first end first; each names its holder and its own endpoint, and together they are the channel.
+        IReadOnlyList<ChannelEndTimelineLane> ends = timeline.ChannelEndLanes;
+        Assert.Equal([0, 1], ends.Select(end => end.End));
+        ChannelEndTimelineLane clientEnd = ends.Single(end => end.Holder == client.Id);
+        ChannelEndTimelineLane serverEnd = ends.Single(end => end.Holder == server.Id);
+        Assert.Equal(ClientEnd, clientEnd.Endpoint);
+        Assert.Equal(ServerEnd, serverEnd.Endpoint);
+        Assert.All(timeline.Focus.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount, ends.Sum(end => end.Buckets[pair.index].ObservationCount)));
+        Assert.Equal(61, timeline.Focus.Sum(bucket => bucket.ObservationCount));
+
+        // Each end holds exactly the records E lists for the channel that its holder made.
+        SessionEvidencePage read = SessionEvidenceQuery.ReadScope(session.Store, 10_000, channel.Key);
+        foreach ((ChannelEndTimelineLane end, int pid) in new[] { (clientEnd, 100), (serverEnd, 200) })
+        {
+            long[] ticks = [.. read.Records.Where(record => record.Observation.OwnerProcessId == pid)
+                .Select(record => record.Observation.SessionRelativeTicks!.Value / 100)];
+            Assert.All(end.Buckets, bucket => Assert.Equal(ticks.Count(bucket.Interval.Contains), bucket.ObservationCount));
+        }
+
+        // The bands hold the end's own directions; the disconnect stays in its end's total and in neither band.
+        Assert.Equal((31, 20, 10), Totals(clientEnd));
+        Assert.Equal((30, 10, 20), Totals(serverEnd));
+        Assert.All(ends, end => Assert.All(end.Buckets.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.InRange(end.Outbound[pair.index].ObservationCount + end.Inbound[pair.index].ObservationCount,
+                0, pair.bucket.ObservationCount)));
+
+        // An end can only hold the channel's mechanism, so a quiet interval the capture covered is observed-empty there,
+        // where the aggregate focus, which judges only what it observed, still calls the same empty bucket unknown.
+        int quiet = Enumerable.Range(0, clientEnd.Buckets.Count).First(index => clientEnd.Buckets[index].ObservationCount == 0
+            && timeline.Focus[index].ObservationCount == 0);
+        Assert.Equal((CoverageState.Covered, Mechanism.Tcp),
+            (clientEnd.Buckets[quiet].Coverage, clientEnd.Buckets[quiet].DominantMechanism));
+        Assert.Equal(CoverageState.Covered, clientEnd.Inbound[quiet].Coverage);
+        Assert.Equal(CoverageState.UnknownCoverage, timeline.Focus[quiet].Coverage);
+
+        // A process connected to itself still has two ends, told apart by endpoint rather than by holder.
+        Channel loop = overview.Channels.Single(candidate => candidate.EdgeKey == selfEdge.Key);
+        IReadOnlyList<ChannelEndTimelineLane> loopEnds = SessionTimelineQuery.Focused(session.Store, extent, 16,
+            new TimelineFocus(loop.Key, [])).ChannelEndLanes;
+        Assert.Equal(2, loopEnds.Count);
+        Assert.All(loopEnds, end => Assert.Equal(looped.Id, end.Holder));
+        Assert.Equal(["127.0.0.1:50002", "127.0.0.1:9091"], loopEnds.Select(end => end.Endpoint).Order(StringComparer.Ordinal));
+        Assert.All(loopEnds, end => Assert.Equal(1, end.Buckets.Sum(bucket => bucket.ObservationCount)));
+
+        // Owner focuses have no ends, and a whole timeline has no focus at all.
+        Assert.Empty(SessionTimelineQuery.Focused(session.Store, extent, 16, new TimelineFocus(null, [client.Id])).ChannelEndLanes);
+
+        static (int Total, int Outbound, int Inbound) Totals(ChannelEndTimelineLane end) => (
+            end.Buckets.Sum(bucket => bucket.ObservationCount),
+            end.Outbound.Sum(bucket => bucket.ObservationCount),
+            end.Inbound.Sum(bucket => bucket.ObservationCount));
+    }
+
     [Fact(DisplayName = "§3.2: one process's source-direction rows partition its exact focus without guessing unknown direction")]
     public void ProcessDirectionLanesPartitionOwnerEvidence()
     {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 123 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 124 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -13,8 +13,8 @@ M0 and its IC-010a capture-impact follow-on are complete on the measured develop
 physical store, commit/recovery, and leases exist, but canonical import reuse, operation/entity checkpointing, and
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
 overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline, and interactive
-L0 mechanism lanes, exact L1 process-owner lanes and L2 source-direction rows; L3–L5 lanes, the operation view and the
-steady-state feedback budget are open.
+L0 mechanism lanes, exact L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by
+direction; L4 lanes wait on derived operations, and the operation view and the steady-state feedback budget are open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -48,13 +48,30 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes and L2 source-direction rows with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L3–L5 lanes, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | L4 operation lanes and byte composition once IC-015 derives operations. Persisted overview pyramid and bounded steady-state feedback. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 124 — L3 channel-end lanes banded by direction (§3.2, §6.2, §6.6):**
+  - **Lanes:** the channel rung draws one lane per end under the machine-context row. Each lane is named by the
+    process holding the end and the end's own endpoint.
+  - **Ends:** a record's end is decided by its own endpoint, so a process connected to itself still has two ends. The
+    ends partition the channel bucket by bucket.
+  - **Bands:** outbound records rise above an end's midline and inbound fall below, on the shared scale; ↑/↓ label the
+    sides in place. A disconnect or other undirected record is a neutral midline mark.
+  - **Coverage:** an end can hold only the channel's mechanism, so an empty bucket is judged on that mechanism's
+    coverage, as an L0 lane's is. Real data showed why: every quiet bucket of each end had been hatched as unknown.
+  - **Interaction:** hover gives the end, the bucket's split and where each part is drawn, and the channel's count. An
+    end's name, or the tables' end selector, scopes the interval table and `[`/`]`. The choice survives a same-session
+    publication and is forgotten on another channel.
+  - **Refactor:** the L1–L3 lanes now share one row set in `TimelineView` for hit tests, hover, points, label clicks and
+    stepping, instead of a copy per kind.
+  - **Real check:** python.exe PID 90424's loopback channel split into two ends of the same process, :36703 (out 1 ·
+    in 2 · 4 in all) and :36704 (out 2 · in 1 · 4 in all), counted in 59–78 ms.
+  - **Tests:** one Application, one Desktop and one UI test (+3); the opt-in real-session test now qualifies L3.
 - **Revision 123 — L2 source-direction rows (§3.2, §6.2, §6.6, §23):** An instance's focus now splits into one row
   per `EN-Direction` code (Outbound, Inbound, Bidirectional, Unknown direction, No data direction). The rows sit under
   a machine-context row and are counted in the same leased pass as the focus. They partition the instance's records
@@ -272,14 +289,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Give L3–L5 their own lanes (§3.2's timeline column): the channel's two ends banded by direction, operations
-   and evidence marks, within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include
-   operation/byte projections where derivations actually support them, and state unavailable where they do not.
-   Revisions 119, 122 and 123 provide the L0, L1 and L2 rows and their table/step selectors. Audit keyboard and
-   screen-reader/UI Automation access to individual lane names and the selectors, and add pin/collapse/search as
-   the observed lane count requires.
-2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
+1. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
+2. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
+   119–124), and add pin/collapse/search as the observed lane count requires. L4's operation lanes, with duration
+   bars and byte projections where a derivation supports them, wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
 4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
@@ -293,9 +307,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 123): **943 passed, 1 skipped, in Debug and Release**, zero failures.
-  Revision 123 adds two Application, one Desktop and one UI test (+4) and extends the opt-in real-session check to
-  L2, which passed separately in Release on the saved Explore session.
+- Last executed clean baseline (revision 124): **946 passed, 1 skipped, in Debug and Release**, zero failures.
+  Revision 124 adds one Application, one Desktop and one UI test (+3) and extends the opt-in real-session check to
+  L3, which passed separately in Release on the saved Explore session.
+  - Revision 123 adds two Application, one Desktop and one UI test (+4) and extends the opt-in real-session check to
+    L2, which passed separately in Release on the saved Explore session.
   - Caution from revision 123: a filtered `dotnet test` whose build fails still runs the previous binary. Grep its
     output for `error` or build the test project first, as the opt-in run showed before its compile error was seen.
   - Revision 122 adds one UI case and extends the opt-in real-session check, which passed separately in Release.

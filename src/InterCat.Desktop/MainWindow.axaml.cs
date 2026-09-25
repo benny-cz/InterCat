@@ -1002,7 +1002,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ShowsMechanismLanes)
             or nameof(WorkspaceViewModel.ShowsProcessLanes)
-            or nameof(WorkspaceViewModel.ShowsDirectionLanes))
+            or nameof(WorkspaceViewModel.ShowsDirectionLanes)
+            or nameof(WorkspaceViewModel.ShowsChannelEndLanes))
         {
             // A rung or asynchronous lane query can change the row count without replacing DataContext.
             TimelineSurface.RefreshLaneLayout();

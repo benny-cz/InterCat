@@ -109,58 +109,61 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     private bool ShowingMechanismLanes => DataContext is WorkspaceViewModel { ShowsMechanismLanes: true };
 
-    private IReadOnlyList<ProcessTimelineLane>? ProcessLanesForViewport =>
-        DataContext is WorkspaceViewModel { ShowsProcessLanes: true } viewModel
-        && viewModel.ProcessLaneDisplay is { Count: > 0 } lanes
-        && lanes.All(lane => lane.Buckets.Count > 0
-            && lane.Buckets[0].Interval.StartTicks <= Viewport.StartTicks
-            && lane.Buckets[^1].Interval.EndTicks >= Viewport.EndTicks)
-            ? lanes : null;
+    /// <summary>What a focused rung draws under its machine-context row (§3.2).</summary>
+    private enum FocusRowKind
+    {
+        /// <summary>L1: one row per canonical owner of the group, in <see cref="WorkspaceViewModel.ProcessLaneDisplay"/> order.</summary>
+        Owners,
 
-    private IReadOnlyList<TimelineBucket>? ProcessContextBuckets
+        /// <summary>L2: one row per source direction, in <see cref="SessionTimelineQuery.LaneDirections"/> order.</summary>
+        Directions,
+
+        /// <summary>L3: one lane per channel end, first end first, banded by direction around its midline.</summary>
+        ChannelEnds,
+    }
+
+    /// <summary>
+    /// A focused rung's rows as drawn: row <c>i + 1</c> holds <c>Rows[i]</c>, the buckets its hit tests and hover read,
+    /// and row 0 is the machine context on the same columns. Rows are indexed like the view model's lane list they came
+    /// from, so the lane itself is found by the same index.
+    /// </summary>
+    private sealed record FocusRowSet(
+        FocusRowKind Kind, IReadOnlyList<TimelineBucket> Context, IReadOnlyList<IReadOnlyList<TimelineBucket>> Rows);
+
+    /// <summary>
+    /// The rung's rows once they cover the viewport, with the machine buckets they were counted beside: the zoomed detail
+    /// or the overview, whichever has their columns. Null while a new count is on its way, when the rung has none.
+    /// </summary>
+    private FocusRowSet? FocusRows
     {
         get
         {
-            if (ProcessLanesForViewport is not { } lanes || DataContext is not WorkspaceViewModel viewModel)
+            if (DataContext is not WorkspaceViewModel viewModel) return null;
+            (FocusRowKind Kind, IReadOnlyList<TimelineBucket>[] Rows)? found =
+                viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
+                : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
+                : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
+                : null;
+            TimeRange visible = Viewport;
+            if (found is not { Rows.Length: > 0 } rows || !rows.Rows.All(buckets => buckets.Count > 0
+                && buckets[0].Interval.StartTicks <= visible.StartTicks && buckets[^1].Interval.EndTicks >= visible.EndTicks))
+            {
                 return null;
-            IReadOnlyList<TimelineBucket> first = lanes[0].Buckets;
-            if (viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets))
-                return detail.Buckets;
-            return MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
+            }
+
+            IReadOnlyList<TimelineBucket> first = rows.Rows[0];
+            IReadOnlyList<TimelineBucket>? context = viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets)
+                ? detail.Buckets
+                : MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
+            return context is null ? null : new(rows.Kind, context, rows.Rows);
         }
     }
 
-    private bool ShowingProcessLanes => ProcessContextBuckets is not null;
-
-    private IReadOnlyList<DirectionTimelineLane>? DirectionLanesForViewport =>
-        DataContext is WorkspaceViewModel { ShowsDirectionLanes: true } viewModel
-        && viewModel.TimelineDirectionLanes is { Count: > 0 } lanes
-        && lanes.All(lane => lane.Buckets.Count > 0
-            && lane.Buckets[0].Interval.StartTicks <= Viewport.StartTicks
-            && lane.Buckets[^1].Interval.EndTicks >= Viewport.EndTicks)
-            ? lanes : null;
-
-    private IReadOnlyList<TimelineBucket>? DirectionContextBuckets
-    {
-        get
-        {
-            if (DirectionLanesForViewport is not { } lanes || DataContext is not WorkspaceViewModel viewModel)
-                return null;
-            IReadOnlyList<TimelineBucket> first = lanes[0].Buckets;
-            if (viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets))
-                return detail.Buckets;
-            return MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
-        }
-    }
-
-    private bool ShowingDirectionLanes => DirectionContextBuckets is not null;
-
-    private bool ShowingLanes => ShowingMechanismLanes || ShowingProcessLanes || ShowingDirectionLanes;
+    private bool ShowingLanes => ShowingMechanismLanes || FocusRows is not null;
 
     private int LaneCount => ShowingMechanismLanes
         ? ((WorkspaceViewModel)DataContext!).Snapshot.MechanismLanes.Count
-        : ShowingProcessLanes ? ProcessLanesForViewport!.Count + 1
-        : ShowingDirectionLanes ? DirectionLanesForViewport!.Count + 1 : 0;
+        : FocusRows is { } rows ? rows.Rows.Count + 1 : 0;
 
     private static bool MatchingIntervals(IReadOnlyList<TimelineBucket> left, IReadOnlyList<TimelineBucket> right)
     {
@@ -174,7 +177,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     private double PlotLeft => ShowingMechanismLanes ? LanePlotLeft
-        : ShowingProcessLanes || ShowingDirectionLanes ? ProcessPlotLeft : AggregatePlotLeft;
+        : FocusRows is not null ? ProcessPlotLeft : AggregatePlotLeft;
 
     private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin);
 
@@ -253,13 +256,13 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>A ranked-table or graph selection should reveal its L1 row, not merely outline it off-screen.</summary>
     internal void BringSelectedProcessLaneIntoView()
     {
-        if (!ShowingProcessLanes || DataContext is not WorkspaceViewModel { SelectedProcess: { } selected }
-            || ProcessLanesForViewport is not { } lanes) return;
-        int index = lanes.ToList().FindIndex(lane => lane.ProcessId == selected.Id);
+        if (FocusRows is not { Kind: FocusRowKind.Owners } rows
+            || DataContext is not WorkspaceViewModel { SelectedProcess: { } selected } viewModel) return;
+        int index = viewModel.ProcessLaneDisplay.ToList().FindIndex(lane => lane.ProcessId == selected.Id);
         ScrollViewer? scroller = this.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
         if (index < 0 || scroller is null) return;
         double bottom = Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
-        Rect row = LaneRow(index + 1, lanes.Count + 1, PlotTop, bottom);
+        Rect row = LaneRow(index + 1, rows.Rows.Count + 1, PlotTop, bottom);
         double offset = scroller.Offset.Y;
         if (row.Top < offset + 6) offset = row.Top - 6;
         else if (row.Bottom > offset + scroller.Viewport.Height - 6)
@@ -313,6 +316,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             .Where(bucket => Intersects(bucket.Interval, visible)
                 && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
         TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
+        FocusRowSet? rows = FocusRows;
         double maximumRate = ShowingMechanismLanes
             ? viewModel.Snapshot.MechanismLanes.SelectMany(lane => lane.Buckets)
                 .Where(bucket => Intersects(bucket.Interval, visible)
@@ -320,12 +324,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                 .Concat(detail?.MechanismLanes.SelectMany(lane => lane.Buckets)
                     .Where(bucket => Intersects(bucket.Interval, visible)) ?? [])
                 .Select(Rate).DefaultIfEmpty(0).Max()
-            : ShowingProcessLanes
-                ? ProcessContextBuckets!.Concat(ProcessLanesForViewport!.SelectMany(lane => lane.Buckets))
-                    .Where(bucket => Intersects(bucket.Interval, visible))
-                    .Select(Rate).DefaultIfEmpty(0).Max()
-            : ShowingDirectionLanes
-                ? DirectionContextBuckets!.Concat(DirectionLanesForViewport!.SelectMany(lane => lane.Buckets))
+            : rows is not null
+                ? rows.Context.Concat(DrawnRowBuckets(viewModel, rows))
                     .Where(bucket => Intersects(bucket.Interval, visible))
                     .Select(Rate).DefaultIfEmpty(0).Max()
             : coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
@@ -335,27 +335,24 @@ public sealed class TimelineView : Control, IHoverCardSource
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
         bool focused = viewModel.TimelineShowsFocus;
         var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused);
-        if (ShowingMechanismLanes)
+        if (ShowingMechanismLanes || rows is not null)
         {
-            DrawMechanismLanes(context, viewModel, detail, scale);
-            if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
+            switch (rows?.Kind)
             {
-                string note = $"zoomed detail from generation {detail.Generation:N0}";
-                DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
+                case null:
+                    DrawMechanismLanes(context, viewModel, detail, scale);
+                    break;
+                case FocusRowKind.Owners:
+                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale);
+                    break;
+                case FocusRowKind.Directions:
+                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale);
+                    break;
+                default:
+                    DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale);
+                    break;
             }
-        }
-        else if (ShowingProcessLanes)
-        {
-            DrawProcessLanes(context, viewModel, ProcessContextBuckets!, ProcessLanesForViewport!, scale);
-            if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
-            {
-                string note = $"zoomed detail from generation {detail.Generation:N0}";
-                DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
-            }
-        }
-        else if (ShowingDirectionLanes)
-        {
-            DrawDirectionLanes(context, viewModel, DirectionContextBuckets!, DirectionLanesForViewport!, scale);
+
             if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
             {
                 string note = $"zoomed detail from generation {detail.Generation:N0}";
@@ -393,8 +390,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
-        if (!ShowingProcessLanes && !ShowingDirectionLanes && focused
-            && viewModel.TimelineFocusBuckets is { } focus)
+        if (rows is null && focused && viewModel.TimelineFocusBuckets is { } focus)
         {
             DrawFocus(context, focus.Where(bucket => Intersects(bucket.Interval, visible)), scale);
         }
@@ -437,18 +433,9 @@ public sealed class TimelineView : Control, IHoverCardSource
                 return ShowingLanes ? null : BucketAt(viewModel, tick);
             }
 
-            if (ShowingProcessLanes)
+            if (FocusRows is { } rows)
             {
-                IReadOnlyList<TimelineBucket> buckets = index == 0
-                    ? ProcessContextBuckets!
-                    : ProcessLanesForViewport![index - 1].Buckets;
-                return buckets.FirstOrDefault(bucket => bucket.Interval.Contains(tick));
-            }
-            if (ShowingDirectionLanes)
-            {
-                IReadOnlyList<TimelineBucket> buckets = index == 0
-                    ? DirectionContextBuckets!
-                    : DirectionLanesForViewport![index - 1].Buckets;
+                IReadOnlyList<TimelineBucket> buckets = index == 0 ? rows.Context : rows.Rows[index - 1];
                 return buckets.FirstOrDefault(bucket => bucket.Interval.Contains(tick));
             }
 
@@ -483,16 +470,19 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (HoveredBucket is not { } bucket || DataContext is not WorkspaceViewModel viewModel)
                 return null;
             int? index = HoveredLaneIndex;
+            FocusRowKind? kind = FocusRows?.Kind;
             Mechanism? mechanism = ShowingMechanismLanes && index is { } mechanismIndex
                 ? viewModel.Snapshot.MechanismLanes[mechanismIndex].Mechanism : null;
-            ProcessNode? owner = ShowingProcessLanes && index is > 0
+            ProcessNode? owner = kind == FocusRowKind.Owners && index is > 0
                 ? viewModel.Snapshot.Processes.FirstOrDefault(process =>
-                    process.Id == ProcessLanesForViewport![index.Value - 1].ProcessId)
+                    process.Id == viewModel.ProcessLaneDisplay[index.Value - 1].ProcessId)
                 : null;
-            Direction? direction = ShowingDirectionLanes && index is > 0
-                ? DirectionLanesForViewport![index.Value - 1].Direction : null;
+            Direction? direction = kind == FocusRowKind.Directions && index is > 0
+                ? viewModel.TimelineDirectionLanes![index.Value - 1].Direction : null;
+            ChannelEndTimelineLane? end = kind == FocusRowKind.ChannelEnds && index is > 0
+                ? viewModel.TimelineChannelEndLanes![index.Value - 1] : null;
             return viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
-                mechanism, owner, direction);
+                mechanism, owner, direction, end);
         }
     }
 
@@ -514,19 +504,12 @@ public sealed class TimelineView : Control, IHoverCardSource
                 || viewModel.TimelineDetail?.MechanismLanes.Any(detailLane => detailLane.Mechanism == lane.Mechanism
                     && detailLane.Buckets.Contains(bucket)) == true)
             : -1;
-        if (ShowingProcessLanes && ProcessLanesForViewport is { } processes)
+        if (FocusRows is { } rows)
         {
-            int processIndex = processes.ToList().FindIndex(lane =>
-                lane.Buckets.Any(candidate => ReferenceEquals(candidate, bucket)));
-            if (processIndex >= 0) index = processIndex + 1;
-            else if (ProcessContextBuckets!.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
-        }
-        if (ShowingDirectionLanes && DirectionLanesForViewport is { } directions)
-        {
-            int directionIndex = directions.ToList().FindIndex(lane =>
-                lane.Buckets.Any(candidate => ReferenceEquals(candidate, bucket)));
-            if (directionIndex >= 0) index = directionIndex + 1;
-            else if (DirectionContextBuckets!.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
+            int rowIndex = rows.Rows.ToList().FindIndex(buckets =>
+                buckets.Any(candidate => ReferenceEquals(candidate, bucket)));
+            if (rowIndex >= 0) index = rowIndex + 1;
+            else if (rows.Context.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
         }
 
         double y = index >= 0
@@ -538,32 +521,39 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>A process ID disambiguates two owner rows whose bucket values and intervals happen to match.</summary>
-    internal Point? PointOf(ProcessInstanceId processId, TimelineBucket bucket)
-    {
-        if (!ShowingProcessLanes || ProcessLanesForViewport is not { } lanes) return null;
-        int index = lanes.ToList().FindIndex(lane => lane.ProcessId == processId);
-        if (index < 0 || !lanes[index].Buckets.Contains(bucket)) return null;
-        TimeRange visible = Viewport;
-        if (!Intersects(bucket.Interval, visible)) return null;
-        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
-        return new(PlotLeft + ViewportMath.PixelAtTick(visible,
-                Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
-            LaneRow(index + 1, lanes.Count + 1, PlotTop,
-                Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y);
-    }
+    internal Point? PointOf(ProcessInstanceId processId, TimelineBucket bucket) =>
+        DataContext is WorkspaceViewModel viewModel
+            ? RowPoint(FocusRowKind.Owners, viewModel.ProcessLaneDisplay.ToList().FindIndex(lane => lane.ProcessId == processId), bucket)
+            : null;
 
     /// <summary>The direction names the row, because empty buckets of two rows over one interval are equal values.</summary>
-    internal Point? PointOf(Direction direction, TimelineBucket bucket)
+    internal Point? PointOf(Direction direction, TimelineBucket bucket) =>
+        DataContext is WorkspaceViewModel { TimelineDirectionLanes: { } lanes }
+            ? RowPoint(FocusRowKind.Directions, lanes.ToList().FindIndex(lane => lane.Direction == direction), bucket)
+            : null;
+
+    /// <summary>An end's lane by its number: both ends of a process connected to itself hold equal-looking buckets.</summary>
+    internal Point? PointOfEnd(int end, TimelineBucket bucket) =>
+        DataContext is WorkspaceViewModel { TimelineChannelEndLanes: { } ends }
+            ? RowPoint(FocusRowKind.ChannelEnds, ends.ToList().FindIndex(lane => lane.End == end), bucket)
+            : null;
+
+    /// <summary>The centre of a bucket's column in focused row <paramref name="index"/>, when that row is drawn and holds it.</summary>
+    private Point? RowPoint(FocusRowKind kind, int index, TimelineBucket bucket)
     {
-        if (!ShowingDirectionLanes || DirectionLanesForViewport is not { } lanes) return null;
-        int index = lanes.ToList().FindIndex(lane => lane.Direction == direction);
-        if (index < 0 || !lanes[index].Buckets.Contains(bucket)) return null;
+        ArgumentNullException.ThrowIfNull(bucket);
+        if (FocusRows is not { } rows || rows.Kind != kind || index < 0 || index >= rows.Rows.Count
+            || !rows.Rows[index].Contains(bucket))
+        {
+            return null;
+        }
+
         TimeRange visible = Viewport;
         if (!Intersects(bucket.Interval, visible)) return null;
         long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
         return new(PlotLeft + ViewportMath.PixelAtTick(visible,
                 Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
-            LaneRow(index + 1, lanes.Count + 1, PlotTop,
+            LaneRow(index + 1, rows.Rows.Count + 1, PlotTop,
                 Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y);
     }
 
@@ -765,6 +755,109 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DrawText(context, label, new(9, row.Center.Y - 7));
             DrawLaneSeries(context, viewModel, null, drawn, rowScale, row);
+        }
+    }
+
+    /// <summary>
+    /// A direction band's bar: its rate's share of the half-lane on the shared scale, never under §6.2's occupied floor
+    /// of 0.42 of the band, so a lone record in a quiet end stays visible and pointable.
+    /// </summary>
+    private static double BandHeight(TimelineBucket bucket, double half, double maximumRate) =>
+        Math.Min(half, Math.Max(half * 0.42, half * Rate(bucket) / Math.Max(double.Epsilon, maximumRate)));
+
+    /// <summary>The buckets a focused rung draws as bars: each row's, or at L3 each end's two direction bands.</summary>
+    private static IEnumerable<TimelineBucket> DrawnRowBuckets(WorkspaceViewModel viewModel, FocusRowSet rows) =>
+        rows.Kind == FocusRowKind.ChannelEnds
+            ? viewModel.TimelineChannelEndLanes!.SelectMany(end => end.Outbound.Concat(end.Inbound))
+            : rows.Rows.SelectMany(buckets => buckets);
+
+    /// <summary>
+    /// L3's two ends under the machine row (§3.2): outbound records rise above each end's midline and inbound records fall
+    /// below it, on the shared rate scale, so the channel reads as a conversation. A record with no data direction, such
+    /// as a disconnect, is a neutral mark on the midline rather than a bar on either side.
+    /// </summary>
+    private static void DrawChannelEnds(DrawingContext context, WorkspaceViewModel viewModel,
+        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ChannelEndTimelineLane> ends, BarScale scale)
+    {
+        int count = ends.Count + 1;
+        for (int index = 0; index < count; index++)
+        {
+            Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
+            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+                new(scale.Left + scale.PlotWidth, row.Bottom));
+            if (index == 0)
+            {
+                DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
+                DrawLaneSeries(context, viewModel, null,
+                    machine.Where(bucket => Intersects(bucket.Interval, scale.Visible)),
+                    new BarScale(scale.Visible, scale.Left, scale.PlotWidth, row.Top + 3, row.Bottom - 5,
+                        scale.MaximumRate, Focused: false),
+                    row, contextRow: true);
+                continue;
+            }
+
+            ChannelEndTimelineLane end = ends[index - 1];
+            if (viewModel.SelectedChannelEnd == end.End)
+            {
+                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                    new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
+            }
+
+            // Two lines: who holds the end, then the end's own endpoint, which tells a looped process's ends apart.
+            string holder = viewModel.ChannelEndHolder(end);
+            DrawText(context, holder.Length > 24 ? holder[..23] + "…" : holder, new(9, row.Center.Y - 14));
+            DrawText(context, end.Endpoint.Length > 24 ? end.Endpoint[..23] + "…" : end.Endpoint, new(9, row.Center.Y + 1));
+
+            // The bands keep clear of the coverage strip along the row's foot; the arrows name their sides in place.
+            double bandTop = row.Top + 3;
+            double middle = (bandTop + row.Bottom - 6) / 2;
+            double half = Math.Max(1, middle - bandTop - 1);
+            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, middle), new(scale.Left + scale.PlotWidth, middle));
+            DrawText(context, "↑", new(scale.Left - 12, middle - 13));
+            DrawText(context, "↓", new(scale.Left - 12, middle - 1));
+            for (int bucketIndex = 0; bucketIndex < end.Buckets.Count; bucketIndex++)
+            {
+                TimelineBucket total = end.Buckets[bucketIndex];
+                if (!Intersects(total.Interval, scale.Visible)) continue;
+                double x1 = scale.X(Math.Max(total.Interval.StartTicks, scale.Visible.StartTicks));
+                double x2 = scale.X(Math.Min(total.Interval.EndTicks, scale.Visible.EndTicks));
+                double width = Math.Max(1, x2 - x1 - 2);
+                Rect? drawn = null;
+                if (end.Outbound[bucketIndex] is { ObservationCount: > 0 } sent)
+                {
+                    double height = BandHeight(sent, half, scale.MaximumRate);
+                    Rect bar = new(x1, middle - 1 - height, width, height);
+                    context.DrawRectangle(BrushFor(sent.DominantMechanism), null, bar);
+                    drawn = bar;
+                }
+
+                if (end.Inbound[bucketIndex] is { ObservationCount: > 0 } received)
+                {
+                    Rect bar = new(x1, middle + 1, width, BandHeight(received, half, scale.MaximumRate));
+                    context.DrawRectangle(BrushFor(received.DominantMechanism), null, bar);
+                    drawn = drawn is { } upper ? upper.Union(bar) : bar;
+                }
+
+                if (total.ObservationCount - end.Outbound[bucketIndex].ObservationCount
+                    - end.Inbound[bucketIndex].ObservationCount > 0)
+                {
+                    Rect mark = new(x1, middle - 2.5, width, 5);
+                    context.DrawRectangle(ContextBarBrush, new Pen(TextBrush, 0.8), mark);
+                    drawn = drawn is { } union ? union.Union(mark) : mark;
+                }
+
+                if (drawn is { } selectedBar && viewModel.SelectedInterval == total.Interval)
+                {
+                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), selectedBar.Inflate(1));
+                }
+
+                if (total.Coverage != CoverageState.Covered)
+                {
+                    DrawCoverageGap(context, total.Coverage == CoverageState.UnknownCoverage
+                        ? new Rect(x1, row.Bottom - 5, width, 5)
+                        : new Rect(x1, row.Top, width, row.Height));
+                }
+            }
         }
     }
 
@@ -972,28 +1065,32 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (ShowingLanes && point.Properties.IsLeftButtonPressed && point.Position.X < PlotLeft
             && LaneIndexAt(point.Position.Y) is { } laneIndex)
         {
-            if (ShowingMechanismLanes)
+            // A row's name is its table and step focus; the machine row's name returns to the rung's whole focus.
+            switch (FocusRows?.Kind)
             {
-                viewModel.SelectTimelineLane(viewModel.Snapshot.MechanismLanes[laneIndex].Mechanism);
+                case null:
+                    viewModel.SelectTimelineLane(viewModel.Snapshot.MechanismLanes[laneIndex].Mechanism);
+                    break;
+                case FocusRowKind.Owners when laneIndex == 0:
+                    viewModel.ClearProcessLaneFocus();
+                    break;
+                case FocusRowKind.Owners:
+                    ProcessInstanceId processId = viewModel.ProcessLaneDisplay[laneIndex - 1].ProcessId;
+                    viewModel.SelectedRung = viewModel.RungRows.FirstOrDefault(row => row.Key == processId.ToString());
+                    if (viewModel.SelectedRung is null)
+                    {
+                        viewModel.SelectedProcess = viewModel.Snapshot.Processes.FirstOrDefault(node => node.Id == processId);
+                    }
+
+                    break;
+                case FocusRowKind.Directions:
+                    viewModel.SelectDirectionLane(laneIndex == 0 ? null : viewModel.TimelineDirectionLanes![laneIndex - 1].Direction);
+                    break;
+                case FocusRowKind.ChannelEnds:
+                    viewModel.SelectChannelEnd(laneIndex == 0 ? null : viewModel.TimelineChannelEndLanes![laneIndex - 1].End);
+                    break;
             }
-            else if (laneIndex == 0)
-            {
-                if (ShowingProcessLanes) viewModel.ClearProcessLaneFocus();
-                else viewModel.SelectDirectionLane(null);
-            }
-            else if (ShowingDirectionLanes && DirectionLanesForViewport is { } directions)
-            {
-                viewModel.SelectDirectionLane(directions[laneIndex - 1].Direction);
-            }
-            else if (laneIndex > 0 && ProcessLanesForViewport is { } lanes)
-            {
-                ProcessInstanceId processId = lanes[laneIndex - 1].ProcessId;
-                viewModel.SelectedRung = viewModel.RungRows.FirstOrDefault(row => row.Key == processId.ToString());
-                if (viewModel.SelectedRung is null)
-                {
-                    viewModel.SelectedProcess = viewModel.Snapshot.Processes.FirstOrDefault(node => node.Id == processId);
-                }
-            }
+
             e.Handled = true;
             return;
         }
@@ -1239,8 +1336,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// [ and ] (§6.7): at the evidence rung, the previous or next record, which the timeline marks; elsewhere, the
     /// previous or next drawn bucket holding a record of the rung's focus - or of the machine at a rung without one -
     /// becomes the analysis interval. At L0 a selected mechanism lane supplies those buckets; at L1 a selected
-    /// process supplies its canonical-owner buckets, and at L2 a selected source direction its row's. Otherwise the
-    /// rung's focus or whole machine does. The viewport follows a step that leaves it.
+    /// process supplies its canonical-owner buckets, at L2 a selected source direction its row's, and at L3 a selected
+    /// channel end its own. Otherwise the rung's focus or whole machine does. The viewport follows a step that leaves it.
     /// </summary>
     private bool Step(WorkspaceViewModel viewModel, int direction)
     {
@@ -1273,21 +1370,23 @@ public sealed class TimelineView : Control, IHoverCardSource
             zoomed = complete;
         }
         IReadOnlyList<TimelineBucket>? focus = viewModel.TimelineShowsFocus ? viewModel.TimelineFocusBuckets : null;
-        if (ShowingProcessLanes && viewModel.SelectedProcess is { } selectedProcess
-            && ProcessLanesForViewport?.FirstOrDefault(lane => lane.ProcessId == selectedProcess.Id) is { } ownerLane)
+
+        // A chosen row - an owner, a direction or an end - is already an exact subset of the rung's focus.
+        IReadOnlyList<TimelineBucket>? chosen = FocusRows?.Kind switch
         {
-            buckets = ownerLane.Buckets;
-            focus = null; // These buckets already contain only the selected canonical owner.
-            zoomed = viewModel.TimelineDetail is { } ownerDetail
-                && MatchingIntervals(ownerLane.Buckets, ownerDetail.Buckets);
-        }
-        if (ShowingDirectionLanes && viewModel.SelectedTimelineDirection is { } selectedDirection
-            && DirectionLanesForViewport?.FirstOrDefault(lane => lane.Direction == selectedDirection) is { } directionLane)
+            FocusRowKind.Owners when viewModel.SelectedProcess is { } selectedProcess =>
+                viewModel.ProcessLaneDisplay.FirstOrDefault(lane => lane.ProcessId == selectedProcess.Id)?.Buckets,
+            FocusRowKind.Directions when viewModel.SelectedTimelineDirection is { } selectedDirection =>
+                viewModel.TimelineDirectionLanes!.FirstOrDefault(lane => lane.Direction == selectedDirection)?.Buckets,
+            FocusRowKind.ChannelEnds when viewModel.SelectedChannelEnd is { } selectedEnd =>
+                viewModel.TimelineChannelEndLanes!.FirstOrDefault(lane => lane.End == selectedEnd)?.Buckets,
+            _ => null,
+        };
+        if (chosen is not null)
         {
-            buckets = directionLane.Buckets;
-            focus = null; // The source-direction row is already an exact subset of this owner's focus.
-            zoomed = viewModel.TimelineDetail is { } directionDetail
-                && MatchingIntervals(directionLane.Buckets, directionDetail.Buckets);
+            buckets = chosen;
+            focus = null;
+            zoomed = viewModel.TimelineDetail is { } rowDetail && MatchingIntervals(chosen, rowDetail.Buckets);
         }
         HashSet<TimeRange>? held = focus?.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval).ToHashSet();
         long anchor = viewModel.SelectedInterval is { } selected

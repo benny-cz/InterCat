@@ -41,6 +41,24 @@ public sealed record ProcessTimelineLane(ProcessInstanceId ProcessId, IReadOnlyL
 public sealed record DirectionTimelineLane(Direction Direction, IReadOnlyList<TimelineBucket> Buckets);
 
 /// <summary>
+/// One end of an L3 paired channel: the records made at that end's own endpoint (§3.2), whoever holds it, so a process
+/// connected to itself still has two ends. The two ends partition the channel's records bucket by bucket. Outbound and
+/// Inbound hold the end's records by source direction (`EN-Direction`) on the same columns; a record with any other
+/// direction, such as a disconnect, is in <see cref="Buckets"/> only, and is never drawn as either. An end can only
+/// hold the channel's mechanism, so every bucket's coverage is that mechanism's, even where the end observed nothing.
+/// </summary>
+/// <param name="End">0 for the relation's first end, the one whose endpoint sorts first; 1 for the other.</param>
+/// <param name="Holder">The process instance that holds this end.</param>
+/// <param name="Endpoint">The end's own endpoint, as its source names it.</param>
+public sealed record ChannelEndTimelineLane(
+    int End,
+    ProcessInstanceId Holder,
+    string Endpoint,
+    IReadOnlyList<TimelineBucket> Buckets,
+    IReadOnlyList<TimelineBucket> Outbound,
+    IReadOnlyList<TimelineBucket> Inbound);
+
+/// <summary>
 /// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
 /// paired channel, the rows canonically owned by a set of process instances, or both at once. A rung's timeline therefore
 /// counts what E lists for it, never a guessed superset.
@@ -100,6 +118,9 @@ public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOn
     /// <summary>At a single-owner process focus, exact rows split by each observed source direction.</summary>
     public IReadOnlyList<DirectionTimelineLane> DirectionLanes { get; init; } = [];
 
+    /// <summary>At a channel focus, its two ends, first end first; together they partition Focus on the same columns.</summary>
+    public IReadOnlyList<ChannelEndTimelineLane> ChannelEndLanes { get; init; } = [];
+
     /// <summary>Why L1 rows were not made; the aggregate focus count remains available and exact.</summary>
     public string? ProcessLaneProblem { get; init; }
 }
@@ -147,19 +168,11 @@ public static class SessionTimelineQuery
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(focus);
-        (SessionTimelineDetail whole, TimelineBucket[]? focused, ProcessTimelineLane[] lanes,
-            DirectionTimelineLane[] directions, string? problem) =
-            Count(store, interval, columns, focus, policy, cancellationToken);
-        return new(whole, Array.AsReadOnly(focused!))
-        {
-            ProcessLanes = Array.AsReadOnly(lanes),
-            DirectionLanes = Array.AsReadOnly(directions),
-            ProcessLaneProblem = problem,
-        };
+        return Count(store, interval, columns, focus, policy, cancellationToken);
     }
 
-    private static (SessionTimelineDetail Whole, TimelineBucket[]? Focus,
-        ProcessTimelineLane[] ProcessLanes, DirectionTimelineLane[] DirectionLanes, string? ProcessLaneProblem) Count(
+    /// <summary>The whole timeline and, with a focus, its count and lanes; without one, Focus is empty.</summary>
+    private static SessionFocusedTimeline Count(
         SessionStore store,
         TimeRange interval,
         int columns,
@@ -197,6 +210,15 @@ public static class SessionTimelineQuery
         Dictionary<Direction, TimelineColumns>? directionColumns = focus is { ChannelKey: null, OwnerProcesses.Count: 1 }
             ? LaneDirections.ToDictionary(direction => direction,
                 _ => new TimelineColumns(interval, columns, tallyMechanisms: true)) : null;
+
+        // A channel has exactly two ends, each with its total and two directional bands: six series at most.
+        ChannelEndColumns[]? endColumns = focus is { OwnerProcesses.Count: 0 } && rows?.Relation is { } relation
+            ?
+            [
+                new(0, relation.First.Id, relation.FirstEndpoint, relation.Mechanism, interval, columns),
+                new(1, relation.Second.Id, relation.SecondEndpoint, relation.Mechanism, interval, columns),
+            ]
+            : null;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -225,12 +247,21 @@ public static class SessionTimelineQuery
                         {
                             processColumns[owner].Add(column, mechanism);
                         }
+
                         if (directionColumns is not null)
                         {
-                            Direction direction = (Direction)directions.UnsignedAt(row)!.Value;
-                            if (!Enum.IsDefined(direction))
-                                throw new InvalidDataException($"The focused record has an unknown direction code: {(int)direction}.");
-                            directionColumns[direction].Add(column, mechanism);
+                            directionColumns[DirectionAt(directions, row)].Add(column, mechanism);
+                        }
+
+                        if (endColumns is not null)
+                        {
+                            int end = inFocus.EndOf(row);
+                            if (end is not (0 or 1))
+                            {
+                                throw new InvalidDataException("A record of the focused channel names no end of it.");
+                            }
+
+                            endColumns[end].Add(column, mechanism, DirectionAt(directions, row));
                         }
                     }
                 }
@@ -238,19 +269,55 @@ public static class SessionTimelineQuery
         }
 
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
-        return (
-            new SessionTimelineDetail(manifest.SessionId, manifest.Generation, interval,
-                Array.AsReadOnly(counted.Buckets(coverage, clock)))
-            {
-                MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
-            },
-            focused?.Buckets(coverage, clock),
-            processColumns is null ? [] : [.. focus!.OwnerProcesses.Select(owner =>
-                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))],
-            directionColumns is null ? [] : [.. LaneDirections.Select(direction =>
-                new DirectionTimelineLane(direction,
-                    Array.AsReadOnly(directionColumns[direction].Buckets(coverage, clock))))],
-            laneProblem);
+        var whole = new SessionTimelineDetail(manifest.SessionId, manifest.Generation, interval,
+            Array.AsReadOnly(counted.Buckets(coverage, clock)))
+        {
+            MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
+        };
+        return new(whole, focused is null ? [] : Array.AsReadOnly(focused.Buckets(coverage, clock)))
+        {
+            ProcessLanes = processColumns is null ? [] : Array.AsReadOnly([.. focus!.OwnerProcesses.Select(owner =>
+                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))]),
+            DirectionLanes = directionColumns is null ? [] : Array.AsReadOnly([.. LaneDirections.Select(direction =>
+                new DirectionTimelineLane(direction, Array.AsReadOnly(directionColumns[direction].Buckets(coverage, clock))))]),
+            ChannelEndLanes = endColumns is null ? []
+                : Array.AsReadOnly([.. endColumns.Select(end => end.Lane(coverage, clock))]),
+            ProcessLaneProblem = laneProblem,
+        };
+    }
+
+    /// <summary>A focused record's `EN-Direction`; a code outside the enumeration is corrupt evidence, never a direction.</summary>
+    private static Direction DirectionAt(SegmentColumnSlice directions, int row)
+    {
+        var direction = (Direction)directions.UnsignedAt(row)!.Value;
+        return Enum.IsDefined(direction)
+            ? direction
+            : throw new InvalidDataException($"The focused record has an unknown direction code: {(int)direction}.");
+    }
+
+    /// <summary>
+    /// One channel end's columns: every record made there, and its outbound and inbound records apart. The channel's
+    /// mechanism is known, so even an empty column is judged on that mechanism's coverage.
+    /// </summary>
+    private sealed class ChannelEndColumns(
+        int end, ProcessInstanceId holder, string endpoint, Mechanism mechanism, TimeRange interval, int columns)
+    {
+        private readonly TimelineColumns total = new(interval, columns, tallyMechanisms: true);
+        private readonly TimelineColumns outbound = new(interval, columns, tallyMechanisms: true);
+        private readonly TimelineColumns inbound = new(interval, columns, tallyMechanisms: true);
+
+        public void Add(int column, Mechanism mechanism, Direction direction)
+        {
+            total.Add(column, mechanism);
+            if (direction == Direction.Outbound) outbound.Add(column, mechanism);
+            else if (direction == Direction.Inbound) inbound.Add(column, mechanism);
+        }
+
+        public ChannelEndTimelineLane Lane(CoverageLedgerV1? coverage, SourceClockDescriptor clock) => new(
+            end, holder, endpoint,
+            Array.AsReadOnly(total.Buckets(coverage, clock, mechanism)),
+            Array.AsReadOnly(outbound.Buckets(coverage, clock, mechanism)),
+            Array.AsReadOnly(inbound.Buckets(coverage, clock, mechanism)));
     }
 }
 
@@ -267,15 +334,19 @@ internal sealed class FocusRows
     private readonly int? channel;
     private readonly EvidencePolicy policy;
 
-    private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners, int? channel,
-        EvidencePolicy policy)
+    private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
+        TransportRelation? relation, EvidencePolicy policy)
     {
         this.processes = processes;
         this.relations = relations;
         this.owners = owners;
-        this.channel = channel;
+        Relation = relation;
+        channel = relation?.Channel;
         this.policy = policy;
     }
+
+    /// <summary>The one admitted paired incarnation a channel focus reads; null for an owner-only focus.</summary>
+    public TransportRelation? Relation { get; }
 
     public static FocusRows Resolve(
         SessionStore store,
@@ -314,33 +385,39 @@ internal sealed class FocusRows
         }
 
         TransportRelationIndex? relations = null;
-        int? channel = null;
+        TransportRelation? relation = null;
         if (focus.ChannelKey is { } key)
         {
             relations = derivation.Relations(segments, clock, fields, cancellationToken);
-            TransportRelation[] matching = [.. relations.Relations.Where(relation =>
-                relation.Mechanism == Mechanism.Tcp && relation.StableKey == key
-                && SessionOverviewProjector.Admitted(relation.Strength, policy))];
+            TransportRelation[] matching = [.. relations.Relations.Where(candidate =>
+                candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == key
+                && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
             if (matching.Length != 1)
             {
                 throw new InvalidOperationException(
                     "The focused paired TCP channel is not uniquely admitted in this generation and evidence policy.");
             }
 
-            channel = matching[0].Channel;
+            relation = matching[0];
         }
 
-        return new(processes, relations, owners, channel, policy);
+        return new(processes, relations, owners, relation, policy);
     }
 
     /// <summary>The row test for one segment, with the bindings it needs derived once.</summary>
     public SegmentRows Of(SegmentReaderV1 segment) => new(
         this,
         channel is null ? null : relations!.ChannelsOf(segment),
-        owners.Count == 0 ? null : processes!.OwnersOf(segment));
+        owners.Count == 0 ? null : processes!.OwnersOf(segment),
+        channel is null ? null : TransportRelationIndex.EndsOf(segment));
 
-    internal sealed class SegmentRows(FocusRows scope, ChannelBinding[]? channels, ProcessBinding[]? bindings)
+    internal sealed class SegmentRows(FocusRows scope, ChannelBinding[]? channels, ProcessBinding[]? bindings, sbyte[]? ends)
     {
+        /// <summary>Which end of the focused channel an included row was made at: 0 its first end, 1 its second.</summary>
+        public int EndOf(int row) => ends is null
+            ? throw new InvalidOperationException("Only a channel focus has ends.")
+            : ends[row];
+
         public bool Includes(int row)
         {
             if (channels is not null && channels[row].Channel != scope.channel)
@@ -440,6 +517,28 @@ internal sealed class TimelineColumns
                 mechanisms[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
                     .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
                 BucketCoverage(coverage, clock, range, counts[index] == 0 ? [] : mechanisms[index].Keys));
+        })];
+    }
+
+    /// <summary>
+    /// The buckets of a lane whose records are all of one known <paramref name="mechanism"/>, such as one channel's ends.
+    /// Its coverage is judged on that mechanism even in an empty bucket, as a mechanism lane's is, so a quiet interval the
+    /// capture covered reads as observed-empty rather than unknown, while a gap in that mechanism is still a gap.
+    /// </summary>
+    public TimelineBucket[] Buckets(CoverageLedgerV1? coverage, SourceClockDescriptor clock, Mechanism mechanism)
+    {
+        if (mechanisms is null)
+        {
+            throw new InvalidOperationException("These columns were counted without their mechanisms.");
+        }
+
+        return [.. Enumerable.Range(0, counts.Length).Select(index =>
+        {
+            TimeRange range = IntervalOf(interval, counts.Length, index);
+            return new TimelineBucket(range, counts[index], null,
+                mechanisms[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
+                    .Select(entry => entry.Key).DefaultIfEmpty(mechanism).First(),
+                BucketCoverage(coverage, clock, range, mechanisms[index].Keys.Append(mechanism).Distinct()));
         })];
     }
 

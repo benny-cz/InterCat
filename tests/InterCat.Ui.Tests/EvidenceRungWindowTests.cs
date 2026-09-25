@@ -549,6 +549,115 @@ public sealed class EvidenceRungWindowTests
             workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == direction);
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: a channel's ends are lanes banded by direction that hover, select and step")]
+    public async Task AChannelDrawsItsEndsBandedByDirection()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversation(60));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString(), channel.Key })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+            await workspace.TimelineDetailReady;
+        }
+
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ScrollViewer scroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
+        Assert.True(workspace.ShowsChannelEndLanes, workspace.TimelineCaption);
+        Assert.Equal((3 * 30) + 54, timeline.MinHeight);
+        IReadOnlyList<ChannelEndTimelineLane> ends = workspace.TimelineChannelEndLanes!;
+        Assert.Equal(2, ends.Count);
+        ChannelEndTimelineLane clientEnd = ends.Single(end => end.Holder == client.Id);
+        Assert.Equal((30, 30), (clientEnd.Outbound.Sum(bucket => bucket.ObservationCount),
+            clientEnd.Inbound.Sum(bucket => bucket.ObservationCount)));
+        Save(window.CaptureRenderedFrame()!, "l3-channel-ends-whole-1080x700.png");
+
+        // Each end has its own hit target; its card names the end and splits the bucket by direction.
+        foreach (ChannelEndTimelineLane end in ends)
+        {
+            TimelineBucket bucket = end.Buckets.First(candidate => candidate.ObservationCount > 0);
+            Point at = Reveal(window, timeline, scroller, timeline.PointOfEnd(end.End, bucket)!.Value);
+            window.MouseMove(at);
+            Dispatch();
+            Assert.Equal(bucket, timeline.HoveredBucket);
+            HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+            Assert.EndsWith($" · the {end.Endpoint} end, held by {workspace.ChannelEndHolder(end)}", card.Lines[0],
+                StringComparison.Ordinal);
+            Assert.StartsWith("Direction: ", card.Lines[2], StringComparison.Ordinal);
+            Assert.Contains(card.Lines, line => line.EndsWith("(shared scale)", StringComparison.Ordinal));
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Assert.Equal(bucket.Interval, workspace.SelectedInterval);
+        }
+
+        // An end's name makes it the table and step focus: brackets then visit only that end's occupied buckets.
+        TimelineBucket first = clientEnd.Buckets.First(bucket => bucket.ObservationCount > 0);
+        Point label = Reveal(window, timeline, scroller, new(30, timeline.PointOfEnd(clientEnd.End, first)!.Value.Y));
+        window.MouseDown(label, MouseButton.Left);
+        window.MouseUp(label, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(clientEnd.End, workspace.SelectedChannelEnd);
+        workspace.SelectInterval(first.Interval);
+        timeline.Focus();
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(clientEnd.Buckets.First(bucket => bucket.ObservationCount > 0
+            && bucket.Interval.StartTicks >= first.Interval.EndTicks).Interval, workspace.SelectedInterval);
+
+        // The keyboard-reachable selector names both ends and fits the minimum window.
+        workspace.ShowTables = true;
+        Dispatch();
+        ComboBox selector = window.GetControl<ComboBox>("ChannelEndSelector");
+        Assert.True(selector.IsVisible);
+        Assert.False(window.GetControl<ComboBox>("DirectionLaneSelector").IsVisible);
+        Assert.Equal(clientEnd.End, Assert.IsType<ChannelEndOption>(selector.SelectedItem).End);
+        Point selectorCentre = selector.TranslatePoint(new(selector.Bounds.Width / 2, selector.Bounds.Height / 2), window)!.Value;
+        Assert.InRange(selectorCentre.X, 0, window.Bounds.Width);
+        Assert.InRange(selectorCentre.Y, 0, window.Bounds.Height);
+        ChannelEndTimelineLane serverEnd = ends.Single(end => end.End != clientEnd.End);
+        selector.SelectedItem = workspace.ChannelEndOptions.Single(option => option.End == serverEnd.End);
+        Dispatch();
+        Assert.Equal(serverEnd.End, workspace.SelectedChannelEnd);
+        Assert.StartsWith($"Records made at {workspace.ChannelEndLabel(serverEnd)}", workspace.IntervalTableScope,
+            StringComparison.Ordinal);
+        workspace.ShowTables = false;
+        Dispatch();
+
+        // The machine row's name returns to both ends.
+        Point machine = Reveal(window, timeline, scroller, new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y));
+        window.MouseDown(machine, MouseButton.Left);
+        window.MouseUp(machine, MouseButton.Left);
+        Dispatch();
+        Assert.Null(workspace.SelectedChannelEnd);
+
+        // Zoomed, both ends are re-counted on the viewport's own columns.
+        TimeRange extent = timeline.Viewport;
+        timeline.SetViewport(new TimeRange(extent.StartTicks + (extent.SpanTicks / 4), extent.EndTicks - (extent.SpanTicks / 4)));
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Assert.True(workspace.ShowsChannelEndLanes);
+        ChannelEndTimelineLane zoomed = workspace.TimelineChannelEndLanes!.Single(end => end.End == clientEnd.End);
+        TimelineBucket zoomedBucket = zoomed.Buckets.First(bucket => bucket.ObservationCount > 0);
+        Point zoomedAt = Reveal(window, timeline, scroller, timeline.PointOfEnd(zoomed.End, zoomedBucket)!.Value);
+        window.MouseMove(zoomedAt);
+        Dispatch();
+        Assert.Equal(zoomedBucket, timeline.HoveredBucket);
+        Assert.Contains(Assert.IsType<HoverCard>(timeline.HoverCard).Lines,
+            line => line.Contains("this view's own count", StringComparison.Ordinal));
+        window.MouseMove(new Point(1, 1));
+        Dispatch();
+        Save(window.CaptureRenderedFrame()!, "l3-channel-ends-1080x700.png");
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard")]
     public void APlainDragPansAndKeysMoveTheViewport()
     {
