@@ -50,30 +50,68 @@ public sealed class GraphLayoutTests
             pins: new Dictionary<ProcessInstanceId, GraphPoint> { [Nodes[0].Id] = pin });
         Assert.Equal(pin, result.Positions[Nodes[0].Id]);
 
-        GraphLayoutResult one = GraphLayout.Compute("one", Groups, [Nodes[0]], [],
-            previous: new Dictionary<ProcessInstanceId, GraphPoint>
-            {
-                [Nodes[0].Id] = new(0.37, 0.46),
-            });
-        Assert.Equal(new GraphPoint(0.37, 0.46), one.Positions[Nodes[0].Id]);
-
-        GraphLayoutResult regrouped = GraphLayout.Compute("regrouped", Groups, Nodes, Edges,
-            previous: new Dictionary<ProcessInstanceId, GraphPoint>
-            {
-                [Nodes[2].Id] = new(0.37, 0.1),
-            });
-        Assert.InRange(regrouped.Positions[Nodes[2].Id].Y, 0.5, 1);
+        // Laid out again from where it was drawn, under a new identity and so a new seed, a graph stays where it was:
+        // it may settle by a few pixels (0.03 of the pane's height is about 8 logical px), never rearrange.
+        GraphLayoutResult first = GraphLayout.Compute("graph-v1", Groups, Nodes, Edges);
+        GraphLayoutResult again = GraphLayout.Compute("graph-v2", Groups, Nodes, Edges,
+            previous: first.Positions.ToDictionary(entry => entry.Key, entry => entry.Value));
+        Assert.All(Nodes, node => Assert.InRange(Distance(first.Positions[node.Id], again.Positions[node.Id]), 0, 0.03));
     }
 
-    [Fact(DisplayName = "R12: groups occupy stable separate bands and no process is silently omitted")]
-    public void GroupsHaveStableBands()
+    [Fact(DisplayName = "R12: related processes are drawn together, separate components apart, and none is omitted")]
+    public void RelationshipsDecidePlacement()
     {
-        GraphLayoutResult result = GraphLayout.Compute("graph-v1", Groups, Nodes, Edges);
-        Assert.Equal(Nodes.Length, result.Positions.Count);
-        Assert.All(Nodes.Where(node => node.GroupKey == "clients"), node =>
-            Assert.InRange(result.Positions[node.Id].Y, 0, 0.5));
-        Assert.All(Nodes.Where(node => node.GroupKey == "services"), node =>
-            Assert.InRange(result.Positions[node.Id].Y, 0.5, 1));
+        // A hub with four peers in one executable group, and an unrelated pair that shares the hub's group.
+        ProcessNode hub = Node(GuidFrom(1), "services");
+        ProcessNode[] peers = [.. Enumerable.Range(2, 4).Select(i => Node(GuidFrom(i), "clients"))];
+        ProcessNode[] pair = [Node(GuidFrom(10), "services"), Node(GuidFrom(11), "clients")];
+        CommunicationEdge[] edges =
+        [
+            .. peers.Select(peer => new CommunicationEdge($"hub-{peer.Id}", peer.Id, hub.Id, Mechanism.Tcp, 5, null,
+                RelationStrength.Direct)),
+            new("pair", pair[0].Id, pair[1].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct),
+        ];
+        ProcessNode[] all = [hub, .. peers, .. pair];
+
+        GraphLayoutResult result = GraphLayout.Compute("star", Groups, all, edges);
+
+        Assert.Equal(all.Length, result.Positions.Count);
+        double farthestPeer = peers.Max(peer => Distance(result.Positions[hub.Id], result.Positions[peer.Id]));
+        double nearestStranger = pair.Min(other => Distance(result.Positions[hub.Id], result.Positions[other.Id]));
+        Assert.True(farthestPeer < nearestStranger, $"hub peers up to {farthestPeer:F3} away, the pair {nearestStranger:F3}");
+        Assert.True(Distance(result.Positions[pair[0].Id], result.Positions[pair[1].Id])
+            < peers.Min(peer => Distance(result.Positions[pair[0].Id], result.Positions[peer.Id])));
+    }
+
+    [Fact(DisplayName = "§19.4: a node with no drawn edge is parked below the related nodes, never across an edge")]
+    public void EdgelessNodesAreParkedApart()
+    {
+        ProcessNode[] quiet = [Node(GuidFrom(20), "clients"), Node(GuidFrom(21), "services")];
+        GraphLayoutResult result = GraphLayout.Compute("parked", Groups, [.. Nodes, .. quiet], Edges);
+
+        double lowestRelated = Nodes.Max(node => result.Positions[node.Id].Y);
+        Assert.All(quiet, node => Assert.True(result.Positions[node.Id].Y > lowestRelated + 0.05));
+        Assert.Equal(result.Positions[quiet[0].Id].Y, result.Positions[quiet[1].Id].Y);
+
+        // With nothing related, the parked row sits across the middle of the pane.
+        GraphLayoutResult alone = GraphLayout.Compute("alone", Groups, quiet, []);
+        Assert.All(quiet, node => Assert.Equal(0.5, alone.Positions[node.Id].Y));
+    }
+
+    [Fact(DisplayName = "§19.4: a node that joins a drawn graph appears beside its peer while the rest keep their places")]
+    public void AJoiningNodeSettlesBesideItsPeer()
+    {
+        GraphLayoutResult before = GraphLayout.Compute("graph-v1", Groups, Nodes, Edges);
+        ProcessNode newcomer = Node(GuidFrom(30), "clients");
+        CommunicationEdge joined = new("three", newcomer.Id, Nodes[3].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct);
+
+        GraphLayoutResult after = GraphLayout.Compute("graph-v2", Groups, [.. Nodes, newcomer], [.. Edges, joined],
+            previous: before.Positions.ToDictionary(entry => entry.Key, entry => entry.Value));
+
+        Assert.All(Nodes, node => Assert.InRange(Distance(before.Positions[node.Id], after.Positions[node.Id]), 0, 0.1));
+        double beside = Distance(after.Positions[newcomer.Id], after.Positions[Nodes[3].Id]);
+        Assert.True(Nodes.Where(node => node.Id != Nodes[3].Id)
+            .All(node => Distance(after.Positions[newcomer.Id], after.Positions[node.Id]) > beside));
     }
 
     [Fact(DisplayName = "R8: malformed layout input or a graph over budget is refused, never partly drawn")]
@@ -101,4 +139,8 @@ public sealed class GraphLayoutTests
         new(new ProcessInstanceId(Guid.Parse(id)), 10, "process", "test", group, 0.5, 0.5, CoverageState.Covered);
 
     private static string GuidFrom(int value) => $"00000000-0000-0000-0000-{value:D12}";
+
+    /// <summary>Distance as the pane draws it: graph X spans the design aspect's width, Y one height.</summary>
+    private static double Distance(GraphPoint left, GraphPoint right) =>
+        Math.Sqrt(Math.Pow((left.X - right.X) * GraphLayout.DesignAspect, 2) + Math.Pow(left.Y - right.Y, 2));
 }

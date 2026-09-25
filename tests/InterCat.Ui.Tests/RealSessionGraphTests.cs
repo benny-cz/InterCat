@@ -104,8 +104,11 @@ public sealed class RealSessionGraphTests
             Save(window, "quiet-selected.png");
         }
 
+        // Open the largest collapsed group when the machine rung draws one, since that is the path compaction exists
+        // for; otherwise the largest group, which shows how an opened group's quiet members are counted.
         ProcessGroup largest = overview.Groups
-            .OrderByDescending(group => overview.Nodes.Count(node => node.GroupKey == group.Key))
+            .OrderByDescending(group => display.Nodes.Any(node => node.Kind == GraphNodeKind.Group && node.GroupKey == group.Key))
+            .ThenByDescending(group => overview.Nodes.Count(node => node.GroupKey == group.Key))
             .ThenBy(group => group.Key, StringComparer.Ordinal)
             .First();
         viewModel.SelectedRung = viewModel.RungRows.First(row => row.Key == largest.Key);

@@ -776,7 +776,7 @@
         "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",
         "R12: desktop graph reads stable layout coordinates instead of evidence-model positions",
         "R12: graph layout is identical after node, group and edge enumeration is reversed",
-        "R12: groups occupy stable separate bands and no process is silently omitted"
+        "R12: related processes are drawn together, separate components apart, and none is omitted"
       ],
       "R13": [
         "R13: Alt and Left ascend, the second gesture the ladder promises",

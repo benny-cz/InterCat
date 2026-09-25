@@ -92,16 +92,18 @@ public sealed class GraphView : Control
         return pen;
     }
 
-    /// <summary>§6.2's intensity: log2(1 + v) / log2(1 + vScale), zero for nothing observed.</summary>
-    internal static double Intensity(long value, long scale) =>
-        value <= 0 || scale <= 0 ? 0 : Math.Log2(1 + (double)value) / Math.Log2(1 + (double)scale);
+    /// <summary>The usable pane height the layout's spacing is designed for (GraphLayout's pixels per unit).</summary>
+    private const double DesignHeight = 250;
 
-    /// <summary>§6.3: 6 + 10 × intensity of the node's incident metric, so a quiet participant stays selectable.</summary>
-    internal static double RadiusOf(GraphDisplayNode node, long scale) =>
-        6 + (10 * Intensity(node.Observations, scale)) + (node.Kind == GraphNodeKind.Process ? 0 : 3);
+    /// <summary>
+    /// §6.3's radius, shared with the layout (<see cref="GraphEncoding"/>), so the discs it keeps apart are these. Graph
+    /// positions are fractions of the pane, so in a pane shorter than the layout's design height every disc shrinks by
+    /// the same factor, down to half: relative sizes, and so the magnitude encoding, are kept, and discs do not overlap.
+    /// </summary>
+    private double RadiusOf(GraphDisplayNode node, long scale) =>
+        GraphEncoding.NodeRadius(node, scale) * Math.Clamp((Bounds.Height - 72) / DesignHeight, 0.5, 1);
 
-    /// <summary>§6.3: 1.25 + 4.75 × intensity of the edge's metric.</summary>
-    internal static double ThicknessOf(GraphDisplayEdge edge, long scale) => 1.25 + (4.75 * Intensity(edge.ObservationCount, scale));
+    private static double ThicknessOf(GraphDisplayEdge edge, long scale) => GraphEncoding.EdgeThickness(edge, scale);
 
     public override void Render(DrawingContext context)
     {
@@ -240,9 +242,10 @@ public sealed class GraphView : Control
     {
         bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= LabelBudget;
         GraphDisplayNode[] required = [.. order.Where(node => selected.Contains(node.Key) || node.Key == focused)];
+        // After the selection come aggregates, whose counts are the compaction's disclosure (§6.3), then the busiest.
         GraphDisplayNode[] candidates = [.. required, .. order
             .Where(node => !required.Contains(node))
-            .OrderBy(node => partlySelected.Contains(node.Key) ? 0 : 1)
+            .OrderBy(node => partlySelected.Contains(node.Key) ? 0 : node.Kind != GraphNodeKind.Process ? 1 : 2)
             .Take(Math.Max(0, LabelBudget - required.Length))];
 
         // The focused node, or a single selected one, is always named even beside another label. A selection of many
@@ -310,16 +313,21 @@ public sealed class GraphView : Control
         ];
         var pane = new Rect(Bounds.Size);
         Rect[] inPane = [.. sides.Where(side => pane.Contains(side))];
-        Rect[] clear = [.. inPane.Where(side => !placed.Any(other => other.Intersects(side)))];
-        foreach (Rect side in clear)
+
+        // A label never hides another node or another label: an unnamed node is still named on selection and in the
+        // table, but a hidden one cannot be seen at all. Only a label that must show may fall back to overlapping.
+        foreach (Rect side in inPane)
         {
-            if (!points.Any(entry => entry.Key != key && Covers(side, entry.Value, radii[entry.Key])))
+            if (!placed.Any(other => other.Intersects(side))
+                && !points.Any(entry => entry.Key != key && Covers(side, entry.Value, radii[entry.Key])))
             {
                 return side;
             }
         }
 
-        return clear.Length > 0 ? clear[0] : mustShow && inPane.Length > 0 ? inPane[0] : null;
+        return !mustShow ? null
+            : inPane.FirstOrDefault(side => !placed.Any(other => other.Intersects(side))) is { Width: > 0 } clear ? clear
+            : inPane.Length > 0 ? inPane[0] : null;
     }
 
     private static bool Covers(Rect box, Point centre, double radius) =>

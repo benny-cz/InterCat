@@ -58,7 +58,6 @@ public sealed record GraphDisplayNode(
     string Key,
     string Label,
     GraphNodeKind Kind,
-    string Band,
     string? GroupKey,
     ProcessInstanceId? Process,
     int? ProcessId,
@@ -112,7 +111,6 @@ public sealed class GraphDisplay
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(node.Key);
             ArgumentException.ThrowIfNullOrWhiteSpace(node.Label);
-            ArgumentException.ThrowIfNullOrWhiteSpace(node.Band);
             ArgumentNullException.ThrowIfNull(node.Members);
             if (node.Members.Count == 0)
             {
@@ -240,14 +238,11 @@ public sealed class GraphDisplay
 public static class GraphProjection
 {
     private const string QuietKey = "cluster:quiet";
-    private const string QuietBand = "~quiet";
     private const string RemainderKey = "cluster:remainder";
-    private const string RemainderBand = "~remainder";
 
     private sealed record Descriptor(
         GraphNodeKind Kind,
         string Label,
-        string Band,
         string? GroupKey,
         ProcessInstanceId? Process,
         int? ProcessId);
@@ -310,28 +305,28 @@ public static class GraphProjection
         var assignment = new Dictionary<ProcessInstanceId, string>(processes.Count);
         var descriptors = new Dictionary<string, Descriptor>(processes.Count + 3, StringComparer.Ordinal)
         {
-            [QuietKey] = new(GraphNodeKind.Quiet, "No relationships", QuietBand, null, null, null),
-            [RemainderKey] = new(GraphNodeKind.Remainder, "Other processes", RemainderBand, null, null, null),
+            [QuietKey] = new(GraphNodeKind.Quiet, "No relationships", null, null, null),
+            [RemainderKey] = new(GraphNodeKind.Remainder, "Other processes", null, null, null),
         };
         foreach (ProcessNode process in processes.Values)
         {
             string key = process.Id.ToString();
             assignment[process.Id] = key;
             descriptors[key] = new(
-                GraphNodeKind.Process, process.Name, process.GroupKey, process.GroupKey,
+                GraphNodeKind.Process, process.Name, process.GroupKey,
                 process.Id, process.ProcessId);
         }
 
         // A descriptor names what a node would be; only a node that receives members is drawn.
         foreach (ProcessGroup group in groups.Values)
         {
-            descriptors[GroupNodeKey(group.Key)] = new(GraphNodeKind.Group, group.Name, group.Key, group.Key, null, null);
+            descriptors[GroupNodeKey(group.Key)] = new(GraphNodeKind.Group, group.Name, group.Key, null, null);
         }
 
         if (expandedGroup is not null)
         {
             descriptors[OtherMembersKey(expandedGroup)] = new(
-                GraphNodeKind.OtherMembers, "Other members", expandedGroup, expandedGroup, null, null);
+                GraphNodeKind.OtherMembers, "Other members", expandedGroup, null, null);
         }
 
         Dictionary<ProcessInstanceId, long> processMetric = ProcessMetrics(snapshot, processes.Keys);
@@ -582,7 +577,7 @@ public static class GraphProjection
             .ToDictionary(entry => entry.member, entry => entry.Key);
         Dictionary<string, Descriptor> descriptors = display.Nodes.ToDictionary(
             node => node.Key,
-            node => new Descriptor(node.Kind, node.Label, node.Band, node.GroupKey, node.Process, node.ProcessId),
+            node => new Descriptor(node.Kind, node.Label, node.GroupKey, node.Process, node.ProcessId),
             StringComparer.Ordinal);
         GraphDisplay recounted = Materialize(scoped, assignment, descriptors, display.ExpandedGroup, display.Kept);
         if (!SameStructure(display, recounted))
@@ -854,7 +849,6 @@ public static class GraphProjection
                     entry.Key,
                     descriptor.Label,
                     descriptor.Kind,
-                    descriptor.Band,
                     descriptor.GroupKey,
                     descriptor.Process,
                     descriptor.ProcessId,
