@@ -19,19 +19,18 @@ public sealed record RungRow(
     string Glyph,
     string Coverage,
     string DescendsTo,
-    LadderRow Source)
+    LadderRow Source) : IAccessibleRow
 {
     /// <summary>The sentence a screen reader hears when the ranked-row wording does not fit, as for a source record.</summary>
     public string? SpokenName { get; init; }
 
-    public string AccessibleName => SpokenName ?? string.Create(
-        CultureInfo.CurrentCulture,
-        $"{Label}, {Detail}, {Observations} observations, {KnownBytes}, {Mechanism}, coverage {Coverage}. "
-        + $"Press Enter to open the {DescendsTo} level.");
+    public string AccessibleName => SpokenName
+        ?? $"{Label}, {Detail}, {Spoken.Count(Source.ObservationCount, "observation")}, {KnownBytes}, "
+            + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";
 }
 
 /// <summary>One crumb of the breadcrumb. Selecting it returns to that rung, which is why it has a depth.</summary>
-public sealed record CrumbRow(int Depth, string Label, bool IsCurrent)
+public sealed record CrumbRow(int Depth, string Label, bool IsCurrent) : IAccessibleRow
 {
     public string AccessibleName => IsCurrent
         ? $"{Label}, the current level"
@@ -39,7 +38,7 @@ public sealed record CrumbRow(int Depth, string Label, bool IsCurrent)
 }
 
 /// <summary>A filter a descent implied, shown so it can be seen and removed (section 3.2).</summary>
-public sealed record FilterRow(string Field, string Label, string Reason)
+public sealed record FilterRow(string Field, string Label, string Reason) : IAccessibleRow
 {
     public string AccessibleName => $"Filter {Field} is {Label}. {Reason} Press Enter to remove it.";
 }

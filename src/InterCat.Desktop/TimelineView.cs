@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -65,6 +66,13 @@ public sealed class TimelineView : Control, IHoverCardSource
     private bool brushing;
     private bool moved;
     private TimeRange panOrigin;
+
+    /// <summary>The timeline as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
+    protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "timeline",
+        "Left and Right pan, with Shift by one bucket; plus and minus zoom; Home and End go to the session's edges; 0 "
+        + "fits; [ and ] step to the previous or next record; Up and Down scroll lanes. T shows the interval table, which "
+        + "lists what the timeline draws.",
+        () => (DataContext as WorkspaceViewModel)?.TimelineCaption);
 
     public TimelineView()
     {

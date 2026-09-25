@@ -69,8 +69,7 @@
                    AutomationProperties.Name="Search results; press Enter to open the selected result">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:SearchRow">
-                <StackPanel Margin="2,5" Spacing="2" MinHeight="44"
-                            AutomationProperties.Name="{Binding AccessibleName}">
+                <StackPanel Margin="2,5" Spacing="2" MinHeight="44">
                   <TextBlock Text="{Binding Kind}" Classes="eyebrow" />
                   <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
@@ -89,8 +88,7 @@
                    AutomationProperties.Name="Ranked table for the current level">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:RungRow">
-                <Grid ColumnDefinitions="22,*,Auto" Margin="2,5" MinHeight="44"
-                      AutomationProperties.Name="{Binding AccessibleName}">
+                <Grid ColumnDefinitions="22,*,Auto" Margin="2,5" MinHeight="44">
                   <TextBlock Text="{Binding Glyph}" VerticalAlignment="Center" />
                   <StackPanel Grid.Column="1" Margin="6,0,6,0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -188,7 +186,6 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:CrumbRow">
                 <TextBlock Text="{Binding Label}" FontSize="11" Padding="4,1"
-                           AutomationProperties.Name="{Binding AccessibleName}"
                            TextTrimming="CharacterEllipsis" MaxWidth="220" />
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -222,7 +219,7 @@
       <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="6"
                  AutomationProperties.Name="Mechanism legend">
         <TextBlock Text="LEGEND" Classes="eyebrow" VerticalAlignment="Center" />
-        <ItemsControl ItemsSource="{Binding Legend}"
+        <ItemsControl x:Name="LegendList" ItemsSource="{Binding Legend}"
                       AutomationProperties.Name="Mechanism legend entries">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -257,7 +254,6 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:FilterRow">
                 <TextBlock FontSize="11" Padding="4,1" MaxWidth="220" TextTrimming="CharacterEllipsis"
-                           AutomationProperties.Name="{Binding AccessibleName}"
                            Text="{Binding Label}" ToolTip.Tip="{Binding Reason}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -291,7 +287,8 @@
         </Grid>
       </Border>
 
-      <GridSplitter Grid.Row="1" Height="6" Background="Transparent" />
+      <GridSplitter Grid.Row="1" Height="6" Background="Transparent"
+                    AutomationProperties.Name="Resize the graph and timeline panes" />
 
       <Border Grid.Row="2" CornerRadius="10" Background="{DynamicResource Surface.Plot}"
               BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1" ClipToBounds="True">
@@ -339,12 +336,11 @@
               <TextBlock Text="{Binding SelectedEvidenceTitle}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding EvidenceScopeText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                          AutomationProperties.Name="What these records are" />
-              <ItemsControl ItemsSource="{Binding SelectedEvidenceFields}"
+              <ItemsControl x:Name="EvidenceFieldList" ItemsSource="{Binding SelectedEvidenceFields}"
                             AutomationProperties.Name="Facts of the selected record">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="local:EvidenceField">
-                    <StackPanel Margin="0,0,0,7" Spacing="1"
-                                AutomationProperties.Name="{Binding Label}">
+                    <StackPanel Margin="0,0,0,7" Spacing="1">
                       <TextBlock Text="{Binding Label}" Classes="muted" FontSize="10" />
                       <TextBlock Text="{Binding Value}" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
@@ -432,15 +428,14 @@
           <TextBlock Grid.Column="4" Text="Bytes" Classes="columnHeader" />
           <TextBlock Grid.Column="5" Text="Evidence" Classes="columnHeader" />
         </Grid>
-        <ListBox Grid.Row="2" Margin="0,4,0,0"
+        <ListBox x:Name="RelationshipList" Grid.Row="2" Margin="0,4,0,0"
                  ItemsSource="{Binding Relationships}"
                  SelectedItem="{Binding SelectedRelationship, Mode=TwoWay}"
                  Background="Transparent" BorderThickness="0"
                  AutomationProperties.Name="Relationship table, the table equivalent of the communication graph">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:RelationshipRow">
-              <Grid ColumnDefinitions="18,140,140,120,150,110" Margin="2,4"
-                    AutomationProperties.Name="{Binding AccessibleName}">
+              <Grid ColumnDefinitions="18,140,140,120,150,110" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
                 <TextBlock Grid.Column="1" Text="{Binding Source}" FontWeight="SemiBold" />
                 <TextBlock Grid.Column="2" Text="{Binding Target}" />
@@ -464,7 +459,7 @@
                     AutomationProperties.Name="Mechanism lane for the interval table and bracket-key stepping">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:TimelineLaneOption">
-                <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                <TextBlock Text="{Binding Label}" />
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
@@ -475,7 +470,7 @@
                     AutomationProperties.Name="Source direction lane for the interval table and bracket-key stepping">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:DirectionLaneOption">
-                <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                <TextBlock Text="{Binding Label}" />
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
@@ -486,8 +481,7 @@
                     AutomationProperties.Name="Channel end for the interval table and bracket-key stepping">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:ChannelEndOption">
-                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
-                           AutomationProperties.Name="{Binding AccessibleName}" />
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
@@ -501,15 +495,14 @@
           <TextBlock Grid.Column="3" Text="Bytes" Classes="columnHeader" />
           <TextBlock Grid.Column="4" Text="Coverage" Classes="columnHeader" />
         </Grid>
-        <ListBox Grid.Row="5" Margin="0,4,0,0"
+        <ListBox x:Name="IntervalList" Grid.Row="5" Margin="0,4,0,0"
                  ItemsSource="{Binding Intervals}"
                  SelectedItem="{Binding SelectedIntervalRow, Mode=TwoWay}"
                  Background="Transparent" BorderThickness="0"
                  AutomationProperties.Name="Interval table, the table equivalent of the activity timeline">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:IntervalRow">
-              <Grid ColumnDefinitions="18,160,180,150,150" Margin="2,4"
-                    AutomationProperties.Name="{Binding AccessibleName}">
+              <Grid ColumnDefinitions="18,160,180,150,150" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
                 <TextBlock Grid.Column="1" Text="{Binding Window}" FontWeight="SemiBold" />
                 <TextBlock Grid.Column="2" Text="{Binding Observations}" />

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -18,6 +19,11 @@ namespace InterCat.Desktop;
 public sealed class MinimapView : Control
 {
     private const ThemeMode Mode = ThemeMode.Dark;
+
+    /// <summary>The minimap as a screen reader meets it: its role and its keyboard path.</summary>
+    protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "minimap",
+        "The whole session: arrows pan the timeline's view, plus and minus zoom, Home and End jump to its edges, and 0 "
+        + "fits the whole session.", () => null);
 
     private static readonly IBrush InkBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
     private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);

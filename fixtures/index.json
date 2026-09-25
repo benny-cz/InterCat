@@ -809,8 +809,10 @@
       "R15": [
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
         "R15: a custom workspace header names its session without inventing a capture gap",
+        "R15: a lane selector's options and its chosen value read as sentences and labels, not record fields",
         "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard",
         "R15: a published session's channel and evidence rungs render at every supported size",
+        "R15: every focusable element and list item is named for the ear at every rung, never by a record's fields",
         "R15: graph pin and re-layout commands have keyboard paths and a button equivalent",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the table toggle is reachable by keyboard while a list has focus",

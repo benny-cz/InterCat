@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using InterCat.Analysis;
@@ -91,6 +92,13 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace = viewModel;
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
+
+        // Every list and combo box names its items by their rows' accessible sentences, not their record fields (R15).
+        foreach (ItemsControl items in this.GetLogicalDescendants().OfType<ItemsControl>())
+        {
+            Presentation.AccessibleItems.Name(items);
+        }
+
         Opened += (_, _) => StartExploringButton.Focus();
         healthClock.Tick += (_, _) => UpdateHealthStrip();
         healthClock.Start();

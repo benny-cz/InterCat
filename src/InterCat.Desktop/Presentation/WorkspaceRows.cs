@@ -9,8 +9,11 @@ namespace InterCat.Desktop.Presentation;
 /// One legend entry. The glyph and the label are the redundant channels that carry the mechanism without
 /// relying on hue, so the legend stays readable in greyscale and under colour-vision differences (R14).
 /// </summary>
-public sealed record LegendEntry(string Label, string Glyph, string FillHex, string InkHex)
+public sealed record LegendEntry(string Label, string Glyph, string FillHex, string InkHex) : IAccessibleRow
 {
+    /// <summary>The mechanism family's name; its glyph and hue repeat what the word says.</summary>
+    public string AccessibleName => Label;
+
     public static LegendEntry For(Mechanism mechanism, ThemeMode mode)
     {
         FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(mechanism));
@@ -30,11 +33,14 @@ public sealed record RelationshipRow(
     string Glyph,
     string Observations,
     string KnownBytes,
-    string Evidence)
+    string Evidence) : IAccessibleRow
 {
-    public string AccessibleName => string.Create(
-        CultureInfo.CurrentCulture,
-        $"{Source} to {Target} over {Mechanism}, {Observations} observations, {KnownBytes}, evidence {Evidence}");
+    /// <summary>The relationship's observation count, which <see cref="Observations"/> shows formatted.</summary>
+    public long ObservationCount { get; init; }
+
+    public string AccessibleName =>
+        $"{Source} to {Target} over {Mechanism}, {Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, "
+        + $"evidence {Evidence}";
 }
 
 /// <summary>A timeline cell as a table row, carrying the same counts and the same coverage state.</summary>
@@ -45,11 +51,17 @@ public sealed record IntervalRow(
     string KnownBytes,
     string Mechanism,
     string Glyph,
-    string Coverage)
+    string Coverage) : IAccessibleRow
 {
-    public string AccessibleName => string.Create(
-        CultureInfo.CurrentCulture,
-        $"{Window}, {Observations} observations, {KnownBytes}, {Mechanism}, coverage {Coverage}");
+    /// <summary>The window's observation count and its focus count, which <see cref="Observations"/> shows formatted.</summary>
+    public long ObservationCount { get; init; }
+
+    public long? FocusCount { get; init; }
+
+    public string AccessibleName =>
+        $"{Window}, {Spoken.Count(ObservationCount, "observation")}"
+        + (FocusCount is { } focused ? string.Create(CultureInfo.CurrentCulture, $", {focused:N0} in focus") : string.Empty)
+        + $", {KnownBytes}, {Mechanism}, {Spoken.Coverage(Coverage)}";
 }
 
 /// <summary>Builds the table equivalents from one snapshot, using the same values the canvas draws.</summary>
@@ -105,7 +117,10 @@ public static class WorkspaceRowBuilder
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
                 DescribeBytes(edge.KnownBytes),
-                DescribeStrength(edge.Strength)));
+                DescribeStrength(edge.Strength))
+            {
+                ObservationCount = edge.ObservationCount,
+            });
         }
 
         return rows;
@@ -133,9 +148,11 @@ public static class WorkspaceRowBuilder
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(bucket.DominantMechanism));
             string observations = bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture);
+            int? focusCount = null;
             if (inFocus is not null && inFocus.TryGetValue(bucket.Interval, out int focused))
             {
                 observations += string.Create(CultureInfo.CurrentCulture, $" · {focused:N0} in focus");
+                focusCount = focused;
             }
 
             rows.Add(new(
@@ -145,7 +162,11 @@ public static class WorkspaceRowBuilder
                 DescribeBytes(bucket.KnownBytes),
                 tokens.Label,
                 tokens.Glyph,
-                DescribeCoverage(bucket.Coverage)));
+                DescribeCoverage(bucket.Coverage))
+            {
+                ObservationCount = bucket.ObservationCount,
+                FocusCount = focusCount,
+            });
         }
 
         return rows;

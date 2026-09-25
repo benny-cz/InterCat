@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -681,6 +682,12 @@ public sealed class GraphView : Control, IHoverCardSource
         Math.Clamp((point.Y - 28) / Math.Max(1, Bounds.Height - 72), 0, 1));
 
     public GraphView() => DoubleTapped += OpenGroup;
+
+    /// <summary>The graph as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
+    protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "graph",
+        "Arrow keys move between drawn nodes; Enter opens a group or process; P pins or unpins the selected node; L lays "
+        + "the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here.",
+        () => (DataContext as WorkspaceViewModel)?.GraphSummary);
 
     private void OpenGroup(object? sender, TappedEventArgs e)
     {

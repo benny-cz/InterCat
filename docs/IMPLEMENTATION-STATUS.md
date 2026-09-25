@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 130 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 131 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,13 +54,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 131 — what a screen reader hears (§6.5, R15):**
+  - **Audit:** a headless test walks the window's UI Automation tree at the machine, group, process and channel rungs
+    with the tables shown. Every focusable element and list item needs a name, no name may be a record dump, and every
+    list item must speak its row's sentence.
+  - **Found and fixed:** every ranked, relationship, interval and search row was read aloud as its C# record,
+    `RungRow { Key = executable:unknown, Label = … }`. Avalonia names an item from its container, then from a template
+    that is one text block, then from `ToString()`; the templates set the name on an inner grid, which never reaches the
+    item. `AccessibleItems` now names each container from its row's `IAccessibleRow.AccessibleName`. Lane options'
+    `ToString()` is their label, since a combo box reads its value from it (it read `TimelineLaneOption { … }`).
+  - **Canvases:** the graph, timeline and minimap were focusable with no control type. They are now custom controls
+    with a role word, help text naming their keyboard path and table, and their caption as status, read on request.
+    The pane splitter is named.
+  - **Wording:** "1 observations" → "1 observation"; "coverage unknown coverage" → "coverage: unknown"; "12 · 3 in focus
+    observations" → "12 observations, 3 in focus"; search kinds read as words, not capitals.
+  - **Checked:** with the container naming switched off, the audit fails on exactly the old record dumps.
+  - **Tests:** two UI tests (+2), both in the traceability ledger under R15.
 - **Revision 130 — the waiting capture states itself, and P26 is asserted (§6.2, §6.8, §19.3):**
   - **Waiting state:** a capture that records but has published nothing yet read "No capture is running" beside a
     recording health strip. The header now reads "Recording · first view pending", and the empty rung and disclosure
@@ -425,9 +441,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    Re-run the bounded 10-minute first-feedback and revision 127's latency benchmark at 1M and 10M rows as each lands.
 2. Finish a crashed viewer's session (§3.1 step 6): record where a live session's evidence is, outside the session
    directory, and on the next launch offer to derive the chunks the broker published after the crash.
-3. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
-   119–124), and add pin/collapse/search as the observed lane count requires. L4's operation lanes, with duration
-   bars and byte projections where a derivation supports them, wait on item 4's operations; L5 keeps its marks.
+3. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
+   headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
+   count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
+   wait on item 4's operations; L5 keeps its marks.
 4. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
 5. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
@@ -441,6 +458,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 131 was built and tested in the same Linux container: Debug and Release both ran **965 tests: 877 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 130 was built and tested in a Linux cloud container, not on Windows.
   - The pinned SDK 10.0.401 was unreachable there, so the build used Ubuntu's 10.0.112 through a local `global.json`
     override. The override is not committed.

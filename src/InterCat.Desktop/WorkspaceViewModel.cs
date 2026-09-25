@@ -13,7 +13,10 @@ namespace InterCat.Desktop;
 
 
 /// <summary>One labelled fact about the selected evidence record, as the inspector lists it.</summary>
-public sealed record EvidenceField(string Label, string Value);
+public sealed record EvidenceField(string Label, string Value) : IAccessibleRow
+{
+    public string AccessibleName => $"{Label}: {Value}";
+}
 
 /// <summary>
 /// What a hover over a drawn mark states - a graph node or edge (§6.3) or a timeline bucket - under §6.2's hover
@@ -22,24 +25,33 @@ public sealed record EvidenceField(string Label, string Value);
 public sealed record HoverCard(string Title, IReadOnlyList<string> Lines);
 
 /// <summary>A keyboard-addressable counterpart of an L0 mechanism row; null means the whole timeline.</summary>
-public sealed record TimelineLaneOption(Mechanism? Mechanism, string Label)
+public sealed record TimelineLaneOption(Mechanism? Mechanism, string Label) : IAccessibleRow
 {
+    /// <summary>What a combo box reads as its value when this option is chosen: the label, not the record's fields.</summary>
+    public override string ToString() => Label;
+
     public string AccessibleName => Mechanism is null
         ? "All mechanisms; show whole-session interval counts"
         : $"{Label} mechanism lane; show its exact interval counts and step within this lane";
 }
 
 /// <summary>A keyboard-addressable L2 source-direction row; null shows the whole owner focus.</summary>
-public sealed record DirectionLaneOption(Direction? Direction, string Label)
+public sealed record DirectionLaneOption(Direction? Direction, string Label) : IAccessibleRow
 {
+    /// <summary>What a combo box reads as its value when this option is chosen: the label, not the record's fields.</summary>
+    public override string ToString() => Label;
+
     public string AccessibleName => Direction is null
         ? "All directions; show this process's complete interval counts"
         : $"{Label} source-direction lane; show its exact interval counts and step within this lane";
 }
 
 /// <summary>A keyboard-addressable L3 channel end; a null End shows the whole channel's counts.</summary>
-public sealed record ChannelEndOption(int? End, string Label)
+public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 {
+    /// <summary>What a combo box reads as its value when this option is chosen: the label, not the record's fields.</summary>
+    public override string ToString() => Label;
+
     public string AccessibleName => End is null
         ? "Both ends; show the channel's complete interval counts"
         : $"{Label} end; show its exact interval counts and step within this end";
