@@ -48,7 +48,9 @@ public sealed record WorkspaceNavigationMemento(
 public sealed record TimelineCarry(
     SessionTimelineDetail? Detail,
     string? FocusKey,
-    IReadOnlyList<TimelineBucket>? Focus);
+    IReadOnlyList<TimelineBucket>? Focus,
+    IReadOnlyList<ProcessTimelineLane>? ProcessLanes = null,
+    string? ProcessLaneProblem = null);
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -115,6 +117,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private TimelineFocus? timelineFocus;
     private string? timelineFocusDescription;
     private IReadOnlyList<TimelineBucket>? timelineFocusBuckets;
+    private IReadOnlyList<ProcessTimelineLane>? timelineProcessLanes;
+    private string? processLaneProblem;
     private bool timelineFocusLoading;
     private string? timelineFocusProblem;
     private IReadOnlyList<IntervalRow> intervals;
@@ -399,7 +403,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 bool sameSession = counted.Whole.SessionId == source.SessionId;
 
                 // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
-                SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null);
+                SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null,
+                    sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null);
                 SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
             }
         }
@@ -421,19 +426,25 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus)
+    private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus,
+        IReadOnlyList<ProcessTimelineLane>? processLanes = null, string? laneProblem = null)
     {
-        if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus))
+        if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus)
+            && ReferenceEquals(timelineProcessLanes, processLanes) && processLaneProblem == laneProblem)
         {
             return;
         }
 
         timelineDetail = detail;
         timelineFocusBuckets = focus;
+        timelineProcessLanes = processLanes;
+        processLaneProblem = laneProblem;
         RefreshIntervalRows(focus);
 
         OnPropertyChanged(nameof(TimelineDetail));
         OnPropertyChanged(nameof(TimelineFocusBuckets));
+        OnPropertyChanged(nameof(TimelineProcessLanes));
+        OnPropertyChanged(nameof(ProcessLaneProblem));
     }
 
     private bool HasCompleteLaneDetail => timelineDetail is { } detail
@@ -505,7 +516,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
-    public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets);
+    public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
+        timelineProcessLanes, processLaneProblem);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -516,7 +528,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         ArgumentNullException.ThrowIfNull(carry);
         IReadOnlyList<TimelineBucket>? focus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key ? carry.Focus : null;
-        SetTimelineDetail(carry.Detail, focus);
+        bool sameFocus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key;
+        SetTimelineDetail(carry.Detail, focus, sameFocus ? carry.ProcessLanes : null,
+            sameFocus ? carry.ProcessLaneProblem : null);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -525,6 +539,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// the whole extent, the zoomed detail's when zoomed. Null at a rung without a focus and until its count arrives.
     /// </summary>
     public IReadOnlyList<TimelineBucket>? TimelineFocusBuckets => timelineFocusBuckets;
+
+    /// <summary>Exact L1 owner rows held with their focus and generation, ready for the rung renderer.</summary>
+    public IReadOnlyList<ProcessTimelineLane>? TimelineProcessLanes => timelineProcessLanes;
+
+    /// <summary>When an L1 group exceeds the query budget, the exact aggregate remains and this says why.</summary>
+    public string? ProcessLaneProblem => processLaneProblem;
 
     /// <summary>All mechanism rows are reachable from the table; selecting one does not filter the graph or ranking.</summary>
     public IReadOnlyList<TimelineLaneOption> TimelineLaneOptions => timelineLaneOptions;

@@ -114,6 +114,7 @@ public sealed class SessionTimelineTests
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         TimeRange extent = overview.Extent!.Value;
         ProcessNode client = overview.Nodes.Single(node => node.ProcessId == 100);
+        ProcessNode server = overview.Nodes.Single(node => node.ProcessId == 200);
         Channel channel = overview.Channels.Single();
         SessionTimelineDetail whole = SessionTimelineQuery.Detail(session.Store, extent, 16);
 
@@ -122,6 +123,7 @@ public sealed class SessionTimelineTests
         {
             (new TimelineFocus(null, [client.Id]), exchanges + 1),
             (new TimelineFocus(channel.Key, []), 2 * exchanges),
+            (new TimelineFocus(null, [client.Id, server.Id]), 2 * exchanges + 2),
         })
         {
             SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(session.Store, extent, 16, focus);
@@ -139,6 +141,27 @@ public sealed class SessionTimelineTests
             Assert.Equal(expected, ticks.Length);
             Assert.All(timeline.Focus, bucket => Assert.Equal(ticks.Count(bucket.Interval.Contains), bucket.ObservationCount));
             Assert.Equal(expected, timeline.Focus.Sum(bucket => bucket.ObservationCount));
+            if (focus.OwnerProcesses.Count > 1)
+            {
+                Assert.Null(timeline.ProcessLaneProblem);
+                Assert.Equal(focus.OwnerProcesses, timeline.ProcessLanes.Select(lane => lane.ProcessId));
+                Assert.All(timeline.Focus.Select((bucket, index) => (bucket, index)), pair =>
+                    Assert.Equal(pair.bucket.ObservationCount,
+                        timeline.ProcessLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+                foreach (ProcessTimelineLane lane in timeline.ProcessLanes)
+                {
+                    SessionEvidencePage ownerRecords = SessionEvidenceQuery.ReadScope(session.Store, 10_000,
+                        ownerProcesses: [lane.ProcessId]);
+                    long[] ownerTicks = [.. ownerRecords.Records.Select(record =>
+                        record.Observation.SessionRelativeTicks!.Value / 100)];
+                    Assert.All(lane.Buckets, bucket =>
+                        Assert.Equal(ownerTicks.Count(bucket.Interval.Contains), bucket.ObservationCount));
+                }
+            }
+            else
+            {
+                Assert.Empty(timeline.ProcessLanes);
+            }
         }
 
         // A focus this generation cannot resolve is refused with a reason, never counted as nothing.
@@ -148,6 +171,37 @@ public sealed class SessionTimelineTests
             new TimelineFocus("tcp:no-such-channel", [])));
         Assert.Throws<ArgumentException>(() => new TimelineFocus(null, []));
         Assert.Equal(new TimelineFocus(null, [client.Id, client.Id]).Key, new TimelineFocus(null, [client.Id]).Key);
+    }
+
+    [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]
+    public void ProcessLaneBudgetFallsBackToAnExactAggregate()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(1, 201).Select(index =>
+            Timed(Lifecycle(index * 10, ObservationKind.Create, 1_000 + index, (ulong)index)))]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        TimeRange extent = overview.Extent!.Value;
+        ProcessInstanceId[] owners = [.. overview.Nodes.Select(node => node.Id)];
+        Assert.Equal(201, owners.Length);
+
+        SessionFocusedTimeline tooMany = SessionTimelineQuery.Focused(session.Store, extent, 2,
+            new TimelineFocus(null, owners));
+        Assert.Empty(tooMany.ProcessLanes);
+        Assert.Contains("201 process lanes", tooMany.ProcessLaneProblem, StringComparison.Ordinal);
+        Assert.Equal(201, tooMany.Focus.Sum(bucket => bucket.ObservationCount));
+
+        TimelineFocus withinCount = new(null, owners.Take(64).ToArray());
+        SessionFocusedTimeline tooManyCells = SessionTimelineQuery.Focused(session.Store, extent, 400, withinCount);
+        Assert.Empty(tooManyCells.ProcessLanes);
+        Assert.Contains("cells", tooManyCells.ProcessLaneProblem, StringComparison.Ordinal);
+        Assert.Equal(64, tooManyCells.Focus.Sum(bucket => bucket.ObservationCount));
+
+        SessionFocusedTimeline bounded = SessionTimelineQuery.Focused(session.Store, extent, 300, withinCount);
+        Assert.Null(bounded.ProcessLaneProblem);
+        Assert.Equal(64, bounded.ProcessLanes.Count);
+        Assert.All(bounded.Focus.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount,
+                bounded.ProcessLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
     }
 
     [Fact(DisplayName = "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed")]

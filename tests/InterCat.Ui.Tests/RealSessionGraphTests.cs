@@ -175,6 +175,34 @@ public sealed class RealSessionGraphTests
         IReadOnlyList<TimelineBucket> whole = viewModel.TimelineDetail?.Buckets ?? viewModel.Snapshot.Timeline;
         Assert.Equal(whole.Select(bucket => bucket.Interval), focus.Select(bucket => bucket.Interval));
         Assert.All(whole.Zip(focus), pair => Assert.InRange(pair.Second.ObservationCount, 0, pair.First.ObservationCount));
+        if (members.Count > 1)
+        {
+            if (members.Count <= SessionTimelineQuery.MaximumProcessLanes
+                && (long)members.Count * focus.Count <= SessionTimelineQuery.MaximumProcessLaneCells)
+            {
+                IReadOnlyList<ProcessTimelineLane> lanes =
+                    Assert.IsAssignableFrom<IReadOnlyList<ProcessTimelineLane>>(viewModel.TimelineProcessLanes);
+                Assert.Equal(members.Count, lanes.Count);
+                Assert.All(focus.Select((bucket, index) => (bucket, index)), pair =>
+                    Assert.Equal(pair.bucket.ObservationCount, lanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+                report.AppendLine(CultureInfo.InvariantCulture, $"L1 process lanes: {lanes.Count} exact owner rows");
+                using var carried = new WorkspaceViewModel(snapshot, overview.GraphIdentity,
+                    new SessionEvidenceSource(path, overview.SessionId, overview.Generation));
+                Assert.Null(carried.RestoreNavigation(viewModel.CaptureNavigation()));
+                carried.AdoptTimeline(viewModel.CarryTimeline());
+                Assert.Same(lanes, carried.TimelineProcessLanes);
+                using var machine = new WorkspaceViewModel(snapshot, overview.GraphIdentity,
+                    new SessionEvidenceSource(path, overview.SessionId, overview.Generation));
+                machine.AdoptTimeline(viewModel.CarryTimeline());
+                Assert.Null(machine.TimelineProcessLanes);
+            }
+            else
+            {
+                Assert.Empty(viewModel.TimelineProcessLanes!);
+                Assert.NotNull(viewModel.ProcessLaneProblem);
+                report.AppendLine(CultureInfo.InvariantCulture, $"L1 lane bound: {viewModel.ProcessLaneProblem}");
+            }
+        }
         report.AppendLine(CultureInfo.InvariantCulture,
             $"group timeline counted in {clock.ElapsedMilliseconds} ms more: {focus.Sum(bucket => (long)bucket.ObservationCount)} of "
             + $"{whole.Sum(bucket => (long)bucket.ObservationCount)} records · {viewModel.TimelineCaption}");

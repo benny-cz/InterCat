@@ -31,6 +31,9 @@ public sealed record SessionTimelineDetail(
     public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
 }
 
+/// <summary>One group's exact owner-accounted L1 timeline row, keyed independently of its visual position.</summary>
+public sealed record ProcessTimelineLane(ProcessInstanceId ProcessId, IReadOnlyList<TimelineBucket> Buckets);
+
 /// <summary>
 /// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
 /// paired channel, the rows canonically owned by a set of process instances, or both at once. A rung's timeline therefore
@@ -83,12 +86,23 @@ public sealed class TimelineFocus
 /// A viewport's timeline and the part of it one focus reads, counted in one pass into the same columns, so each focus
 /// bucket lies inside the whole-timeline bucket of the same interval and never exceeds it.
 /// </summary>
-public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOnlyList<TimelineBucket> Focus);
+public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOnlyList<TimelineBucket> Focus)
+{
+    /// <summary>When a group fits the lane budget, these owner rows partition Focus on the same columns.</summary>
+    public IReadOnlyList<ProcessTimelineLane> ProcessLanes { get; init; } = [];
+
+    /// <summary>Why L1 rows were not made; the aggregate focus count remains available and exact.</summary>
+    public string? ProcessLaneProblem { get; init; }
+}
 
 public static class SessionTimelineQuery
 {
     /// <summary>A viewport never needs more columns than the minimap holds for the whole session.</summary>
     public const int MaximumColumns = SessionMinimap.MaximumColumns;
+
+    /// <summary>Hard query-side caps before an L1 row model is allocated, beneath §6.2's 20,000-mark frame budget.</summary>
+    public const int MaximumProcessLanes = 200;
+    public const int MaximumProcessLaneCells = 20_000;
 
     /// <summary>
     /// Counts the observations inside a half-open interval of presentation ticks into equal columns. A row without a
@@ -116,11 +130,17 @@ public static class SessionTimelineQuery
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(focus);
-        (SessionTimelineDetail whole, TimelineBucket[]? focused) = Count(store, interval, columns, focus, policy, cancellationToken);
-        return new(whole, Array.AsReadOnly(focused!));
+        (SessionTimelineDetail whole, TimelineBucket[]? focused, ProcessTimelineLane[] lanes, string? problem) =
+            Count(store, interval, columns, focus, policy, cancellationToken);
+        return new(whole, Array.AsReadOnly(focused!))
+        {
+            ProcessLanes = Array.AsReadOnly(lanes),
+            ProcessLaneProblem = problem,
+        };
     }
 
-    private static (SessionTimelineDetail Whole, TimelineBucket[]? Focus) Count(
+    private static (SessionTimelineDetail Whole, TimelineBucket[]? Focus,
+        ProcessTimelineLane[] ProcessLanes, string? ProcessLaneProblem) Count(
         SessionStore store,
         TimeRange interval,
         int columns,
@@ -142,6 +162,18 @@ public static class SessionTimelineQuery
         FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         TimelineColumns? focused = rows is null ? null : new TimelineColumns(interval, columns, tallyMechanisms: true);
+        bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
+        long laneCells = focus is null ? 0 : (long)focus.OwnerProcesses.Count * Math.Min(columns, interval.SpanTicks);
+        string? laneProblem = !groupFocus ? null
+            : focus!.OwnerProcesses.Count > MaximumProcessLanes || laneCells > MaximumProcessLaneCells
+                ? $"This group needs {focus.OwnerProcesses.Count:N0} process lanes and {laneCells:N0} cells; the "
+                    + $"current bounds are {MaximumProcessLanes:N0} lanes and {MaximumProcessLaneCells:N0} cells. "
+                    + "Its aggregate timeline remains exact. A bounded grouping or paging control is required "
+                    + "to inspect these process rows; the query does not silently drop them."
+                : null;
+        Dictionary<ProcessInstanceId, TimelineColumns>? processColumns = groupFocus && laneProblem is null
+            ? focus!.OwnerProcesses.ToDictionary(owner => owner, _ => new TimelineColumns(interval, columns, tallyMechanisms: true))
+            : null;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -162,7 +194,14 @@ public static class SessionTimelineQuery
                 {
                     // Bindings are derived only for a segment that has a row inside the interval.
                     inFocus ??= rows.Of(segment);
-                    if (inFocus.Includes(row)) focused!.Add(column, mechanism);
+                    if (inFocus.Includes(row))
+                    {
+                        focused!.Add(column, mechanism);
+                        if (processColumns is not null && inFocus.OwnerId(row) is { } owner)
+                        {
+                            processColumns[owner].Add(column, mechanism);
+                        }
+                    }
                 }
             }
         }
@@ -174,7 +213,10 @@ public static class SessionTimelineQuery
             {
                 MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
             },
-            focused?.Buckets(coverage, clock));
+            focused?.Buckets(coverage, clock),
+            processColumns is null ? [] : [.. focus!.OwnerProcesses.Select(owner =>
+                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))],
+            laneProblem);
     }
 }
 
@@ -275,6 +317,13 @@ internal sealed class FocusRows
             return bindings is null
                 || (scope.owners.Contains(bindings[row].Instance) && bindings[row].IsAdmittedUnder(scope.policy));
         }
+
+        /// <summary>The canonical admitted owner of an included row, for an L1 group partition.</summary>
+        public ProcessInstanceId? OwnerId(int row) => bindings is not null
+            && scope.owners.Contains(bindings[row].Instance)
+            && bindings[row].IsAdmittedUnder(scope.policy)
+                ? scope.processes!.Instances[bindings[row].Instance].Id
+                : null;
     }
 }
 
