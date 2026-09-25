@@ -760,6 +760,12 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         phase = update.Phase;
         CaptureStatus.Text = update.Headline;
+        bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
+        StartExploringButton.Content = unavailable ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
+        ToolTip.SetTip(StartExploringButton, unavailable ? update.Detail : null);
+        CaptureStatus.Foreground = unavailable
+            ? (this.TryFindResource("Family.RemoteCall.Ink", out object? warning) ? warning : null) as Avalonia.Media.IBrush
+            : null;
 
         // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it.
         if (!string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
@@ -802,6 +808,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         UpdateHealthStrip();
+        ToolTip.SetTip(HealthStateText, unavailable ? update.Detail : null);
         UpdateEvidenceAction();
     }
 

@@ -48,6 +48,7 @@ public sealed class BrokerLauncherTests
 
         Assert.Equal(explanations.Length, explanations.Distinct(StringComparer.Ordinal).Count());
         Assert.Contains("%ProgramData%\\InterCat", explanations[1], StringComparison.Ordinal);
+        Assert.Contains("do not delete", explanations[1], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("99", explanations[3], StringComparison.Ordinal);
     }
 }

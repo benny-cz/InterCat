@@ -7,6 +7,16 @@ public sealed class BrokerRootSecurityTests
 {
     private const string UserSid = "S-1-5-21-11-22-33-1001";
 
+    [Fact(DisplayName = "R16: parent trust checks only its owner, even when ProgramData has unrelated SDDL rights")]
+    public void ParentOwnerDoesNotDependOnParsingItsAcl()
+    {
+        const string parent = "O:SYD:PAI(A;CI;DCLCRPCR;;;BU)";
+
+        Assert.Equal(BrokerRootSecurityPolicy.LocalSystemSid, BrokerSecurityDescriptorFacts.ParseOwner(parent));
+        Assert.Throws<InvalidDataException>(() => BrokerSecurityDescriptorFacts.Parse(parent));
+        Assert.Null(BrokerSecurityDescriptorFacts.ParseOwner("D:PAI(A;CI;DCLCRPCR;;;BU)"));
+    }
+
     [Fact(DisplayName = "R16: the production root grants only SYSTEM, Administrators and a read-only viewer")]
     public void ProductionDescriptorNamesOnlyItsThreeTrustees()
     {

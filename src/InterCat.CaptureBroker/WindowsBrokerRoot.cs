@@ -585,9 +585,11 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
                 + "the configured path and the opened directory must be the same directory.");
         }
 
-        string? owner = BrokerSecurityDescriptorFacts
-            .Parse(ReadSecurityDescriptor(parent, configuredParent))
-            .OwnerSid;
+        // Only the parent's owner is a trust decision. Parsing the parent's unrelated DACL could
+        // reject a normal Windows ACE (for example ProgramData's DCLCRPCR rendering) before the
+        // broker has even created or inspected its own protected root.
+        string? owner = BrokerSecurityDescriptorFacts.ParseOwner(
+            ReadSecurityDescriptor(parent, configuredParent, OwnerSecurityInformation));
         if (policy.RequireTrustedParentOwner && (owner is null || !policy.IsTrustedOwner(owner)))
         {
             throw new UnauthorizedAccessException(
@@ -839,12 +841,15 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
             : new(buffer, 0, (int)written);
     }
 
-    private static string ReadSecurityDescriptor(SafeFileHandle openHandle, string path)
+    private static string ReadSecurityDescriptor(
+        SafeFileHandle openHandle,
+        string path,
+        uint securityInformation = OwnerSecurityInformation | DaclSecurityInformation | LabelSecurityInformation)
     {
         uint status = GetSecurityInfo(
             openHandle,
             SeFileObject,
-            OwnerSecurityInformation | DaclSecurityInformation | LabelSecurityInformation,
+            securityInformation,
             out _,
             out _,
             out _,
@@ -860,7 +865,7 @@ public sealed partial class WindowsBrokerRoot : IOwnedDirectory, IDisposable
             if (!ConvertSecurityDescriptorToStringSecurityDescriptor(
                 descriptor,
                 SddlRevision1,
-                OwnerSecurityInformation | DaclSecurityInformation | LabelSecurityInformation,
+                securityInformation,
                 out nint text,
                 out _))
             {

@@ -882,6 +882,7 @@
         "R16: live chunk rollover under a free-disk floor never publishes past the reserve",
         "R16: only a single ordinary component is accepted as an owned name",
         "R16: ordinary-integrity viewer can read capture evidence but cannot modify it",
+        "R16: parent trust checks only its owner, even when ProgramData has unrelated SDDL rights",
         "R16: production provisioning requires an elevated broker",
         "R16: real evidence runtime duration stop becomes durable lifecycle status",
         "R16: recovery opening an absent capture directory never creates evidence",

@@ -137,6 +137,14 @@
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)"
                     Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
+            <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->
+            <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
+                       TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
+            <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto"
+                          AutomationProperties.Name="Capture status detail; scroll for the full reason">
+              <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
+                         Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            </ScrollViewer>
             <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False"
                     Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
             <!-- Pausing the view is not pausing the capture: recording continues and the newest view is offered (§6.2). -->
@@ -144,10 +152,6 @@
                     Click="ToggleFollow" AutomationProperties.Name="Pause or resume following the live capture" />
             <Button x:Name="OpenSavedSessionButton" Content="Open saved session"
                     Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
-            <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
-                       TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
-            <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
-                       Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
                        AutomationProperties.Name="How fresh the live view is" />

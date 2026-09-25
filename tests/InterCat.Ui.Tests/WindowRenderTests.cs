@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
@@ -15,6 +16,59 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class WindowRenderTests
 {
+    [AvaloniaTheory(DisplayName = "§3.1: a capture refusal stays visible at the minimum and review window sizes")]
+    [MemberData(nameof(Sizes))]
+    public void CaptureRefusalIsVisible(int width, int height)
+    {
+        var window = new MainWindow { Width = width, Height = height };
+        window.Show();
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture unavailable",
+            "The capture broker could not use its protected data folder. The session was not started; "
+            + "check the folder and retry, or open a saved session."));
+        Dispatch();
+
+        Button retry = window.GetControl<Button>("StartExploringButton");
+        Assert.Equal("Retry exploring (Ctrl+R)", retry.Content);
+        Assert.Equal("Capture unavailable", window.GetControl<TextBlock>("CaptureStatus").Text);
+        Assert.Contains("protected data folder", window.GetControl<TextBlock>("CaptureDetail").Text,
+            StringComparison.Ordinal);
+        Assert.Equal(window.GetControl<TextBlock>("CaptureDetail").Text, ToolTip.GetTip(retry));
+        Point buttonAt = retry.TranslatePoint(new(0, 0), window)!.Value;
+        Point statusAt = window.GetControl<TextBlock>("CaptureStatus").TranslatePoint(new(0, 0), window)!.Value;
+        Assert.True(statusAt.Y >= buttonAt.Y + retry.Bounds.Height,
+            "The failure must be explained immediately below the start/retry action.");
+
+        foreach (string name in new[] { "CaptureStatus", "CaptureDetail" })
+        {
+            TextBlock text = window.GetControl<TextBlock>(name);
+            Point location = text.TranslatePoint(new(0, 0), window)!.Value;
+            Assert.True(location.Y >= 0 && location.Y + text.Bounds.Height <= window.Bounds.Height,
+                $"{name} is at {location.Y:0.#}–{location.Y + text.Bounds.Height:0.#} of {window.Bounds.Height:0.#}");
+        }
+
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a long broker refusal cannot push the retry control or status offscreen")]
+    public void LongCaptureRefusalKeepsRetryVisible()
+    {
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture unavailable",
+            string.Concat(Enumerable.Repeat("The protected root failed its security read-back. ", 30))));
+        Dispatch();
+
+        foreach (string name in new[] { "StartExploringButton", "CaptureStatus" })
+        {
+            Control control = name == "StartExploringButton"
+                ? window.GetControl<Button>(name) : window.GetControl<TextBlock>(name);
+            Point point = control.TranslatePoint(new(0, 0), window)!.Value;
+            Assert.True(point.Y >= 0 && point.Y + control.Bounds.Height <= window.Bounds.Height);
+        }
+
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void FirstRunShowsEmptyWorkspaceAndFocusedStartAction()
     {

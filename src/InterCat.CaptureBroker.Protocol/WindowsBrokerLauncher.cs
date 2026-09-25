@@ -176,8 +176,9 @@ public static class WindowsBrokerLauncher
     public static string DescribeExit(int exitCode) => exitCode switch
     {
         2 => "The capture broker rejected how it was started. This InterCat installation may be damaged; reinstall it.",
-        3 => "The capture broker could not use its protected data folder, or its control pipe name was already taken. "
-            + "If %ProgramData%\\InterCat exists and was not created by InterCat, an administrator must remove it.",
+        3 => "The capture broker stopped while checking its protected data folder or opening its control pipe. "
+            + "Nothing was recorded. An administrator should inspect the exact broker error before changing "
+            + "%ProgramData%\\InterCat; do not delete that folder just to retry.",
         4 => "The capture broker's ownership log is unreadable. It was left untouched for diagnosis; live capture "
             + "cannot start until an administrator repairs or removes it.",
         6 => "Another live capture is already running on this computer. InterCat records one at a time: stop that "

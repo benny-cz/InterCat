@@ -158,7 +158,7 @@ public static class BrokerProcess
             or InvalidOperationException or InvalidDataException)
         {
             Diagnostic($"The broker's protected data folder could not be used: {exception.Message}");
-            Diagnostic("Run the broker elevated; if the folder exists with an untrusted owner, an administrator must remove it.");
+                Diagnostic("Check the error above before changing the protected folder. Do not delete it just to retry.");
             return (int)InterCatExitCode.PermissionOrCapabilityFailure;
         }
 

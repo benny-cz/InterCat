@@ -115,6 +115,18 @@ public sealed record BrokerSecurityDescriptorFacts(
         return new(owner, daclPresent, daclProtected, daclAces, saclAces);
     }
 
+    /// <summary>
+    /// Read only the parent directory's owner. Its inherited ACL is not the broker root's policy and
+    /// Windows may render rights there using object-specific SDDL tokens that root validation need
+    /// not understand. The root itself still goes through the complete, fail-closed parser above.
+    /// </summary>
+    public static string? ParseOwner(string sddl)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sddl);
+        Dictionary<char, string> components = SplitComponents(sddl);
+        return components.TryGetValue('O', out string? owner) ? CanonicalizeSid(owner) : null;
+    }
+
     /// <summary>The one mandatory label, or null when the descriptor carries none.</summary>
     public BrokerSecurityAce? MandatoryLabel =>
         SystemAces.SingleOrDefault(ace => ace.AceType.Equals("ML", StringComparison.OrdinalIgnoreCase));
