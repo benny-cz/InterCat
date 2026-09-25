@@ -114,9 +114,9 @@ public sealed class EvidenceRungWindowTests
         string whole = workspace.RungRows.Single().Observations;
 
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
-        double plot = timeline.Bounds.Width - 52;
-        Avalonia.Point from = timeline.TranslatePoint(new(38 + (0.10 * plot), timeline.Bounds.Height / 2), window)!.Value;
-        Avalonia.Point to = timeline.TranslatePoint(new(38 + (0.40 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        double plot = timeline.PlotSpan;
+        Avalonia.Point from = timeline.TranslatePoint(new(timeline.PlotStart + (0.10 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        Avalonia.Point to = timeline.TranslatePoint(new(timeline.PlotStart + (0.40 * plot), timeline.Bounds.Height / 2), window)!.Value;
         window.MouseDown(from, MouseButton.Left, RawInputModifiers.Shift);
         window.MouseMove(new(from.X + 20, from.Y), RawInputModifiers.Shift);
         window.MouseMove(to, RawInputModifiers.Shift);
@@ -263,12 +263,14 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
 
         SessionTimelineDetail detail = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.True(timeline.Bounds.Width > 200 && timeline.Bounds.Height > 80,
+            $"Timeline must be laid out inside its scroller: {timeline.Bounds}");
         Assert.Equal(timeline.Viewport, detail.Interval);
         Assert.Equal(workspace.DisplayedGeneration, detail.Generation);
         Assert.True(detail.Buckets.Count >= 16);
 
         // A press selects the bucket drawn under it, which is the viewport's own, finer than the overview's there.
-        Point centre = timeline.TranslatePoint(new(38 + ((timeline.Bounds.Width - 52) / 2), timeline.Bounds.Height / 2), window)!.Value;
+        Point centre = timeline.TranslatePoint(new(timeline.PlotStart + (timeline.PlotSpan / 2), timeline.Bounds.Height / 2), window)!.Value;
         window.MouseDown(centre, MouseButton.Left);
         window.MouseUp(centre, MouseButton.Left);
         Dispatch();
@@ -283,6 +285,43 @@ public sealed class EvidenceRungWindowTests
         timeline.RequestDetailNow();
         await workspace.TimelineDetailReady;
         Assert.Null(workspace.TimelineDetail);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.2: a zoomed mechanism lane hovers and selects its own fine bucket")]
+    public async Task AZoomedMechanismLaneUsesItsOwnBucket()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with
+        { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        Assert.True(workspace.ShowsMechanismLanes);
+        TimeRange extent = timeline.Viewport;
+        timeline.SetViewport(new TimeRange(extent.StartTicks + extent.SpanTicks / 4,
+            extent.EndTicks - extent.SpanTicks / 4));
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+
+        SessionTimelineDetail detail = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        MechanismTimelineLane tcp = Assert.Single(detail.MechanismLanes, lane => lane.Mechanism == Mechanism.Tcp);
+        TimelineBucket bucket = tcp.Buckets.First(candidate => candidate.ObservationCount > 0);
+        Point at = timeline.TranslatePoint(timeline.PointOf(bucket)!.Value, window)!.Value;
+        window.MouseMove(at);
+        Dispatch();
+        Assert.Equal(bucket, timeline.HoveredBucket);
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.Contains("TCP lane", card.Lines[0], StringComparison.Ordinal);
+        Assert.Contains(card.Lines, line => line.Contains("this view's own count", StringComparison.Ordinal));
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(bucket.Interval, workspace.SelectedInterval);
         window.Close();
     }
 
@@ -307,9 +346,9 @@ public sealed class EvidenceRungWindowTests
         window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
         Assert.Equal(workspace.Snapshot.Extent.StartTicks, timeline.Viewport.StartTicks);
 
-        double plot = timeline.Bounds.Width - 52;
-        Point from = timeline.TranslatePoint(new(38 + (0.6 * plot), timeline.Bounds.Height / 2), window)!.Value;
-        Point to = timeline.TranslatePoint(new(38 + (0.3 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        double plot = timeline.PlotSpan;
+        Point from = timeline.TranslatePoint(new(timeline.PlotStart + (0.6 * plot), timeline.Bounds.Height / 2), window)!.Value;
+        Point to = timeline.TranslatePoint(new(timeline.PlotStart + (0.3 * plot), timeline.Bounds.Height / 2), window)!.Value;
         window.MouseDown(from, MouseButton.Left);
         window.MouseMove(to);
         window.MouseUp(to, MouseButton.Left);
@@ -357,7 +396,7 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal(selected, workspace.SelectedInterval);
 
         // + zooms around the analysis interval, which keeps its place on screen, not around the viewport's centre.
-        double plot = timeline.Bounds.Width - 52;
+        double plot = timeline.PlotSpan;
         long middle = selected.StartTicks + (selected.SpanTicks / 2);
         window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
         Assert.Equal(ViewportMath.ZoomAtPixel(extent, ViewportMath.PixelAtTick(extent, middle, plot), plot, 1.25m, extent, 100_000),
@@ -372,7 +411,7 @@ public sealed class EvidenceRungWindowTests
 
         // A sideways wheel and Shift with the wheel pan a tenth of the span per notch, and never zoom.
         before = timeline.Viewport;
-        Point onPlot = timeline.TranslatePoint(new(38 + (plot / 2), timeline.Bounds.Height / 2), window)!.Value;
+        Point onPlot = timeline.TranslatePoint(new(timeline.PlotStart + (plot / 2), timeline.Bounds.Height / 2), window)!.Value;
         window.MouseWheel(onPlot, new Vector(-1, 0));
         Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
         Assert.Equal(before.StartTicks + (before.SpanTicks / 10), timeline.Viewport.StartTicks);
@@ -425,8 +464,8 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         TimeRange fit = timeline.Viewport;
-        double plot = timeline.Bounds.Width - 52;
-        var centre = new Point(38 + (0.4 * plot), timeline.Bounds.Height / 2);
+        double plot = timeline.PlotSpan;
+        var centre = new Point(timeline.PlotStart + (0.4 * plot), timeline.Bounds.Height / 2);
 
         // Every scale of one gesture applies to the viewport it began from: 1.5 and then 2 is a zoom of 2, not of 3.
         timeline.RaiseEvent(new PinchEventArgs(1.5, centre));
@@ -452,10 +491,10 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         TimeRange fit = timeline.Viewport;
-        double plot = timeline.Bounds.Width - 52;
+        double plot = timeline.PlotSpan;
         double pixel = 0.3 * plot;
         long under = ViewportMath.TickAtPixel(fit, pixel, plot);
-        Point at = timeline.TranslatePoint(new(38 + pixel, timeline.Bounds.Height / 2), window)!.Value;
+        Point at = timeline.TranslatePoint(new(timeline.PlotStart + pixel, timeline.Bounds.Height / 2), window)!.Value;
 
         window.MouseDown(at, MouseButton.Left);
         window.MouseUp(at, MouseButton.Left);

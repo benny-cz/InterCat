@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -30,8 +31,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     private const double BrushThreshold = 4;
 
     /// <summary>The plot's margins: the axis label gutter on the left and a little air on the right.</summary>
-    private const double PlotLeft = 38;
+    private const double AggregatePlotLeft = 38;
+    private const double LanePlotLeft = 118;
     private const double PlotRightMargin = 14;
+    private const double PlotTop = 24;
+    private const double PlotBottomMargin = 30;
+    private const double MinimumLaneHeight = 30;
 
     /// <summary>The narrowest viewport a zoom may reach: 10 ms of presentation ticks, or the extent when shorter.</summary>
     private const long MinimumSpanTicks = 100_000;
@@ -101,7 +106,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     private TimeRange Extent => (DataContext as WorkspaceViewModel)?.Snapshot.Extent ?? new TimeRange(0, 1);
 
+    private bool ShowingLanes => DataContext is WorkspaceViewModel { ShowsMechanismLanes: true };
+
+    private double PlotLeft => ShowingLanes ? LanePlotLeft : AggregatePlotLeft;
+
     private double PlotWidth => Math.Max(1, Bounds.Width - PlotLeft - PlotRightMargin);
+
+    /// <summary>The plotted span in control coordinates, shared with precise headless gesture checks.</summary>
+    internal double PlotStart => PlotLeft;
+    internal double PlotSpan => PlotWidth;
 
     /// <summary>
     /// Shows a range, clamped inside the retained extent; null, or the whole extent, fits it. Every viewport change
@@ -143,6 +156,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         base.OnDataContextChanged(e);
 
         // A newer generation replaces the view model: the zoomed range stays, and its detail is asked for again.
+        RefreshLaneLayout();
         RequestDetailNow();
         InvalidateVisual();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
@@ -155,6 +169,20 @@ public sealed class TimelineView : Control, IHoverCardSource
         detailTimer.Start();
     }
 
+    /// <summary>
+    /// Keep every observed mechanism addressable. A long list grows inside the pane's vertical ScrollViewer instead
+    /// of compressing records into unpointable slivers; the aggregate view keeps its ordinary stretch height.
+    /// </summary>
+    internal void RefreshLaneLayout()
+    {
+        double minimum = ShowingLanes
+            ? PlotTop + PlotBottomMargin + ((DataContext as WorkspaceViewModel)!.Snapshot.MechanismLanes.Count * MinimumLaneHeight)
+            : 0;
+        if (Math.Abs(MinHeight - minimum) < 0.1) return;
+        MinHeight = minimum;
+        InvalidateMeasure();
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -163,15 +191,19 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
 
+        // An empty interval is still a selectable answer. Paint a transparent hit surface so the scroller does not
+        // take clicks that land between the lane's bars or over a genuinely empty column.
+        context.DrawRectangle(Brushes.Transparent, null, new Rect(Bounds.Size));
+
         TimeRange visible = Viewport;
         double left = PlotLeft;
         double right = Math.Max(left + 1, Bounds.Width - PlotRightMargin);
-        double top = 24;
-        double bottom = Math.Max(top + 1, Bounds.Height - 30);
+        double top = PlotTop;
+        double bottom = Math.Max(top + 1, Bounds.Height - PlotBottomMargin);
         double plotWidth = right - left;
         double plotHeight = bottom - top;
         context.DrawLine(new Pen(GridBrush, 1), new(left, bottom), new(right, bottom));
-        for (int line = 1; line <= 3; line++)
+        for (int line = 1; !ShowingLanes && line <= 3; line++)
         {
             double y = top + (plotHeight * line / 4);
             context.DrawLine(new Pen(GridBrush, 0.7), new(left, y), new(right, y));
@@ -182,18 +214,43 @@ public sealed class TimelineView : Control, IHoverCardSource
         // side by side are drawn on one honest scale rather than by counts over unequal widths (§6.2).
         SessionTimelineDetail? detail = viewModel.TimelineDetail is { } answered && Intersects(answered.Interval, visible)
             ? answered : null;
+        if (ShowingLanes && detail is not null
+            && (detail.MechanismLanes.Count != viewModel.Snapshot.MechanismLanes.Count
+                || viewModel.Snapshot.MechanismLanes.Any(lane =>
+                    !detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane.Mechanism))))
+        {
+            // A carried or older detail with only some lanes cannot replace an interval for every row or share an
+            // honest peak scale with the remaining coarse rows. Keep the complete overview until detail catches up.
+            detail = null;
+        }
         TimelineBucket[] coarse = [.. viewModel.Snapshot.Timeline
             .Where(bucket => Intersects(bucket.Interval, visible)
                 && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
         TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
-        double maximumRate = coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
+        double maximumRate = ShowingLanes
+            ? viewModel.Snapshot.MechanismLanes.SelectMany(lane => lane.Buckets)
+                .Where(bucket => Intersects(bucket.Interval, visible)
+                    && (detail is null || !Inside(bucket.Interval, detail.Interval)))
+                .Concat(detail?.MechanismLanes.SelectMany(lane => lane.Buckets)
+                    .Where(bucket => Intersects(bucket.Interval, visible)) ?? [])
+                .Select(Rate).DefaultIfEmpty(0).Max()
+            : coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
         peakRate = maximumRate;
 
         // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
         bool focused = viewModel.TimelineShowsFocus;
         var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused);
-        if (detail is null)
+        if (ShowingLanes)
+        {
+            DrawMechanismLanes(context, viewModel, detail, scale);
+            if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
+            {
+                string note = $"zoomed detail from generation {detail.Generation:N0}";
+                DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
+            }
+        }
+        else if (detail is null)
         {
             DrawBuckets(context, viewModel, coarse, scale);
         }
@@ -241,21 +298,59 @@ public sealed class TimelineView : Control, IHoverCardSource
             // The hovered bucket is outlined in ink over its whole column, lighter than the selection's accent.
             double x1 = scale.X(Math.Max(hovered.Interval.StartTicks, visible.StartTicks));
             double x2 = scale.X(Math.Min(hovered.Interval.EndTicks, visible.EndTicks));
+            Rect row = HoveredLaneIndex is { } index
+                ? LaneRow(index, viewModel.Snapshot.MechanismLanes.Count, top, bottom)
+                : new Rect(left, top, plotWidth, bottom - top);
             using (context.PushOpacity(0.5))
             {
-                context.DrawRectangle(Brushes.Transparent, HoverPen, new Rect(x1 - 1, top, Math.Max(2, x2 - x1), bottom - top));
+                context.DrawRectangle(Brushes.Transparent, HoverPen,
+                    new Rect(x1 - 1, row.Top, Math.Max(2, x2 - x1), row.Height));
             }
         }
     }
 
     /// <summary>The bucket drawn under the pointer, if it rests on the plot; hover never changes selection (§6.4).</summary>
-    internal TimelineBucket? HoveredBucket => hoverTick is { } tick && DataContext is WorkspaceViewModel viewModel
-        ? BucketAt(viewModel, tick)
-        : null;
+    internal TimelineBucket? HoveredBucket
+    {
+        get
+        {
+            if (hoverTick is not { } tick || DataContext is not WorkspaceViewModel viewModel)
+            {
+                return null;
+            }
+
+            if (HoveredLaneIndex is not { } index)
+            {
+                return ShowingLanes ? null : BucketAt(viewModel, tick);
+            }
+
+            Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
+            IReadOnlyList<MechanismTimelineLane> lanes = viewModel.TimelineDetail is { } detail
+                && detail.Interval.Contains(tick)
+                && detail.MechanismLanes.Count == viewModel.Snapshot.MechanismLanes.Count
+                && viewModel.Snapshot.MechanismLanes.All(lane =>
+                    detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane.Mechanism))
+                    ? detail.MechanismLanes : viewModel.Snapshot.MechanismLanes;
+            return lanes.FirstOrDefault(lane => lane.Mechanism == mechanism)?.Buckets
+                .FirstOrDefault(bucket => bucket.Interval.Contains(tick));
+        }
+    }
+
+    private int? HoveredLaneIndex => hoverTick is not null ? LaneIndexAt(hoverPoint.Y) : null;
+
+    private int? LaneIndexAt(double y)
+    {
+        if (!ShowingLanes || DataContext is not WorkspaceViewModel viewModel) return null;
+        int count = viewModel.Snapshot.MechanismLanes.Count;
+        double bottom = Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
+        if (count == 0 || y < PlotTop || y >= bottom) return null;
+        return Math.Clamp((int)((y - PlotTop) * count / (bottom - PlotTop)), 0, count - 1);
+    }
 
     /// <summary>The card the hovered bucket draws, as the view model describes it against the visible peak.</summary>
     public HoverCard? HoverCard => HoveredBucket is { } bucket && DataContext is WorkspaceViewModel viewModel
-        ? viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond)
+        ? viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
+            HoveredLaneIndex is { } index ? viewModel.Snapshot.MechanismLanes[index].Mechanism : null)
         : null;
 
     /// <inheritdoc />
@@ -271,8 +366,17 @@ public sealed class TimelineView : Control, IHoverCardSource
         TimeRange visible = Viewport;
         if (!Intersects(bucket.Interval, visible)) return null;
         long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
+        int index = ShowingLanes && DataContext is WorkspaceViewModel viewModel
+            ? viewModel.Snapshot.MechanismLanes.ToList().FindIndex(lane => lane.Buckets.Contains(bucket)
+                || viewModel.TimelineDetail?.MechanismLanes.Any(detailLane => detailLane.Mechanism == lane.Mechanism
+                    && detailLane.Buckets.Contains(bucket)) == true)
+            : -1;
+        double y = index >= 0 && DataContext is WorkspaceViewModel machine
+            ? LaneRow(index, machine.Snapshot.MechanismLanes.Count, PlotTop,
+                Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y
+            : Math.Max(PlotTop, Bounds.Height - 40);
         return new(PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
-            Math.Max(24, Bounds.Height - 40));
+            y);
     }
 
     /// <summary>Records per presentation tick: what a bar's height states, comparable across bucket widths.</summary>
@@ -338,6 +442,90 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (bucket.Coverage != CoverageState.Covered)
             {
                 DrawCoverageGap(context, new(x1, scale.Top, width, plotHeight));
+            }
+        }
+    }
+
+    private static Rect LaneRow(int index, int count, double top, double bottom)
+    {
+        double height = (bottom - top) / Math.Max(1, count);
+        return new Rect(0, top + (index * height), 1, height);
+    }
+
+    /// <summary>One L0 row per observed mechanism, all on the same visible rate scale and time columns.</summary>
+    private static void DrawMechanismLanes(
+        DrawingContext context, WorkspaceViewModel viewModel, SessionTimelineDetail? detail, BarScale scale)
+    {
+        IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
+        for (int index = 0; index < lanes.Count; index++)
+        {
+            MechanismTimelineLane lane = lanes[index];
+            Rect row = LaneRow(index, lanes.Count, scale.Top, scale.Bottom);
+            double baseline = row.Bottom - 5;
+            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+                new(scale.Left + scale.PlotWidth, row.Bottom));
+            context.DrawRectangle(BrushFor(lane.Mechanism), null, new Rect(8, row.Center.Y - 3, 6, 6));
+            DrawText(context, EvidenceRowText.MechanismName(lane.Mechanism), new(19, row.Center.Y - 7));
+            var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
+                row.Top + 3, baseline, scale.MaximumRate, Focused: false);
+
+            TimelineBucket[] coarse = [.. lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible))];
+            MechanismTimelineLane? detailLane = detail?.MechanismLanes
+                .FirstOrDefault(candidate => candidate.Mechanism == lane.Mechanism);
+            if (detail is null || detailLane is null)
+            {
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+                continue;
+            }
+
+            double x1 = laneScale.X(Math.Max(detail.Interval.StartTicks, scale.Visible.StartTicks));
+            double x2 = laneScale.X(Math.Min(detail.Interval.EndTicks, scale.Visible.EndTicks));
+            using (context.PushClip(new Rect(scale.Left, row.Top, Math.Max(0, x1 - scale.Left), row.Height)))
+            {
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+            }
+
+            using (context.PushClip(new Rect(x2, row.Top, Math.Max(0, scale.Left + scale.PlotWidth - x2), row.Height)))
+            {
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+            }
+
+            using (context.PushClip(new Rect(x1, row.Top, Math.Max(0, x2 - x1), row.Height)))
+            {
+                DrawLaneSeries(context, viewModel, lane.Mechanism,
+                    detailLane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible)), laneScale, row);
+            }
+        }
+    }
+
+    private static void DrawLaneSeries(DrawingContext context, WorkspaceViewModel viewModel,
+        Mechanism mechanism, IEnumerable<TimelineBucket> buckets, BarScale scale, Rect row)
+    {
+        foreach (TimelineBucket bucket in buckets)
+        {
+            double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
+            double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
+            double width = Math.Max(1, x2 - x1 - 2);
+            if (bucket.ObservationCount > 0)
+            {
+                Rect measured = scale.Bar(bucket);
+                double height = Math.Max(measured.Height, (scale.Bottom - scale.Top) * 0.42);
+                Rect bar = new(measured.X, scale.Bottom - height, measured.Width, height);
+                context.DrawRectangle(BrushFor(mechanism), null, bar);
+                if (viewModel.SelectedInterval == bucket.Interval)
+                {
+                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), bar.Inflate(1));
+                }
+            }
+
+            if (bucket.Coverage != CoverageState.Covered)
+            {
+                // Unknown live coverage is a thin hatched strip, not a claimed loss spanning every observed bar.
+                // A measured defect remains hatched through the row; neither changes the observed count.
+                Rect coverage = bucket.Coverage == CoverageState.UnknownCoverage
+                    ? new Rect(x1, row.Bottom - 5, width, 5)
+                    : new Rect(x1, row.Top, width, row.Height);
+                DrawCoverageGap(context, coverage);
             }
         }
     }
@@ -442,6 +630,12 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
 
+        if (ShowingLanes && e.GetPosition(this).X < PlotLeft)
+        {
+            // The surrounding ScrollViewer owns vertical lane scrolling over the lane-name gutter (§6.2).
+            return;
+        }
+
         // A horizontal wheel, a two-finger horizontal scroll or Shift with the wheel pans a tenth of the span per notch;
         // the vertical wheel zooms at the pointer (§6.7).
         bool horizontal = Math.Abs(e.Delta.X) > Math.Abs(e.Delta.Y);
@@ -503,6 +697,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         PointerPoint point = e.GetCurrentPoint(this);
+        if (!OnPlot(point.Position)) return;
         if (hoverTick is not null)
         {
             // A press begins a gesture; its card would describe a bucket the gesture is about to change.
@@ -532,7 +727,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             // No press: the pointer only explains the bucket under it, and the card follows it across the plot.
             Point position = e.GetPosition(this);
-            long? tick = OnPlot(position) ? TickAt(position.X) : null;
+            long? tick = OnPlot(position) && (!ShowingLanes || LaneIndexAt(position.Y) is not null)
+                ? TickAt(position.X) : null;
             if (tick != hoverTick || (tick is not null && position != hoverPoint))
             {
                 hoverTick = tick;
@@ -615,7 +811,8 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>Whether a point lies on the plot, between the axis gutter, the right margin, the rate label and the axis.</summary>
     private bool OnPlot(Point point) =>
-        point.X >= PlotLeft && point.X <= PlotLeft + PlotWidth && point.Y >= 24 && point.Y <= Math.Max(25, Bounds.Height - 30);
+        point.X >= PlotLeft && point.X <= PlotLeft + PlotWidth && point.Y >= PlotTop
+        && point.Y <= Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
@@ -652,6 +849,22 @@ public sealed class TimelineView : Control, IHoverCardSource
         TimeRange? next;
         switch (key)
         {
+            case Key.Up:
+            case Key.Down:
+            case Key.PageUp:
+            case Key.PageDown:
+                if (!ShowingLanes) return false;
+                ScrollViewer? scroller = this.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
+                if (scroller is null) return false;
+                double distance = key is Key.PageUp or Key.PageDown
+                    ? Math.Max(MinimumLaneHeight, scroller.Viewport.Height - MinimumLaneHeight)
+                    : (Bounds.Height - PlotTop - PlotBottomMargin)
+                        / Math.Max(1, viewModel.Snapshot.MechanismLanes.Count);
+                double direction = key is Key.Up or Key.PageUp ? -1 : 1;
+                double limit = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+                scroller.Offset = new Vector(scroller.Offset.X,
+                    Math.Clamp(scroller.Offset.Y + (direction * distance), 0, limit));
+                return true;
             case Key.Home:
                 next = new TimeRange(extent.StartTicks, extent.StartTicks + current.SpanTicks);
                 break;

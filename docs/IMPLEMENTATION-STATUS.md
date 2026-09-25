@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 118 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 119 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -12,8 +12,9 @@ The product contract and milestone gates remain in [the implementation plan](des
 M0 and its IC-010a capture-impact follow-on are complete on the measured development build. M1's journal, profiles,
 physical store, commit/recovery, and leases exist, but canonical import reuse, operation/entity checkpointing, and
 mechanism breadth remain. M2 has a real broker-driven Explore and saved-session Desktop flow, a navigable real
-overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline; per-rung
-timeline lanes, the operation view and the steady-state feedback budget are open. M3–M5 are not complete. Two of §11.3's three sharing
+overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline, and interactive
+L0 mechanism lanes; deeper-rung timeline lanes, the operation view and the steady-state feedback budget are open.
+M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
 does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
@@ -46,13 +47,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, L0 mechanism lane data from the overview scan, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Draw and interact with the L0 lanes; derive bounded L1–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes with shared scale, per-lane coverage, hover/selection and keyboard/wheel scrolling, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Derive bounded L1–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. Audit lane accessibility and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 119 — draw and interact with L0 mechanism lanes (§3.2, §6.2):** The machine timeline now uses the
+  overview's exact per-mechanism bucket series. Rows share a visible rate scale but retain their own coverage;
+  unknown coverage does not paint an entire observed bar as lost. Hover names the mechanism, exact interval, count,
+  coverage and scale; click selects that interval. Zoomed detail replaces the coarse columns for every lane together,
+  with a complete-overview fallback for partial detail. The label gutter scrolls long lane lists by wheel, and
+  Up/Down/Page Up/Page Down work from the focused timeline without changing time. Headless tests cover separate lane
+  hits, zoomed lane detail, selection and scrolling at 1080×700. The user's finalized Explore session also passed the
+  opt-in real-session lane hover check. **936 passed, 1 skipped** in both Debug and Release.
 - **Revision 118 — qualify the repaired Desktop Explore and clarify live coverage (§3.1, §6.3):** The user opened
   the rebuilt Desktop, captured, stopped/saved and closed successfully. Its final generation held **12,976 source
   observations**, a coverage ledger and **two admitted graph relationships**; the opt-in real-session UI test passed.
@@ -74,8 +83,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   every whole-timeline bucket without a second segment scan. The existing overview separately counts rows without
   session time; they cannot be placed in any lane. Coverage
   is queried for each lane's own mechanism even in an empty bucket; the whole timeline's dominant hue is never used to
-  infer a lane's coverage. The workspace carries these immutable series through interval re-ranking. **Rendering and
-  lane interaction are the next slice**, not claimed here. One new Application test; **928 passed, 1 skipped** in both
+  infer a lane's coverage. The workspace carries these immutable series through interval re-ranking. Rendering and
+  lane interaction followed in revision 119. One new Application test; **928 passed, 1 skipped** in both
   Debug and Release.
 - **Revision 115 — bounded, privacy-aware Desktop search (§6.7):** Ctrl+F focuses an always-visible search field;
   groups, processes and channels rank by exact/prefix/substring metadata match, and a bounded list states the full
@@ -221,11 +230,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Render the L0 mechanism lanes now available from revision 116 in a bounded, accessible, hit-testable timeline.
-   Then give each deeper rung its own lanes (§3.2's timeline column): a lane per group, instance, or channel end,
+1. Give each deeper rung its own lanes (§3.2's timeline column): a lane per group, instance, or channel end,
    within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include operation/byte
    projections where derivations actually support them, and state unavailable where they do not. The focus overlay
-   from revision 112 is the single-lane step toward this.
+   from revision 112 is the single-lane step toward this; revision 119 provides the L0 renderer. Audit keyboard and
+   screen-reader access to individual lane names, and add pin/collapse/search as the observed lane count requires.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
@@ -241,7 +250,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 118): **933 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 119): **936 passed, 1 skipped, in Debug and Release**, zero failures.
+  - Revision 119 adds two lane UI cases and one zoomed-detail UI case (+3). The user's finalized Desktop
+    Explore session passed the opt-in mechanism-lane hover check in a separate Release run.
   - Revision 118 added one Desktop zero-edge regression (+1) and updated UI legend/loss assertions. The user's
     finalized Desktop Explore session passed the opt-in real-session UI check in a separate Release run.
   - Revision 117 added one broker-security regression and three UI refusal-layout cases (+4). An initial Release

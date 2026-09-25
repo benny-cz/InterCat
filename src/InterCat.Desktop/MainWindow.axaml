@@ -300,17 +300,21 @@
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
-                         Text="Wheel or double-click zooms · drag, arrows or Shift+wheel pan · [ ] step · 0 fits"
+                         Text="Wheel or double-click zooms · drag or ←→ pan · ↑↓ lanes · [ ] step · 0 fits"
                          Classes="muted" FontSize="11" VerticalAlignment="Center" TextAlignment="Right"
                          TextTrimming="CharacterEllipsis"
-                         ToolTip.Tip="Wheel zooms at the pointer and a double click zooms in twice as far there. A drag, the arrow keys, a horizontal wheel or Shift with the wheel pan; Shift with an arrow moves one bucket. + and - zoom around the analysis interval. [ and ] step to the previous or next record. Home and End go to the session's edges, and 0 fits the analysis interval or the whole session. Shift+drag brushes a range; a click selects a bucket." />
+                         ToolTip.Tip="Wheel zooms at the pointer and a double click zooms in twice as far there. A drag, left/right arrows, a horizontal wheel or Shift with the wheel pan; Shift with a left/right arrow moves one bucket. At the mechanism overview, up/down scroll one lane and Page Up/Down scroll a page. + and - zoom around the analysis interval. [ and ] step to the previous or next record. Home and End go to the session's edges, and 0 fits the analysis interval or the whole session. Shift+drag brushes a range; a click selects a bucket." />
               <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding TimelineCaption}"
                          Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
                          ToolTip.Tip="{Binding TimelineCaption}" AutomationProperties.Name="{Binding TimelineCaption}" />
             </Grid>
           </Border>
-          <local:TimelineView x:Name="TimelineSurface" Grid.Row="1" Focusable="True"
-                              AutomationProperties.Name="Activity timeline" />
+          <!-- The plot handles time gestures; the left lane-label gutter lets the parent scroll long lane lists. -->
+          <ScrollViewer x:Name="TimelineLaneScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                        AutomationProperties.Name="Timeline lanes; scroll over the lane names for more rows">
+            <local:TimelineView x:Name="TimelineSurface" Focusable="True"
+                                AutomationProperties.Name="Activity timeline" />
+          </ScrollViewer>
           <Border Grid.Row="2" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
             <local:MinimapView x:Name="MinimapSurface" Margin="0,4,0,2" Focusable="True"
                                AutomationProperties.Name="Whole-session minimap"

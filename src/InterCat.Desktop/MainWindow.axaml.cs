@@ -875,6 +875,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateHeldBanner();
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();
+        TimelineSurface.RefreshLaneLayout();
         TimelineSurface.InvalidateVisual();
         MinimapSurface.InvalidateVisual();
     }

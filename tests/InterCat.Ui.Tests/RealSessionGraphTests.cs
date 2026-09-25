@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using InterCat.Application;
@@ -75,6 +76,22 @@ public sealed class RealSessionGraphTests
         Dispatch();
         report.AppendLine(CultureInfo.InvariantCulture,
             $"window opened the workspace in {opened} ms; layout applied {clock.ElapsedMilliseconds} ms after");
+
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        Assert.NotEmpty(snapshot.MechanismLanes);
+        Assert.True(viewModel.ShowsMechanismLanes);
+        report.AppendLine(CultureInfo.InvariantCulture,
+            $"timeline: {snapshot.MechanismLanes.Count} exact mechanism lanes, {timeline.Bounds.Width:0} × {timeline.Bounds.Height:0} px");
+        foreach (MechanismTimelineLane lane in snapshot.MechanismLanes)
+        {
+            TimelineBucket bucket = lane.Buckets.First(candidate => candidate.ObservationCount > 0);
+            Point point = timeline.TranslatePoint(timeline.PointOf(bucket)!.Value, window)!.Value;
+            window.MouseMove(point);
+            Dispatch();
+            Assert.Equal(bucket, timeline.HoveredBucket);
+            Assert.Contains(EvidenceRowText.MechanismName(lane.Mechanism),
+                Assert.IsType<HoverCard>(timeline.HoverCard).Lines[0], StringComparison.Ordinal);
+        }
 
         GraphDisplay display = viewModel.GraphDisplay;
         AssertComplete(overview, display);

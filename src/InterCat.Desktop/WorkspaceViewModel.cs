@@ -494,12 +494,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public IReadOnlyList<TimelineBucket>? TimelineFocusBuckets => timelineFocusBuckets;
 
+    /// <summary>L0 is the only rung with exact mechanism lane data so far.</summary>
+    public bool ShowsMechanismLanes => ladder.Current.Level == DetailLevel.Machine
+        && wholeSnapshot.MechanismLanes.Count > 0;
+
     /// <summary>Whether the timeline draws the rung's focus in colour over the rest of the machine in grey.</summary>
     public bool TimelineShowsFocus => timelineFocus is not null && timelineFocusProblem is null;
 
     /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
     public string TimelineCaption => timelineFocusDescription is not { } focus
-        ? "Observed records · Shift+drag brushes a range · unknown stays unknown"
+        ? ShowsMechanismLanes
+            ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes · scroll names for more · Shift+drag brushes"
+            : "Observed records · Shift+drag brushes a range · unknown stays unknown"
         : timelineFocusProblem is { } problem
             ? $"{focus} could not be counted: {problem.TrimEnd('.')}. Every observed record is shown."
             : timelineFocusLoading && timelineFocusBuckets is null
@@ -1857,18 +1863,22 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// unmeasured, its coverage, and the scale its height is read against: <paramref name="peakPerSecond"/>, the busiest
     /// visible bar. Hover only describes; it never selects or brushes.
     /// </summary>
-    public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond)
+    public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond, Mechanism? lane = null)
     {
         ArgumentNullException.ThrowIfNull(bucket);
-        bool zoomed = timelineDetail is { } detail && detail.Buckets.Contains(bucket);
+        bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
+            || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket)));
         string mechanism = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
         double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
         var lines = new List<string>
         {
             bucket.ObservationCount == 0
                 ? "No record observed · an empty bucket is not proof of inactivity"
-                : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · mostly {mechanism}",
-            realOverview
+                : Counted(bucket.ObservationCount, "observed record", "observed records")
+                    + (lane is { } selected ? $" · {EvidenceRowText.MechanismName(selected)} lane" : $" · mostly {mechanism}"),
+            lane is { } laneMechanism
+                ? $"Basis: source observations · unit: records · domain: {EvidenceRowText.MechanismName(laneMechanism)} records with session time · accounting: not applicable to a count"
+                : realOverview
                 ? "Basis: source observations · unit: records · domain: every admitted record with a session time, all "
                     + "mechanisms · accounting: not applicable to a count"
                 : "Basis: source observations · unit: records · domain: the tour's records · accounting: not applicable to a count",
@@ -1881,7 +1891,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 : $"{focus}: being counted");
         }
 
-        lines.Add($"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}");
+        lines.Add(lane is null
+            ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
+            : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
         lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
         lines.Add(bucket.KnownBytes is { } bytes
             ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
