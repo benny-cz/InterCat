@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 126 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 127 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -57,6 +57,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 127 — §6.8's latency windows measured, and one fixed (§6.8, M2 gate):**
+  - **Benchmark:** an opt-in benchmark (`INTERCAT_LATENCY_OUTPUT`) drives the real window over 100,000 and 1,000,000
+    synthetic records and the saved Explore session. It times canvas cost per pan, zoom and hover, recorded without
+    rasterizing. It also times level changes, a brush and a search from gesture to answer.
+  - **Found and fixed:** each generation's workspace opened a fresh store, and a fresh store hashes every file its
+    generation names. That cost about 0.4 s at a million records before the first answer of each live publication and
+    reopen. `SharedSessionStores` now gives a session's workspaces one verified store.
+  - **Result at 1M records** (`bench/results/interaction-latency-20260925T204410Z`):
+
+    | Window | Measured |
+    |---|---|
+    | Pan canvas p95 | 9.7 ms |
+    | Zoom canvas p95 | 7.8 ms |
+    | Hover p95 | 26 ms |
+    | Group level change | 799 ms, was 1,328 ms |
+    | Brush to ranking | 342 ms |
+
+    Every window is within budget. The real session answers within 51 ms. Opening at 1M records still takes 1.55 s.
+  - **Also fixed:** the opt-in real-session report timed the L1 group count at the end of its checks rather than on
+    arrival. The corrected times are 261 ms for the group, about 196 ms for L2 and 72 ms for L3, instead of the
+    reported 1.17 s.
+  - **Tests:** one Desktop test of the shared store (+1); the benchmark is opt-in and reports skipped without its
+    variable.
 - **Revision 126 — the live edge, and §12's steady-state budget met (§6.2, §12, §19.3):**
   - **Drawing:** while the view follows a recording, the time after the last published record takes the plot's right
     edge beyond a dashed rule. It carries the broker preview's chunks after those shown, in 100 ms bins at half
@@ -321,21 +344,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Make large sessions bounded, per revision 125's measurement:
+1. Qualify M2's remaining live gate: a 10-minute bounded Explore capture on real ETW, closed and crashed without a
+   leaked trace. Record the preview and exact latency, projection cost and memory at its end.
+2. Make large sessions bounded, per revision 125's measurement:
    - S4's persisted overview pyramid, so the minimap and L0 of a 100 GiB session open without a whole-session scan
      (P25);
    - incremental process and relation derivation (IC-015), so exact live results keep a sub-second cadence as a
      capture grows.
-   Measure §6.8's interactive windows at 1M and 10M rows as each lands. The steady-state preview budget is met
+   Re-run revision 127's latency benchmark at 1M and 10M rows as each lands. The steady-state preview budget is met
    (revision 126).
-2. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
+3. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
    119–124), and add pin/collapse/search as the observed lane count requires. L4's operation lanes, with duration
-   bars and byte projections where a derivation supports them, wait on item 3's operations; L5 keeps its marks.
-3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
+   bars and byte projections where a derivation supports them, wait on item 4's operations; L5 keeps its marks.
+4. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
+5. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
    rows.
-5. Interaction follow-ups with no dependents:
+6. Interaction follow-ups with no dependents:
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -344,9 +369,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 126): **952 passed, 1 skipped, in Debug and Release**, zero failures.
-  Revision 126 adds one Desktop and one UI test (+2); real-ETW first-feedback met every budget
-  (`bench/results/first-feedback-20260925T203141Z`).
+- Last executed clean baseline (revision 127): **953 passed, 2 skipped, in Debug and Release**, zero failures.
+  Revision 127 adds one Desktop test (+1) and the opt-in latency benchmark (+1 skip); its measurement is
+  `bench/results/interaction-latency-20260925T204410Z`.
+  - Revision 126 adds one Desktop and one UI test (+2); real-ETW first-feedback met every budget
+    (`bench/results/first-feedback-20260925T203141Z`).
   - Revision 125 adds two recorder, one wire and one theory case (+4); the real-ETW broker qualification passed.
   - Revision 124 adds one Application, one Desktop and one UI test (+3) and extends the opt-in real-session check to
     L3, which passed separately in Release on the saved Explore session.
@@ -377,8 +404,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   - Revision 112 added one Application and three Desktop tests (+4).
   - Revision 113 added one Desktop and one UI hover test (+2).
   - Revision 114 added four UI gesture tests (+4).
-  - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
-    variable it reports skipped, never passed.
+  - The two skips are opt-in measurements that report skipped, never passed, without their variables:
+    - the real-session UI test, run with `INTERCAT_REAL_SESSION=<session dir>`;
+    - the §6.8 latency benchmark, run with `INTERCAT_LATENCY_OUTPUT=<new dir>`, which also measures the real session
+      when that variable is set.
 - Revision 112 real check: both sessions passed in Release, and the frames were inspected.
   - Dense session: opening `worker.exe` colours 2,866 of 17,350 records, all inside the workers' burst early in the
     session, counted 35 ms after the group opened.

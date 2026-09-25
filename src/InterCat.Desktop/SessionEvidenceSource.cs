@@ -46,15 +46,16 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
-    /// The session's store, opened once and shared by every read. Opening verifies the pointer, the manifest and the
-    /// directory, which costs several times more than a timeline or page read itself; each read still leases whichever
-    /// generation is current. A failed open is not kept, so the next read tries again.
+    /// The session's store, shared by every read and by every workspace of this session (<see cref="SharedSessionStores"/>).
+    /// Opening verifies the pointer, the manifest and every file it names, which for a large session costs far more than a
+    /// timeline or page read itself; each read still leases whichever generation is current. A failed open is not kept,
+    /// so the next read tries again.
     /// </summary>
     private SessionStore Store()
     {
         lock (storeGate)
         {
-            return store ??= SessionStore.OpenExisting(LocalOwnedDirectory.Open(SessionPath));
+            return store ??= SharedSessionStores.Open(SessionPath, SessionId);
         }
     }
 

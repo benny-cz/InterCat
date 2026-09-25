@@ -166,10 +166,12 @@ public sealed class RealSessionGraphTests
             node => Assert.NotEqual(GraphNodeKind.Context, display.NodeOf(node.Id)!.Kind));
         Describe(report, "group opened", display);
 
-        // The timeline follows the rung: the group's own records in colour, inside the whole timeline's grey (§3.2).
+        // The timeline follows the rung: the group's own records in colour, inside the whole timeline's grey (§3.2). The
+        // count's time is taken as it arrives, before the lane checks below interact with the window.
         clock.Restart();
         await viewModel.TimelineDetailReady;
         Dispatch();
+        long groupCounted = clock.ElapsedMilliseconds;
         Assert.True(viewModel.TimelineShowsFocus, viewModel.TimelineCaption);
         IReadOnlyList<TimelineBucket> focus = Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(viewModel.TimelineFocusBuckets);
         IReadOnlyList<TimelineBucket> whole = viewModel.TimelineDetail?.Buckets ?? viewModel.Snapshot.Timeline;
@@ -233,7 +235,7 @@ public sealed class RealSessionGraphTests
             }
         }
         report.AppendLine(CultureInfo.InvariantCulture,
-            $"group timeline counted in {clock.ElapsedMilliseconds} ms more: {focus.Sum(bucket => (long)bucket.ObservationCount)} of "
+            $"group timeline counted in {groupCounted} ms more: {focus.Sum(bucket => (long)bucket.ObservationCount)} of "
             + $"{whole.Sum(bucket => (long)bucket.ObservationCount)} records · {viewModel.TimelineCaption}");
 
         // The opened group's table starts at its first row, whatever row of the machine rung was scrolled to.

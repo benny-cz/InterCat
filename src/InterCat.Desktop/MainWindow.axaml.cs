@@ -480,7 +480,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             CaptureStatus.Text = "Opening saved session";
             SessionOverviewBundle overview = await Task.Run(() =>
-                SessionOverviewProjector.Project(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path))));
+                SessionOverviewProjector.Project(SharedSessionStores.Open(path)));
             if (closed) return false;
             captureRunId++;
             heldUpdate = null;

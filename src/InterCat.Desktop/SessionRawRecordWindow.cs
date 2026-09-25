@@ -104,7 +104,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             // The row's raw identity is stable across generations, so a live publication since the row was read
             // does not strand it: the current generation's retained journals are searched and checked against it.
             SessionRawRecordDetail result = await Task.Run(() => SessionRawRecordQuery.ReadRetained(
-                SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), expectedSessionId,
+                SharedSessionStores.Open(path, expectedSessionId), expectedSessionId,
                 selected, revealBytes, cancellationToken: token), token);
             if (closed) return;
             if (!result.Available)

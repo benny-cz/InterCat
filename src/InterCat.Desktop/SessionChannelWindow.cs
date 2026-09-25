@@ -120,7 +120,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         {
             CancellationToken token = lifetime.Token;
             SessionChannelPage page = await Task.Run(() => SessionChannelQuery.Read(
-                SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), processScope,
+                SharedSessionStores.Open(path), processScope,
                 pageSize: SessionChannelQuery.DefaultPageSize, cursor: cursor,
                 cancellationToken: token), token);
             if (closed) return;

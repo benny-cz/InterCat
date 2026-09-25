@@ -1,0 +1,149 @@
+{
+  "schema": "intercat.interaction-latency.v1",
+  "measuredUtc": "2026-09-25T20:44:29.2037771+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "budgetsMs": {
+    "frame": 16.7,
+    "feedback": 100,
+    "coarseAnswer": 1000
+  },
+  "notes": [
+    "Canvas cost is TimelineView, MinimapView and GraphView building their drawing for one gesture, recorded into a drawing group without rasterizing; it is the UI thread\u0027s share of a frame, not GPU time.",
+    "Level change, brush and search are wall time from the gesture to the answer in the window, including off-thread queries and their hand-back to the UI thread.",
+    "Synthetic sessions are 50 paired loopback TCP conversations under one executable group; the real session, when measured, is named by the INTERCAT_REAL_SESSION variable and stays local."
+  ],
+  "sessions": [
+    {
+      "session": "synthetic 100\u00A0000",
+      "rows": 100000,
+      "openOverviewMs": 368.5076,
+      "openToLaidOutMs": 238.8027,
+      "panCanvasMs": {
+        "p50": 5.61,
+        "p95": 13.84,
+        "max": 14.16
+      },
+      "zoomCanvasMs": {
+        "p50": 6.94,
+        "p95": 12.69,
+        "max": 13.3
+      },
+      "hoverFeedbackMs": {
+        "p50": 20.92,
+        "p95": 26.48,
+        "max": 29.63
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 104.2309,
+          "timelineCountedMs": 480.0821,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 79.971,
+          "timelineCountedMs": 105.9614,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 35.7707,
+          "timelineCountedMs": 113.4494,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 99.2939,
+      "searchMs": 44.8719,
+      "searchHits": 50
+    },
+    {
+      "session": "synthetic 1\u00A0000\u00A0000",
+      "rows": 1000000,
+      "openOverviewMs": 1550.5259,
+      "openToLaidOutMs": 54.4454,
+      "panCanvasMs": {
+        "p50": 4.12,
+        "p95": 9.71,
+        "max": 17.23
+      },
+      "zoomCanvasMs": {
+        "p50": 3.59,
+        "p95": 7.81,
+        "max": 7.97
+      },
+      "hoverFeedbackMs": {
+        "p50": 20,
+        "p95": 25.84,
+        "max": 31.57
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 47.5796,
+          "timelineCountedMs": 798.7959,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 86.583,
+          "timelineCountedMs": 355.4625,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 25.4254,
+          "timelineCountedMs": 476.0761,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 342.0807,
+      "searchMs": 3.416,
+      "searchHits": 50
+    },
+    {
+      "session": "real saved session",
+      "rows": 12976,
+      "openOverviewMs": 191.8632,
+      "openToLaidOutMs": 18.2655,
+      "panCanvasMs": {
+        "p50": 1.69,
+        "p95": 6.22,
+        "max": 12.21
+      },
+      "zoomCanvasMs": {
+        "p50": 1.79,
+        "p95": 5.89,
+        "max": 5.93
+      },
+      "hoverFeedbackMs": {
+        "p50": 10.19,
+        "p95": 15.31,
+        "max": 17.8
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 8.6571,
+          "timelineCountedMs": 46.5167,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 5.6572,
+          "timelineCountedMs": 34.1219,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 11.5776,
+          "timelineCountedMs": 51.1642,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 33.6594,
+      "searchMs": 1.6198,
+      "searchHits": 0
+    }
+  ]
+}
