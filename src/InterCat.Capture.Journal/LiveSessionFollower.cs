@@ -417,14 +417,9 @@ public sealed class LiveSessionFollower
     /// </summary>
     private static void RequireMirrorOf(StoreDependency[] source, StoreDependency[] mirrored)
     {
-        if (mirrored.Length > source.Length)
-        {
-            throw new InvalidDataException(
-                $"The derived session holds {mirrored.Length} chunks and the evidence session only {source.Length}; "
-                + "it does not mirror this evidence.");
-        }
-
-        for (int index = 0; index < mirrored.Length; index++)
+        // Identity first: a chunk that differs means other evidence however many chunks either holds, and saying so is
+        // the useful refusal. Only a matching prefix can be the same evidence holding fewer chunks than were mirrored.
+        for (int index = 0; index < Math.Min(mirrored.Length, source.Length); index++)
         {
             if (mirrored[index].LengthBytes != source[index].LengthBytes
                 || !string.Equals(mirrored[index].Digest, source[index].Digest, StringComparison.Ordinal))
@@ -433,6 +428,13 @@ public sealed class LiveSessionFollower
                     $"The derived session's chunk {index + 1} is not the evidence session's '{source[index].Name}'. It "
                     + "mirrors other evidence, or the evidence released chunks it had; following on would be a guess.");
             }
+        }
+
+        if (mirrored.Length > source.Length)
+        {
+            throw new InvalidDataException(
+                $"The derived session holds {mirrored.Length} chunks and the evidence session only {source.Length}; "
+                + "it does not mirror this evidence.");
         }
     }
 

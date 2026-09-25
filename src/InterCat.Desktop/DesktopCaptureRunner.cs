@@ -220,154 +220,179 @@ public static class DesktopCaptureRunner
                 "Raw evidence is broker-owned. Published chunks are derived into your session below. "
                 + "Unobserved activity is not zero.", summary, sessionPath));
 
-            LiveSessionFollower? follower = null;
-            SessionStore? derived = null;
-            long shownGeneration = -1;
+            // Following and projecting run off this loop, one step at a time, so status, the live preview and the owner
+            // lease keep their own cadence however long a growing session takes to derive (§12, §19.3, revision 128's
+            // 10-minute measurement). A finished step wakes the loop at once, so its overview is not held for a poll.
+            using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed);
+            Task<LiveDerivationStep>? deriving = null;
+            bool derivingAfterClose = false;
+            long stepStarted = 0;
+            long statusRead = 0;
+            BrokerCaptureStatusResponse? closedStatus = null;
             DateTimeOffset nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
             bool stopSent = false;
-            bool settled = false;
-            FollowStep? last = null;
             using var finishing = new CancellationTokenSource();
-            while (true)
+            try
             {
-                if (stop.IsCancellationRequested && !stopSent)
+                while (true)
                 {
-                    stopSent = true;
-                    finishing.CancelAfter(FinishTimeout);
-                    report(new(CaptureUiPhase.Finishing, "Stopping and keeping the session",
-                        "The broker is finalizing. InterCat is deriving everything it published.", summary, sessionPath));
-                    BrokerWireResponse stopped = await client.SendAsync(
-                        new BrokerStopCaptureRequest(started, Guid.NewGuid()), finishing.Token)
-                        .ConfigureAwait(false);
-                    if (stopped is BrokerStopCaptureResponse { FailureReason: { } reason })
+                    if (stop.IsCancellationRequested && !stopSent)
                     {
-                        report(new(CaptureUiPhase.Finishing, "Stop needs attention",
-                            reason + " The owner lease still bounds this capture.", summary, sessionPath));
-                    }
-                }
-
-                try
-                {
-                    CancellationToken work = stopSent ? finishing.Token : stop;
-                    if (follower is null)
-                    {
-                        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));
-                        if (evidence.Current is { } source)
-                        {
-                            Directory.CreateDirectory(sessionPath);
-                            derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath),
-                                source.SessionId, source.SourceIdentity);
-                            follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: work);
-                        }
-                    }
-
-                    if (follower is not null)
-                    {
-                        long followStarted = Stopwatch.GetTimestamp();
-                        FollowStep step = follower.CatchUp(cancellationToken: work);
-                        TimeSpan derivation = Stopwatch.GetElapsedTime(followStarted);
-                        last = step;
-                        if (derived!.Current is { } current && current.Generation != shownGeneration)
-                        {
-                            shownGeneration = current.Generation;
-                            milestones = milestones with { FirstGeneration = milestones.FirstGeneration ?? elapsed.Elapsed };
-                            try
-                            {
-                                long projectionStarted = Stopwatch.GetTimestamp();
-                                SessionOverviewBundle overview = SessionOverviewProjector.Project(derived, cancellationToken: work);
-                                TimeSpan projection = Stopwatch.GetElapsedTime(projectionStarted);
-                                milestones = milestones with { FirstOverview = milestones.FirstOverview ?? elapsed.Elapsed };
-                                report(new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
-                                    $"{step.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
-                                    $"Generation {current.Generation:N0} · {step.DerivedChunks:N0} published chunks. "
-                                    + "Graph edges are paired TCP only; other observations remain in the timeline.",
-                                    summary, sessionPath, overview,
-                                    Visibility: new(current.Generation, step.DerivedRecords, Stopwatch.GetTimestamp(),
-                                        derivation, projection),
-                                    OverviewChunks: step.DerivedChunks));
-                            }
-                            catch (InvalidOperationException exception)
-                            {
-                                report(new(CaptureUiPhase.Recording, "Capture continues; overview is bounded",
-                                    exception.Message + " The session is kept and can be inspected headlessly.",
-                                    summary, sessionPath));
-                            }
-                        }
-                    }
-
-                    status = await StatusAsync(client, started, work).ConfigureAwait(false);
-
-                    // Live counters change continuously; they are passed on at most once a second, and the live preview at
-                    // most four times a second, only while recording. Once stop is sent the window shows finishing, and a
-                    // re-sent recording update would undo that.
-                    if (!stopSent && lastLive is { } recording)
-                    {
-                        DateTimeOffset now = DateTimeOffset.UtcNow;
-                        bool healthDue = status.Health is { } live && live != health && now - healthReported >= HealthReport;
-                        bool previewDue = status.Preview is { } fresh && !SamePreview(fresh, preview)
-                            && now - previewReported >= PreviewReport;
-                        if (healthDue)
-                        {
-                            health = status.Health;
-                            healthReported = now;
-                        }
-
-                        if (previewDue)
-                        {
-                            preview = status.Preview;
-                            previewReported = now;
-                        }
-
-                        if (healthDue || previewDue)
-                        {
-                            report(recording with
-                            {
-                                LiveHealth = health,
-                                LivePreview = preview,
-                                PreviewObservedQpc = previewDue ? Stopwatch.GetTimestamp() : null,
-                            });
-                        }
-                    }
-
-                    if (status.State == CaptureLifecycle.Closed)
-                    {
-                        if (settled)
-                        {
-                            closed = true;
-                            bool hasSession = derived?.Current is not null;
-                            bool allPublishedFollowed = last is not null
-                                && last.DerivedChunks == last.EvidenceChunks;
-                            report(new(CaptureUiPhase.Complete,
-                                !hasSession ? "Capture closed without a derived session"
-                                    : status.StopMilestones.FullyFinalized && allPublishedFollowed
-                                        ? "Session saved" : "Partial session saved",
-                                !hasSession
-                                    ? "No evidence chunk was published before closure. The broker kept its raw outcome; "
-                                        + "there is no analysis session at the path below."
-                                    : !allPublishedFollowed
-                                        ? "Not every published chunk reached the viewer. The existing derived session is kept."
-                                        : status.FailureReason ?? "The capture is closed. All published evidence was followed.",
-                                summary, sessionPath));
-                            return;
-                        }
-
-                        settled = true;
-                        continue;
-                    }
-
-                    if (!stopSent && DateTimeOffset.UtcNow >= nextRenewal)
-                    {
-                        _ = await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started), work)
+                        stopSent = true;
+                        finishing.CancelAfter(FinishTimeout);
+                        report(new(CaptureUiPhase.Finishing, "Stopping and keeping the session",
+                            "The broker is finalizing. InterCat is deriving everything it published.", summary, sessionPath));
+                        BrokerWireResponse stopped = await client.SendAsync(
+                            new BrokerStopCaptureRequest(started, Guid.NewGuid()), finishing.Token)
                             .ConfigureAwait(false);
-                        nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
+                        if (stopped is BrokerStopCaptureResponse { FailureReason: { } reason })
+                        {
+                            report(new(CaptureUiPhase.Finishing, "Stop needs attention",
+                                reason + " The owner lease still bounds this capture.", summary, sessionPath));
+                        }
                     }
 
-                    await Task.Delay(Poll, work).ConfigureAwait(false);
+                    try
+                    {
+                        CancellationToken work = stopSent ? finishing.Token : stop;
+                        if (deriving is { IsCompleted: true } done)
+                        {
+                            deriving = null;
+
+                            // Stopping cancels a step begun while recording; the next one runs under the finishing token.
+                            if (!(done.IsCanceled && stopSent && !finishing.IsCancellationRequested))
+                            {
+                                LiveDerivationStep step = await done.ConfigureAwait(false);
+                                HandOff(step);
+                                if (derivingAfterClose && closedStatus is { } final)
+                                {
+                                    // This step began after the broker reported the capture closed, so it followed every
+                                    // chunk the capture published.
+                                    closed = true;
+                                    bool hasSession = derivation.HasSession;
+                                    bool allPublishedFollowed = derivation.Last is { } last
+                                        && last.DerivedChunks == last.EvidenceChunks;
+                                    report(new(CaptureUiPhase.Complete,
+                                        !hasSession ? "Capture closed without a derived session"
+                                            : final.StopMilestones.FullyFinalized && allPublishedFollowed
+                                                ? "Session saved" : "Partial session saved",
+                                        !hasSession
+                                            ? "No evidence chunk was published before closure. The broker kept its raw "
+                                                + "outcome; there is no analysis session at the path below."
+                                            : !allPublishedFollowed
+                                                ? "Not every published chunk reached the viewer. The existing derived "
+                                                    + "session is kept."
+                                                : final.FailureReason
+                                                    ?? "The capture is closed. All published evidence was followed.",
+                                        summary, sessionPath));
+                                    return;
+                                }
+                            }
+                        }
+
+                        if (deriving is null && Stopwatch.GetElapsedTime(stepStarted) >= Poll)
+                        {
+                            stepStarted = Stopwatch.GetTimestamp();
+                            derivingAfterClose = closedStatus is not null;
+                            deriving = derivation.StepAsync(work);
+                        }
+
+                        // Status keeps its own cadence: a step that finishes early wakes the loop to hand its overview
+                        // over, not to ask the broker again.
+                        if (Stopwatch.GetElapsedTime(statusRead) >= Poll)
+                        {
+                            statusRead = Stopwatch.GetTimestamp();
+                            status = await StatusAsync(client, started, work).ConfigureAwait(false);
+                            if (status.State == CaptureLifecycle.Closed)
+                            {
+                                closedStatus ??= status;
+                            }
+
+                            // Live counters change continuously; they are passed on at most once a second, and the live
+                            // preview at most four times a second, only while recording. Once stop is sent the window
+                            // shows finishing, and a re-sent recording update would undo that.
+                            if (!stopSent && lastLive is { } recording)
+                            {
+                                DateTimeOffset now = DateTimeOffset.UtcNow;
+                                bool healthDue = status.Health is { } live && live != health && now - healthReported >= HealthReport;
+                                bool previewDue = status.Preview is { } fresh && !SamePreview(fresh, preview)
+                                    && now - previewReported >= PreviewReport;
+                                if (healthDue)
+                                {
+                                    health = status.Health;
+                                    healthReported = now;
+                                }
+
+                                if (previewDue)
+                                {
+                                    preview = status.Preview;
+                                    previewReported = now;
+                                }
+
+                                if (healthDue || previewDue)
+                                {
+                                    report(recording with
+                                    {
+                                        LiveHealth = health,
+                                        LivePreview = preview,
+                                        PreviewObservedQpc = previewDue ? Stopwatch.GetTimestamp() : null,
+                                    });
+                                }
+                            }
+
+                            if (!stopSent && closedStatus is null && DateTimeOffset.UtcNow >= nextRenewal)
+                            {
+                                _ = await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started), work)
+                                    .ConfigureAwait(false);
+                                nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
+                            }
+                        }
+
+                        // Sleep until the next status read or step is due, or until the running step finishes.
+                        TimeSpan untilStatus = Poll - Stopwatch.GetElapsedTime(statusRead);
+                        TimeSpan untilStep = deriving is null ? Poll - Stopwatch.GetElapsedTime(stepStarted) : untilStatus;
+                        TimeSpan wait = untilStatus < untilStep ? untilStatus : untilStep;
+                        Task tick = Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, work);
+                        await (deriving is null ? tick : Task.WhenAny(tick, deriving)).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!stopSent && stop.IsCancellationRequested)
+                    {
+                        // Stop was requested during a status read, a renewal or the wait. The next pass uses a fresh
+                        // finishing token, requests broker stop, and derives the published prefix.
+                    }
                 }
-                catch (OperationCanceledException) when (!stopSent && stop.IsCancellationRequested)
+            }
+            finally
+            {
+                // Nothing outlives the runner: a step still running is halted and awaited before the stores it holds go.
+                await derivation.HaltAsync(deriving).ConfigureAwait(false);
+            }
+
+            void HandOff(LiveDerivationStep step)
+            {
+                if (step is not { Generation: { } generation, Follow: { } follow })
                 {
-                    // Stop was requested during a follow, status or renewal. The next pass uses a fresh
-                    // finishing token, requests broker stop, and derives the published prefix.
+                    return;
+                }
+
+                milestones = milestones with { FirstGeneration = milestones.FirstGeneration ?? step.GenerationAt };
+                if (step.Overview is { } overview)
+                {
+                    milestones = milestones with { FirstOverview = milestones.FirstOverview ?? elapsed.Elapsed };
+                    report(new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
+                        $"{follow.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
+                        $"Generation {generation:N0} · {follow.DerivedChunks:N0} published chunks. "
+                        + "Graph edges are paired TCP only; other observations remain in the timeline.",
+                        summary, sessionPath, overview,
+                        Visibility: new(generation, follow.DerivedRecords, Stopwatch.GetTimestamp(),
+                            step.Derivation, step.Projection),
+                        OverviewChunks: follow.DerivedChunks));
+                }
+                else if (step.OverviewProblem is { } problem)
+                {
+                    report(new(CaptureUiPhase.Recording, "Capture continues; overview is bounded",
+                        problem + " The session is kept and can be inspected headlessly.",
+                        summary, sessionPath));
                 }
             }
         }

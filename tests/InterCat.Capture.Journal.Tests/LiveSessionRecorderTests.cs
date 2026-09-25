@@ -422,8 +422,9 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(4, rest.DerivedRecords);
         Assert.Equal([0UL, 1UL, 2UL, 3UL], RowsOf(reopened, reopened.Current!).Rows.Select(row => row.JournalRecordIndex!.Value));
 
-        // Another capture's evidence is not what this session mirrors, so following it is refused.
-        _ = await RecordEvidence(otherDirectory.Path, ordinals: [1, 2, 3, 4]);
+        // Another capture's evidence is not what this session mirrors, so following it is refused. It holds fewer chunks
+        // than this session mirrored, and it is still refused as other evidence rather than for its count.
+        _ = await RecordEvidence(otherDirectory.Path, ordinals: [1, 2]);
         SessionStore other = SessionStore.OpenExisting(LocalOwnedDirectory.Open(otherDirectory.Path));
         Assert.Contains(
             "is not the evidence session's",

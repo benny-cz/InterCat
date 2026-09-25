@@ -35,7 +35,17 @@ public interface IOwnedDirectory
     /// the root is refused rather than deleted, because only the broker creates entries there.
     /// </summary>
     bool RemoveOwnedFile(string name);
+
+    /// <summary>
+    /// What one listing of the root says about each owned file beneath it, without opening any, or null when this
+    /// directory cannot list them. A listing can trail a write still in progress, so it may only confirm what an
+    /// earlier measurement of the file found, never stand in for one (ADR-025).
+    /// </summary>
+    IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => null;
 }
+
+/// <summary>A file's length, last-write time and reparse state as a directory listing states them.</summary>
+public readonly record struct OwnedFileFacts(long LengthBytes, long LastWriteUtcTicks, bool IsReparsePoint);
 
 /// <summary>
 /// The only names that are opened beneath an owned root. The rule is an allow list of ordinary

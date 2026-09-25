@@ -531,6 +531,8 @@
         "I15: a generation publishes its journal, its dictionaries and its segments together",
         "I15: a journal release that would leave no evidence at all is refused",
         "I15: a later generation carries its predecessor's dependencies forward",
+        "I15: a lease on the generation this instance verified opens none of its dependencies",
+        "I15: a lease still finds a dependency truncated, rewritten or removed since it was measured",
         "I15: a live recording releases its oldest journal chunks whole and keeps its boundary",
         "I15: a long recording coalesces its small publications as it records and keeps every row",
         "I15: a manifest naming a dependency outside its root is refused",

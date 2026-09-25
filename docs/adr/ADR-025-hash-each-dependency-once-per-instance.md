@@ -1,6 +1,6 @@
 # ADR-025: A store instance hashes each immutable dependency once
 
-- Status: accepted for M1 and M2
+- Status: accepted for M1 and M2; amended in revision 129 (one listing instead of one open per file)
 - Date: 2026-09-23
 - Decision owners: InterCat maintainers
 - Relates to: §12 (ingest budget), §19.3 (live publication cadence), §20.1 (commit sequence, recovery), I15, I18,
@@ -57,10 +57,30 @@ The same benchmark, after the change:
   detect corruption; they are not a claim of hostile-tamper resistance"). Durability is unaffected: a file is read
   back when first published, and a crash ends the instance that measured it.
 
+## Revision 129: one listing instead of one open per file
+
+One open per file turned out not to be cheap once a session names hundreds of files. A live session names every
+journal chunk it published. At the end of a 10-minute Explore capture that was 292 chunks, and a lease cost 33 ms, for
+every query and every publication. A commit and the follower's evidence lease paid the same again.
+
+1. **Presence and length are still checked every time, from one listing where the directory can list its files.** A
+   listing states each file's length, last-write time and reparse state without opening it. It only *confirms* a file
+   this instance already hashed: the file is listed, is not a reparse point, and has the length and last-write time
+   that were measured. Every other file is opened, checked and hashed as decision 1 and 2 say, so a file that was
+   removed, truncated or rewritten since is still found, with the same refusal as before.
+2. **A lease on the generation this instance already verified reuses that manifest.** The pointer's digest pins its
+   bytes, so it is not read and digested again. Its dependencies are still checked.
+3. A directory that cannot list its files keeps one open per file. The broker's protected root is one; the viewer's
+   session and its read-only view of broker evidence list theirs.
+
+On the same capture a lease took 1 ms instead of 33 ms. A listing can trail a write that is still in progress, which
+is why it only ever confirms an earlier measurement and never stands in for one. Such a write is tampering with an
+immutable file, and the checksums a reader meets still find it.
+
 ## Alternatives considered
 
-- **Trust carried dependencies without opening them.** Rejected. One open and a length check per file is cheap, and
-  it still catches a file that was removed, truncated or rewritten.
+- **Trust carried dependencies without opening them.** Rejected. A check per file still catches a file that was
+  removed, truncated or rewritten; revision 129 takes that check from a listing rather than dropping it.
 - **Store last-write times in the manifest.** Rejected. A last-write time is not evidence, and copying a session
   changes it, so a copy would read as corrupt.
 - **Hash in the background under a budget.** Deferred. It needs a scheduler that the broker binding will provide.

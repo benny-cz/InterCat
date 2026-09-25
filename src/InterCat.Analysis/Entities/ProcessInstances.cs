@@ -599,16 +599,29 @@ public sealed class ProcessInstanceIndex
                 throw new ArgumentException("A source-field segment must hold source-fields-v1.", nameof(fieldSegments));
             }
 
+            // Most field rows describe other mechanisms. Their code is read from its column and only a process field's
+            // row is materialized, and validated, whole: materializing every row cost 42 ms of a 10-minute capture's
+            // 80 ms derivation (revision 129). An undefined code still refuses the segment, as a materialized row would.
+            SegmentColumnSlice codes = segment.Slice(SegmentColumnId.SourceField);
             for (int row = 0; row < segment.RowCount; row++)
             {
-                SourceFieldRowV1 source = segment.FieldRow(row);
-                SourceField field = source.Field;
-                if (field is not (SourceField.ProcessStartSequence or SourceField.ProcessCreateTime
+                var code = (SourceField)(ushort)codes.UnsignedAt(row)!.Value;
+                if (code is not (SourceField.ProcessStartSequence or SourceField.ProcessCreateTime
                     or SourceField.ParentProcessId or SourceField.ParentStartSequence
                     or SourceField.ProcessSessionId or SourceField.ProcessExitTime))
                 {
+                    if (!Enum.IsDefined(code))
+                    {
+                        throw new InvalidDataException(
+                            $"Row {row} carries source field {(ushort)code}, which §23 does not define. A required field "
+                            + "with an unknown code refuses the artifact (§23).");
+                    }
+
                     continue;
                 }
+
+                SourceFieldRowV1 source = segment.FieldRow(row);
+                SourceField field = source.Field;
 
                 var address = new RecordAddress(
                     source.RawStreamId,
@@ -674,8 +687,18 @@ public sealed class ProcessInstanceIndex
             }
 
             int processId = (int)owner;
+            long reading = ticks.SignedAt(row)!.Value;
+
+            // Only a record that could be its PID's earliest needs its whole key: the key orders by reading first.
+            if (!isLifecycle
+                && firstActivity.TryGetValue(processId, out RecordKey known)
+                && reading > known.NativeTicks)
+            {
+                continue;
+            }
+
             var record = new RecordKey(
-                ticks.SignedAt(row)!.Value,
+                reading,
                 (uint)streams.UnsignedAt(row)!.Value,
                 (uint)epochs.UnsignedAt(row)!.Value,
                 ordinals.UnsignedAt(row)!.Value,

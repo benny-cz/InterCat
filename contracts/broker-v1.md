@@ -257,8 +257,13 @@ The SID and logon session must both match the configured owner. Anonymous impers
 the process rather than continuing under the client token. `GetNamedPipeClientProcessId` is recorded only
 as diagnostic data and never participates in authorization.
 
-The authenticated connection processor reads only the bounded v1 frame codec, writes one correlated
-response at a time and closes a connection after at most 4,096 commands. Windows fixtures exercise the
+The authenticated connection processor reads only the bounded v1 frame codec and writes one correlated
+response at a time. A connection is bounded by its request rate, not by a total: 256 requests at once and 64 a
+second sustained (`BrokerRequestRate.Default`). A request past that rate is answered late, never refused, so a
+runaway client costs the broker at most that rate and a well-behaved one is never cut off. An owner keeps one
+connection for its whole capture, up to the 24-hour quota, and reads status four times a second. The total of 4,096
+commands this section once stated ended such a connection after 17 minutes, and a Desktop capture with it
+(revision 129). Windows fixtures exercise the
 real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
 refusal and a complete Hello exchange. The composed host (section 5.5) reuses one instance for its lifetime.
 

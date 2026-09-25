@@ -166,6 +166,102 @@ public sealed class WindowsBrokerPipeSecurityTests
         Assert.Equal(serverInstanceId, negotiated.ServerInstanceId);
     }
 
+    [Fact(DisplayName = "§20.3: an owner's connection keeps answering past the 4,096 requests that once ended it")]
+    public async Task AConnectionOutlastsTheOldRequestTotal()
+    {
+        // A 4 Hz owner makes 4,096 requests in 17 minutes of a capture that may last 24 hours.
+        (NamedPipeServerStream server, NamedPipeClientStream client) = await ConnectedPipeAsync();
+        await using NamedPipeServerStream serverStream = server;
+        using BrokerDispatcherFixture fixture = new();
+        Task processing = BrokerPipeConnectionProcessor.ProcessAsync(
+            server, fixture.Dispatcher, new BrokerRequestRate(16, 1_000_000));
+        await using (client)
+        {
+            Assert.IsType<BrokerHelloResponse>(await RoundTripAsync(client, Hello()));
+            for (int request = 0; request < 5_000; request++)
+            {
+                Assert.NotNull(await RoundTripAsync(client, new BrokerGetStatusRequest(CaptureId.New())));
+            }
+
+            Assert.False(processing.IsCompleted);
+        }
+
+        await processing.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact(DisplayName = "§20.3: a connection past its request rate is answered late, not dropped")]
+    public async Task AFloodIsSlowedNotDropped()
+    {
+        (NamedPipeServerStream server, NamedPipeClientStream client) = await ConnectedPipeAsync();
+        await using NamedPipeServerStream serverStream = server;
+        using BrokerDispatcherFixture fixture = new();
+        Task processing = BrokerPipeConnectionProcessor.ProcessAsync(server, fixture.Dispatcher, new BrokerRequestRate(4, 40));
+        await using (client)
+        {
+            // Four at once, then forty a second: twenty-four requests take at least half a second, and all are answered.
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Assert.IsType<BrokerHelloResponse>(await RoundTripAsync(client, Hello()));
+            for (int request = 1; request < 24; request++)
+            {
+                Assert.NotNull(await RoundTripAsync(client, new BrokerGetStatusRequest(CaptureId.New())));
+            }
+
+            Assert.InRange(clock.Elapsed, TimeSpan.FromSeconds(0.45), TimeSpan.FromSeconds(10));
+            Assert.False(processing.IsCompleted);
+        }
+
+        await processing.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private static BrokerHelloRequest Hello() => new(
+        Guid.NewGuid(), 1, 1, BrokerHelloNegotiator.SupportedFeatures, BrokerProtocolFeature.PreparedPlanDigest);
+
+    private static async Task<BrokerWireResponse> RoundTripAsync(Stream client, BrokerWireRequest request)
+    {
+        Guid correlationId = Guid.NewGuid();
+        await BrokerWireFrameCodec.WriteAsync(client, BrokerWireRequestCodec.Encode(request, correlationId));
+        await client.FlushAsync();
+        BrokerWireFrame response = Assert.IsType<BrokerWireFrame>(await BrokerWireFrameCodec.ReadAsync(client));
+        Assert.Equal(correlationId, response.CorrelationId);
+        return BrokerWireResponseCodec.Decode(response);
+    }
+
+    /// <summary>A connected pair of plain pipe ends: the processor needs a stream, not the broker's secured instance.</summary>
+    private static async Task<(NamedPipeServerStream Server, NamedPipeClientStream Client)> ConnectedPipeAsync()
+    {
+        string name = $"InterCat.Tests.{Guid.NewGuid():N}";
+        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        Task waiting = server.WaitForConnectionAsync();
+        await client.ConnectAsync(5_000);
+        await waiting;
+        return (server, client);
+    }
+
+    /// <summary>A dispatcher for the current process's own identity, with nothing to prepare and no capture running.</summary>
+    private sealed class BrokerDispatcherFixture : IDisposable
+    {
+        private readonly BrokerPreparationCoordinator preparation;
+        private readonly BrokerLifecycleCoordinator lifecycle;
+
+        public BrokerDispatcherFixture()
+        {
+            var registry = new PreparedPlanRegistry();
+            preparation = new BrokerPreparationCoordinator(new UnusedPlanSource(), registry, Runtime);
+            lifecycle = new BrokerLifecycleCoordinator(registry, new InMemoryBrokerLifecycleStore(), new BrokerFakeRuntime());
+            Dispatcher = new BrokerConnectionDispatcher(
+                WindowsBrokerTokenIdentity.ReadCurrentProcess(), preparation, lifecycle, Guid.NewGuid(), "fixture-1");
+        }
+
+        public BrokerConnectionDispatcher Dispatcher { get; }
+
+        public void Dispose()
+        {
+            lifecycle.Dispose();
+            preparation.Dispose();
+        }
+    }
+
     private static NamedPipeClientStream CreateClient(string pipeName) =>
         new(
             ".",

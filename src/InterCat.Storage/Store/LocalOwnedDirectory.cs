@@ -86,6 +86,25 @@ public sealed class LocalOwnedDirectory : IOwnedDirectory
         return true;
     }
 
+    /// <inheritdoc />
+    /// <remarks>One enumeration: the entries it returns carry their length, times and attributes.</remarks>
+    public IReadOnlyDictionary<string, OwnedFileFacts> DescribeOwnedFiles()
+    {
+        var facts = new Dictionary<string, OwnedFileFacts>(StringComparer.OrdinalIgnoreCase);
+        foreach (FileInfo file in new DirectoryInfo(Path).EnumerateFiles())
+        {
+            if (OwnedFileName.Validate(file.Name) is null)
+            {
+                facts[file.Name] = new(
+                    file.Length,
+                    file.LastWriteTimeUtc.Ticks,
+                    (file.Attributes & FileAttributes.ReparsePoint) != 0);
+            }
+        }
+
+        return facts;
+    }
+
     /// <summary>The owned file names directly beneath this root, in ordinal order.</summary>
     public IReadOnlyList<string> ListOwnedFiles() =>
     [

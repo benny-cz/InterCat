@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 128 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 129 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -17,8 +17,9 @@ L0 mechanism lanes, exact L1 process-owner lanes, L2 source-direction rows and L
 direction. While recording, a labelled **live edge** previews records not yet published, which brings real-ETW
 event-to-visible to p95 0.72–0.77 s and meets §12's steady-state budget. Exact results still arrive about 2.6 s after
 an event (p95). The default 10-minute Explore capture runs to its bound on real ETW and saves whole, and a crashed
-viewer's capture is stopped and finalized by its lease without a leaked trace. By that capture's end, projection
-reaches its 250 ms budget and viewer memory has tripled, because each publication re-derives the whole session.
+viewer's capture is stopped and finalized by its lease without a leaked trace. That capture meets every §12 budget
+to its end: projection p95 85 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and 76 MiB of viewer memory at the
+end. Projection still grows with the session, so large sessions wait on S4 and incremental derivation.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
@@ -48,18 +49,47 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
-| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
+| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, and a labelled live edge that previews unpublished records within §12's steady-state budget | L4 operation lanes and byte composition once IC-015 derives operations. Projection within its 250 ms budget through a whole 10-minute capture, then the persisted overview pyramid (S4) and exact live cadence at scale. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, and a labelled live edge that previews unpublished records within §12's steady-state budget | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 129 — a long capture stays inside its budgets (§12, §19.3, ADR-025, broker-v1 §5.3):**
+  - **Found by profiling** revision 128's 10-minute session, and each fixed exactly:
+    - **Leases:** they re-opened all 292 chunks each time (33 ms). They now confirm hashed files from one directory
+      listing (1 ms), and a lease on an unchanged generation reuses its verified manifest.
+    - **Process fields:** process derivation read all 97,897 source-field rows through the inspection path (42 ms).
+    - **Endpoints:** relation derivation and the projector decoded each row's endpoints up to four times.
+  - **Runner:** follow and projection run as one background step at a time. Status, the preview and lease renewal keep
+    their own 250 ms cadence (`LiveDerivation`).
+  - **Broker defect found by the run:** a connection closed after 4,096 commands, so a 4 Hz owner lost its capture
+    after 17 minutes. `broker-v1` now bounds a connection by rate: 256 at once, 64 a second, answered late rather than
+    refused.
+  - **Verified equal:** old and new builds give identical instance, relation, per-row binding and overview digests on
+    two real sessions.
+  - **Result** (`bench/results/first-feedback-20260925T215018Z-10min-bounded`): every budget met, 73,660 records.
+
+    | Measure | Revision 128 | Revision 129 |
+    |---|---|---|
+    | Projection p95 | 264 ms | 85 ms |
+    | Follow p95 | 250 ms | 72 ms |
+    | Event-to-visible p95 | 966 ms | 849 ms |
+    | Event-to-exact p95 | 2.99 s | 2.69 s |
+    | Viewer private memory at the end | 153 MiB | 76 MiB |
+
+    The 31 records never previewed were journaled as the quota closed the capture, and were exact within 2.4 s.
+  - **Also:** a follower refuses other evidence as other evidence before comparing chunk counts, which also fixes a
+    Debug test that failed when that capture published fewer chunks. The harness records a broker that outlives its
+    capture instead of crashing on it.
+  - **Tests:** two store, two Desktop and two broker tests (+6). The broker qualification passed
+    (`bench/results/broker-qualification-20260925T214822Z`).
 - **Revision 128 — M2's live-session gate qualified on real ETW, and what a long capture costs (§3.1, §12, M2 gate):**
   - **Bounded session:** `first-feedback --seconds 600 --bounded` runs the default Explore capture until the broker ends
     it at its 600 s quota. Schema v3 samples viewer and broker memory every 10 s and reports one-minute trend windows.
@@ -370,12 +400,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Keep a long live capture inside its budgets, per revision 128's 10-minute measurement:
-   - hand the live preview to the window at its 4 Hz cadence however long follow and projection take;
-   - stop re-reading and re-hashing every segment file and re-decoding relation keys several times per segment for
-     each publication and query;
-   - then S4's persisted overview pyramid (P25) and IC-015's incremental process and relation derivation, so exact
-     live results keep a sub-second cadence and viewer memory stops growing with the session (S2).
+1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture; projection still
+   grows about 0.8 ms per thousand records.
+   - S4's persisted overview pyramid (P25).
+   - IC-015's incremental process and relation derivation, so exact live results keep a sub-second cadence and viewer
+     memory stops growing with the session (S2).
+   - A bounded cache of verified segment readers, so a projection stops re-reading and re-hashing every segment (21 MB,
+     17 ms at the end of the 10-minute capture).
+   - Remove a live session's superseded manifests once nothing can read them. `store-v1` keeps them until asked, and
+     they reached 16 MB after 10 minutes.
    Re-run the bounded 10-minute first-feedback and revision 127's latency benchmark at 1M and 10M rows as each lands.
 2. Finish a crashed viewer's session (§3.1 step 6): record where a live session's evidence is, outside the session
    directory, and on the next launch offer to derive the chunks the broker published after the crash.
@@ -395,11 +428,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 128): **953 passed, 2 skipped, in Debug and Release**, zero failures.
-  Revision 128 adds no tests; its real-ETW measurements are
-  `bench/results/first-feedback-20260925T205636Z-10min-bounded` and
-  `bench/results/broker-qualification-20260925T210750Z`. Run nothing else while a first-feedback run records: a
-  concurrent build or suite would be measured as projection cost.
+- Last executed clean baseline (revision 129): **959 passed, 2 skipped, in Debug and Release**, zero failures.
+  Revision 129 adds two store, two Desktop and two broker tests (+6). Its real-ETW measurements are
+  `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
+  `bench/results/broker-qualification-20260925T214822Z`.
+  - Run nothing else while a first-feedback run records: a concurrent build or suite would be measured as projection
+    cost.
+  - Once-per-publication loops run tier-0 code for their first few calls. A profiler should report steady state after
+    warm-up, or it overstates those loops several times over (process derivation: 116 ms cold, 25 ms warm).
+  - Revision 128 adds no tests; its real-ETW measurements are
+    `bench/results/first-feedback-20260925T205636Z-10min-bounded` and
+    `bench/results/broker-qualification-20260925T210750Z`.
   - Revision 127 adds one Desktop test (+1) and the opt-in latency benchmark (+1 skip); its measurement is
     `bench/results/interaction-latency-20260925T204410Z`.
   - Revision 126 adds one Desktop and one UI test (+2); real-ETW first-feedback met every budget

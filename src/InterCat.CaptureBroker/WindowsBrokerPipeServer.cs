@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -237,19 +238,52 @@ public sealed partial class WindowsBrokerPipeServerInstance : IDisposable, IAsyn
     private static partial nint LocalFree(nint memory);
 }
 
-/// <summary>Runs the bounded frame/dispatcher loop for one already authenticated pipe client.</summary>
+/// <summary>
+/// How fast one connection may make requests: a burst it may make at once, and a rate it may sustain. A request past
+/// the rate is answered late, never refused, so a well-behaved client is never cut off and a runaway one costs the
+/// broker at most this rate.
+/// </summary>
+public sealed record BrokerRequestRate(int Burst, double PerSecond)
+{
+    /// <summary>
+    /// Sixteen times what an owner needs: the Desktop and the CLI read status four times a second and renew every ten.
+    /// </summary>
+    public static BrokerRequestRate Default { get; } = new(256, 64);
+}
+
+/// <summary>Runs the rate-bounded frame/dispatcher loop for one already authenticated pipe client.</summary>
+/// <remarks>
+/// A connection is bounded by its rate, not by a total. An owner keeps one connection for its whole capture, up to the
+/// 24-hour quota, and an earlier total of 4,096 requests ended a 4 Hz owner's connection after 17 minutes, which the
+/// Desktop reported as an interrupted capture (revision 129). A total never bounded a flood either: a client could
+/// spend it in a second and reconnect.
+/// </remarks>
 public static class BrokerPipeConnectionProcessor
 {
-    public const int MaximumRequestsPerConnection = 4096;
+    public static Task ProcessAsync(
+        Stream stream,
+        BrokerConnectionDispatcher dispatcher,
+        CancellationToken cancellationToken = default) =>
+        ProcessAsync(stream, dispatcher, BrokerRequestRate.Default, cancellationToken);
 
     public static async Task ProcessAsync(
         Stream stream,
         BrokerConnectionDispatcher dispatcher,
+        BrokerRequestRate rate,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(dispatcher);
-        for (int requestCount = 0; requestCount < MaximumRequestsPerConnection; requestCount++)
+        ArgumentNullException.ThrowIfNull(rate);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rate.Burst, 1);
+        if (!(rate.PerSecond > 0) || double.IsInfinity(rate.PerSecond))
+        {
+            throw new ArgumentOutOfRangeException(nameof(rate), rate.PerSecond, "A request rate is positive and finite.");
+        }
+
+        double available = rate.Burst;
+        long refilled = Stopwatch.GetTimestamp();
+        while (true)
         {
             BrokerWireFrame? request = await BrokerWireFrameCodec
                 .ReadAsync(stream, cancellationToken)
@@ -259,14 +293,23 @@ public static class BrokerPipeConnectionProcessor
                 return;
             }
 
+            long now = Stopwatch.GetTimestamp();
+            available = Math.Min(rate.Burst, available + (Stopwatch.GetElapsedTime(refilled, now).TotalSeconds * rate.PerSecond));
+            refilled = now;
+            if (available < 1)
+            {
+                // Late, not refused: the request is answered as soon as the connection's rate allows it.
+                await Task.Delay(TimeSpan.FromSeconds((1 - available) / rate.PerSecond), cancellationToken).ConfigureAwait(false);
+                available = 1;
+                refilled = Stopwatch.GetTimestamp();
+            }
+
+            available--;
             BrokerWireFrame response = await dispatcher
                 .DispatchAsync(request, cancellationToken)
                 .ConfigureAwait(false);
             await BrokerWireFrameCodec.WriteAsync(stream, response, cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        throw new InvalidDataException(
-            $"A broker connection exceeded {MaximumRequestsPerConnection} requests and was closed.");
     }
 }

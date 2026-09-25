@@ -118,7 +118,12 @@ internal static partial class Qualification
                     + $"exact p95 {result.EventToExact?.P95Ms} ms); last overview derived in "
                     + $"{result.LastOverviewDerivationMs} ms, projected in {result.LastOverviewProjectionMs} ms; "
                     + $"viewer {result.MemoryAtEnd?.ViewerPrivateBytes / (1024 * 1024)} MiB private at the end"));
-                await WaitForCliBrokerExitAsync(cancellationToken);
+                if (!await WaitForCliBrokerExitAsync(cancellationToken))
+                {
+                    // The next run would meet this broker still serving; nothing after it would measure what it says.
+                    report.Failure = "The broker did not exit within 90 s of the capture's end, so no further run was made.";
+                    break;
+                }
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -477,19 +482,32 @@ internal static partial class Qualification
         }
     }
 
-    /// <summary>A broker launched through the tool's serve mode idle-exits on its own; the next run waits for that.</summary>
-    private static async Task WaitForCliBrokerExitAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// A broker launched through the tool's serve mode idle-exits on its own; the next run waits for that. A viewer that
+    /// lost its connection leaves the capture to its 30-second owner lease first, so the wait allows 90 s. False when a
+    /// broker is still running after it.
+    /// </summary>
+    private static async Task<bool> WaitForCliBrokerExitAsync(CancellationToken cancellationToken)
     {
+        using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        idle.CancelAfter(TimeSpan.FromSeconds(90));
         foreach (Process broker in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!))
             .Where(candidate => candidate.Id != Environment.ProcessId))
         {
             using (broker)
             {
-                using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                idle.CancelAfter(TimeSpan.FromSeconds(30));
-                await broker.WaitForExitAsync(idle.Token);
+                try
+                {
+                    await broker.WaitForExitAsync(idle.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return false;
+                }
             }
         }
+
+        return true;
     }
 
     private static void TryDelete(string directory)

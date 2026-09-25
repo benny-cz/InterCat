@@ -227,6 +227,8 @@ public static class SessionOverviewProjector
             CoverageLedgerV1? coverage,
             CancellationToken cancellationToken)
     {
+        // The extent comes first, from the time column alone. Each segment's relation bindings are then derived once,
+        // for the unresolved count and the graph-eligible rows together (revision 129).
         long rows = 0;
         long withoutTime = 0;
         long unresolved = 0;
@@ -236,18 +238,10 @@ public static class SessionOverviewProjector
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            ProcessBinding[] peers = relations.PeersOf(segment);
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
                 rows++;
-                if ((Mechanism)mechanisms.UnsignedAt(row)!.Value == Mechanism.Tcp
-                    && !peers[row].IsAdmittedUnder(policy))
-                {
-                    unresolved++;
-                }
-
                 if (times.SignedAt(row) is not { } nanoseconds)
                 {
                     withoutTime++;
@@ -266,10 +260,16 @@ public static class SessionOverviewProjector
             foreach (SegmentReaderV1 segment in segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ChannelBinding[] channels = relations.ChannelsOf(segment);
+                SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+                (ProcessBinding[] peers, ChannelBinding[] channels) = relations.BindingsOf(segment);
                 for (int row = 0; row < channels.Length; row++)
                 {
                     if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if ((Mechanism)mechanisms.UnsignedAt(row)!.Value == Mechanism.Tcp && !peers[row].IsAdmittedUnder(policy))
+                    {
+                        unresolved++;
+                    }
+
                     if (channels[row].IsKnown && eligibleChannels.Contains(channels[row].Channel))
                     {
                         allGraphRows++;
@@ -291,10 +291,16 @@ public static class SessionOverviewProjector
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            ChannelBinding[] channels = relations.ChannelsOf(segment);
+            (ProcessBinding[] peers, ChannelBinding[] channels) = relations.BindingsOf(segment);
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                if (mechanism == Mechanism.Tcp && !peers[row].IsAdmittedUnder(policy))
+                {
+                    unresolved++;
+                }
+
                 bool graphEligible = channels[row].IsKnown && eligibleChannels.Contains(channels[row].Channel);
                 if (graphEligible) graphRows++;
                 if (times.SignedAt(row) is not { } nanoseconds)
@@ -305,7 +311,6 @@ public static class SessionOverviewProjector
 
                 long tick = nanoseconds / 100;
                 int bucket = main.ColumnOf(tick)!.Value;
-                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
                 main.Add(bucket, mechanism);
                 minimap.Add(minimap.ColumnOf(tick)!.Value, mechanism);
                 if (graphEligible)

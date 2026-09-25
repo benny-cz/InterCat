@@ -87,7 +87,10 @@ declares no boundary is distinct from one that declares zero.
 
 **What re-measuring does (ADR-025).**
 
-- Every dependency is opened and its length checked each time.
+- Every dependency's presence and length are checked each time. A file this store instance already hashed is
+  confirmed by one listing of the directory: listed, not a reparse point, and with the length and last-write time it
+  was measured at. Any other file, and every file of a directory that cannot list its files, is opened and checked
+  from its handle (revision 129).
 - Its bytes are hashed unless the same store instance already hashed that file, under the same name, length and
   digest, and the file's last-write time has not moved since. A published file is immutable, so any write sends it
   back to be hashed.
@@ -248,7 +251,8 @@ quota without one; a pin that reserves less than the evidence it would pin is re
 nothing and is not revivable — a hold that can come back from expiry is not a bound on anything.
 
 Cross-process readers hold a shared read handle on the root-owned `session-evidence-lease.lock` before
-verifying the pointer and its dependencies. The session writer creates this guard before publishing a new
+verifying the pointer and its dependencies. When the pointer still names the generation the store instance already
+verified, that manifest is reused rather than read and digested again; its dependencies are still re-measured. The session writer creates this guard before publishing a new
 generation. A reader needs only read access to it; a legacy session without the guard can be upgraded by a
 writable reader, but a read-only viewer must refuse that legacy session until its owner has established the
 guard. A reader refreshes a stale store's snapshot from the verified pointer, but that refresh never makes a

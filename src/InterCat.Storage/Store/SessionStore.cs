@@ -29,6 +29,18 @@ internal sealed class DependencyMeasurements
         }
     }
 
+    /// <summary>Whether nothing has been hashed here yet, as in a fresh instance, which therefore hashes everything.</summary>
+    public bool IsEmpty
+    {
+        get
+        {
+            lock (gate)
+            {
+                return measured.Count == 0;
+            }
+        }
+    }
+
     /// <summary>Records a dependency whose bytes were just hashed and matched.</summary>
     public void Record(StoreDependency dependency, long lastWriteTicks)
     {
@@ -612,7 +624,7 @@ public sealed class SessionStore
             FileStream hold = AcquireEvidenceReadHold();
             try
             {
-                (SessionManifestV1? disk, _, _) = Acquire(directory, measurements);
+                (SessionManifestV1? disk, _, _) = Acquire(directory, measurements, current);
                 SessionManifestV1 manifest = disk
                     ?? throw new InvalidOperationException(
                         "This session has published no generation, so there is nothing to acquire. An empty "
@@ -1447,11 +1459,17 @@ public sealed class SessionStore
         }
     }
 
+    /// <param name="verified">
+    /// A manifest this instance already verified. When the current pointer still names it, its dependencies are
+    /// re-measured but the manifest is not read and digested again: the pointer's digest pins every byte of it.
+    /// </param>
     private static (SessionManifestV1? Manifest, bool RolledBack, string? Reason) Acquire(
         IOwnedDirectory directory,
-        DependencyMeasurements? measurements)
+        DependencyMeasurements? measurements,
+        SessionManifestV1? verified = null)
     {
-        string? currentProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements);
+        string? currentProblem = TryAcquire(
+            directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements, verified);
         if (currentProblem is null)
         {
             return (manifest, false, null);
@@ -1476,7 +1494,8 @@ public sealed class SessionStore
         IOwnedDirectory directory,
         string pointerName,
         out SessionManifestV1? manifest,
-        DependencyMeasurements? measurements)
+        DependencyMeasurements? measurements,
+        SessionManifestV1? verified = null)
     {
         manifest = null;
         SessionPointerV1? pointer = Read<SessionPointerV1>(directory, pointerName);
@@ -1491,14 +1510,19 @@ public sealed class SessionStore
             return problem;
         }
 
-        SessionManifestV1? candidate = Read<SessionManifestV1>(directory, pointer.ManifestName);
+        bool unchanged = verified is not null
+            && verified.Generation == pointer.Generation
+            && string.Equals(verified.Digest, pointer.ManifestDigest, StringComparison.Ordinal)
+            && string.Equals(
+                SessionManifestV1.FileNameFor(verified.Generation), pointer.ManifestName, StringComparison.OrdinalIgnoreCase);
+        SessionManifestV1? candidate = unchanged ? verified : Read<SessionManifestV1>(directory, pointer.ManifestName);
         if (candidate is null)
         {
             return $"generation {pointer.Generation} names manifest '{pointer.ManifestName}', which is "
                 + "missing or unreadable";
         }
 
-        problem = candidate.Validate() ?? candidate.VerifyDigest();
+        problem = unchanged ? null : candidate.Validate() ?? candidate.VerifyDigest();
         if (problem is not null)
         {
             return problem;
@@ -1527,18 +1551,36 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Re-measures every dependency a generation names: each file is opened and its length checked, and its bytes are
+    /// Re-measures every dependency a generation names: each file's presence and length is checked, and its bytes are
     /// hashed unless these measurements already hashed the same immutable file, unchanged in length and last-write
     /// time since. Without that, every commit and every lease would hash the whole session, and a long live recording
     /// would spend more time hashing than recording (store-v1 §3).
     /// </summary>
+    /// <remarks>
+    /// One listing of the directory confirms a file these measurements already hashed: listed, not a reparse point,
+    /// and with the length and last-write time they recorded. Every other file is opened and checked from its handle.
+    /// A live session names every journal chunk it published, so one open per file made each lease cost more as the
+    /// capture grew: 33 ms at 292 chunks (ADR-025, revision 129).
+    /// </remarks>
     private static string? VerifyDependencies(
         IOwnedDirectory directory,
         SessionManifestV1 manifest,
         DependencyMeasurements? measurements)
     {
+        IReadOnlyDictionary<string, OwnedFileFacts>? listed = measurements is { IsEmpty: false }
+            ? directory.DescribeOwnedFiles()
+            : null;
         foreach (StoreDependency dependency in manifest.Dependencies)
         {
+            if (listed is not null
+                && listed.TryGetValue(dependency.Name, out OwnedFileFacts facts)
+                && !facts.IsReparsePoint
+                && facts.LengthBytes == dependency.LengthBytes
+                && measurements!.Holds(dependency, facts.LastWriteUtcTicks))
+            {
+                continue;
+            }
+
             try
             {
                 using FileStream stream = directory.OpenOwnedFile(

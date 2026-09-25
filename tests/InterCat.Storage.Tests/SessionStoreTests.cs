@@ -424,6 +424,78 @@ public sealed class SessionStoreTests
         Assert.Contains("computes", reader.Recovery.RollbackReason!, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a lease on the generation this instance verified opens none of its dependencies")]
+    public void ARepeatedLeaseOpensNoDependency()
+    {
+        using var session = new TemporarySession();
+        var counting = new CountingDirectory(LocalOwnedDirectory.Open(session.Path));
+        SessionStore store = SessionStore.Open(counting, Session, "test-source");
+        _ = Publish(store, ("segment-0001.icats", "first"));
+
+        // A commit reads back what it adds. What it carries forward, this instance already hashed, so one listing
+        // confirms its length and last-write time instead of an open per file (ADR-025, revision 129).
+        counting.Opened.Clear();
+        StoreCommitResult second = Publish(store, ("segment-0002.icats", "second"));
+        Assert.Contains("segment-0002.icats", counting.Opened);
+        Assert.DoesNotContain("segment-0001.icats", counting.Opened);
+
+        // The pointer still names the generation this instance verified: neither its manifest nor any dependency is
+        // opened, however many a long live session names.
+        counting.Opened.Clear();
+        using (EvidenceLease lease = store.AcquireLease())
+        {
+            Assert.Same(second.Manifest, lease.Manifest);
+        }
+
+        Assert.DoesNotContain(SessionManifestV1.FileNameFor(2), counting.Opened);
+        Assert.DoesNotContain(counting.Opened, name => second.Manifest.Dependencies.Any(dependency => dependency.Name == name));
+    }
+
+    [Fact(DisplayName = "I15: a lease still finds a dependency truncated, rewritten or removed since it was measured")]
+    public void ALeaseFindsADependencyChangedSinceItWasMeasured()
+    {
+        // Shorter than measured: the listing disagrees, the file is opened, and its generation fails. The lease falls
+        // back to the retained last-known-good, as it always has.
+        using (var truncated = new TemporarySession())
+        {
+            _ = Publish(truncated.Store, ("segment-0001.icats", "first"));
+            _ = Publish(truncated.Store, ("segment-0002.icats", "second"));
+            using (EvidenceLease lease = truncated.Store.AcquireLease())
+            {
+                Assert.Equal(2, lease.Manifest.Generation);
+            }
+
+            truncated.WriteRaw("segment-0002.icats", "sec");
+            using (EvidenceLease lease = truncated.Store.AcquireLease())
+            {
+                Assert.Equal(1, lease.Manifest.Generation);
+            }
+        }
+
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            Assert.Equal(2, lease.Manifest.Generation);
+        }
+
+        // The same length, written since: its time moved, so it is hashed again rather than confirmed.
+        string path = Path.Combine(session.Path, "segment-0002.icats");
+        DateTime measured = File.GetLastWriteTimeUtc(path);
+        session.WriteRaw("segment-0002.icats", "SECOND");
+        File.SetLastWriteTimeUtc(path, measured.AddSeconds(1));
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            Assert.Equal(1, lease.Manifest.Generation);
+        }
+
+        // Gone: the listing has no entry, and the open that follows says so.
+        File.Delete(Path.Combine(session.Path, "segment-0001.icats"));
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(() => session.Store.AcquireLease());
+        Assert.Contains("segment-0001.icats", refused.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I15: a manifest whose contents no longer match its digest is refused")]
     public void AManifestThatDoesNotMatchItsDigestIsRefused()
     {
@@ -759,6 +831,27 @@ public sealed class SessionStoreTests
             {
             }
         }
+    }
+
+    /// <summary>Records every file opened through it; everything else, its listing included, is the real directory's.</summary>
+    private sealed class CountingDirectory(IOwnedDirectory inner) : IOwnedDirectory
+    {
+        public List<string> Opened { get; } = [];
+
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string name, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+        {
+            Opened.Add(name);
+            return inner.OpenOwnedFile(name, mode, access, share, options);
+        }
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName) =>
+            inner.ReplaceOwnedFile(sourceName, destinationName);
+
+        public bool RemoveOwnedFile(string name) => inner.RemoveOwnedFile(name);
+
+        public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
     }
 
     /// <summary>Fails the current-pointer rename the way a killed writer would stop there; everything else is real.</summary>
