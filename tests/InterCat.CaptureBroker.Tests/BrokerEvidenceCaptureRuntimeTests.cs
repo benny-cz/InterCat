@@ -45,6 +45,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         PreparedCapturePlan plan = SmallPlan();
         BrokerCaptureOwnership ownership = Ownership(plan);
         Assert.Null(runtime.ReadHealth(ownership.CaptureId));
+        Assert.Null(runtime.ReadPreview(ownership.CaptureId));
 
         Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
         BrokerCaptureHealth live = Assert.IsType<BrokerCaptureHealth>(runtime.ReadHealth(ownership.CaptureId));
@@ -55,9 +56,19 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.InRange(live.QueueDepth, 0, live.QueueCapacity);
         Assert.Null(runtime.ReadHealth(CaptureId.New()));
 
+        // The live preview is read beside the counters, adds up, and is always something one status can carry.
+        BrokerCapturePreview preview = Assert.IsType<BrokerCapturePreview>(runtime.ReadPreview(ownership.CaptureId));
+        Assert.Equal(1, preview.OpenChunk);
+        Assert.Equal(preview.CountedRecords, preview.Counts.Sum(count => count.Count) + preview.UnbinnedRecords);
+        _ = BrokerWireResponseCodec.Encode(new BrokerCaptureStatusResponse(ownership.CaptureId, CaptureLifecycle.Recording,
+            plan.Digest, ownership.CreatedAtUtc, ownership.CreatedAtUtc, ownership.CreatedAtUtc.AddMinutes(1),
+            BrokerStopMilestones.None, null, Preview: preview), Guid.NewGuid());
+        Assert.Null(runtime.ReadPreview(CaptureId.New()));
+
         BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);
         Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
         Assert.Null(runtime.ReadHealth(ownership.CaptureId));
+        Assert.Null(runtime.ReadPreview(ownership.CaptureId));
     }
 
     [Fact(DisplayName = "R16: restart cleanup stops exact owned ETW but leaves journal finalization unproven")]

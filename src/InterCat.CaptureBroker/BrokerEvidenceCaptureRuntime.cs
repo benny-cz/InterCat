@@ -59,6 +59,36 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                 live.Snapshot.QueueCapacity)
             : null;
 
+    /// <summary>
+    /// The capture's journaled records counted by chunk, mechanism and time while it records, for a status request; null
+    /// when it is not recording. A count too far behind the newest to travel in one status is kept as unbinned, so the
+    /// counts and the unbinned records still add up to every record the preview covers.
+    /// </summary>
+    public BrokerCapturePreview? ReadPreview(CaptureId captureId)
+    {
+        if (!health.TryGetValue(captureId, out LiveHealthProbe? probe) || probe.ReadPreview() is not { } snapshot)
+        {
+            return null;
+        }
+
+        long newest = snapshot.Counts.Count == 0 ? 0 : snapshot.Counts.Max(count => count.Bin);
+        long unbinned = snapshot.UnbinnedRecords;
+        var counts = new List<BrokerPreviewCount>(snapshot.Counts.Count);
+        foreach (LivePreviewCount count in snapshot.Counts)
+        {
+            if (newest - count.Bin > BrokerCapturePreview.MaximumBinSpan)
+            {
+                unbinned += count.Count;
+                continue;
+            }
+
+            counts.Add(new(count.Chunk, count.Bin, count.Mechanism, count.Count));
+        }
+
+        return new(snapshot.BinNativeTicks, snapshot.OpenChunk, snapshot.RetainedChunks, snapshot.CountedRecords,
+            unbinned, counts.AsReadOnly());
+    }
+
     public async ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);

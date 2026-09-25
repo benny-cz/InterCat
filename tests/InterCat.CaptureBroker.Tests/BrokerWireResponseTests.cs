@@ -81,6 +81,17 @@ public sealed class BrokerWireResponseTests
             BrokerStopMilestones.None,
             null,
             Health: new BrokerCaptureHealth(10, 10, 0, null, null, 0, 1_024))];
+        yield return [new BrokerCaptureStatusResponse(
+            captureId,
+            CaptureLifecycle.Recording,
+            Digest('b'),
+            Now,
+            Now.AddSeconds(1),
+            Now.AddSeconds(30),
+            BrokerStopMilestones.None,
+            null,
+            Health: new BrokerCaptureHealth(10, 10, 0, 0, 0, 0, 1_024),
+            Preview: Preview())];
         yield return [new BrokerStopCaptureResponse(
             BrokerOperationCode.StopPartial,
             captureId,
@@ -199,6 +210,51 @@ public sealed class BrokerWireResponseTests
             status with { Health = new BrokerCaptureHealth(1, 1, 0, 0, 0, 17, 16) }, correlationId));
     }
 
+    [Fact(DisplayName = "§12/§19.3: a live preview travels whole, its counts adding up to the records it covers")]
+    public void ALivePreviewArrivesWholeAndAddsUp()
+    {
+        var status = new BrokerCaptureStatusResponse(
+            new CaptureId(Guid.NewGuid()), CaptureLifecycle.Recording, Digest('b'), Now, Now.AddSeconds(1),
+            Now.AddSeconds(30), BrokerStopMilestones.None, null);
+        Guid correlationId = Guid.NewGuid();
+        BrokerCapturePreview preview = Preview();
+        BrokerCapturePreview read = Assert.IsType<BrokerCapturePreview>(Assert.IsType<BrokerCaptureStatusResponse>(
+            BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(status with { Preview = preview }, correlationId))).Preview);
+        Assert.Equal(preview.Counts, read.Counts);
+        Assert.Equal((preview.OpenChunk, preview.RetainedChunks, preview.CountedRecords, preview.UnbinnedRecords),
+            (read.OpenChunk, read.RetainedChunks, read.CountedRecords, read.UnbinnedRecords));
+
+        // An empty open chunk is a preview with no counts, and a status without the fields has none.
+        BrokerCapturePreview empty = new(1_000_000, 1, 0, 0, 0, []);
+        Assert.Empty(Assert.IsType<BrokerCaptureStatusResponse>(BrokerWireResponseCodec.Decode(
+            BrokerWireResponseCodec.Encode(status with { Preview = empty }, correlationId))).Preview!.Counts);
+        BrokerWireFrame plain = BrokerWireResponseCodec.Encode(status, correlationId);
+        Assert.Null(Assert.IsType<BrokerCaptureStatusResponse>(BrokerWireResponseCodec.Decode(plain)).Preview);
+
+        // Part of the set is refused rather than read as a preview of nothing.
+        byte[] partial = new byte[16];
+        BinaryPrimitives.WriteUInt16LittleEndian(partial.AsSpan(0, 2), 21);
+        partial[2] = 2;
+        BinaryPrimitives.WriteInt32LittleEndian(partial.AsSpan(4, 4), 8);
+        BinaryPrimitives.WriteInt64LittleEndian(partial.AsSpan(8, 8), 1_000_000);
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireFrame.CreateResponse(
+            BrokerMessageType.GetStatus, correlationId, [.. plain.Payload.ToArray(), .. partial])));
+
+        // Counts that do not add up, name a chunk the preview does not cover, repeat a key or span too many bins are refused.
+        foreach (BrokerCapturePreview impossible in new[]
+        {
+            preview with { CountedRecords = preview.CountedRecords + 1 },
+            preview with { Counts = [.. preview.Counts, new(preview.FirstChunk - 1, 30, Mechanism.Tcp, 1)], CountedRecords = preview.CountedRecords + 1 },
+            preview with { Counts = [.. preview.Counts, preview.Counts[0]], CountedRecords = preview.CountedRecords + preview.Counts[0].Count },
+            preview with { Counts = [.. preview.Counts, new(preview.OpenChunk, 22 + BrokerCapturePreview.MaximumBinSpan + 1, Mechanism.Tcp, 1)], CountedRecords = preview.CountedRecords + 1 },
+            preview with { RetainedChunks = preview.OpenChunk },
+            preview with { Counts = [new(preview.OpenChunk, 20, Mechanism.Tcp, 0)], CountedRecords = preview.UnbinnedRecords },
+        })
+        {
+            Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Encode(status with { Preview = impossible }, correlationId));
+        }
+    }
+
     [Fact]
     public void StatusResponseHasNoRuntimeOwnershipCredential()
     {
@@ -211,6 +267,20 @@ public sealed class BrokerWireResponseTests
         Assert.DoesNotContain("OwnershipToken", publicProperties);
         Assert.DoesNotContain("Owner", publicProperties);
     }
+
+    /// <summary>A preview of chunks 3 to 5: the open chunk's TCP and lifecycle counts and a published chunk's UDP ones.</summary>
+    private static BrokerCapturePreview Preview() => new(
+        1_000_000,
+        5,
+        2,
+        21,
+        3,
+        [
+            new(5, 25, Mechanism.Tcp, 7),
+            new(5, 25, Mechanism.ProcessLifecycle, 1),
+            new(5, 24, Mechanism.Tcp, 4),
+            new(4, 22, Mechanism.Udp, 6),
+        ]);
 
     private static BrokerCapabilitiesResponse Capabilities() => new(
         Now,

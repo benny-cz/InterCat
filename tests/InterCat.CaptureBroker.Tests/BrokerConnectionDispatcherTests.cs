@@ -75,7 +75,9 @@ public sealed class BrokerConnectionDispatcherTests
         using var preparation = new BrokerPreparationCoordinator(source, registry, Runtime);
         using var lifecycle = new BrokerLifecycleCoordinator(registry, new InMemoryBrokerLifecycleStore(), runtime);
         var counters = new BrokerCaptureHealth(12, 15, 1, 2, 0, 3, 64);
-        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters);
+        var preview = new BrokerCapturePreview(1_000_000, 2, 1, 12, 0,
+            [new(2, 40, Mechanism.Tcp, 9), new(1, 38, Mechanism.Tcp, 3)]);
+        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters, _ => preview);
         await CompleteHello(dispatcher);
 
         var prepareRequest = new BrokerPrepareCaptureRequest(
@@ -106,6 +108,9 @@ public sealed class BrokerConnectionDispatcherTests
         Assert.Equal(CaptureLifecycle.Recording, status.State);
         Assert.Equal(prepared.Grant.PlanDigest, status.PlanDigest);
         Assert.Equal(counters, status.Health);
+        BrokerCapturePreview carried = Assert.IsType<BrokerCapturePreview>(status.Preview);
+        Assert.Equal(preview.Counts, carried.Counts);
+        Assert.Equal(preview with { Counts = carried.Counts }, carried);
 
         var renewed = Assert.IsType<BrokerRenewOwnerLeaseResponse>(await Dispatch(
             dispatcher,
@@ -120,12 +125,13 @@ public sealed class BrokerConnectionDispatcherTests
         Assert.Equal(1, runtime.StartCount);
         Assert.Equal(1, runtime.StopCount);
 
-        // A closed capture's loss is its ledger's; live counters are not offered for it.
+        // A closed capture's loss is its ledger's and its records are published; neither live read is offered for it.
         var closed = Assert.IsType<BrokerCaptureStatusResponse>(await Dispatch(
             dispatcher,
             new BrokerGetStatusRequest(captureId)));
         Assert.Equal(CaptureLifecycle.Closed, closed.State);
         Assert.Null(closed.Health);
+        Assert.Null(closed.Preview);
     }
 
     [Fact]
@@ -314,14 +320,16 @@ public sealed class BrokerConnectionDispatcherTests
         BrokerClientIdentity owner,
         BrokerPreparationCoordinator preparation,
         BrokerLifecycleCoordinator lifecycle,
-        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null) =>
+        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null,
+        Func<CaptureId, BrokerCapturePreview?>? livePreview = null) =>
         new(
             owner,
             preparation,
             lifecycle,
             Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             "fixture-1",
-            liveHealth: liveHealth);
+            liveHealth: liveHealth,
+            livePreview: livePreview);
 
     private static async Task CompleteHello(BrokerConnectionDispatcher dispatcher)
     {

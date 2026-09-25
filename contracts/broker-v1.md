@@ -397,6 +397,36 @@ gate, which a draining stop can hold, and an older ETW loss reading never replac
 that predates these fields simply omits them. The Desktop passes a changed reading to its health strip at
 most once a second, and only until it sends stop.
 
+### 5.9 Live preview
+
+A viewer sees a record exactly only once the chunk holding it publishes and is derived, which the 2-second publication
+floor bounds from below (plan §12). While a capture is `Recording`, `GetStatus` therefore also returns a **live
+preview**: its journaled records counted by chunk, mechanism and time, for the viewer to draw, labelled as a preview,
+until the chunk that holds them is derived. All seven fields are optional and arrive together or not at all:
+
+| Field | Type | Meaning |
+|---|---|---|
+| 21 | Int64 | One bin's width in the capture clock's native ticks: a tenth of a second |
+| 22 | Int32 | The chunk being written; the capture's first chunk is 1 |
+| 23 | Int32 | How many published chunks before it the counts still cover (at most 16; the broker keeps 4) |
+| 24 | Int64 | Every record of the covered chunks |
+| 25 | Int64 | Covered records no count places in a bin |
+| 26 | Int64 | The earliest bin any count names |
+| 27 | Int32 list | Two values per count: `(chunk back from field 22) << 24 \| mechanism << 16 \| bin offset from field 26`, then the count |
+
+A record is counted once it is journaled, in the chunk it was written to, in the bin of its own native reading; a
+record refused by a journal or disk bound is never counted. A chunk keeps its newest 256 bins, and a status carries at
+most 2,000 counts, newest chunks and bins first. A record either bound keeps out of a bin, or whose reading precedes the
+clock's zero, is counted in field 25, so the counts plus field 25 always equal field 24. A status whose counts do not add
+up, name a chunk outside `[field 22 - field 23, field 22]`, repeat a chunk-mechanism-bin key, name an undefined
+mechanism or a non-positive count, or span more than 65,535 bins is refused.
+
+A viewer that shows chunks `1..k` draws the counts of chunks after `k` only. It knows the covered range, so a viewer more
+than the retained chunks behind can state that part of what it has not yet derived is not previewed. The preview holds
+counts only: no record, name, address, process or byte count, so it discloses no more than the mechanism of a record
+and when it happened. It is never an exact result: a viewer never exports it, ranks by it or adds it to a published
+count (plan §19.3). No other lifecycle state returns it, and a broker that predates it simply omits it.
+
 ## 6. Threat model and current non-capabilities
 
 Assets are the elevated provider/session controls, admitted event data, broker-owned output directory,

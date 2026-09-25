@@ -82,6 +82,7 @@ public sealed class BrokerHost
     private readonly Action<BrokerHostEvent>? log;
     private readonly Func<CaptureId, string?>? evidenceDirectory;
     private readonly Func<CaptureId, BrokerCaptureHealth?>? liveHealth;
+    private readonly Func<CaptureId, BrokerCapturePreview?>? livePreview;
 
     public BrokerHost(
         BrokerPreparationCoordinator preparation,
@@ -90,10 +91,12 @@ public sealed class BrokerHost
         TimeProvider? clock = null,
         Action<BrokerHostEvent>? log = null,
         Func<CaptureId, string?>? evidenceDirectory = null,
-        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null)
+        Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null,
+        Func<CaptureId, BrokerCapturePreview?>? livePreview = null)
     {
         this.evidenceDirectory = evidenceDirectory;
         this.liveHealth = liveHealth;
+        this.livePreview = livePreview;
         this.preparation = preparation ?? throw new ArgumentNullException(nameof(preparation));
         this.lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
         this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -298,7 +301,8 @@ public sealed class BrokerHost
             settings.ServerInstanceId,
             settings.ServerVersion,
             evidenceDirectory,
-            liveHealth);
+            liveHealth,
+            livePreview);
         try
         {
             await BrokerPipeConnectionProcessor.ProcessAsync(pipe.Stream, dispatcher, cancellationToken)

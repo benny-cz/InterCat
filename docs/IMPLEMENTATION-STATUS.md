@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 124 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 125 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -43,7 +43,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
-| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
+| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
@@ -55,6 +55,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 125 — broker live preview, and what live projection costs (§12, §19.3, broker-v1 §5.9):**
+  - **Measured first:** the steady-state miss is not what a timeline pyramid would fix. On synthetic TCP sessions, a
+    new generation's overview took 0.33 s at 100,000 rows and 1.0 s at 1,000,000. A plain pass over the time and
+    mechanism columns was 24 ms per million rows. The rest was per-generation process and relation derivation
+    (115 and 212 ms), per-row relation lookups and per-column tallies. §12 now records this: S4 is needed for
+    reopen at 100 GiB, and live cadence at scale needs incremental IC-015 derivation.
+  - **Preview:** `GetStatus` fields 21–27 now carry every journaled record counted by chunk, mechanism and 100 ms bin.
+    They cover the chunk being written and the four published before it. The recorder's single writer thread counts,
+    not the ETW callback. The counts are bounded to 256 bins a chunk and 2,000 a status, and their totals always add up.
+  - **Safety:** counts only; a status whose counts do not add up, or name an impossible chunk, key, mechanism or span,
+    is refused.
+  - **Tests:** tally bounds, a recording read mid-capture across chunk publications, wire round trip and refusals,
+    the dispatcher only while recording, and a real runtime preview through the codec (+4).
+  - **Qualification:** real-ETW broker qualification passed (`bench/results/broker-qualification-20260925T163744Z`).
+  - **Not yet:** the Desktop draws nothing from it until revision 126, and the budget row stays a measured miss until
+    first-feedback measures the preview.
 - **Revision 124 — L3 channel-end lanes banded by direction (§3.2, §6.2, §6.6):**
   - **Lanes:** the channel rung draws one lane per end under the machine-context row. Each lane is named by the
     process holding the end and the end's own endpoint.
@@ -289,8 +305,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
-   missed steady-state latency target on real ETW.
+1. Draw revision 125's live preview in the Desktop as a labelled live edge beside the published timeline. Then
+   extend `first-feedback` to measure event-to-preview on real ETW, and restate §12's budget row with that evidence.
+   Afterwards: S4's persisted pyramid for bounded reopen, and incremental process/relation derivation (IC-015) for
+   live cadence at scale, per revision 125's measurement.
 2. Audit keyboard and screen-reader/UI Automation access to the L0–L3 lane names and their selectors (revisions
    119–124), and add pin/collapse/search as the observed lane count requires. L4's operation lanes, with duration
    bars and byte projections where a derivation supports them, wait on item 3's operations; L5 keeps its marks.
@@ -307,9 +325,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 124): **946 passed, 1 skipped, in Debug and Release**, zero failures.
-  Revision 124 adds one Application, one Desktop and one UI test (+3) and extends the opt-in real-session check to
-  L3, which passed separately in Release on the saved Explore session.
+- Last executed clean baseline (revision 125): **950 passed, 1 skipped, in Debug and Release**, zero failures.
+  Revision 125 adds two recorder, one wire and one theory case (+4); the real-ETW broker qualification passed.
+  - Revision 124 adds one Application, one Desktop and one UI test (+3) and extends the opt-in real-session check to
+    L3, which passed separately in Release on the saved Explore session.
   - Revision 123 adds two Application, one Desktop and one UI test (+4) and extends the opt-in real-session check to
     L2, which passed separately in Release on the saved Explore session.
   - Caution from revision 123: a filtered `dotnet test` whose build fails still runs the previous binary. Grep its

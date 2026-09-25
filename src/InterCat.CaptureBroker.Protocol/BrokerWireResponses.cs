@@ -112,6 +112,10 @@ public sealed record BrokerStartCaptureResponse(
 /// Acquisition counters read while the capture records (fields 14-20, optional). Absent when it is not recording, or from
 /// a broker that predates them; absence means not known, never zero.
 /// </param>
+/// <param name="Preview">
+/// Journaled records counted by chunk, mechanism and time while the capture records (fields 21-27, optional). Absent when
+/// it is not recording, or from a broker that predates them; a viewer then draws only what is published.
+/// </param>
 public sealed record BrokerCaptureStatusResponse(
     CaptureId CaptureId,
     CaptureLifecycle State,
@@ -122,7 +126,8 @@ public sealed record BrokerCaptureStatusResponse(
     BrokerStopMilestones StopMilestones,
     string? FailureReason,
     string? EvidenceDirectory = null,
-    BrokerCaptureHealth? Health = null) : BrokerWireResponse
+    BrokerCaptureHealth? Health = null,
+    BrokerCapturePreview? Preview = null) : BrokerWireResponse
 {
     public override BrokerMessageType MessageType => BrokerMessageType.GetStatus;
 }
@@ -139,6 +144,42 @@ public sealed record BrokerCaptureHealth(
     long? ConsumerBufferLoss,
     int QueueDepth,
     int QueueCapacity);
+
+/// <summary>One live preview count: one chunk's records of one mechanism in one time bin.</summary>
+/// <param name="Chunk">The chunk's sequence number; a capture's first chunk is 1.</param>
+/// <param name="Bin">The bin's index: its first native reading divided by the bin width.</param>
+public readonly record struct BrokerPreviewCount(int Chunk, long Bin, Mechanism Mechanism, int Count);
+
+/// <summary>
+/// Journaled records of a recording capture, counted by chunk, mechanism and time bin (fields 21-27, optional, all
+/// together): the chunk being written and the most recently published ones. A viewer draws the chunks after those its
+/// published view holds as a labelled preview until they are derived. Counts only - never an exact result, never exported.
+/// </summary>
+/// <param name="BinNativeTicks">One bin's width in the capture clock's native ticks.</param>
+/// <param name="OpenChunk">The chunk being written; the capture's first chunk is 1.</param>
+/// <param name="RetainedChunks">How many published chunks before the open one the counts still cover.</param>
+/// <param name="CountedRecords">Every record of the covered chunks, binned or not.</param>
+/// <param name="UnbinnedRecords">Covered records no count places in a bin: outside the time window or the count bound.</param>
+public sealed record BrokerCapturePreview(
+    long BinNativeTicks,
+    int OpenChunk,
+    int RetainedChunks,
+    long CountedRecords,
+    long UnbinnedRecords,
+    IReadOnlyList<BrokerPreviewCount> Counts)
+{
+    /// <summary>The most counts one status carries: two 32-bit values each inside one 16 KiB field.</summary>
+    public const int MaximumCounts = 2_000;
+
+    /// <summary>The most published chunks a preview may still cover.</summary>
+    public const int MaximumRetainedChunks = 16;
+
+    /// <summary>The widest span of bins one preview's counts may cover, as a 16-bit offset from its earliest bin.</summary>
+    public const int MaximumBinSpan = ushort.MaxValue;
+
+    /// <summary>The first chunk the counts cover.</summary>
+    public int FirstChunk => OpenChunk - RetainedChunks;
+}
 
 public sealed record BrokerStopCaptureResponse(
     BrokerOperationCode Code,
@@ -176,7 +217,8 @@ public static class BrokerWireResponseCodec
         20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34);
     private const int MaximumEvidenceDirectoryBytes = 1024;
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2, 3, 4, 5);
-    private static readonly IReadOnlySet<ushort> StatusFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
+    private static readonly IReadOnlySet<ushort> StatusFields =
+        Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27);
     private static readonly IReadOnlySet<ushort> StopFields = Set(1, 2, 3, 4, 5, 6, 7, 8, 9);
     private static readonly IReadOnlySet<ushort> LeaseFields = Set(1, 2, 3, 4, 5);
 
@@ -382,6 +424,29 @@ public static class BrokerWireResponseCodec
             fields.WriteInt32(19, health.QueueDepth, required: false);
             fields.WriteInt32(20, health.QueueCapacity, required: false);
         }
+
+        if (value.Preview is { } preview)
+        {
+            // Each count is two values: its chunk (back from the open one), mechanism and bin (from the earliest), then
+            // its count. The earliest bin travels once, so a count fits 16 bits of offset rather than a 64-bit index.
+            long earliest = preview.Counts.Count == 0 ? 0 : preview.Counts.Min(count => count.Bin);
+            var packed = new int[preview.Counts.Count * 2];
+            for (int index = 0; index < preview.Counts.Count; index++)
+            {
+                BrokerPreviewCount count = preview.Counts[index];
+                packed[2 * index] = ((preview.OpenChunk - count.Chunk) << 24) | ((int)count.Mechanism << 16)
+                    | (int)(count.Bin - earliest);
+                packed[(2 * index) + 1] = count.Count;
+            }
+
+            fields.WriteInt64(21, preview.BinNativeTicks, required: false);
+            fields.WriteInt32(22, preview.OpenChunk, required: false);
+            fields.WriteInt32(23, preview.RetainedChunks, required: false);
+            fields.WriteInt64(24, preview.CountedRecords, required: false);
+            fields.WriteInt64(25, preview.UnbinnedRecords, required: false);
+            fields.WriteInt64(26, earliest, required: false);
+            fields.WriteInt32List(27, packed, required: false);
+        }
     }
 
     private static void WriteStop(BrokerWireFieldWriter fields, BrokerStopCaptureResponse value)
@@ -564,7 +629,45 @@ public static class BrokerWireResponseCodec
             ReadMilestones(fields, 7),
             fields.OptionalString(12, 512),
             fields.OptionalString(13, MaximumEvidenceDirectoryBytes),
-            ReadHealth(fields));
+            ReadHealth(fields),
+            ReadPreview(fields));
+    }
+
+    /// <summary>A live preview comes whole - its extent and its counts - or not at all.</summary>
+    private static BrokerCapturePreview? ReadPreview(BrokerWireFieldSet fields)
+    {
+        long? width = fields.OptionalInt64(21);
+        int? open = fields.OptionalInt32(22);
+        int? retained = fields.OptionalInt32(23);
+        long? counted = fields.OptionalInt64(24);
+        long? unbinned = fields.OptionalInt64(25);
+        long? earliest = fields.OptionalInt64(26);
+        IReadOnlyList<int> packed = fields.OptionalInt32List(27, BrokerCapturePreview.MaximumCounts * 2);
+        if (width is null && open is null && retained is null && counted is null && unbinned is null && earliest is null
+            && packed.Count == 0)
+        {
+            return null;
+        }
+
+        if (width is not { } binWidth || open is not { } openChunk || retained is not { } retainedChunks
+            || counted is not { } countedRecords || unbinned is not { } unbinnedRecords || earliest is not { } earliestBin
+            || packed.Count % 2 != 0)
+        {
+            throw new InvalidDataException("A capture status carries part of its live preview.");
+        }
+
+        var counts = new BrokerPreviewCount[packed.Count / 2];
+        for (int index = 0; index < counts.Length; index++)
+        {
+            int key = packed[2 * index];
+            counts[index] = new(
+                openChunk - ((key >>> 24) & 0xFF),
+                checked(earliestBin + (key & 0xFFFF)),
+                (Mechanism)((key >>> 16) & 0xFF),
+                packed[(2 * index) + 1]);
+        }
+
+        return new(binWidth, openChunk, retainedChunks, countedRecords, unbinnedRecords, Array.AsReadOnly(counts));
     }
 
     /// <summary>Live counters come as a set: the three totals and the queue, or none of them.</summary>
@@ -658,6 +761,11 @@ public static class BrokerWireResponseCodec
                 {
                     throw new InvalidDataException("A capture status carries impossible live counters.");
                 }
+
+                if (status.Preview is { } preview)
+                {
+                    ValidatePreview(preview);
+                }
                 break;
             case BrokerStopCaptureResponse stop:
                 ValidateOperation(stop.Code, stop.CaptureId, stop.State, null, stop.FailureReason);
@@ -668,6 +776,46 @@ public static class BrokerWireResponseCodec
                 break;
             default:
                 throw new NotSupportedException($"Wire response type '{response.GetType().Name}' is unsupported.");
+        }
+    }
+
+    /// <summary>
+    /// A preview's counts are records of the chunks it covers, each counted once: the counts and the unbinned records add
+    /// up to exactly the records it covers, so a viewer never draws a count the broker did not make.
+    /// </summary>
+    private static void ValidatePreview(BrokerCapturePreview preview)
+    {
+        if (preview.BinNativeTicks <= 0 || preview.OpenChunk < 1 || preview.RetainedChunks < 0
+            || preview.RetainedChunks > Math.Min(preview.OpenChunk - 1, BrokerCapturePreview.MaximumRetainedChunks)
+            || preview.CountedRecords < 0 || preview.UnbinnedRecords < 0 || preview.UnbinnedRecords > preview.CountedRecords
+            || preview.Counts.Count > BrokerCapturePreview.MaximumCounts)
+        {
+            throw new InvalidDataException("A capture status carries an impossible live preview.");
+        }
+
+        long binned = 0;
+        var seen = new HashSet<(int, long, Mechanism)>();
+        foreach (BrokerPreviewCount count in preview.Counts)
+        {
+            if (count.Chunk < preview.FirstChunk || count.Chunk > preview.OpenChunk || count.Bin < 0 || count.Count <= 0
+                || !Enum.IsDefined(count.Mechanism) || (int)count.Mechanism > byte.MaxValue
+                || !seen.Add((count.Chunk, count.Bin, count.Mechanism)))
+            {
+                throw new InvalidDataException("A live preview count names an impossible chunk, bin, mechanism or count.");
+            }
+
+            binned = checked(binned + count.Count);
+        }
+
+        if (preview.Counts.Count > 0
+            && preview.Counts.Max(count => count.Bin) - preview.Counts.Min(count => count.Bin) > BrokerCapturePreview.MaximumBinSpan)
+        {
+            throw new InvalidDataException("A live preview's counts span more bins than one status can place.");
+        }
+
+        if (checked(binned + preview.UnbinnedRecords) != preview.CountedRecords)
+        {
+            throw new InvalidDataException("A live preview's counts do not add up to the records it covers.");
         }
     }
 

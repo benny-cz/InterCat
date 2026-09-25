@@ -493,6 +493,116 @@ public sealed class LiveSessionRecorderTests
     /// <summary>What identifies a dependency's bytes, whatever name each session gives it.</summary>
     private static (long Length, string Digest) Measured(StoreDependency dependency) => (dependency.LengthBytes, dependency.Digest);
 
+    [Fact(DisplayName = "§12/§19.3: a recording's live preview counts each journaled record once, by chunk, mechanism and time")]
+    public async Task ALivePreviewCountsJournaledRecordsByChunk()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "preview-test");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 6; index++)
+        {
+            if (index == 3)
+            {
+                // Longer than the publication interval: the first three records publish in a chunk of their own.
+                host.Pause(TimeSpan.FromMilliseconds(400));
+            }
+
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + (index * (Stopwatch.Frequency / 20)),
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        var probe = new LiveHealthProbe();
+        LivePreviewSnapshot? during = null;
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            async token =>
+            {
+                await host.Delivered.Task;
+                var waited = Stopwatch.StartNew();
+                while ((during = probe.ReadPreview()) is not { CountedRecords: 6 } && waited.Elapsed < TimeSpan.FromSeconds(10))
+                {
+                    await Task.Delay(20, token);
+                }
+            },
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(100),
+            healthProbe: probe);
+
+        // Every journaled record is counted once, in the chunk it went to, at its own time on the capture's clock.
+        Assert.Equal(6, result.JournaledRecords);
+        LivePreviewSnapshot preview = Assert.IsType<LivePreviewSnapshot>(during);
+        Assert.Equal((6L, 0L), (preview.CountedRecords, preview.UnbinnedRecords));
+        Assert.Equal(6, preview.Counts.Sum(count => count.Count));
+        Assert.All(preview.Counts, count => Assert.Equal(Mechanism.Tcp, count.Mechanism));
+        Assert.True(preview.OpenChunk >= 2, "The pause must have published the first chunk.");
+        Assert.All(preview.Counts, count => Assert.InRange(count.Chunk, preview.FirstChunk, preview.OpenChunk));
+        Assert.Equal(3, preview.Counts.Where(count => count.Chunk == 1).Sum(count => count.Count));
+        Assert.Equal(Math.Max(1, Stopwatch.Frequency / LivePreviewTally.BinsPerSecond), preview.BinNativeTicks);
+        Assert.Equal([.. Enumerable.Range(0, 6).Select(index => (now + (index * (Stopwatch.Frequency / 20))) / preview.BinNativeTicks)
+                .Distinct().Order()],
+            preview.Counts.Select(count => count.Bin).Distinct().Order());
+
+        // Once the capture has stopped there is nothing to preview: its chunks are all published.
+        Assert.Null(probe.ReadPreview());
+    }
+
+    [Fact(DisplayName = "§12: a live preview keeps recent chunks and bins within bounds, and still accounts for every record")]
+    public void ALivePreviewIsBoundedWithoutLosingItsTotal()
+    {
+        var tally = new LivePreviewTally(10_000_000);
+        Assert.Equal(1_000_000, tally.BinNativeTicks);
+        tally.Count(Mechanism.Tcp, 5_500_000);
+        tally.Count(Mechanism.Udp, 5_900_000);
+        tally.Count(Mechanism.Tcp, -1);
+        LivePreviewSnapshot first = tally.Read();
+        Assert.Equal((1, 0, 3L, 1L), (first.OpenChunk, first.RetainedChunks, first.CountedRecords, first.UnbinnedRecords));
+        Assert.Equal([new LivePreviewCount(1, 5, Mechanism.Tcp, 1), new LivePreviewCount(1, 5, Mechanism.Udp, 1)], first.Counts);
+
+        // A published chunk stays for a lagging follower until four newer chunks have published.
+        for (int chunk = 1; chunk <= LivePreviewTally.RetainedPublishedChunks + 1; chunk++)
+        {
+            tally.ChunkPublished();
+            tally.Count(Mechanism.Tcp, (10L + chunk) * 1_000_000);
+        }
+
+        LivePreviewSnapshot later = tally.Read();
+        Assert.Equal((LivePreviewTally.RetainedPublishedChunks + 2, LivePreviewTally.RetainedPublishedChunks),
+            (later.OpenChunk, later.RetainedChunks));
+        Assert.DoesNotContain(later.Counts, count => count.Chunk < later.FirstChunk);
+        Assert.Equal(later.CountedRecords, later.Counts.Sum(count => count.Count) + later.UnbinnedRecords);
+
+        // A chunk keeps its newest bins: a record pushed out of the window, or arriving behind it, is counted unbinned.
+        var window = new LivePreviewTally(10_000_000);
+        window.Count(Mechanism.Tcp, 0);
+        window.Count(Mechanism.Tcp, LivePreviewTally.WindowBins * 1_000_000L);
+        window.Count(Mechanism.Tcp, 1_000_000);
+        window.Count(Mechanism.Tcp, 0);
+        LivePreviewSnapshot trimmed = window.Read();
+        Assert.Equal((4L, 2L), (trimmed.CountedRecords, trimmed.UnbinnedRecords));
+        Assert.Equal([(long)LivePreviewTally.WindowBins, 1L], trimmed.Counts.Select(count => count.Bin));
+
+        // A status carries at most its bound of counts, newest first; the rest are counted as unbinned.
+        var many = new LivePreviewTally(10_000_000);
+        for (int index = 0; index < LivePreviewTally.MaximumCounts + 10; index++)
+        {
+            many.Count((Mechanism)(1 + (index % 20)), index / 20 * 1_000_000L);
+        }
+
+        LivePreviewSnapshot bounded = many.Read();
+        Assert.Equal((LivePreviewTally.MaximumCounts, 10L), (bounded.Counts.Count, bounded.UnbinnedRecords));
+        Assert.Equal(bounded.CountedRecords, bounded.Counts.Sum(count => count.Count) + bounded.UnbinnedRecords);
+        Assert.Equal(100, bounded.Counts[0].Bin);
+    }
+
     [Fact]
     public async Task EvidenceRecorderSignalsReadyOnlyAfterItsWriterStarts()
     {

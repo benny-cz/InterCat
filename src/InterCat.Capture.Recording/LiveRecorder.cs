@@ -92,6 +92,10 @@ public static class LiveRecorder
     /// Called once after ETW and the journal writer are running, before waiting for the capture to end. It is not
     /// called if startup is refused; inspect the completed result for that refusal.
     /// </param>
+    /// <param name="healthProbe">
+    /// Reads the recording's acquisition counters and live preview for a status request while it records; the preview
+    /// counts every journaled record by mechanism and time until its chunk publishes.
+    /// </param>
     public static async Task<LiveCaptureResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -163,6 +167,8 @@ public static class LiveRecorder
             plan.Providers.Where(provider => enabledSources.Contains(provider.SourceId)).Select(provider => provider.ProviderGuid));
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture carries a source clock descriptor.");
+        // A preview is kept only where a status request can read it, and on the capture's own clock.
+        LivePreviewTally? preview = healthProbe is null ? null : new LivePreviewTally(clock.Descriptor.TicksPerSecond);
         using var quotaStop = new CancellationTokenSource();
         using var chunks = new ChunkWriter(
             session,
@@ -176,7 +182,8 @@ public static class LiveRecorder
             derive?.Invoke(clock.Descriptor),
             maximumJournalBytes,
             diskFloor,
-            quotaStop.Cancel);
+            quotaStop.Cancel,
+            preview);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -206,7 +213,7 @@ public static class LiveRecorder
             // A broker may acknowledge Start only after ETW, the source clock and the single journal
             // writer are ready. Startup refusal never calls this hook; the completed result carries it.
             await writerReady.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            healthProbe?.Attach(session);
+            healthProbe?.Attach(session, preview);
             onReady?.Invoke(start);
             try
             {
@@ -290,6 +297,7 @@ public static class LiveRecorder
         private readonly long? maximumJournalBytes;
         private readonly LiveDiskFloor? diskFloor;
         private readonly Action onAcquisitionLimit;
+        private readonly LivePreviewTally? preview;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
@@ -318,9 +326,11 @@ public static class LiveRecorder
             ILiveRecordingDerivation? derivation,
             long? maximumJournalBytes,
             LiveDiskFloor? diskFloor,
-            Action onAcquisitionLimit)
+            Action onAcquisitionLimit,
+            LivePreviewTally? preview)
         {
             this.session = session;
+            this.preview = preview;
             this.plan = plan;
             this.store = store;
             this.clock = clock;
@@ -477,6 +487,9 @@ public static class LiveRecorder
 
             recordsInChunk++;
             journaled++;
+
+            // Counted only once journaled: the preview shows what the chunk will publish, never a refused record.
+            preview?.Count(descriptor.Mechanism, admitted.TimestampQpc);
         }
 
         /// <summary>
@@ -583,6 +596,7 @@ public static class LiveRecorder
             builder.Dispose();
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);
             Publications++;
+            preview?.ChunkPublished();
 
             // Whatever the derivation publishes after a chunk takes a generation before the next chunk does.
             _ = derivation?.Published(published, last: false);
