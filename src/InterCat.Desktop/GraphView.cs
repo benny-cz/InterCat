@@ -40,6 +40,7 @@ public sealed class GraphView : Control
     private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
     private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).Ink);
     private static readonly IBrush MutedTextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
+    private static readonly IBrush PlotBrush = Token(ThemePalette.Surfaces(Mode).Plot);
     private static readonly Pen NodePen = new(NodeBorderBrush, 1.5);
     private static readonly Pen FocusPen = new(NodeBorderBrush, 3);
     private static readonly Pen SelectionPen = new(SelectedBrush, 3);
@@ -53,7 +54,9 @@ public sealed class GraphView : Control
     private static readonly Pen HoverPen = new(TextBrush, 1.5);
     private static readonly Pen HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
     private static readonly Pen CardPen = new(MutedTextBrush, 1);
-    private static readonly Pen PinHeadPen = new(Token(ThemePalette.Surfaces(Mode).Plot), 1.5);
+    private static readonly Pen PinHeadPen = new(PlotBrush, 1.5);
+    private static readonly Pen ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
+    private static readonly Pen ContextRimPen = new(MutedTextBrush, 1);
 
     /// <summary>A press moves this far before it is a drag that pins, so a slightly unsteady click still only selects.</summary>
     private const double DragThreshold = 4;
@@ -136,7 +139,7 @@ public sealed class GraphView : Control
         }
 
         GraphDisplay display = viewModel.GraphDisplay;
-        long nodeScale = display.Nodes.Count == 0 ? 0 : display.Nodes.Max(node => node.Observations);
+        long nodeScale = GraphEncoding.NodeScale(display);
         long edgeScale = display.Edges.Count == 0 ? 0 : display.Edges.Max(edge => edge.ObservationCount);
         var points = new Dictionary<string, Point>(display.Nodes.Count, StringComparer.Ordinal);
         foreach (GraphDisplayNode node in display.Nodes)
@@ -185,10 +188,14 @@ public sealed class GraphView : Control
             Pen pen = EdgePen(edge.Mechanism, edge.Strength, ThicknessOf(edge, edgeScale));
 
             // Under a brushed interval an edge with no records in it steps back rather than vanishing: the relationship
-            // exists in the session, it is only quiet in the range being ranked (§3.4, §6.4).
-            if (viewModel.IsRankedWithinInterval && edge.ObservationCount == 0)
+            // exists in the session, it is only quiet in the range being ranked (§3.4, §6.4). A relationship that leads
+            // out of a focused rung's neighbourhood to the rest of the machine steps back too: it is context (§3.2).
+            bool leadsOut = display.Node(edge.SourceKey)?.Kind == GraphNodeKind.Context
+                || display.Node(edge.TargetKey)?.Kind == GraphNodeKind.Context;
+            double opacity = (viewModel.IsRankedWithinInterval && edge.ObservationCount == 0 ? 0.3 : 1) * (leadsOut ? 0.45 : 1);
+            if (opacity < 1)
             {
-                using (context.PushOpacity(0.3))
+                using (context.PushOpacity(opacity))
                 {
                     context.DrawLine(pen, source, target);
                 }
@@ -240,6 +247,15 @@ public sealed class GraphView : Control
             if (node.Kind == GraphNodeKind.Process)
             {
                 context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : NodePen, point, radius, radius);
+            }
+            else if (node.Kind == GraphNodeKind.Context)
+            {
+                // §6.3's context node stands for what this rung does not draw and adds to no total, so its face is the
+                // pane itself under a dashed muted outline. The face still hides the rims behind it and the ends of the
+                // faded edges into it, so the rims read as a stack that says "several", never as tangled rings.
+                context.DrawEllipse(PlotBrush, ContextRimPen, new Point(point.X + 5, point.Y - 5), radius, radius);
+                context.DrawEllipse(PlotBrush, ContextRimPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
+                context.DrawEllipse(PlotBrush, node.Key == focused ? FocusPen : ContextPen, point, radius, radius);
             }
             else
             {
@@ -620,11 +636,15 @@ public sealed class GraphView : Control
                 $"{members} · {node.Relationships:N0} {(node.Relationships == 1 ? "relationship" : "relationships")}");
     }
 
-    /// <summary>The keyboard's order: busiest first, then by name, so arrows walk from what matters most.</summary>
+    /// <summary>
+    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. A focused rung's context
+    /// node comes last, however much the rest of the machine holds, so the keyboard starts on the focus itself.
+    /// </summary>
     internal static IReadOnlyList<GraphDisplayNode> Traversal(GraphDisplay display) =>
     [
         .. display.Nodes
-            .OrderByDescending(node => node.Observations)
+            .OrderBy(node => node.Kind == GraphNodeKind.Context)
+            .ThenByDescending(node => node.Observations)
             .ThenByDescending(node => node.Members.Count)
             .ThenBy(node => node.Label, StringComparer.CurrentCulture)
             .ThenBy(node => node.Key, StringComparer.Ordinal),
@@ -696,10 +716,21 @@ public sealed class GraphView : Control
 
     private void OpenGroup(object? sender, TappedEventArgs e)
     {
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
         // Opening a group draws its members one by one (§6.3's explicit expansion): the double click is Enter on its row.
-        if (DataContext is WorkspaceViewModel viewModel && HitTest(viewModel, e.GetPosition(this)) is { } key)
+        // A double click on an edge opens that relationship's channel view (§6.7).
+        Point pointer = e.GetPosition(this);
+        if (HitTest(viewModel, pointer) is { } key)
         {
             e.Handled = viewModel.OpenGraphGroup(key);
+        }
+        else if (EdgeHitTest(viewModel, pointer) is { } edge)
+        {
+            e.Handled = viewModel.OpenGraphEdge(edge);
         }
     }
 
@@ -746,7 +777,7 @@ public sealed class GraphView : Control
     private string? HitTest(WorkspaceViewModel viewModel, Point pointer)
     {
         GraphDisplay display = viewModel.GraphDisplay;
-        long scale = display.Nodes.Count == 0 ? 0 : display.Nodes.Max(node => node.Observations);
+        long scale = GraphEncoding.NodeScale(display);
         string? best = null;
         double bestDistance = double.MaxValue;
         foreach (GraphDisplayNode node in display.Nodes)

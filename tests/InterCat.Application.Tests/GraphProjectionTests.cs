@@ -324,6 +324,52 @@ public sealed class GraphProjectionTests
             budget: new GraphDisplayBudget(GraphLayout.MaximumNodes + 1, 1, 2)));
     }
 
+    [Fact(DisplayName = "§3.2: a focused rung draws its neighbourhood and counts everything else in one context node")]
+    public void NeighbourhoodCountsTheRestAsContext()
+    {
+        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [.. Enumerable.Range(1, 6).Select(index => Node(index, group.Key))];
+
+        // 1-2 are the focus; 2-3 leads out of it; 4-5 talk among the outside; 6 is quiet and outside.
+        CommunicationEdge[] edges =
+        [
+            Edge("focus", processes[0], processes[1], 5),
+            Edge("out", processes[1], processes[2], 7),
+            Edge("far", processes[3], processes[4], 9),
+        ];
+        HashSet<ProcessInstanceId> neighbourhood = [processes[0].Id, processes[1].Id];
+
+        GraphDisplay display = GraphProjection.Project(Snapshot([group], processes, edges), neighborhood: neighbourhood);
+
+        Assert.All(processes.Take(2), process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+        GraphDisplayNode context = Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.Context);
+        Assert.Equal(Sorted(processes.Skip(2).Select(process => process.Id)), Sorted(context.Members));
+        Assert.Equal((2, 1), (context.Relationships, context.InternalRelationships));
+        GraphDisplayEdge leadsOut = Assert.IsType<GraphDisplayEdge>(display.EdgeOf("out"));
+        Assert.Contains(context.Key, new[] { leadsOut.SourceKey, leadsOut.TargetKey });
+        Assert.Null(display.EdgeOf("far"));
+        Assert.Equal(context.Key, display.NodeOfRelationship("far")!.Key);
+        Assert.Equal(processes.Length, display.Nodes.Sum(node => node.Members.Count));
+
+        // The quiet process outside the focus is context, not a separate no-relationship node.
+        Assert.DoesNotContain(display.Nodes, node => node.Kind == GraphNodeKind.Quiet);
+
+        // The rest of the machine holds the most here, yet sizes are read against the focus: the context node sets no
+        // scale and is drawn at the aggregate floor, while the focus's busiest process is drawn at full size.
+        Assert.Equal(16, context.Observations);
+        long scale = GraphEncoding.NodeScale(display);
+        Assert.Equal(12, scale);
+        Assert.Equal(9, GraphEncoding.NodeRadius(context, scale));
+        Assert.Equal(16, GraphEncoding.NodeRadius(display.NodeOf(processes[1].Id)!, scale));
+
+        // The layout parks the context node: its edges are drawn, but they place nothing.
+        GraphDisplayLayout layout = GraphLayout.ComputeDisplay("focus", display);
+        Assert.True(layout.Positions[context.Key].Y > layout.Positions.Where(entry => entry.Key != context.Key).Max(entry => entry.Value.Y));
+
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(
+            Snapshot([group], processes, edges), kept: processes[5].Id, neighborhood: neighbourhood));
+    }
+
     private static string[] Sorted(IEnumerable<ProcessInstanceId> ids) =>
         [.. ids.Select(id => id.ToString()).Order(StringComparer.Ordinal)];
 

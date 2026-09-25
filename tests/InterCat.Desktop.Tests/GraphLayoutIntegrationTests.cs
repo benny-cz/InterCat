@@ -105,9 +105,14 @@ public sealed class GraphLayoutIntegrationTests
         Assert.All(processes.Where(process => process.GroupKey == groups[0].Key),
             process => Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(process.Id)!.Kind));
         Assert.Equal(534, viewModel.GraphDisplay.Nodes.Sum(node => node.Members.Count));
-        GraphDisplayNode contextGroup = Assert.Single(viewModel.GraphDisplay.Nodes, node =>
-            node.GroupKey == groups[1].Key && node.Kind == GraphNodeKind.Group);
-        Assert.False(viewModel.OpenGraphGroup(contextGroup.Key));
+
+        // §3.2 L1 draws the opened group within its neighbourhood; the other groups' 445 processes are counted as context,
+        // which neither opens nor claims to be a group.
+        GraphDisplayNode context = Assert.Single(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context);
+        Assert.Equal(445, context.Members.Count);
+        Assert.False(viewModel.OpenGraphGroup(context.Key));
+        // Its members talk only among themselves, so the focus claims no peers.
+        Assert.Equal("Group 0: 89 processes drawn · 445 more in Rest of the machine", viewModel.GraphSummary);
     }
 
     [Fact(DisplayName = "§6.4: a selected group row rings where its members are drawn and scopes E to the group")]
@@ -198,28 +203,37 @@ public sealed class GraphLayoutIntegrationTests
         ProcessGroup small = new("small", "small.exe", LaneGrouping.Executable);
         ProcessNode[] members = [.. Enumerable.Range(1, 30).Select(index => Process(index, big.Key))];
         ProcessNode[] pair = [Process(40, small.Key), Process(41, small.Key)];
+
+        // The pair's first member also talks to the big group, so the opened group's neighbourhood draws it; its partner is
+        // two hops away and is counted as context there (§3.2 L1).
         CommunicationEdge[] edges =
         [
             .. Enumerable.Range(0, members.Length - 1).Select(index => Edge($"chain{index:D2}", members[index], members[index + 1])),
             Edge("pair", pair[0], pair[1]),
+            Edge("bridge", members[0], pair[0]),
         ];
         var layouts = new HeldLayouts();
         using var viewModel = new WorkspaceViewModel(Snapshot([big, small], [.. members, .. pair], edges),
             "session:test:generation:1", null, null, layouts.Scheduler);
         await viewModel.LayoutReady;
         GraphDisplayNode collapsed = Assert.Single(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Group);
-        GraphPoint collapsedAt = viewModel.DisplayPositions[collapsed.Key];
+        Dictionary<string, GraphPoint> machine = viewModel.DisplayPositions.ToDictionary(entry => entry.Key, entry => entry.Value);
 
         viewModel.SelectedRung = viewModel.RungRows.First(row => row.Key == big.Key);
         Assert.True(viewModel.Descend());
         await viewModel.LayoutReady;
         Assert.Null(viewModel.GraphDisplay.Node(collapsed.Key));
+        Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(pair[0].Id)!.Kind);
+        Assert.Equal(GraphNodeKind.Context, viewModel.GraphDisplay.NodeOf(pair[1].Id)!.Kind);
         Dictionary<string, GraphPoint> opened = viewModel.DisplayPositions.ToDictionary(entry => entry.Key, entry => entry.Value);
 
         layouts.Holding = true;
         Assert.True(viewModel.Ascend());
-        Assert.Equal(collapsedAt, viewModel.DisplayPositions[collapsed.Key]);
-        Assert.All(pair, process => Assert.Equal(opened[process.Id.ToString()], viewModel.DisplayPositions[process.Id.ToString()]));
+
+        // On screen in both drawings: stays where it is. Back from the group or from the context: returns to its place.
+        Assert.Equal(opened[pair[0].Id.ToString()], viewModel.DisplayPositions[pair[0].Id.ToString()]);
+        Assert.Equal(machine[collapsed.Key], viewModel.DisplayPositions[collapsed.Key]);
+        Assert.Equal(machine[pair[1].Id.ToString()], viewModel.DisplayPositions[pair[1].Id.ToString()]);
         layouts.Release();
         await viewModel.LayoutReady;
         Assert.Null(viewModel.GraphLayoutProblem);
@@ -365,7 +379,110 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("TCP · direct evidence · 1 relationship · 0 channels", edge.Lines[0]);
         Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[3]);
         Assert.Contains("Direction: display order only, not who initiated or sent", edge.Lines);
+        Assert.Equal("Double-click opens its source process", edge.Lines[^1]);
         Assert.Null(viewModel.DescribeGraphHover("no such mark"));
+    }
+
+    [Fact(DisplayName = "§3.2: each rung draws its own neighbourhood, and a double click on an edge opens its channel")]
+    public async Task EachRungDrawsItsNeighbourhoodAndAnEdgeOpensItsChannel()
+    {
+        using var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
+        await viewModel.LayoutReady;
+        Assert.DoesNotContain(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context);
+        ProcessInstanceId api = new(Guid.Parse("76447f1d-1cfc-4815-b775-cbdb8327f624"));
+        ProcessInstanceId cache = new(Guid.Parse("25ecf72c-7d72-4421-943e-eb6d66cd2fe8"));
+        ProcessInstanceId browser = new(Guid.Parse("5eb7465f-3dd6-4df8-8577-472fa43aab10"));
+
+        // The hover card says what the double click will do.
+        Assert.Equal("Double-click opens its channel", viewModel.DescribeGraphHover("edge.api-cache")!.Lines[^1]);
+        Assert.Equal("Double-click opens its source process, whose rows list its 2 channels",
+            viewModel.DescribeGraphHover("edge.browser-api")!.Lines[^1]);
+
+        // One channel: machine, group, process, channel - every rung in the breadcrumb, the channel's two participants drawn.
+        Assert.True(viewModel.OpenGraphEdge("edge.api-cache"));
+        await viewModel.LayoutReady;
+        Assert.Equal(4, viewModel.Crumbs.Count);
+        Assert.StartsWith("Channel", viewModel.Crumbs[^1].Label, StringComparison.Ordinal);
+        Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(api)!.Kind);
+        Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(cache)!.Kind);
+        Assert.Equal(3, Assert.Single(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context).Members.Count);
+        Assert.Equal("edge.api-cache", viewModel.HighlightedEdgeKey);
+        Assert.Equal(@"Channel \\.\pipe\intercat-cache: 2 processes drawn · 3 more in Rest of the machine", viewModel.GraphSummary);
+
+        // The evidence rung keeps the graph of the rung it was reached from.
+        string[] channelDrawing = [.. viewModel.GraphDisplay.Nodes.Select(node => node.Key)];
+        Assert.True(viewModel.ShowEvidence());
+        Assert.Equal(channelDrawing, viewModel.GraphDisplay.Nodes.Select(node => node.Key));
+
+        // Several channels: the double click stops at the source process, whose rows list them, drawn with its peers.
+        viewModel.ReturnTo(0);
+        await viewModel.LayoutReady;
+        Assert.DoesNotContain(viewModel.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context);
+        Assert.True(viewModel.OpenGraphEdge("edge.browser-api"));
+        await viewModel.LayoutReady;
+        Assert.Equal(3, viewModel.Crumbs.Count);
+        Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(browser)!.Kind);
+        Assert.Equal(GraphNodeKind.Process, viewModel.GraphDisplay.NodeOf(api)!.Kind);
+        Assert.Equal(GraphNodeKind.Context, viewModel.GraphDisplay.NodeOf(cache)!.Kind);
+        Assert.StartsWith("Browser · PID 8204 and its peers: 2 processes drawn", viewModel.GraphSummary, StringComparison.Ordinal);
+
+        // The context node says which of its relationships are drawn into it and which stay folded among its processes.
+        viewModel.SelectGraphNode(viewModel.GraphDisplay.NodeOf(cache)!.Key);
+        Assert.Equal("Rest of the machine", viewModel.SelectionTitle);
+        Assert.Equal("3 processes outside this focus, counted rather than drawn · 2 relationships with the drawn processes, "
+            + "2 among themselves. Esc returns to the wider graph.", viewModel.SelectionSubtitle);
+        Assert.Equal(3, viewModel.Crumbs.Count);
+
+        // It is not sized on the focus's scale, and the keyboard reaches it only after every drawn process.
+        GraphDisplayNode rest = viewModel.GraphDisplay.NodeOf(cache)!;
+        Assert.Equal("Size: fixed; the rest of the machine is not read on this focus's scale",
+            viewModel.DescribeGraphHover(rest.Key)!.Lines[^1]);
+        Assert.Equal(rest.Key, GraphView.Traversal(viewModel.GraphDisplay)[^1].Key);
+    }
+
+    [Fact(DisplayName = "§6.7: a double click on an aggregate edge opens nothing, since it stands for several relationships")]
+    public async Task AnAggregateEdgeOpensNothing()
+    {
+        ProcessGroup pool = new("pool", "worker.exe", LaneGrouping.Executable);
+        ProcessGroup queue = new("queue", "queue.exe", LaneGrouping.Executable);
+        ProcessNode hub = Process(100, queue.Key);
+        ProcessNode[] workers = [.. Enumerable.Range(1, 26).Select(index => Process(index, pool.Key))];
+        CommunicationEdge[] edges = [.. workers.Select(worker => Edge($"w{worker.ProcessId}", worker, hub))];
+        using var viewModel = new WorkspaceViewModel(Snapshot([pool, queue], [hub, .. workers], edges), "session:test:generation:1");
+        await viewModel.LayoutReady;
+
+        GraphDisplayEdge aggregate = Assert.Single(viewModel.GraphDisplay.Edges);
+        Assert.Equal(26, aggregate.Relationships.Count);
+        Assert.DoesNotContain(viewModel.DescribeGraphHover(aggregate.Key)!.Lines,
+            line => line.StartsWith("Double-click", StringComparison.Ordinal));
+        Assert.False(viewModel.OpenGraphEdge(aggregate.Key));
+        Assert.Single(viewModel.Crumbs);
+    }
+
+    [Fact(DisplayName = "§3.2: a focus claims peers only when it has some, and says when its processes are drawn as fewer nodes")]
+    public async Task FocusSummaryClaimsOnlyThePeersItHas()
+    {
+        (WorkspaceSnapshot snapshot, ProcessGroup busy, ProcessNode[] processes) = Mixed();
+        using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
+        await viewModel.LayoutReady;
+
+        // idle.exe's two processes have no relationship: no peers, and they are drawn together as the group's other members.
+        viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == "idle");
+        Assert.True(viewModel.Descend());
+        await viewModel.LayoutReady;
+        Assert.Equal("idle.exe: 2 processes drawn as 1 node · 3 more in Rest of the machine", viewModel.GraphSummary);
+
+        // busy.exe's pair talk only to each other, so the group has no peers either; the pair's first process does.
+        viewModel.ReturnTo(0);
+        viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == busy.Key);
+        Assert.True(viewModel.Descend());
+        await viewModel.LayoutReady;
+        Assert.Equal("busy.exe: 3 processes drawn · 2 more in Rest of the machine", viewModel.GraphSummary);
+        viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == processes[0].Id.ToString());
+        Assert.True(viewModel.Descend());
+        await viewModel.LayoutReady;
+        Assert.Equal("Process 1 · PID 2001 and its peers: 2 processes drawn · 3 more in Rest of the machine",
+            viewModel.GraphSummary);
     }
 
     [Fact(DisplayName = "R3: a process whose relationships measured no bytes reads bytes unknown, never 0 MB")]

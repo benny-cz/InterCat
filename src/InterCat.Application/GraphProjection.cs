@@ -21,6 +21,12 @@ public enum GraphNodeKind
 
     /// <summary>Processes with no relationship in the published scope, outside the explicit focus. It has no edges.</summary>
     Quiet = 5,
+
+    /// <summary>
+    /// Every process outside a focused rung's neighbourhood (§3.2 L1-L4), counted rather than drawn. Its edges are the
+    /// relationships that lead out of the neighbourhood; it is context, not a participant, and adds to no total.
+    /// </summary>
+    Context = 6,
 }
 
 /// <summary>
@@ -239,6 +245,7 @@ public static class GraphProjection
 {
     private const string QuietKey = "cluster:quiet";
     private const string RemainderKey = "cluster:remainder";
+    private const string ContextKey = "cluster:context";
 
     private sealed record Descriptor(
         GraphNodeKind Kind,
@@ -269,11 +276,17 @@ public static class GraphProjection
         public int InternalRelationships { get; set; }
     }
 
+    /// <summary>
+    /// Projects a snapshot for drawing. <paramref name="neighborhood"/>, when given, is the set of processes a focused rung
+    /// draws (§3.2: a group's members and their peers, an instance and its peers, a channel's participants); every other
+    /// process is counted in one context node rather than drawn, and no process is omitted.
+    /// </summary>
     public static GraphDisplay Project(
         WorkspaceSnapshot snapshot,
         string? expandedGroup = null,
         ProcessInstanceId? kept = null,
-        GraphDisplayBudget? budget = null)
+        GraphDisplayBudget? budget = null,
+        IReadOnlySet<ProcessInstanceId>? neighborhood = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         budget ??= GraphDisplayBudget.Default;
@@ -282,6 +295,19 @@ public static class GraphProjection
         Dictionary<string, ProcessGroup> groups = ValidateGroups(snapshot);
         Dictionary<ProcessInstanceId, ProcessNode> processes = ValidateProcesses(snapshot, groups);
         ValidateEdges(snapshot, processes);
+        if (neighborhood is not null)
+        {
+            if (neighborhood.Any(id => !processes.ContainsKey(id)))
+            {
+                throw new ArgumentException("The graph neighbourhood names a process instance absent from this snapshot.",
+                    nameof(neighborhood));
+            }
+
+            if (kept is { } focus && !neighborhood.Contains(focus))
+            {
+                throw new ArgumentException("The kept process lies outside the graph neighbourhood.", nameof(neighborhood));
+            }
+        }
 
         if (expandedGroup is not null && !groups.ContainsKey(expandedGroup))
         {
@@ -307,6 +333,7 @@ public static class GraphProjection
         {
             [QuietKey] = new(GraphNodeKind.Quiet, "No relationships", null, null, null),
             [RemainderKey] = new(GraphNodeKind.Remainder, "Other processes", null, null, null),
+            [ContextKey] = new(GraphNodeKind.Context, "Rest of the machine", null, null, null),
         };
         foreach (ProcessNode process in processes.Values)
         {
@@ -342,11 +369,25 @@ public static class GraphProjection
         // A process with no relationship in the published scope has nothing to draw: scattered over the pane, hundreds of
         // them would be the unreadable cloud §6.3 forbids. Outside the explicit focus they are counted in one node - the
         // opened group's own in its Other members - and every one stays individual in the ranked table.
+        int nodeCount = processes.Count;
+
+        // A focused rung draws its neighbourhood (§3.2). Everything else is context, counted in one node whose edges are
+        // the relationships leading out - even a single process outside, so the node always means "not in this focus".
+        if (neighborhood is not null)
+        {
+            ProcessInstanceId[] outside = [.. processes.Keys.Where(id => !neighborhood.Contains(id))];
+            foreach (ProcessInstanceId id in outside)
+            {
+                assignment[id] = ContextKey;
+            }
+
+            nodeCount -= Math.Max(0, outside.Length - 1);
+        }
+
         HashSet<ProcessInstanceId> related = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
         ProcessInstanceId[] quiet = [.. processes.Keys
-            .Where(id => !related.Contains(id) && kept != id)
+            .Where(id => !related.Contains(id) && kept != id && IsIndividual(id, assignment))
             .OrderBy(id => id.ToString(), StringComparer.Ordinal)];
-        int nodeCount = processes.Count;
         nodeCount -= FoldTogether(QuietKey,
             [.. quiet.Where(id => !string.Equals(processes[id].GroupKey, expandedGroup, StringComparison.Ordinal))], assignment);
         if (expandedGroup is not null)
@@ -420,7 +461,7 @@ public static class GraphProjection
         // drawn nodes into one explicit cross-group remainder. The focused process and the no-relationship node keep their
         // meaning, and nodes of the opened group go last; no process is lost.
         Fold[] remainder = [.. display.Nodes
-            .Where(node => node.Kind is not (GraphNodeKind.Quiet or GraphNodeKind.Remainder))
+            .Where(node => node.Kind is not (GraphNodeKind.Quiet or GraphNodeKind.Remainder or GraphNodeKind.Context))
             .Where(node => kept is not { } focus || !node.Members.Contains(focus))
             .OrderBy(node => expandedGroup is not null
                 && string.Equals(node.GroupKey, expandedGroup, StringComparison.Ordinal) ? 1 : 0)

@@ -182,11 +182,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// The drawn graph for a focus. A workspace whose relationships name a process it does not hold cannot be drawn; the
     /// graph is then empty and says why, while the tables, ladder and timeline keep working.
     /// </summary>
-    private GraphDisplay ProjectGraph(string? expanded, ProcessInstanceId? kept)
+    private GraphDisplay ProjectGraph(string? expanded, ProcessInstanceId? kept, IReadOnlySet<ProcessInstanceId>? neighborhood = null)
     {
         try
         {
-            GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept);
+            GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept, neighborhood: neighborhood);
             SetGraphProjectionProblem(null);
             return projected;
         }
@@ -551,6 +551,17 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return "No process observed yet";
             }
 
+            // A focused rung names its focus and how much of the machine it draws; the rest is one context node (§3.2).
+            // Processes the focus folds, such as an opened group's members with no relationship, are drawn as fewer nodes.
+            if (graphFocus.Neighborhood is { } drawn)
+            {
+                int outside = processes - drawn.Count;
+                int nodes = graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.Context);
+                return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
+                    + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
+                    + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty);
+            }
+
             int relationships = wholeSnapshot.Edges.Count;
             string text = Counted(processes, "process", "processes") + " · " + (relationships == 0
                 ? "no relationship observed"
@@ -698,6 +709,45 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         RaiseGraphSelectionChanged();
     }
 
+    /// <summary>
+    /// §6.7's double-click on an edge: opens the relationship's channel view. The ladder descends one rung at a time, so
+    /// the path runs from the machine through the source process's group and the process to the relationship's channel,
+    /// when it has exactly one; with several it stops at the process, whose rows list them. The breadcrumb states every
+    /// rung, and each Esc climbs one. An aggregate edge stands for several relationships and opens nothing.
+    /// </summary>
+    public bool OpenGraphEdge(string edgeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
+        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is not { Relationships.Count: 1 } drawn
+            || wholeSnapshot.Edges.FirstOrDefault(edge => edge.Key == drawn.Relationships[0]) is not { } relationship
+            || wholeSnapshot.Processes.FirstOrDefault(process => process.Id == relationship.SourceId) is not { } source)
+        {
+            return false;
+        }
+
+        Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
+        string[] path = channels.Length == 1
+            ? [source.GroupKey, source.Id.ToString(), channels[0].Key]
+            : [source.GroupKey, source.Id.ToString()];
+        if (!ladder.TryReturnTo(0, out _))
+        {
+            return false;
+        }
+
+        foreach (string key in path)
+        {
+            LadderRow? row = LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(candidate => candidate.Key == key);
+            if (row is null
+                || !ladder.TryDescend(LadderProjection.DescentFor(row, ladder.Current, selectedInterval ?? ladder.Current.Viewport), out _))
+            {
+                break;
+            }
+        }
+
+        AfterNavigation();
+        return true;
+    }
+
     /// <summary>Opens a collapsed executable group only where the ladder can actually descend into that group.</summary>
     public bool OpenGraphGroup(string key)
     {
@@ -733,22 +783,129 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             .ToDictionary(entry => entry.member, entry => entry.point));
 
     /// <summary>
-    /// The graph the ladder's focus asks for: the group it descended into draws its members, and the process it focuses
-    /// draws itself. A graph with the same nodes keeps its layout; one that changed is laid out again from where the
-    /// nodes it shares already are.
+    /// What a rung asks the graph to draw (§3.2): a stable key for the drawing, the opened group, the kept process, and the
+    /// neighbourhood drawn - null at the machine rung, which draws everything.
+    /// </summary>
+    private sealed record GraphFocus(
+        string Key,
+        string? Expanded,
+        ProcessInstanceId? Kept,
+        IReadOnlySet<ProcessInstanceId>? Neighborhood,
+        string Description);
+
+    private static readonly GraphFocus MachineFocus = new("machine", null, null, null, "Whole machine");
+
+    private GraphFocus graphFocus = MachineFocus;
+
+    /// <summary>
+    /// The graph each rung draws (§3.2): the machine rung everything; a group its members and their peers; a process
+    /// instance itself and its peers one hop out; a channel or operation the channel's two participants. Everything else is
+    /// counted in one context node. The evidence rung keeps the graph of the rung it was reached from.
+    /// </summary>
+    private GraphFocus FocusOfLadder()
+    {
+        int last = ladder.Breadcrumb.Count - 1;
+        while (last > 0 && ladder.Breadcrumb[last].Level == DetailLevel.Evidence)
+        {
+            last--;
+        }
+
+        NavigationState[] path = [.. ladder.Breadcrumb.Take(last + 1)];
+        string? expanded = path.LastOrDefault(rung => rung.Level == DetailLevel.Group)?.Focus?.Key;
+        ProcessNode? kept = path.LastOrDefault(rung => rung.Level == DetailLevel.ProcessInstance)?.Focus?.Key is { } focus
+            ? wholeSnapshot.Processes.FirstOrDefault(process => string.Equals(process.Id.ToString(), focus, StringComparison.Ordinal))
+            : null;
+        if (expanded is not null && wholeSnapshot.Groups.All(group => group.Key != expanded))
+        {
+            expanded = null;
+        }
+
+        switch (path[^1].Level)
+        {
+            case DetailLevel.Group when expanded is not null:
+            {
+                string name = wholeSnapshot.Groups.First(group => group.Key == expanded).Name;
+                ProcessInstanceId[] members = [.. wholeSnapshot.Processes
+                    .Where(process => process.GroupKey == expanded)
+                    .Select(process => process.Id)];
+                HashSet<ProcessInstanceId> neighborhood = WithPeers(members);
+                return new($"group:{expanded}", expanded, null, neighborhood,
+                    AndItsPeers(name, neighborhood.Count > members.Length));
+            }
+
+            case DetailLevel.ProcessInstance when kept is not null:
+                return ProcessFocus(expanded, kept);
+
+            case DetailLevel.Channel or DetailLevel.Operation:
+            {
+                string? channelKey = path.LastOrDefault(rung => rung.Level == DetailLevel.Channel)?.Focus?.Key;
+                Channel? channel = wholeSnapshot.Channels.FirstOrDefault(candidate => candidate.Key == channelKey);
+                CommunicationEdge? relationship = channel is null
+                    ? null
+                    : wholeSnapshot.Edges.FirstOrDefault(edge => edge.Key == channel.EdgeKey);
+                if (channel is not null && relationship is not null)
+                {
+                    HashSet<ProcessInstanceId> participants = [relationship.SourceId, relationship.TargetId];
+                    return new($"channel:{channel.Key}", expanded,
+                        kept is not null && participants.Contains(kept.Id) ? kept.Id : null,
+                        participants, $"Channel {channel.Name}");
+                }
+
+                // A channel this generation no longer projects keeps the process it was reached from in focus.
+                return kept is not null ? ProcessFocus(expanded, kept) : MachineFocus;
+            }
+
+            default:
+                return MachineFocus;
+        }
+    }
+
+    private GraphFocus ProcessFocus(string? expanded, ProcessNode process)
+    {
+        HashSet<ProcessInstanceId> neighborhood = WithPeers([process.Id]);
+        return new(
+            $"process:{process.Id}",
+            expanded is not null && process.GroupKey == expanded ? expanded : null,
+            process.Id,
+            neighborhood,
+            AndItsPeers(string.Create(CultureInfo.InvariantCulture, $"{process.Name} · PID {process.ProcessId}"),
+                neighborhood.Count > 1));
+    }
+
+    /// <summary>A focus's name, which claims peers only when some process outside the focus is one relationship away.</summary>
+    private static string AndItsPeers(string focus, bool hasPeers) => hasPeers ? $"{focus} and its peers" : focus;
+
+    /// <summary>The given processes and every process one relationship away from them, in the whole published scope.</summary>
+    private HashSet<ProcessInstanceId> WithPeers(IEnumerable<ProcessInstanceId> seeds)
+    {
+        HashSet<ProcessInstanceId> neighborhood = [.. seeds];
+        HashSet<ProcessInstanceId> origin = [.. neighborhood];
+        foreach (CommunicationEdge edge in wholeSnapshot.Edges)
+        {
+            if (origin.Contains(edge.SourceId)) neighborhood.Add(edge.TargetId);
+            if (origin.Contains(edge.TargetId)) neighborhood.Add(edge.SourceId);
+        }
+
+        return neighborhood;
+    }
+
+    /// <summary>
+    /// The graph the ladder's focus asks for (<see cref="FocusOfLadder"/>). A graph with the same nodes keeps its layout;
+    /// one that changed is laid out again from where the nodes it shares already are.
     /// </summary>
     private void RefreshGraphDisplay()
     {
-        string? expanded = ladder.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Group)?.Focus?.Key;
-        ProcessInstanceId? kept = ladder.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.ProcessInstance)?.Focus?.Key
-            is { } focus && Guid.TryParse(focus, out Guid id) ? new ProcessInstanceId(id) : null;
-        if (expanded == wholeDisplay.ExpandedGroup && kept == wholeDisplay.Kept)
+        GraphFocus focus = FocusOfLadder();
+        if (focus.Key == graphFocus.Key)
         {
             return;
         }
 
+        graphFocus = focus;
+        string? expanded = focus.Expanded;
+        ProcessInstanceId? kept = focus.Kept;
         GraphDisplay previous = wholeDisplay;
-        GraphDisplay next = ProjectGraph(expanded, kept);
+        GraphDisplay next = ProjectGraph(expanded, kept, focus.Neighborhood);
         bool sameNodes = next.Nodes.Select(node => node.Key).SequenceEqual(previous.Nodes.Select(node => node.Key))
             && next.Edges.Select(edge => edge.Key).SequenceEqual(previous.Edges.Select(edge => edge.Key));
         wholeDisplay = next;
@@ -796,9 +953,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         RaiseGraphSelectionChanged();
         if (!sameNodes)
         {
-            LayoutReady = BuildLayoutAsync(expanded is null && kept is null
-                ? graphIdentity
-                : $"{graphIdentity}|expanded:{expanded}|kept:{kept}", next);
+            LayoutReady = BuildLayoutAsync(focus.Neighborhood is null ? graphIdentity : $"{graphIdentity}|{focus.Key}", next);
         }
     }
 
@@ -1284,8 +1439,26 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 + $" · {relationships}. The ranked table lists each of them.",
             GraphNodeKind.Group => $"{members} · {relationships}. "
                 + (ladder.Current.Level == DetailLevel.Machine ? "Enter opens the group." : "Return to the machine rung to open it."),
+            GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
+                + DescribeContextRelationships(cluster) + ". Esc returns to the wider graph.",
             _ => $"{members} folded together to keep the graph readable · {relationships}. The ranked table lists each of them.",
         };
+    }
+
+    /// <summary>
+    /// A context node's relationships, split the way the canvas shows them: those with a drawn process are drawn as faded
+    /// edges into it, and those among its own processes are folded inside it, so a context node with no edge still says
+    /// what it holds.
+    /// </summary>
+    private static string DescribeContextRelationships(GraphDisplayNode context)
+    {
+        int crossing = context.Relationships - context.InternalRelationships;
+        string drawn = crossing == 0
+            ? "no relationship with a drawn process"
+            : Counted(crossing, "relationship", "relationships") + " with the drawn processes";
+        return context.InternalRelationships == 0
+            ? drawn
+            : drawn + string.Create(CultureInfo.CurrentCulture, $", {context.InternalRelationships:N0} among themselves");
     }
 
     /// <summary>
@@ -1305,7 +1478,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             : "Scope: " + WorkspaceTime.FormatHalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
         if (graphDisplay.Node(key) is { } node)
         {
-            long scale = graphDisplay.Nodes.Max(candidate => candidate.Observations);
+            long scale = GraphEncoding.NodeScale(graphDisplay);
             string title = node.ProcessId is { } pid
                 ? string.Create(CultureInfo.CurrentCulture, $"{node.Label} · PID {pid}")
                 : node.Label;
@@ -1316,6 +1489,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     + Counted(node.Relationships, "relationship", "relationships"),
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
                 GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
+                GraphNodeKind.Context => Counted(node.Members.Count, "process", "processes") + " outside this focus, counted rather than drawn",
                 _ => Counted(node.Members.Count, "process", "processes") + " with no admitted relationship",
             };
             HashSet<ProcessInstanceId> members = [.. node.Members];
@@ -1330,7 +1504,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 HoverBytes(Snapshot.Edges.Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId)),
                     node.Observations),
                 "Coverage: " + DescribeCoverage(coverage),
-                string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}"),
+                node.Kind == GraphNodeKind.Context
+                    ? "Size: fixed; the rest of the machine is not read on this focus's scale"
+                    : string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}"),
             };
             if (graphPins.ContainsKey(node.Key))
             {
@@ -1369,6 +1545,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         lines.Add("Coverage: " + DescribeCoverage(channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
         lines.Add(string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}"));
+        if (drawn.Relationships.Count == 1)
+        {
+            // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read.
+            lines.Add(channels.Length switch
+            {
+                1 => "Double-click opens its channel",
+                0 => "Double-click opens its source process",
+                _ => string.Create(CultureInfo.CurrentCulture,
+                    $"Double-click opens its source process, whose rows list its {channels.Length:N0} channels"),
+            });
+        }
+
         string source = graphDisplay.Node(drawn.SourceKey)?.Label ?? drawn.SourceKey;
         string target = graphDisplay.Node(drawn.TargetKey)?.Label ?? drawn.TargetKey;
         return new($"{source} ↔ {target}", lines);

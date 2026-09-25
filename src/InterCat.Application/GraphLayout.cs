@@ -196,13 +196,21 @@ public static class GraphLayout
     private static LayoutNode[] DisplayNodes(GraphDisplay display)
     {
         // Radii come from the whole published scope, as the layout does; a brush re-counts sizes, never positions.
-        long scale = display.Nodes.Count == 0 ? 0 : display.Nodes.Max(node => node.Observations);
+        long scale = GraphEncoding.NodeScale(display);
         return [.. display.Nodes.Select(node => new LayoutNode(
             node.Key, node.Process?.ToString() ?? node.Key, GraphEncoding.NodeRadius(node, scale) / PixelsPerUnit))];
     }
 
+    /// <summary>
+    /// The edges that place nodes. A relationship to the context node (a focused rung's rest of the machine) is drawn but
+    /// does not place anything: the context node is parked in the footer, and the neighbourhood keeps its own shape
+    /// instead of being pulled toward everything outside it.
+    /// </summary>
     private static LayoutLink[] DisplayLinks(GraphDisplay display) =>
-        [.. display.Edges.Select(edge => new LayoutLink(edge.Key, edge.SourceKey, edge.TargetKey))];
+        [.. display.Edges
+            .Where(edge => display.Node(edge.SourceKey)?.Kind != GraphNodeKind.Context
+                && display.Node(edge.TargetKey)?.Kind != GraphNodeKind.Context)
+            .Select(edge => new LayoutLink(edge.Key, edge.SourceKey, edge.TargetKey))];
 
     private readonly record struct LayoutNode(string Key, string Seed, double Radius);
 

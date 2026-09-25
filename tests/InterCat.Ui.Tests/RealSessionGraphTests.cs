@@ -133,8 +133,20 @@ public sealed class RealSessionGraphTests
         Assert.Equal(largest.Key, display.ExpandedGroup);
         Assert.All(overview.Nodes.Where(node => node.GroupKey == largest.Key && related.Contains(node.Id)),
             node => Assert.Contains(display.NodeOf(node.Id)!.Kind, new[] { GraphNodeKind.Process, GraphNodeKind.OtherMembers }));
-        Assert.All(overview.Nodes.Where(node => node.GroupKey != largest.Key && !related.Contains(node.Id)),
-            node => Assert.Equal(GraphNodeKind.Quiet, display.NodeOf(node.Id)!.Kind));
+
+        // §3.2 L1: the group within its neighbourhood - its members and their peers. Every other process is context.
+        HashSet<ProcessInstanceId> members = [.. overview.Nodes.Where(node => node.GroupKey == largest.Key).Select(node => node.Id)];
+        HashSet<ProcessInstanceId> neighbourhood = [.. members];
+        foreach (CommunicationEdge edge in overview.Edges)
+        {
+            if (members.Contains(edge.SourceId)) neighbourhood.Add(edge.TargetId);
+            if (members.Contains(edge.TargetId)) neighbourhood.Add(edge.SourceId);
+        }
+
+        Assert.All(overview.Nodes.Where(node => !neighbourhood.Contains(node.Id)),
+            node => Assert.Equal(GraphNodeKind.Context, display.NodeOf(node.Id)!.Kind));
+        Assert.All(overview.Nodes.Where(node => neighbourhood.Contains(node.Id)),
+            node => Assert.NotEqual(GraphNodeKind.Context, display.NodeOf(node.Id)!.Kind));
         Describe(report, "group opened", display);
         Save(window, "group-open.png");
 

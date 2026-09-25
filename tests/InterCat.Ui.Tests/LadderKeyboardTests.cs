@@ -3,9 +3,11 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Desktop.Presentation;
+using InterCat.Domain;
 using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(InterCat.Ui.Tests.TestApplication))]
@@ -192,6 +194,52 @@ public sealed class LadderKeyboardTests
         Assert.Single(viewModel.Crumbs);
         Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
     }
+
+    [AvaloniaFact(DisplayName = "§3.2: a rung the user moves to opens its ranked table at its first row, not part-way down")]
+    public void ANewRungOpensItsTableAtItsFirstRow()
+    {
+        // Thirty-nine busy pairs rank above one quiet forty-process executable, so both its machine row and its own rung's
+        // table need scrolling.
+        ProcessGroup[] busy = [.. Enumerable.Range(0, 39).Select(index => new ProcessGroup($"busy{index}", $"busy{index}.exe", LaneGrouping.Executable))];
+        ProcessGroup pool = new("pool", "pool.exe", LaneGrouping.Executable);
+        ProcessNode[] pairs = [.. busy.SelectMany((group, index) => new[] { Node(index * 2, group.Key), Node((index * 2) + 1, group.Key) })];
+        ProcessNode[] members = [.. Enumerable.Range(100, 40).Select(index => Node(index, pool.Key))];
+        CommunicationEdge[] edges =
+        [
+            .. Enumerable.Range(0, busy.Length).Select(index => new CommunicationEdge(
+                $"busy{index}", pairs[index * 2].Id, pairs[(index * 2) + 1].Id, Mechanism.Tcp, 1_000, null, RelationStrength.Direct)),
+            .. Enumerable.Range(0, members.Length / 2).Select(index => new CommunicationEdge(
+                $"pool{index}", members[index * 2].Id, members[(index * 2) + 1].Id, Mechanism.Tcp, 1, null, RelationStrength.Direct)),
+        ];
+        var viewModel = new WorkspaceViewModel(new WorkspaceSnapshot("Scroll", new(0, WorkspaceTime.TicksPerSecond),
+            [.. busy, pool], [.. pairs, .. members], edges, [], [], [], []), "session:test:generation:1");
+        var window = new MainWindow(viewModel) { Width = 1080, Height = 700 };
+        window.Show();
+        ListBox list = window.GetControl<ListBox>("RungList");
+        ScrollViewer scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+
+        RungRow row = viewModel.RungRows.Single(candidate => candidate.Key == pool.Key);
+        viewModel.SelectedRung = row;
+        list.ScrollIntoView(row);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(scroller.Offset.Y > 0);
+
+        Assert.True(viewModel.Descend());
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(40, viewModel.RungRows.Count);
+        Assert.Equal(0, scroller.Offset.Y);
+        window.Close();
+    }
+
+    private static ProcessNode Node(int index, string group) => new(
+        new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")),
+        3_000 + index,
+        $"Process {index}",
+        "test",
+        group,
+        0.5,
+        0.5,
+        CoverageState.Covered);
 
     private static (Window Window, WorkspaceViewModel ViewModel) Open()
     {

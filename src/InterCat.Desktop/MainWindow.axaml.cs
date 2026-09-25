@@ -932,6 +932,14 @@ public sealed partial class MainWindow : Window, IDisposable
             UpdateHealthStrip();
         }
 
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.Crumbs))
+        {
+            // The user moved to another rung. Its table starts at its busiest rows, or at the row it selected, never at
+            // the scroll offset of the rung it left, which would open it part-way down with its first row cut off. A
+            // publication restores navigation before this window listens, so live updates never move the table.
+            Dispatcher.UIThread.Post(ShowRankedTableStart);
+        }
+
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration) && !workspace.HoldsGeneration
             && heldUpdate is not null && followLatest)
         {
@@ -940,6 +948,23 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 if (!workspace.HoldsGeneration) _ = ApplyHeldUpdate();
             });
+        }
+    }
+
+    private void ShowRankedTableStart()
+    {
+        if (RungList.ItemCount == 0)
+        {
+            return;
+        }
+
+        if (RungList.SelectedItem is { } selected)
+        {
+            RungList.ScrollIntoView(selected);
+        }
+        else
+        {
+            RungList.ScrollIntoView(0);
         }
     }
 
