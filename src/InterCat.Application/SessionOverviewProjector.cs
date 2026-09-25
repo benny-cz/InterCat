@@ -32,7 +32,10 @@ public sealed record SessionOverviewBundle(
     IReadOnlyList<MechanismCoverage> MechanismCoverage,
     IReadOnlyList<string> Caveats,
     SessionMinimap? Minimap = null,
-    SessionRedaction? Redaction = null);
+    SessionRedaction? Redaction = null)
+{
+    public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+}
 
 /// <summary>
 /// Builds graph and timeline data from exactly one leased generation. This is the read-side bundle for IC-017, not a
@@ -129,7 +132,7 @@ public static class SessionOverviewProjector
 
         int unrelated = nodes.Length - edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId }).Distinct().Count();
         HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
-        (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline, SessionMinimap? minimap,
+        (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline, MechanismTimelineLane[] lanes, SessionMinimap? minimap,
             long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
             Timeline(segments, relations, eligibleChannels, policy, clock, coverage, cancellationToken);
         if (edges.Sum(edge => edge.ObservationCount) != graphRows)
@@ -176,7 +179,7 @@ public static class SessionOverviewProjector
                 }),
             .. (redaction is null ? [] : new[] { SessionRedaction.Summary + " " + redaction.Warning }),
         ];
-        return new(
+        return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
                 + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}",
             manifest.SessionId,
@@ -199,10 +202,14 @@ public static class SessionOverviewProjector
             Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage)]),
             Array.AsReadOnly(caveats),
             minimap,
-            redaction);
+            redaction)
+        {
+            MechanismLanes = Array.AsReadOnly(lanes),
+        };
     }
 
-    private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets, SessionMinimap? Minimap,
+    private static (TimeRange? Extent, TimelineBucket[] Buckets, TimelineBucket[] GraphBuckets,
+        MechanismTimelineLane[] Lanes, SessionMinimap? Minimap,
         long Rows, long WithoutTime, long GraphRows, long GraphWithoutTime, long Unresolved)
         Timeline(
             IReadOnlyList<SegmentReaderV1> segments,
@@ -263,7 +270,7 @@ public static class SessionOverviewProjector
                 }
             }
 
-            return (null, [], [], null, rows, withoutTime, allGraphRows, allGraphRows, unresolved);
+            return (null, [], [], [], null, rows, withoutTime, allGraphRows, allGraphRows, unresolved);
         }
 
         var extent = new TimeRange(minimum, maximum + 1);
@@ -307,6 +314,7 @@ public static class SessionOverviewProjector
         }
 
         TimelineBucket[] result = main.Buckets(coverage, clock);
+        MechanismTimelineLane[] lanes = main.MechanismLanes(coverage, clock);
         TimelineBucket[] graphResult = [.. Enumerable.Range(0, result.Length).Select(index => new TimelineBucket(
             result[index].Interval,
             graphCounts[index],
@@ -318,7 +326,7 @@ public static class SessionOverviewProjector
             extent,
             Array.AsReadOnly([.. minimap.Counts]),
             Array.AsReadOnly(minimap.CaptureCoverage(coverage, clock)));
-        return (extent, result, graphResult, overviewMinimap, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
+        return (extent, result, graphResult, lanes, overviewMinimap, rows, withoutTime, graphRows, graphWithoutTime, unresolved);
     }
 
     internal static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch

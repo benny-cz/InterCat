@@ -12,6 +12,45 @@ public sealed class SessionTimelineTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
+    [Fact(DisplayName = "§3.2: mechanism lanes partition the overview and zoomed timeline without another read")]
+    public void MechanismLanesPartitionAndUseTheirOwnCoverage()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd)),
+            Timed(Lifecycle(2_000, ObservationKind.Create, 100, 2)),
+            Timed(Transfer(8_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3)
+                .Between(ClientEnd, ServerEnd)),
+            Transfer(10_001, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4)
+                .Between(ClientEnd, ServerEnd),
+        ], coverage: TwoEpochs());
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        SessionTimelineDetail sameColumns = SessionTimelineQuery.Detail(session.Store, overview.Extent!.Value,
+            SessionOverviewProjector.MaximumTimelineBuckets);
+        Assert.Equal(overview.MechanismLanes.SelectMany(lane => lane.Buckets.Select(bucket => (lane.Mechanism, bucket))),
+            sameColumns.MechanismLanes.SelectMany(lane => lane.Buckets.Select(bucket => (lane.Mechanism, bucket))));
+        Assert.Same(overview.MechanismLanes, OverviewWorkspace.From(overview).MechanismLanes);
+        Assert.Equal([Mechanism.ProcessLifecycle, Mechanism.Tcp], overview.MechanismLanes.Select(lane => lane.Mechanism));
+        Assert.All(overview.Timeline.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount,
+                overview.MechanismLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+        Assert.Equal(3, overview.MechanismLanes.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
+
+        SessionTimelineDetail zoomed = SessionTimelineQuery.Detail(session.Store, new TimeRange(0, 10_000), 10);
+        Assert.All(zoomed.Buckets.Select((bucket, index) => (bucket, index)), pair =>
+            Assert.Equal(pair.bucket.ObservationCount,
+                zoomed.MechanismLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+        MechanismTimelineLane tcp = zoomed.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp);
+        MechanismTimelineLane lifecycle = zoomed.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.ProcessLifecycle);
+        int quiet = Enumerable.Range(0, tcp.Buckets.Count).Single(index => tcp.Buckets[index].Interval.Contains(3_000));
+        Assert.Equal(0, tcp.Buckets[quiet].ObservationCount);
+        Assert.Equal(CoverageState.Covered, tcp.Buckets[quiet].Coverage);
+        Assert.NotEqual(CoverageState.Covered, lifecycle.Buckets[quiet].Coverage);
+    }
+
     [Fact(DisplayName = "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview")]
     public void AViewportTimelineCountsWhatAScanCounts()
     {

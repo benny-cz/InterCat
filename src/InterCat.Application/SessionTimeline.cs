@@ -26,7 +26,10 @@ public sealed record SessionTimelineDetail(
     Guid SessionId,
     long Generation,
     TimeRange Interval,
-    IReadOnlyList<TimelineBucket> Buckets);
+    IReadOnlyList<TimelineBucket> Buckets)
+{
+    public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+}
 
 /// <summary>
 /// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
@@ -166,7 +169,11 @@ public static class SessionTimelineQuery
 
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
         return (
-            new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly(counted.Buckets(coverage, clock))),
+            new SessionTimelineDetail(manifest.SessionId, manifest.Generation, interval,
+                Array.AsReadOnly(counted.Buckets(coverage, clock)))
+            {
+                MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
+            },
             focused?.Buckets(coverage, clock));
     }
 }
@@ -351,6 +358,22 @@ internal sealed class TimelineColumns
                     .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
                 BucketCoverage(coverage, clock, range, counts[index] == 0 ? [] : mechanisms[index].Keys));
         })];
+    }
+
+    /// <summary>
+    /// The same counted rows split into mechanism lanes. No extra segment read occurs. Even an empty column in a
+    /// mechanism lane asks the coverage ledger about that mechanism, not whichever mechanism dominated the whole column.
+    /// </summary>
+    public MechanismTimelineLane[] MechanismLanes(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
+    {
+        if (mechanisms is null) throw new InvalidOperationException("These columns were counted without mechanisms.");
+        return [.. mechanisms.SelectMany(tally => tally.Keys).Distinct().Order().Select(mechanism =>
+            new MechanismTimelineLane(mechanism, Array.AsReadOnly([.. Enumerable.Range(0, counts.Length).Select(index =>
+            {
+                TimeRange range = IntervalOf(interval, counts.Length, index);
+                return new TimelineBucket(range, mechanisms[index].GetValueOrDefault(mechanism), null, mechanism,
+                    BucketCoverage(coverage, clock, range, [mechanism]));
+            })])))];
     }
 
     /// <summary>The capture's own coverage over each column, independent of what was observed in it.</summary>

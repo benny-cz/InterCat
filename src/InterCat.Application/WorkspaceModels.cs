@@ -82,6 +82,9 @@ public sealed record TimelineBucket(
     Mechanism DominantMechanism,
     CoverageState Coverage);
 
+/// <summary>One mechanism's observations on the same column boundaries as the whole timeline.</summary>
+public sealed record MechanismTimelineLane(Mechanism Mechanism, IReadOnlyList<TimelineBucket> Buckets);
+
 /// <summary>
 /// Workspace viewport ticks are 100-nanosecond presentation ticks. A real-session projection converts source-native
 /// and session-relative readings into this scale before they reach the graph or timeline; no UI assumes the source
@@ -168,4 +171,8 @@ public sealed record WorkspaceSnapshot(
     IReadOnlyList<TimelineBucket> Timeline,
     string? ChannelProjectionProblem = null,
     SessionMinimap? Minimap = null,
-    SessionRedaction? Redaction = null);
+    SessionRedaction? Redaction = null)
+{
+    /// <summary>Whole-session L0 mechanism lanes from the same leased overview, not guessed from dominant hues.</summary>
+    public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+}

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 115 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 116 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -46,13 +46,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Per-rung timeline lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, L0 mechanism lane data from the overview scan, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, and a per-rung timeline focus that counts what E reads | Draw and interact with the L0 lanes; derive bounded L1–L5 lanes, focus coverage, operation and byte composition. Persisted overview pyramid and bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 116 — exact L0 lane-ready timeline data (§3.2, §6.2):** The overview's existing leased timeline
+  scan now publishes one bucket series per observed mechanism, and zoomed detail does the same. Lane counts partition
+  every whole-timeline bucket without a second segment scan. The existing overview separately counts rows without
+  session time; they cannot be placed in any lane. Coverage
+  is queried for each lane's own mechanism even in an empty bucket; the whole timeline's dominant hue is never used to
+  infer a lane's coverage. The workspace carries these immutable series through interval re-ranking. **Rendering and
+  lane interaction are the next slice**, not claimed here. One new Application test; **928 passed, 1 skipped** in both
+  Debug and Release.
 - **Revision 115 — bounded, privacy-aware Desktop search (§6.7):** Ctrl+F focuses an always-visible search field;
   groups, processes and channels rank by exact/prefix/substring metadata match, and a bounded list states the full
   match count. Enter or double-click follows the ladder to a hit; Esc clears search. Search survives same-session live
@@ -197,10 +205,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Give each rung its own timeline lanes (§3.2's timeline column): a lane per group, instance, or channel end, within
-   §6.2's mark budget. Coverage should be judged on the focus's own mechanisms. Include operation/byte projections
-   where derivations actually support them, and state unavailable where they do not. The focus overlay from revision
-   112 is the single-lane step toward this.
+1. Render the L0 mechanism lanes now available from revision 116 in a bounded, accessible, hit-testable timeline.
+   Then give each deeper rung its own lanes (§3.2's timeline column): a lane per group, instance, or channel end,
+   within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include operation/byte
+   projections where derivations actually support them, and state unavailable where they do not. The focus overlay
+   from revision 112 is the single-lane step toward this.
 2. Persist an overview pyramid and incremental tiles (§10.2/S4); bound query/layout/paint costs and retest the
    missed steady-state latency target on real ETW.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
@@ -216,7 +225,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 115): **927 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 116): **928 passed, 1 skipped, in Debug and Release**, zero failures.
+  - Revision 116 added one Application mechanism-lane invariant test (+1).
+  - Debug emitted transient MSBuild copy-retry warnings because an already-running `InterCat.Desktop.exe` (PID 4048)
+    held its Debug DLLs open. The retries succeeded and all tests passed; that process was left untouched.
   - Revision 115 added three Application, two Desktop and one UI search tests (+6).
   - Revision 108 gained 22 over revision 106's 875: 17 in Application and 6 in Desktop.
   - Revision 109 replaced the band test with relationship, parking and settling contracts (+2).

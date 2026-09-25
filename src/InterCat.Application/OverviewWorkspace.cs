@@ -21,7 +21,7 @@ public static class OverviewWorkspace
     public static WorkspaceSnapshot From(SessionOverviewBundle overview)
     {
         ArgumentNullException.ThrowIfNull(overview);
-        return new(
+        return new WorkspaceSnapshot(
             overview.Redaction is null
                 ? $"Session · generation {overview.Generation:N0}"
                 : $"Redacted package · generation {overview.Generation:N0}",
@@ -33,7 +33,10 @@ public static class OverviewWorkspace
             overview.Timeline,
             overview.ChannelProjectionProblem,
             overview.Minimap,
-            overview.Redaction);
+            overview.Redaction)
+        {
+            MechanismLanes = overview.MechanismLanes,
+        };
     }
 
     /// <summary>
