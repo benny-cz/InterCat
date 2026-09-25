@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -153,6 +155,44 @@ public sealed class LadderKeyboardTests
 
         Assert.False(viewModel.CanAscend);
         Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: Alt and Right go forward to the rung Alt and Left left, and a button left of Back says where")]
+    public void AltRightGoesForward()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        FocusRankedTable(window);
+        Button forward = window.GetControl<Button>("ForwardButton");
+        Button back = window.GetControl<Button>("AscendButton");
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        string group = viewModel.LevelBadge;
+        Settle(window);
+        Assert.False(forward.IsVisible);
+        double backRight = back.Bounds.Right;
+
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.Alt);
+        Settle(window);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+        Assert.True(forward.IsVisible);
+        Assert.Equal(viewModel.ForwardLabel, forward.Content);
+        Assert.Equal(viewModel.ForwardLabel, AutomationProperties.GetName(forward));
+        Assert.StartsWith("Forward to Group: ", viewModel.ForwardLabel, StringComparison.Ordinal);
+
+        // Back keeps its place when Forward appears, so clicking Back again never lands on Forward.
+        Assert.Equal(backRight, back.Bounds.Right);
+        Assert.True(forward.Bounds.Right <= back.Bounds.Left);
+
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Alt);
+        Settle(window);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Assert.False(forward.IsVisible);
+
+        // The button is the same step as the keys.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        forward.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(group, viewModel.LevelBadge);
     }
 
     [AvaloniaFact(DisplayName = "R13: evidence is one key away from the rung the user is on")]
@@ -307,5 +347,12 @@ public sealed class LadderKeyboardTests
     {
         ListBox list = window.GetControl<ListBox>("RungList");
         list.Focus();
+    }
+
+    /// <summary>Runs the bindings and a layout pass, so visibility and bounds are the ones drawn.</summary>
+    private static void Settle(Window window)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        _ = window.CaptureRenderedFrame();
     }
 }

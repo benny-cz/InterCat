@@ -219,6 +219,9 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
                 e.Handled = viewModel.Ascend();
                 break;
+            case Key.Right when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
+                e.Handled = viewModel.GoForward();
+                break;
             case Key.Delete:
                 e.Handled = viewModel.RemoveSelectedFilter();
                 break;
@@ -262,6 +265,14 @@ public sealed partial class MainWindow : Window, IDisposable
         if (DataContext is WorkspaceViewModel viewModel)
         {
             _ = viewModel.Ascend();
+        }
+    }
+
+    private void GoForward(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            _ = viewModel.GoForward();
         }
     }
 

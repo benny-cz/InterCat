@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 131 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 132 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,13 +54,36 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 132 — forward history, and an ascent's lost brush (§3.2, §6.4, §6.7):**
+  - **Forward:** `Alt`+`Right` re-enters the rung the latest ascent or crumb left, exactly as it was left, including
+    a filter taken off there. A **Forward to …** button does the same (R15). It sits left of Back, so Back never
+    moves under a pointer that keeps clicking it. The header hint names the key while there is somewhere to go.
+  - **Rules:** the ladder keeps the rungs left, nearest first. The list is always a way down from the current rung,
+    one valid descent at a time, so it can never hold more than the rungs below. A descent elsewhere, or a filter taken
+    off, ends it, as a new page does in a browser. Enter on the exact row forward names keeps the rest of the way.
+  - **Time:** each rung remembers the analysis interval the user had on it when they left it. Every way back (Esc,
+    `Alt`+`Left`, a crumb, forward) restores it through the selection coordinator. A rung left unbrushed comes back
+    unbrushed.
+  - **Fixed:** an ascent wrote the interval field directly, bypassing the selection coordinator. Brush the machine
+    rung, narrow the brush on a group, then press Esc: no brush showed, yet the ranking still read "Ranked within
+    1.0 – 5.0 µs" with the group's counts, and the next selection event could bring that stale brush back. Esc now
+    restores the machine's brush and counts inside it.
+  - **Publications:** the navigation memento carries forward history, with viewports rebased to the new extent. It
+    stops before the first rung the new generation no longer has, with no notice about rungs nobody is looking at.
+  - **Plan:**
+    - §3.2 and §6.4 now say what back and forward do, and that "time" is the interval a rung was left with.
+    - §6.7's `[`/`]` row said L2–L5 lanes did not exist, but L2 rows and L3 ends step.
+    - Its "lane rows" open item was already done.
+  - **Tests:** 10 new test methods: 5 property theories over random ladders (4 seeds each), 4 Desktop tests and 1 UI
+    test for the keys, the button and Back's position. Five mutations of the ladder each fail the properties, and the
+    old ascent fails both brush tests.
 - **Revision 131 — what a screen reader hears (§6.5, R15):**
   - **Audit:** a headless test walks the window's UI Automation tree at the machine, group, process and channel rungs
     with the tables shown. Every focusable element and list item needs a name, no name may be a record dump, and every
@@ -453,11 +476,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
-   - §6.7's remaining rows: `Ctrl`+click multi-selection as an explicit predicate and forward navigation history
-     (`Alt`+`Right`). Indexed/progressive search belongs to the later M4 scale gate.
+   - §6.7's remaining row: `Ctrl`+click multi-selection as an explicit predicate. Indexed/progressive search belongs
+     to the later M4 scale gate.
+   - **Traceability (next):** R13 (hit testing resolves through a data-space index; cosmetic widening changes no
+     interval, count or evidence) is wrongly filed in the ledger.
+     - It lists 16 §3.2 ladder tests and not one hit test; the hit-target tests are filed under §3.2/§6.2 names.
+     - Fix: rename the ladder tests to §3.2, file the real hit tests under R13, and declare whatever R13 still lacks
+       as uncovered, with a reason.
 
 ## Verification and cautions
 
+- Revision 132 was built and tested in the same Linux container: Debug and Release both ran **990 tests: 902 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 131 was built and tested in the same Linux container: Debug and Release both ran **965 tests: 877 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 130 was built and tested in a Linux cloud container, not on Windows.

@@ -60,6 +60,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 /// <param name="SelectedChannelEnd">The L3 end chosen for the table and stepping: 0 the channel's first end, 1 its second.</param>
+/// <param name="Forward">The rungs forward steps would re-enter, nearest first (§6.7).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -71,7 +72,8 @@ public sealed record WorkspaceNavigationMemento(
     string? SelectedSearchKey = null,
     Mechanism? SelectedTimelineMechanism = null,
     Direction? SelectedTimelineDirection = null,
-    int? SelectedChannelEnd = null);
+    int? SelectedChannelEnd = null,
+    IReadOnlyList<NavigationState>? Forward = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -914,7 +916,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
-        selectedChannelEnd);
+        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })]);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -980,6 +982,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 }
             }
 
+            ladder.RecordInterval(Rebase(previous.IntervalWhenLeft, previousExtent));
             if (descent is null || !ladder.TryDescend(descent, out _))
             {
                 notices.Add($"The previous {NavigationState.Name(target.Level).ToLowerInvariant()} focus is not in this "
@@ -994,6 +997,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     _ = ladder.TryRemoveFilter(filter.Field);
                 }
             }
+        }
+
+        if (ladder.Depth == old.Length - 1 && saved.Forward is { Count: > 0 } savedForward)
+        {
+            RestoreForward(savedForward, previousExtent);
         }
 
         AfterNavigation();
@@ -1063,6 +1071,57 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         return notices.Count == 0 ? null : string.Join(" ", notices);
     }
+
+    /// <summary>A rung's remembered interval in this generation: clipped to retained evidence, or none when it is gone.</summary>
+    private TimeRange? Rebase(TimeRange? interval, TimeRange previousExtent)
+    {
+        if (interval is not { } old)
+        {
+            return null;
+        }
+
+        TimeRange rebased = Rebase(old, previousExtent, Snapshot.Extent, out _, out bool lost);
+        return lost ? null : rebased;
+    }
+
+    /// <summary>
+    /// Puts back the way forward that a publication carried, as far as this generation still has it: each rung must
+    /// still be a row of the rung above it and its time must still be retained, and the way stops before the first
+    /// that is not, so a forward step never lands somewhere the user did not leave.
+    /// </summary>
+    private void RestoreForward(IReadOnlyList<NavigationState> saved, TimeRange previousExtent)
+    {
+        var kept = new List<NavigationState>(saved.Count);
+        NavigationState above = ladder.Current;
+        foreach (NavigationState rung in saved)
+        {
+            TimeRange viewport = Rebase(rung.Viewport, previousExtent, Snapshot.Extent, out _, out bool lost);
+            if (lost || !Reachable(rung, above, wholeSnapshot))
+            {
+                break;
+            }
+
+            NavigationState rebased = rung with
+            {
+                Viewport = viewport,
+                Filters = [.. rung.Filters],
+                IntervalWhenLeft = Rebase(rung.IntervalWhenLeft, previousExtent),
+            };
+            kept.Add(rebased);
+            above = rebased;
+        }
+
+        _ = ladder.TryRestoreForward(kept);
+    }
+
+    /// <summary>
+    /// Whether a rung can be entered from the one above it in a generation: it is still one of that rung's rows. The
+    /// evidence rung is always reachable; its reader says when the records it names are gone.
+    /// </summary>
+    private static bool Reachable(NavigationState rung, NavigationState above, WorkspaceSnapshot snapshot) =>
+        rung.Level == DetailLevel.Evidence
+        || rung.Focus is { } focus && LadderProjection.Project(snapshot, above).Rows.Any(
+            row => string.Equals(row.Key, focus.Key, StringComparison.Ordinal) && row.DescendsTo == rung.Level);
 
     private static TimeRange Rebase(
         TimeRange old, TimeRange previousExtent, TimeRange currentExtent, out bool clipped, out bool lost)
@@ -1286,18 +1345,20 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
         return DescendAlong(channels.Length == 1
             ? [source.GroupKey, source.Id.ToString(), channels[0].Key]
-            : [source.GroupKey, source.Id.ToString()]);
+            : [source.GroupKey, source.Id.ToString()], selectedInterval);
     }
 
     /// <summary>
     /// Goes to an entity by the rows a person would choose. Validate the whole path before mutating the ladder so a
-    /// stale hit cannot send someone back to the machine rung and leave them there.
+    /// stale hit cannot send someone back to the machine rung and leave them there. The rung left keeps
+    /// <paramref name="leftWith"/>, the interval the user had there before the jump began.
     /// </summary>
-    private bool DescendAlong(IReadOnlyList<string> path)
+    private bool DescendAlong(IReadOnlyList<string> path, TimeRange? leftWith)
     {
         if (!TryBuildDescents(path, Snapshot, out List<LadderDescent> descents)) return false;
+        ladder.RecordInterval(leftWith);
         if (!ladder.TryReturnTo(0, out _)) return false;
-        foreach (LadderDescent descent in descents) _ = ladder.TryDescend(descent, out _);
+        foreach (LadderDescent descent in descents) _ = TryDescend(descent);
         AfterNavigation();
         return true;
     }
@@ -1401,13 +1462,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         // Search covers the whole published session, not only an analysis brush. Clear that brush before opening a
-        // match outside it so the hit is not silently missing from the ranked rung.
+        // match outside it so the hit is not silently missing from the ranked rung. The rung left keeps it.
+        TimeRange? leftWith = selectedInterval;
         if (selectedInterval is not null)
         {
             if (!TryBuildDescents(row.Hit.Path, wholeSnapshot, out _)) return false;
             selection.Clear();
         }
-        bool opened = DescendAlong(row.Hit.Path);
+        bool opened = DescendAlong(row.Hit.Path, leftWith);
         if (opened) SearchText = string.Empty;
         return opened;
     }
@@ -1968,11 +2030,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         ? $"Back to {ladder.Breadcrumb[^2].Crumb} (Esc)"
         : "Clear selection (Esc)";
 
-    public string DescendHint => IsEvidenceRung
+    /// <summary>Whether a forward step has a rung to re-enter: one an ascent or a crumb left (§6.7).</summary>
+    public bool CanGoForward => ladder.CanGoForward;
+
+    public string ForwardLabel => ladder.Forward is [NavigationState next, ..]
+        ? $"Forward to {next.Crumb} (Alt+Right)"
+        : "Nothing to go forward to (Alt+Right)";
+
+    public string DescendHint => (IsEvidenceRung
         ? $"Enter opens the {RecordNoun} · M loads more · Esc goes back"
         : ladder.Current.Level == DetailLevel.Evidence
             ? "Evidence is the last rung. Esc returns to where you were."
-            : "Enter opens the selected row · E jumps straight to evidence · Esc goes back";
+            : "Enter opens the selected row · E jumps straight to evidence · Esc goes back")
+        + (ladder.CanGoForward ? " · Alt+Right goes forward" : string.Empty);
 
     /// <summary>Whether the table equivalents are shown. They are always reachable, never a hidden mode.</summary>
     public bool ShowTables
@@ -2611,13 +2681,20 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             selectedRung.Source,
             ladder.Current,
             selectedInterval ?? ladder.Current.Viewport);
-        if (!ladder.TryDescend(descent, out _))
+        if (!TryDescend(descent))
         {
             return false;
         }
 
         AfterNavigation();
         return true;
+    }
+
+    /// <summary>Descends one rung, first recording on the rung being left the interval the user had there (§6.7).</summary>
+    private bool TryDescend(LadderDescent descent)
+    {
+        ladder.RecordInterval(selectedInterval);
+        return ladder.TryDescend(descent, out _);
     }
 
     /// <summary>
@@ -2642,7 +2719,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     new(DetailLevel.Group, group.Key, group.Name),
                     "Evidence was reached from the machine rung with this executable group selected.")
                 : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
-        if (!ladder.TryDescend(descent, out _))
+        if (!TryDescend(descent))
         {
             return false;
         }
@@ -2667,7 +2744,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             selectedInterval ?? ladder.Current.Viewport,
             new(DetailLevel.Channel, channel.Key, channel.Name),
             "Evidence was reached from a channel chosen in the channel list.");
-        if (!ladder.TryDescend(descent, out _))
+        if (!TryDescend(descent))
         {
             return false;
         }
@@ -2679,22 +2756,69 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Ascends to exactly where the user was, or clears the selection at the machine rung.</summary>
     public bool Ascend()
     {
+        ladder.RecordInterval(selectedInterval);
         if (!ladder.TryAscend(out NavigationState restored))
         {
             ClearSelection();
             return false;
         }
 
-        selectedInterval = restored.Viewport == Snapshot.Extent ? null : restored.Viewport;
+        ResumeIntervalOf(restored);
         AfterNavigation();
         return true;
     }
 
+    /// <summary>Returns to a rung the breadcrumb names, exactly as the user left it, as an ascent does.</summary>
     public void ReturnTo(int depth)
     {
-        if (ladder.TryReturnTo(depth, out _))
+        ladder.RecordInterval(selectedInterval);
+        if (ladder.TryReturnTo(depth, out NavigationState restored))
         {
+            ResumeIntervalOf(restored);
             AfterNavigation();
+        }
+    }
+
+    /// <summary>
+    /// Alt+Right (§6.7): re-enters the rung the latest ascent or crumb left, as it was left, with the interval the user
+    /// had there. A rung this generation no longer has ends forward history instead of landing somewhere else.
+    /// </summary>
+    public bool GoForward()
+    {
+        if (ladder.Forward is not [NavigationState next, ..])
+        {
+            return false;
+        }
+
+        if (!Reachable(next, ladder.Current, wholeSnapshot))
+        {
+            ladder.ClearForward();
+            OnPropertyChanged(nameof(CanGoForward));
+            OnPropertyChanged(nameof(ForwardLabel));
+            OnPropertyChanged(nameof(DescendHint));
+            return false;
+        }
+
+        ladder.RecordInterval(selectedInterval);
+        if (!ladder.TryGoForward(out NavigationState entered))
+        {
+            return false;
+        }
+
+        ResumeIntervalOf(entered);
+        AfterNavigation();
+        return true;
+    }
+
+    /// <summary>
+    /// Brings back the analysis interval a rung had when it was left, through the one selection source, so the brush,
+    /// the ranking's counts and the timeline all name the same time (§6.4, §6.7).
+    /// </summary>
+    private void ResumeIntervalOf(NavigationState rung)
+    {
+        if (selection.Current.Interval != rung.IntervalWhenLeft)
+        {
+            selection.SelectInterval(rung.IntervalWhenLeft);
         }
     }
 
@@ -2763,6 +2887,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(CanAscend));
         OnPropertyChanged(nameof(AscendLabel));
+        OnPropertyChanged(nameof(CanGoForward));
+        OnPropertyChanged(nameof(ForwardLabel));
         OnPropertyChanged(nameof(DescendHint));
         OnPropertyChanged(nameof(IntervalLabel));
         OnPropertyChanged(nameof(ShowsMechanismLanes));

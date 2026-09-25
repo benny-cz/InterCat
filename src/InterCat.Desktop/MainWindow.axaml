@@ -166,7 +166,7 @@
     <Border Grid.Column="1" Grid.ColumnSpan="2" Padding="20,11"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1"
             Background="{DynamicResource Surface.Panel}">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto" VerticalAlignment="Center">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
         <StackPanel Spacing="2" ClipToBounds="True">
           <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" />
@@ -200,7 +200,18 @@
         </Border>
         <Button Grid.Column="2" Margin="0,0,8,0" Content="{Binding TableToggleLabel}" Click="ToggleTables"
                 AutomationProperties.Name="Toggle the accessible table equivalents" />
-        <Button Grid.Column="3" Content="{Binding AscendLabel}" Click="AscendOrClear"
+        <!-- Alt+Right's visible equivalent (R15), shown while an ascent or a crumb has left a rung to re-enter. It stands
+             left of Back so Back never moves under a pointer that clicks it again and again. -->
+        <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="{Binding ForwardLabel}"
+                Click="GoForward" IsVisible="{Binding CanGoForward}" MaxWidth="280"
+                AutomationProperties.Name="{Binding ForwardLabel}">
+          <Button.Styles>
+            <Style Selector="Button > ContentPresenter > TextBlock">
+              <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+          </Button.Styles>
+        </Button>
+        <Button x:Name="AscendButton" Grid.Column="4" Content="{Binding AscendLabel}" Click="AscendOrClear"
                 MaxWidth="280"
                 AutomationProperties.Name="Go back one level, or clear the selection at the machine level">
           <Button.Styles>
