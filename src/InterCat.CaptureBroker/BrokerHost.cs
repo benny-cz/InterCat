@@ -342,7 +342,7 @@ public sealed class BrokerHost
 
     private void ReportMaintenance(BrokerMaintenanceReport report)
     {
-        string summary = $"Maintenance: {report.Reconciled.Count} reconciled, {report.ExpiredLeaseStops.Count} expired lease(s) stopped";
+        string summary = $"{report.Reconciled.Count} reconciled, {report.ExpiredLeaseStops.Count} expired lease(s) stopped";
         Log(BrokerHostEventKind.Maintenance, report.Failure is null
             ? summary + "."
             : $"{summary}; failure #{report.ConsecutiveFailures}: {report.Failure}");

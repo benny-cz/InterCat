@@ -51,7 +51,7 @@ internal static partial class Qualification
     {
         Console.Error.WriteLine("Usage: InterCat.BrokerQualification run --output <new directory> [--traffic-seconds <2-60>]");
         Console.Error.WriteLine("       InterCat.BrokerQualification impact --output <new directory> [--triplets <1-15>]");
-        Console.Error.WriteLine("       InterCat.BrokerQualification first-feedback --output <new directory> [--runs <1-10>] [--seconds <5-120>]");
+        Console.Error.WriteLine("       InterCat.BrokerQualification first-feedback --output <new directory> [--runs <1-10>] [--seconds <5-600>] [--bounded]");
         Console.Error.WriteLine("Runs elevated. Starts real ETW sessions in a broker child process and stops every one it started.");
         return 2;
     }
@@ -136,6 +136,7 @@ internal static partial class Qualification
             report.KilledBroker = await KilledBrokerAsync(parent, self, trafficSeconds, etw, cancellationToken);
             report.Launcher = await LauncherAsync(parent, self, etw, cancellationToken);
             report.CliCapture = await CliCaptureAsync(output, etw, cancellationToken);
+            report.AbandonedClient = await AbandonedClientAsync(parent, self, trafficSeconds, etw, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -150,7 +151,8 @@ internal static partial class Qualification
                 && report.CleanStop?.Passed == true
                 && report.KilledBroker?.Passed == true
                 && report.Launcher?.Passed == true
-                && report.CliCapture?.Passed == true;
+                && report.CliCapture?.Passed == true
+                && report.AbandonedClient?.Passed == true;
             await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json), CancellationToken.None);
         }
 
@@ -243,6 +245,64 @@ internal static partial class Qualification
             && result.FailureReason?.StartsWith("Interrupted:", StringComparison.Ordinal) == true
             && result.BrokerExitCode == 1
             && result.Evidence is { Finalized: false, JournaledRecords: > 0, StagingFilesLeft: 0 };
+        return result;
+    }
+
+    /// <summary>
+    /// A viewer that crashes mid-capture never sends Stop and stops renewing its owner lease. The broker's maintenance
+    /// loop must stop the capture once the lease expires and finalize its journal, leaving no ETW session behind, and then
+    /// idle-exit cleanly (plan §14 M2: "close or crash the UI without leaking an unmanaged trace").
+    /// </summary>
+    private static async Task<ScenarioResult> AbandonedClientAsync(
+        string parent,
+        BrokerClientIdentity self,
+        int trafficSeconds,
+        TraceEventSessionHost etw,
+        CancellationToken cancellationToken)
+    {
+        var result = new ScenarioResult { Name = "abandoned-client" };
+        IReadOnlyList<string> before = InterCatSessions(etw);
+        await using BrokerChild child = await BrokerChild.LaunchAsync(parent, self, result, cancellationToken);
+        CaptureId captureId;
+        await using (WindowsBrokerPipeClient client = await child.ConnectAsync(cancellationToken))
+        {
+            captureId = await StartAsync(client, result, cancellationToken);
+            result.OwnedSessionsWhileRecording = InterCatSessions(etw).Count;
+            result.TrafficBytes = await LoopbackTrafficAsync(client, captureId, trafficSeconds, cancellationToken);
+
+            // The viewer is gone from here on: no Stop, and its connection closes without another renewal.
+        }
+
+        var abandoned = Stopwatch.StartNew();
+        BrokerCaptureStatusResponse? status = null;
+        while (abandoned.Elapsed < BrokerLifecycleCoordinator.DefaultLease + TimeSpan.FromSeconds(30))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+
+            // The owner may still ask, on a connection of its own; asking does not renew the lease.
+            await using WindowsBrokerPipeClient probe = await child.ConnectAsync(cancellationToken);
+            await HelloAsync(probe, cancellationToken);
+            status = Expect<BrokerCaptureStatusResponse>(await probe.SendAsync(
+                new BrokerGetStatusRequest(captureId), cancellationToken));
+            if (status.State == CaptureLifecycle.Closed)
+            {
+                break;
+            }
+        }
+
+        result.AbandonedToClosedMilliseconds = abandoned.ElapsedMilliseconds;
+        result.FinalState = status?.State.ToString();
+        result.FinalMilestones = status?.StopMilestones;
+        result.FailureReason = status?.FailureReason;
+        result.OrphanedSessionsAfterClose = [.. InterCatSessions(etw).Except(before, StringComparer.OrdinalIgnoreCase)];
+        result.BrokerExitCode = await child.WaitForIdleExitAsync(cancellationToken);
+        result.Evidence = ReadEvidence(parent, self, captureId);
+        result.Diagnostics = child.Diagnostics;
+        result.Passed = result.FinalState == nameof(CaptureLifecycle.Closed)
+            && result.FinalMilestones?.FullyFinalized == true
+            && result.OrphanedSessionsAfterClose.Count == 0
+            && result.BrokerExitCode == 0
+            && result.Evidence is { Finalized: true, JournaledRecords: > 0, StagingFilesLeft: 0 };
         return result;
     }
 
@@ -688,6 +748,7 @@ internal sealed class QualificationReport
     public ScenarioResult? KilledBroker { get; set; }
     public ScenarioResult? Launcher { get; set; }
     public ScenarioResult? CliCapture { get; set; }
+    public ScenarioResult? AbandonedClient { get; set; }
     public IReadOnlyList<string> LeakedSessions { get; set; } = [];
     public string? Failure { get; set; }
     public required IReadOnlyList<string> Notes { get; init; }
@@ -707,6 +768,13 @@ internal sealed class ScenarioResult
     public int? OwnedSessionsWhileRecording { get; set; }
     public IReadOnlyList<string> OrphanedSessionsAfterKill { get; set; } = [];
     public IReadOnlyList<string> OrphanedSessionsWhenListening { get; set; } = [];
+
+    /// <summary>
+    /// From the client's disconnection, within 0.1 s of its last lease renewal, to the broker reporting the abandoned
+    /// capture closed. The lease is 30 s, so this is the lease plus the broker's maintenance and finalization time.
+    /// </summary>
+    public long? AbandonedToClosedMilliseconds { get; set; }
+    public IReadOnlyList<string> OrphanedSessionsAfterClose { get; set; } = [];
     public string? FinalState { get; set; }
     public BrokerStopMilestones? FinalMilestones { get; set; }
     public string? FailureReason { get; set; }

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -24,13 +23,20 @@ internal static partial class Qualification
     private const long DerivationP95BudgetMilliseconds = 500;
     private const long ProjectionP95BudgetMilliseconds = 250;
 
+    /// <summary>How often a run samples the viewer's and the broker's memory while the capture runs.</summary>
+    private static readonly TimeSpan MemorySampleInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>The length of one trend window: a long run reports each minute on its own, so growth is not averaged away.</summary>
+    private const int TrendWindowSeconds = 60;
+
     public static async Task<int> FirstFeedbackAsync(string[] args, CancellationToken cancellationToken)
     {
         string? output = Option(args, "--output");
         int runs = int.TryParse(Option(args, "--runs") ?? "3", NumberStyles.None, CultureInfo.InvariantCulture, out int parsedRuns)
             && parsedRuns is >= 1 and <= 10 ? parsedRuns : -1;
         int seconds = int.TryParse(Option(args, "--seconds") ?? "15", NumberStyles.None, CultureInfo.InvariantCulture, out int parsedSeconds)
-            && parsedSeconds is >= 5 and <= 120 ? parsedSeconds : -1;
+            && parsedSeconds is >= 5 and <= 600 ? parsedSeconds : -1;
+        bool bounded = args.Contains("--bounded", StringComparer.Ordinal);
         if (output is null || runs < 0 || seconds < 0)
         {
             return Usage();
@@ -53,11 +59,12 @@ internal static partial class Qualification
         Directory.CreateDirectory(output);
         var report = new FirstFeedbackReport
         {
-            Schema = "intercat.first-feedback.v2",
+            Schema = "intercat.first-feedback.v3",
             StartedUtc = DateTimeOffset.UtcNow,
             Environment = CapabilityInventoryProbe.DescribeEnvironment(etw.IsElevated),
             QpcFrequency = Stopwatch.Frequency,
             RecordingSeconds = seconds,
+            Bounded = bounded,
             Budgets = new()
             {
                 ["firstUsefulOverviewAfterFirstDeliveredMs"] = FirstUsefulOverviewBudgetMilliseconds,
@@ -70,7 +77,12 @@ internal static partial class Qualification
             [
                 "The Desktop's DesktopCaptureRunner runs unchanged except for three options: this tool as its broker "
                     + "(the production composition over a qualification root, never the production root), a session "
-                    + "root in the output directory, and a 120-second quota.",
+                    + "root in the output directory, and the capture's duration quota.",
+                bounded
+                    ? "Bounded: the quota is the recording time, and nothing here stops the capture. The broker ends it at "
+                        + "its quota, as it ends the default 600-second Explore capture, and the viewer follows it to the end."
+                    : "Stopped: the viewer stops the capture after the recording time, as the Stop button or closing the "
+                        + "window does. The quota is 120 s or the recording time plus 60 s, whichever is longer.",
                 "Exact means the overview was projected and handed to the window; drawing it is not included. A "
                     + "record's exact delay is the QPC reading at hand-off of the first overview whose derived records "
                     + "include it, minus the record's own QPC reading.",
@@ -79,6 +91,12 @@ internal static partial class Qualification
                     + "whichever came first, preview or exact, and is what the event-to-visible budget is judged on "
                     + "(plan §12, §19.3's labelled preview). Schema v2 added the preview; v1's event-to-visible is v2's "
                     + "event-to-exact.",
+                "Schema v3 adds bounded runs, memory samples every 10 s and 60-second trend windows: overviews by their "
+                    + "hand-off time, records by their own acquisition time, both from the first recording update.",
+                "Memory: the viewer is this process, which runs the Desktop's capture runner (follower, derived session "
+                    + "and overview projection) and keeps only compact measurements of each update, never an overview. "
+                    + "It excludes the window, its workspace and drawing. The broker is this tool's serve mode, a separate "
+                    + "process. The managed heap is its size after the most recent collection.",
                 "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the "
                     + "ordinary-integrity first run is not measured here.",
                 "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, "
@@ -91,12 +109,15 @@ internal static partial class Qualification
         {
             for (int run = 1; run <= runs; run++)
             {
-                FirstFeedbackRun result = await FirstFeedbackRunAsync(output, run, seconds, cancellationToken);
+                FirstFeedbackRun result = await FirstFeedbackRunAsync(output, run, seconds, bounded, cancellationToken);
                 report.Runs.Add(result);
                 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                    $"run {run}: first overview {result.FirstOverviewAfterFirstDeliveredMs} ms after first record; "
-                    + $"event to visible p95 {result.EventToVisible?.P95Ms} ms, p99 {result.EventToVisible?.P99Ms} ms "
-                    + $"(preview p95 {result.EventToPreview?.P95Ms} ms, exact p95 {result.EventToExact?.P95Ms} ms)"));
+                    $"run {run}: {result.Records:N0} records; first overview {result.FirstOverviewAfterFirstDeliveredMs} ms "
+                    + $"after first record; event to visible p95 {result.EventToVisible?.P95Ms} ms, "
+                    + $"p99 {result.EventToVisible?.P99Ms} ms (preview p95 {result.EventToPreview?.P95Ms} ms, "
+                    + $"exact p95 {result.EventToExact?.P95Ms} ms); last overview derived in "
+                    + $"{result.LastOverviewDerivationMs} ms, projected in {result.LastOverviewProjectionMs} ms; "
+                    + $"viewer {result.MemoryAtEnd?.ViewerPrivateBytes / (1024 * 1024)} MiB private at the end"));
                 await WaitForCliBrokerExitAsync(cancellationToken);
             }
         }
@@ -124,78 +145,111 @@ internal static partial class Qualification
     }
 
     private static async Task<FirstFeedbackRun> FirstFeedbackRunAsync(
-        string output, int run, int seconds, CancellationToken cancellationToken)
+        string output, int run, int seconds, bool bounded, CancellationToken cancellationToken)
     {
         var result = new FirstFeedbackRun { Run = run };
-        var updates = new ConcurrentQueue<CaptureUiUpdate>();
-        var recording = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var collected = new FeedbackCollector();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var options = new CaptureRunOptions
         {
             Broker = new(Environment.ProcessPath!, ["serve"]),
             SessionRoot = Path.Combine(output, $"run-{run}"),
-            MaximumDurationSeconds = 120,
+            MaximumDurationSeconds = bounded ? seconds : Math.Max(120, seconds + 60),
         };
-        Task capture = DesktopCaptureRunner.RunAsync(update =>
-        {
-            updates.Enqueue(update);
-            if (update.Phase == CaptureUiPhase.Recording) recording.TrySetResult();
-        }, stop.Token, options);
+        Task capture = DesktopCaptureRunner.RunAsync(collected.Receive, stop.Token, options);
 
-        await Task.WhenAny(recording.Task, capture);
+        await Task.WhenAny(collected.Recording, capture);
+        var samples = new List<MemorySample>();
+        Task sampling = Task.CompletedTask;
         if (!capture.IsCompleted)
         {
-            await PacedLoopbackAsync(TimeSpan.FromSeconds(seconds), cancellationToken);
-            stop.Cancel();
+            sampling = SampleMemoryAsync(collected, capture, samples, cancellationToken);
+
+            // A bounded capture ends at its own quota, and the traffic with it; a stopped run stops it as the Stop button does.
+            await PacedLoopbackAsync(TimeSpan.FromSeconds(bounded ? seconds + 60 : seconds), capture, cancellationToken);
+            if (!capture.IsCompleted)
+            {
+                result.BoundOverrun = bounded;
+                stop.Cancel();
+            }
         }
 
         using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
             timeout.CancelAfter(TimeSpan.FromSeconds(120));
-            await capture.WaitAsync(timeout.Token);
+            try
+            {
+                await capture.WaitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                result.FailureReason = "The capture did not finish within 120 s of its end.";
+                return result;
+            }
         }
 
-        CaptureUiUpdate[] all = [.. updates];
-        CaptureUiUpdate last = all[^1];
-        result.FinalHeadline = last.Headline;
-        CaptureMilestones? milestones = all.LastOrDefault(update => update.Milestones is not null)?.Milestones;
+        await sampling;
+        FeedbackSnapshot seen = collected.Snapshot();
+        result.FinalHeadline = seen.Headline;
+        result.FinalDetail = seen.Detail;
+        CaptureMilestones? milestones = seen.Milestones;
         result.BrokerReadyMs = Milliseconds(milestones?.BrokerReady);
         result.PreparedMs = Milliseconds(milestones?.Prepared);
         result.StartedMs = Milliseconds(milestones?.Started);
         result.FirstGenerationMs = Milliseconds(milestones?.FirstGeneration);
         result.FirstOverviewMs = Milliseconds(milestones?.FirstOverview);
         result.PublicationIntervalMs = Milliseconds(milestones?.PublicationInterval);
-        CaptureVisibility[] visible = [.. all.Where(update => update.Visibility is not null)
-            .Select(update => update.Visibility!).OrderBy(visibility => visibility.DerivedRecords)];
+        CaptureVisibility[] visible = [.. seen.Visible.OrderBy(visibility => visibility.DerivedRecords)];
         result.OverviewsHandedOff = visible.Length;
-        BrokerCaptureHealth[] live = [.. all
-            .Where(update => update.Phase == CaptureUiPhase.Recording && update.LiveHealth is not null)
-            .Select(update => update.LiveHealth!)
-            .Distinct()];
-        result.LiveCounterReadings = live.Length;
-        result.LastLiveCounters = live.LastOrDefault();
-        (BrokerCapturePreview Preview, long Qpc)[] previews = [.. all
-            .Where(update => update.PreviewObservedQpc is not null && update.LivePreview is not null)
-            .Select(update => (update.LivePreview!, update.PreviewObservedQpc!.Value))
-            .OrderBy(entry => entry.Item2)];
+        result.ChunksFollowed = seen.Chunks;
+        result.LiveCounterReadings = seen.LiveCounterReadings;
+        result.LastLiveCounters = seen.LastLiveCounters;
+        PreviewSighting[] previews = [.. seen.Previews.OrderBy(preview => preview.Qpc)];
         result.PreviewsHandedOff = previews.Length;
-        result.LargestUnbinnedPreviewRecords = previews.Length == 0 ? 0 : previews.Max(entry => entry.Preview.UnbinnedRecords);
+        result.LargestUnbinnedPreviewRecords = previews.Length == 0 ? 0 : previews.Max(preview => preview.UnbinnedRecords);
         result.Derivation = Summarize(visible.Select(visibility => visibility.Derivation.TotalMilliseconds));
         result.Projection = Summarize(visible.Select(visibility => visibility.Projection.TotalMilliseconds));
-        string? sessionPath = all.LastOrDefault(update => update.SessionPath is not null)?.SessionPath;
-        if (sessionPath is null || visible.Length == 0 || last.Phase != CaptureUiPhase.Complete)
+        if (visible.Length > 0)
         {
-            result.FailureReason = $"The capture ended without a followed overview: {last.Headline}. {last.Detail}";
+            result.LastOverviewDerivedRecords = visible[^1].DerivedRecords;
+            result.LastOverviewDerivationMs = (long)Math.Round(visible[^1].Derivation.TotalMilliseconds);
+            result.LastOverviewProjectionMs = (long)Math.Round(visible[^1].Projection.TotalMilliseconds);
+        }
+
+        result.Memory = samples;
+        result.MemoryAtEnd = samples.LastOrDefault(sample => sample.Phase == nameof(CaptureUiPhase.Recording));
+        if (seen.SessionPath is null || visible.Length == 0 || seen.Phase != CaptureUiPhase.Complete)
+        {
+            result.FailureReason = $"The capture ended without a followed overview: {seen.Headline}. {seen.Detail}";
             return result;
         }
+
+        result.SessionBytes = Directory.EnumerateFiles(seen.SessionPath, "*", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
 
         // Each record's delays: from its own QPC reading to the first live preview, and to the first overview, that held it.
         var exactDelays = new List<double>();
         var previewDelays = new List<double>();
         var firstSight = new List<double>();
+        var windows = new SortedDictionary<int, TrendAccumulator>();
+        TrendAccumulator Window(long qpc)
+        {
+            int index = (int)Math.Max(0, (qpc - seen.RecordingQpc) / (TrendWindowSeconds * Stopwatch.Frequency));
+            if (!windows.TryGetValue(index, out TrendAccumulator? window)) windows[index] = window = new();
+            return window;
+        }
+
+        foreach (CaptureVisibility visibility in visible)
+        {
+            TrendAccumulator window = Window(visibility.ObservedQpc);
+            window.Derivation.Add(visibility.Derivation.TotalMilliseconds);
+            window.Projection.Add(visibility.Projection.TotalMilliseconds);
+            window.DerivedRecordsAtEnd = Math.Max(window.DerivedRecordsAtEnd, visibility.DerivedRecords);
+        }
+
         long firstDelivered = long.MaxValue;
         long negative = 0;
-        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(sessionPath));
+        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(seen.SessionPath));
         using (EvidenceLease lease = store.AcquireLease())
         {
             foreach (string name in SessionSegments.Names(lease.Manifest))
@@ -206,6 +260,8 @@ internal static partial class Qualification
                     result.Records++;
                     long native = segment.SignedValue(SegmentColumnId.NativeTicks, row)!.Value;
                     firstDelivered = Math.Min(firstDelivered, native);
+                    TrendAccumulator window = Window(native);
+                    window.Records++;
                     if (segment.UnsignedValue(SegmentColumnId.JournalRecordIndex, row) is not { } index)
                     {
                         result.RecordsWithoutJournalIndex++;
@@ -219,11 +275,23 @@ internal static partial class Qualification
                     if (exact is null) result.RecordsFirstVisibleAfterStop++;
                     if (previewed is null) result.RecordsNeverPreviewed++;
                     if (exact < 0 || previewed < 0) negative++;
-                    if (exact is { } exactDelay) exactDelays.Add(exactDelay);
-                    if (previewed is { } previewDelay) previewDelays.Add(previewDelay);
+                    if (exact is { } exactDelay)
+                    {
+                        exactDelays.Add(exactDelay);
+                        window.Exact.Add(exactDelay);
+                    }
+
+                    if (previewed is { } previewDelay)
+                    {
+                        previewDelays.Add(previewDelay);
+                        window.Preview.Add(previewDelay);
+                    }
+
                     if (exact is not null || previewed is not null)
                     {
-                        firstSight.Add(Math.Min(exact ?? double.MaxValue, previewed ?? double.MaxValue));
+                        double sight = Math.Min(exact ?? double.MaxValue, previewed ?? double.MaxValue);
+                        firstSight.Add(sight);
+                        window.Visible.Add(sight);
                     }
                 }
             }
@@ -233,9 +301,14 @@ internal static partial class Qualification
         result.EventToExact = Summarize(exactDelays);
         result.EventToPreview = Summarize(previewDelays);
         result.EventToVisible = Summarize(firstSight);
+        result.Trend = [.. windows.Select(entry => entry.Value.Finish(entry.Key * TrendWindowSeconds))];
         result.FirstOverviewAfterFirstDeliveredMs = (long)Math.Round(
             (visible[0].ObservedQpc - firstDelivered) * 1000d / Stopwatch.Frequency);
-        result.Valid = negative == 0 && result.Records > 0 && exactDelays.Count > 0 && live.Length > 0 && previews.Length > 0;
+
+        // The runner's own verdict on a closed capture: fully finalized, and every published chunk followed.
+        bool saved = seen.Headline == "Session saved";
+        result.Valid = negative == 0 && result.Records > 0 && exactDelays.Count > 0 && seen.LiveCounterReadings > 0
+            && previews.Length > 0 && (!bounded || (saved && !result.BoundOverrun));
         result.MeetsBudgets = result.Valid
             && result.FirstOverviewAfterFirstDeliveredMs <= FirstUsefulOverviewBudgetMilliseconds
             && result.EventToVisible!.P95Ms <= EventToVisibleP95BudgetMilliseconds
@@ -245,10 +318,14 @@ internal static partial class Qualification
         if (negative > 0)
             result.FailureReason = "Some records were read after the overview that included them. The native readings "
                 + "are not this machine's QPC clock, so no delay is reported as measured.";
-        else if (live.Length == 0)
+        else if (seen.LiveCounterReadings == 0)
             result.FailureReason = "No live acquisition counters reached the viewer while it recorded.";
         else if (previews.Length == 0)
             result.FailureReason = "No live preview reached the viewer while it recorded.";
+        else if (result.BoundOverrun)
+            result.FailureReason = "The broker did not end the bounded capture within 60 s of its quota; the viewer stopped it.";
+        else if (bounded && !saved)
+            result.FailureReason = $"The bounded capture did not end with its whole session saved: {seen.Headline}. {seen.Detail}";
         return result;
     }
 
@@ -257,19 +334,19 @@ internal static partial class Qualification
     /// are in hand-off order, so the journaled count only grows; the first to pass the index is the first that could hold
     /// it, and it holds it when the index is among the records its covered chunks count.
     /// </summary>
-    private static long? FirstPreviewCovering((BrokerCapturePreview Preview, long Qpc)[] previews, ulong index)
+    private static long? FirstPreviewCovering(PreviewSighting[] previews, ulong index)
     {
         int low = 0;
         int high = previews.Length;
         while (low < high)
         {
             int middle = low + ((high - low) >> 1);
-            if ((ulong)previews[middle].Preview.JournaledRecords > index) high = middle;
+            if ((ulong)previews[middle].JournaledRecords > index) high = middle;
             else low = middle + 1;
         }
 
         return low < previews.Length
-            && (ulong)(previews[low].Preview.JournaledRecords - previews[low].Preview.CountedRecords) <= index
+            && (ulong)(previews[low].JournaledRecords - previews[low].CountedRecords) <= index
             ? previews[low].Qpc
             : null;
     }
@@ -307,8 +384,65 @@ internal static partial class Qualification
 
     private static long? Milliseconds(TimeSpan? value) => value is { } span ? (long)Math.Round(span.TotalMilliseconds) : null;
 
-    /// <summary>One paced stream and a new connection each second, the steady activity a latency distribution needs.</summary>
-    private static async Task PacedLoopbackAsync(TimeSpan duration, CancellationToken cancellationToken)
+    /// <summary>
+    /// The viewer's and the broker's memory every <see cref="MemorySampleInterval"/> until the capture ends. The viewer is
+    /// this process; the broker is this tool's serve mode, the most recently started other instance of it.
+    /// </summary>
+    private static async Task SampleMemoryAsync(
+        FeedbackCollector collected, Task capture, List<MemorySample> samples, CancellationToken cancellationToken)
+    {
+        var clock = Stopwatch.StartNew();
+        using Process viewer = Process.GetCurrentProcess();
+        string name = Path.GetFileNameWithoutExtension(Environment.ProcessPath!);
+        while (true)
+        {
+            await Task.WhenAny(capture, Task.Delay(MemorySampleInterval, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (capture.IsCompleted) return;
+
+            viewer.Refresh();
+            long? brokerWorkingSet = null;
+            long? brokerPrivate = null;
+            DateTime newest = DateTime.MinValue;
+            foreach (Process broker in Process.GetProcessesByName(name))
+            {
+                using (broker)
+                {
+                    try
+                    {
+                        if (broker.Id == Environment.ProcessId || broker.StartTime < newest) continue;
+                        newest = broker.StartTime;
+                        brokerWorkingSet = broker.WorkingSet64;
+                        brokerPrivate = broker.PrivateMemorySize64;
+                    }
+                    catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        // It exited between the listing and the reading.
+                    }
+                }
+            }
+
+            (CaptureUiPhase phase, long derived, long journaled) = collected.Progress();
+            samples.Add(new()
+            {
+                ElapsedSeconds = (int)Math.Round(clock.Elapsed.TotalSeconds),
+                Phase = phase.ToString(),
+                DerivedRecords = derived,
+                JournaledRecords = journaled,
+                ViewerWorkingSetBytes = viewer.WorkingSet64,
+                ViewerPrivateBytes = viewer.PrivateMemorySize64,
+                ViewerManagedHeapBytes = GC.GetGCMemoryInfo().HeapSizeBytes,
+                BrokerWorkingSetBytes = brokerWorkingSet,
+                BrokerPrivateBytes = brokerPrivate,
+            });
+        }
+    }
+
+    /// <summary>
+    /// One paced stream and a new connection each second, the steady activity a latency distribution needs, for the given
+    /// duration or until the capture ends, whichever comes first.
+    /// </summary>
+    private static async Task PacedLoopbackAsync(TimeSpan duration, Task capture, CancellationToken cancellationToken)
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -321,7 +455,7 @@ internal static partial class Qualification
         byte[] buffer = new byte[payload.Length];
         var clock = Stopwatch.StartNew();
         TimeSpan nextConnection = TimeSpan.Zero;
-        while (clock.Elapsed < duration)
+        while (clock.Elapsed < duration && !capture.IsCompleted)
         {
             await stream.GetStream().WriteAsync(payload, cancellationToken);
             int read = 0;
@@ -368,6 +502,112 @@ internal static partial class Qualification
         {
         }
     }
+
+    /// <summary>A live preview as the window received it: the records it covered and the QPC reading at hand-off.</summary>
+    private readonly record struct PreviewSighting(long JournaledRecords, long CountedRecords, long UnbinnedRecords, long Qpc);
+
+    private sealed record FeedbackSnapshot(
+        CaptureUiPhase Phase,
+        string Headline,
+        string Detail,
+        string? SessionPath,
+        CaptureMilestones? Milestones,
+        long RecordingQpc,
+        int Chunks,
+        int LiveCounterReadings,
+        BrokerCaptureHealth? LastLiveCounters,
+        IReadOnlyList<CaptureVisibility> Visible,
+        IReadOnlyList<PreviewSighting> Previews);
+
+    /// <summary>
+    /// What a run keeps of each update the runner hands to the window: its measurements, never an overview, which the
+    /// window replaces with the next one. Keeping every overview would make the harness, not the viewer, what the memory
+    /// samples measure over a long run.
+    /// </summary>
+    private sealed class FeedbackCollector
+    {
+        private readonly Lock gate = new();
+        private readonly TaskCompletionSource recording = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly List<CaptureVisibility> visible = [];
+        private readonly List<PreviewSighting> previews = [];
+        private readonly HashSet<BrokerCaptureHealth> live = [];
+        private CaptureUiPhase phase = CaptureUiPhase.Starting;
+        private string headline = string.Empty;
+        private string detail = string.Empty;
+        private string? sessionPath;
+        private CaptureMilestones? milestones;
+        private BrokerCaptureHealth? lastHealth;
+        private long recordingQpc;
+        private int chunks;
+
+        public Task Recording => recording.Task;
+
+        public void Receive(CaptureUiUpdate update)
+        {
+            lock (gate)
+            {
+                (phase, headline, detail) = (update.Phase, update.Headline, update.Detail);
+                sessionPath = update.SessionPath ?? sessionPath;
+                milestones = update.Milestones ?? milestones;
+                if (update.Visibility is { } visibility) visible.Add(visibility);
+                if (update.OverviewChunks is { } followed) chunks = Math.Max(chunks, followed);
+                if (update.Phase == CaptureUiPhase.Recording)
+                {
+                    if (recordingQpc == 0) recordingQpc = Stopwatch.GetTimestamp();
+                    if (update.LiveHealth is { } health && live.Add(health)) lastHealth = health;
+                    if (update is { PreviewObservedQpc: { } qpc, LivePreview: { } preview })
+                    {
+                        previews.Add(new(preview.JournaledRecords, preview.CountedRecords, preview.UnbinnedRecords, qpc));
+                    }
+                }
+            }
+
+            if (update.Phase == CaptureUiPhase.Recording) recording.TrySetResult();
+        }
+
+        /// <summary>The phase, records derived into the last overview, and records the last preview saw journaled.</summary>
+        public (CaptureUiPhase Phase, long Derived, long Journaled) Progress()
+        {
+            lock (gate)
+            {
+                return (phase, visible.Count == 0 ? 0 : visible[^1].DerivedRecords,
+                    previews.Count == 0 ? 0 : previews[^1].JournaledRecords);
+            }
+        }
+
+        public FeedbackSnapshot Snapshot()
+        {
+            lock (gate)
+            {
+                return new(phase, headline, detail, sessionPath, milestones, recordingQpc, chunks, live.Count, lastHealth,
+                    [.. visible], [.. previews]);
+            }
+        }
+    }
+
+    private sealed class TrendAccumulator
+    {
+        public List<double> Derivation { get; } = [];
+        public List<double> Projection { get; } = [];
+        public List<double> Visible { get; } = [];
+        public List<double> Preview { get; } = [];
+        public List<double> Exact { get; } = [];
+        public long DerivedRecordsAtEnd { get; set; }
+        public long Records { get; set; }
+
+        public FeedbackWindow Finish(int fromSecond) => new()
+        {
+            FromSecond = fromSecond,
+            Overviews = Derivation.Count,
+            DerivedRecordsAtEnd = DerivedRecordsAtEnd,
+            Derivation = Summarize(Derivation),
+            Projection = Summarize(Projection),
+            Records = Records,
+            EventToVisible = Summarize(Visible),
+            EventToPreview = Summarize(Preview),
+            EventToExact = Summarize(Exact),
+        };
+    }
 }
 
 internal sealed class FirstFeedbackReport
@@ -378,6 +618,9 @@ internal sealed class FirstFeedbackReport
     public required ProbeEnvironment Environment { get; init; }
     public required long QpcFrequency { get; init; }
     public required int RecordingSeconds { get; init; }
+
+    /// <summary>Whether the broker ended each capture at its quota (true) or the viewer stopped it (false).</summary>
+    public required bool Bounded { get; init; }
     public required Dictionary<string, long> Budgets { get; init; }
     public bool Passed { get; set; }
     public bool MeetsBudgets { get; set; }
@@ -393,7 +636,11 @@ internal sealed class FirstFeedbackRun
     public bool Valid { get; set; }
     public bool MeetsBudgets { get; set; }
     public string? FinalHeadline { get; set; }
+    public string? FinalDetail { get; set; }
     public string? FailureReason { get; set; }
+
+    /// <summary>A bounded capture still recording 60 s past its quota, which the viewer then stopped.</summary>
+    public bool BoundOverrun { get; set; }
     public long? BrokerReadyMs { get; set; }
     public long? PreparedMs { get; set; }
     public long? StartedMs { get; set; }
@@ -402,11 +649,13 @@ internal sealed class FirstFeedbackRun
     public long? PublicationIntervalMs { get; set; }
     public long? FirstOverviewAfterFirstDeliveredMs { get; set; }
     public int OverviewsHandedOff { get; set; }
+    public int ChunksFollowed { get; set; }
 
     /// <summary>Distinct live acquisition-counter readings the viewer received while recording, and the last of them.</summary>
     public int LiveCounterReadings { get; set; }
     public BrokerCaptureHealth? LastLiveCounters { get; set; }
     public long Records { get; set; }
+    public long SessionBytes { get; set; }
     public long RecordsWithoutJournalIndex { get; set; }
     public long RecordsFirstVisibleAfterStop { get; set; }
     public long RecordsWithNegativeDelay { get; set; }
@@ -424,6 +673,18 @@ internal sealed class FirstFeedbackRun
     public LatencySummary? EventToExact { get; set; }
     public LatencySummary? Derivation { get; set; }
     public LatencySummary? Projection { get; set; }
+
+    /// <summary>The last overview handed to the window: what deriving and projecting the whole capture cost at its end.</summary>
+    public long? LastOverviewDerivedRecords { get; set; }
+    public long? LastOverviewDerivationMs { get; set; }
+    public long? LastOverviewProjectionMs { get; set; }
+
+    /// <summary>Memory while the capture ran, and the last sample taken while it was still recording.</summary>
+    public IReadOnlyList<MemorySample> Memory { get; set; } = [];
+    public MemorySample? MemoryAtEnd { get; set; }
+
+    /// <summary>Consecutive windows of <c>60</c> s from the first recording update, so growth over a long run shows.</summary>
+    public IReadOnlyList<FeedbackWindow> Trend { get; set; } = [];
 }
 
 internal sealed class LatencySummary
@@ -433,4 +694,32 @@ internal sealed class LatencySummary
     public long P95Ms { get; init; }
     public long P99Ms { get; init; }
     public long MaxMs { get; init; }
+}
+
+internal sealed class MemorySample
+{
+    public required int ElapsedSeconds { get; init; }
+    public required string Phase { get; init; }
+    public long DerivedRecords { get; init; }
+    public long JournaledRecords { get; init; }
+    public long ViewerWorkingSetBytes { get; init; }
+    public long ViewerPrivateBytes { get; init; }
+    public long ViewerManagedHeapBytes { get; init; }
+    public long? BrokerWorkingSetBytes { get; init; }
+    public long? BrokerPrivateBytes { get; init; }
+}
+
+internal sealed class FeedbackWindow
+{
+    public required int FromSecond { get; init; }
+    public int Overviews { get; init; }
+    public long DerivedRecordsAtEnd { get; init; }
+    public LatencySummary? Derivation { get; init; }
+    public LatencySummary? Projection { get; init; }
+
+    /// <summary>Records acquired in this window, and their delays however late they were seen.</summary>
+    public long Records { get; init; }
+    public LatencySummary? EventToVisible { get; init; }
+    public LatencySummary? EventToPreview { get; init; }
+    public LatencySummary? EventToExact { get; init; }
 }
