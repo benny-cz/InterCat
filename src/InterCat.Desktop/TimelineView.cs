@@ -452,10 +452,18 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
         DrawEvidenceMarks(context, viewModel, visible, left, plotWidth, top, bottom);
-        DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
-        string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
-        DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-        DrawText(context, RateText(maximumRate * WorkspaceTime.TicksPerSecond), new(4, top - 4));
+        if (viewModel.IsEmptyWorkspace)
+        {
+            // No session is shown, so there is no time axis: the placeholder extent is not an interval anyone recorded.
+            DrawText(context, "No records yet", new(left, bottom + 7));
+        }
+        else
+        {
+            DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
+            string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
+            DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
+            DrawText(context, RateText(maximumRate * WorkspaceTime.TicksPerSecond), new(4, top - 4));
+        }
 
         if (HoveredBucket is { } hovered)
         {

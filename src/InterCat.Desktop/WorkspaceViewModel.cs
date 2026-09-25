@@ -90,6 +90,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private bool showTables;
     private bool disposed;
     private readonly string workspaceDisclosure;
+    private string? awaitingCaptureNote;
+    private string? awaitingCaptureTitle;
     private readonly bool realOverview;
     private readonly bool emptyWorkspace;
     private readonly SessionEvidenceSource? evidenceSource;
@@ -861,7 +863,39 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public string WorkspaceDisclosure => workspaceDisclosure;
+    public string WorkspaceDisclosure => emptyWorkspace && awaitingCaptureNote is { } note ? note : workspaceDisclosure;
+
+    /// <summary>What the workspace is called in the header: its snapshot's title, or a waiting capture's state.</summary>
+    public string Title => emptyWorkspace && awaitingCaptureTitle is { } title ? title : Snapshot.Title;
+
+    /// <summary>Whether this is the workspace shown before any session: no capture published and nothing opened.</summary>
+    internal bool IsEmptyWorkspace => emptyWorkspace;
+
+    /// <summary>
+    /// What an empty workspace says while a capture starts or records and has published nothing yet (§6.8's designed
+    /// states): that it is recording and when the first view comes. Null outside a capture, when it says none is running.
+    /// </summary>
+    public string? AwaitingCaptureNote => awaitingCaptureNote;
+
+    /// <summary>
+    /// Names a waiting capture's state in an empty workspace's header and says what is happening in its empty rung and
+    /// disclosure; nulls restore the words for no capture. A workspace holding a session ignores it.
+    /// </summary>
+    public void SetAwaitingCapture(string? title, string? note)
+    {
+        if (!emptyWorkspace || (string.Equals(title, awaitingCaptureTitle, StringComparison.Ordinal)
+            && string.Equals(note, awaitingCaptureNote, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        awaitingCaptureTitle = title;
+        awaitingCaptureNote = note;
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(AwaitingCaptureNote));
+        OnPropertyChanged(nameof(EmptyReason));
+        OnPropertyChanged(nameof(WorkspaceDisclosure));
+    }
 
     /// <summary>Captures navigation independently of an evidence generation, for a same-session refresh only.</summary>
     public WorkspaceNavigationMemento CaptureNavigation() => new(
@@ -1885,7 +1919,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             }
 
             if (view.EmptyReason is null) return string.Empty;
-            if (emptyWorkspace) return "No capture is running. Start exploring to publish a live session.";
+            if (emptyWorkspace) return awaitingCaptureNote ?? "No capture is running. Start exploring to publish a live session.";
             if (realOverview && ladder.Current.Level is DetailLevel.Channel or DetailLevel.Operation)
             {
                 return "TCP records are completed transfers, not operations with a start and an end, so a channel "
@@ -2498,8 +2532,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         return string.Join(" · ", parts) + (group.Detail is { } detail ? Environment.NewLine + detail : string.Empty);
     }
 
+    /// <summary>
+    /// The time scope the inspector states: the analysis interval, or the whole extent. An empty workspace has recorded
+    /// no time, so its placeholder extent is never read out as a duration.
+    /// </summary>
     public string IntervalLabel => selectedInterval is { } interval
         ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
+        : emptyWorkspace ? "No time recorded yet"
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>

@@ -725,6 +725,9 @@
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
         "P24: the unknown grey is never reused for a supported mechanism"
       ],
+      "P26": [
+        "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
+      ],
       "P27": [
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a measurement on an untested build cannot promote past experimental evidence",
@@ -1159,10 +1162,6 @@
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",
         "plannedBy": "M2"
-      },
-      "P26": {
-        "reason": "Preview versus exact results are asserted with IC-017.",
-        "plannedBy": "IC-017"
       },
       "P28": {
         "reason": "The catalog denies payload-producing descriptors; a fixture asserting it arrives with IC-006.",

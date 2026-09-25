@@ -725,19 +725,7 @@ public sealed partial class MainWindow : Window, IDisposable
         captureStop?.Dispose();
         captureStop = new CancellationTokenSource();
         int run = ++captureRunId;
-        displayedSessionId = null;
-        displayedGeneration = -1;
-        currentSessionPath = null;
-        heldUpdate = null;
-        followLatest = true;
-        displayedOverview = null;
-        lastPublicationUtc = null;
-        livePreview = null;
-        displayedChunks = 0;
-        UpdateHeldBanner();
-        UpdateEvidenceAction();
-        CaptureSummary.Text = string.Empty;
-        CaptureSessionPath.Text = string.Empty;
+        ForgetDisplayedSession();
         ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
             "Windows may ask for administrator approval to record system-wide events."));
         try
@@ -751,6 +739,27 @@ public sealed partial class MainWindow : Window, IDisposable
             ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture interrupted",
                 exception.Message + " Any published evidence is retained in the session shown below."));
         }
+    }
+
+    /// <summary>
+    /// A new capture is a new session: the one shown so far stops being the one its updates are compared with, so its
+    /// generations, hold, follow state and live preview are forgotten. Its view stays until the capture records.
+    /// </summary>
+    internal void ForgetDisplayedSession()
+    {
+        displayedSessionId = null;
+        displayedGeneration = -1;
+        currentSessionPath = null;
+        heldUpdate = null;
+        followLatest = true;
+        displayedOverview = null;
+        lastPublicationUtc = null;
+        livePreview = null;
+        displayedChunks = 0;
+        UpdateHeldBanner();
+        UpdateEvidenceAction();
+        CaptureSummary.Text = string.Empty;
+        CaptureSessionPath.Text = string.Empty;
     }
 
     private void ReceiveCaptureUpdate(int run, CaptureUiUpdate update) =>
@@ -796,6 +805,11 @@ public sealed partial class MainWindow : Window, IDisposable
         FollowButton.IsVisible = IsLive;
         liveHealth = IsLive ? update.LiveHealth : null;
         livePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview : null;
+        if (!forceOverview && displayedOverview is null && update.Overview is null)
+        {
+            ShowAwaitingCapture(update.Phase);
+        }
+
         if (update.Overview is not null && !forceOverview && IsLive)
         {
             lastPublicationUtc = DateTimeOffset.UtcNow;
@@ -832,6 +846,43 @@ public sealed partial class MainWindow : Window, IDisposable
         phase == CaptureUiPhase.Recording && followLatest && heldUpdate is null && !workspace.HoldsGeneration
             ? livePreview : null,
         displayedChunks);
+
+    /// <summary>
+    /// A capture that records but has published nothing yet has no view of its own: the session shown before it started
+    /// is not this capture's, so it gives way to an empty workspace that says what is happening and when the first view
+    /// comes (§3.1, §6.8), rather than "No capture is running". Starting keeps whatever was shown, so a declined approval
+    /// or a failed start loses nothing.
+    /// </summary>
+    private void ShowAwaitingCapture(CaptureUiPhase capturePhase)
+    {
+        if (capturePhase == CaptureUiPhase.Recording && !workspace.IsEmptyWorkspace)
+        {
+            workspace.PropertyChanged -= OnWorkspaceChanged;
+            workspace.Dispose();
+            workspace = new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace");
+            workspace.PropertyChanged += OnWorkspaceChanged;
+            DataContext = workspace;
+            currentSessionPath = null;
+            UpdateEvidenceAction();
+            GraphSurface.InvalidateVisual();
+            TimelineSurface.RefreshLaneLayout();
+            TimelineSurface.InvalidateVisual();
+            MinimapSurface.InvalidateVisual();
+        }
+
+        (string? title, string? note) = capturePhase switch
+        {
+            CaptureUiPhase.Starting => ("Starting a capture",
+                "Starting a capture. The first view appears once the broker publishes evidence."),
+            CaptureUiPhase.Recording => ("Recording · first view pending",
+                "Recording. The first view appears once the broker's first chunk is published and derived, usually "
+                + "within two seconds. The health strip counts the records admitted so far."),
+            CaptureUiPhase.Finishing => ("Stopping · deriving what was published",
+                "Stopping. InterCat is deriving whatever the broker published."),
+            _ => (null, null),
+        };
+        workspace.SetAwaitingCapture(title, note);
+    }
 
     /// <summary>Whether a live capture is being followed, as opposed to a saved session or nothing.</summary>
     private bool IsLive => phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;

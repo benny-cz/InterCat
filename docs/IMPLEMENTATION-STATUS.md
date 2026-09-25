@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 129 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 130 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,13 +54,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, and a labelled live edge that previews unpublished records within §12's steady-state budget | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. Test UI Automation and add pin/collapse/search as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. Test UI Automation and add pin/collapse/search as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 130 — the waiting capture states itself, and P26 is asserted (§6.2, §6.8, §19.3):**
+  - **Waiting state:** a capture that records but has published nothing yet read "No capture is running" beside a
+    recording health strip. The header now reads "Recording · first view pending", and the empty rung and disclosure
+    say when the first view comes. Stopping with nothing published says so; the words for no capture return after it.
+  - **No time axis without time:** an empty workspace's placeholder extent read "Time scope: All 0.1 µs" and drew a
+    0.0–0.1 µs axis. It now reads "No time recorded yet", and the timeline draws no axis.
+  - **A saved view gives way only once a capture records:** starting keeps it, so a declined approval loses nothing.
+    `BeginCapture`'s reset became `ForgetDisplayedSession` so a test can follow the same path.
+  - **P26 asserted:** with a live preview drawn, the ranking, the interval table and CSV and JSON exports are exactly
+    what they were. `]` stepping ends on a published bucket, and a brush dragged into the edge stops at the published
+    extent. The ledger now covers P26.
+  - **Build:** `JournalProbe` built one `JsonSerializerOptions` per call, which the 10.0.1xx analyzers refuse (CA1869).
+  - **Tests:** two UI tests (+2).
 - **Revision 129 — a long capture stays inside its budgets (§12, §19.3, ADR-025, broker-v1 §5.3):**
   - **Found by profiling** revision 128's 10-minute session, and each fixed exactly:
     - **Leases:** they re-opened all 292 chunks each time (33 ms). They now confirm hashed files from one directory
@@ -428,6 +441,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 130 was built and tested in a Linux cloud container, not on Windows.
+  - The pinned SDK 10.0.401 was unreachable there, so the build used Ubuntu's 10.0.112 through a local `global.json`
+    override. The override is not committed.
+  - Debug and Release both ran **963 tests: 875 passed, 2 skipped, 86 failed**. Every failure is one of the 86 CaptureBroker tests that need
+    Windows (token authentication, `kernel32`, Windows paths); they fail the same way on revision 129 there.
+  - Still owed on Windows: the full suite on the pinned SDK.
+- Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
+  edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
+  became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
 - Last executed clean baseline (revision 129): **959 passed, 2 skipped, in Debug and Release**, zero failures.
   Revision 129 adds two store, two Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and

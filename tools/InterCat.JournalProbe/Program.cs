@@ -80,13 +80,7 @@ var report = new ProbeReport
 };
 
 Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-var jsonOptions = new JsonSerializerOptions
-{
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    WriteIndented = true,
-    Converters = { new JsonStringEnumConverter() },
-};
-File.WriteAllText(outputPath, JsonSerializer.Serialize(report, jsonOptions) + Environment.NewLine);
+File.WriteAllText(outputPath, JsonSerializer.Serialize(report, ProbeJson.Options) + Environment.NewLine);
 Console.WriteLine(outputPath);
 return 0;
 
@@ -211,6 +205,16 @@ static string BuildConfiguration()
 #else
     return "Release";
 #endif
+}
+
+internal static class ProbeJson
+{
+    public static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 }
 
 internal sealed record ProbeRun(
