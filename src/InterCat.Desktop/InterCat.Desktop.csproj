@@ -13,6 +13,7 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <InternalsVisibleTo Include="InterCat.Ui.Tests" />
+    <InternalsVisibleTo Include="InterCat.Desktop.Tests" />
   </ItemGroup>
   <Import Project="../InterCat.BrokerStage.targets" />
 </Project>

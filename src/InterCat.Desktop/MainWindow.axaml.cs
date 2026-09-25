@@ -773,7 +773,9 @@ public sealed partial class MainWindow : Window, IDisposable
         SessionEvidenceSource? evidence = currentSessionPath is { } path
             ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
             : null;
-        var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence);
+        // A later publication of the same session keeps every node that is still drawn where the user last saw it.
+        var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence,
+            savedNavigation is null ? null : workspace.LaidOutPositions);
         if (savedNavigation is not null
             && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
         {

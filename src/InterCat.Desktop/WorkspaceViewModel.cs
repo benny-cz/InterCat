@@ -15,16 +15,18 @@ namespace InterCat.Desktop;
 public sealed record EvidenceField(string Label, string Value);
 
 /// <summary>UI intent that can be rebased onto a later published generation of the same session.</summary>
+/// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
     TimeRange? SelectedInterval,
     string? SelectedRungKey,
-    bool ShowTables);
+    bool ShowTables,
+    string? SelectedGraphAggregate = null);
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly GraphLayoutScheduler graphLayout = new();
+    private readonly GraphLayoutScheduler graphLayout;
     private readonly WorkspaceSelectionCoordinator selection = new();
     private readonly DetailLadder ladder;
     private ProcessNode? selectedProcess;
@@ -47,6 +49,26 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<RungRow> evidenceRows = [];
     private readonly WorkspaceSnapshot wholeSnapshot;
     private WorkspaceSnapshot? scopedSnapshot;
+    private readonly string graphIdentity;
+
+    // The drawn graph: its structure from the whole session and the ladder's focus, its counts from the current scope.
+    private GraphDisplay wholeDisplay;
+    private GraphDisplay graphDisplay;
+    private IReadOnlyDictionary<string, GraphPoint> displayPositions;
+    private string? graphProjectionProblem;
+    private string? graphWorkerProblem;
+
+    /// <summary>
+    /// An aggregate node the user selected that is not one executable group (no relationships, other members, other
+    /// processes); null otherwise.
+    /// </summary>
+    private string? selectedClusterKey;
+
+    /// <summary>An executable group selected by its ranked row or its collapsed node; null otherwise.</summary>
+    private string? selectedGroupKey;
+
+    /// <summary>Processes with at least one relationship in the published scope, which the graph draws rather than counts.</summary>
+    private readonly HashSet<ProcessInstanceId> relatedProcesses;
     private TimeRange? scopedInterval;
 
     // The interval the displayed counts actually answer; a brush still being counted is not yet applied.
@@ -66,10 +88,28 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>
     /// Presents one immutable workspace. The graph identity must name the same data revision as the snapshot,
-    /// so an off-thread layout from an older revision can never replace its coordinates.
+    /// so an off-thread layout from an older revision can never replace its coordinates. <paramref name="carriedLayout"/>
+    /// holds the drawn positions of an earlier publication of the same session: a node still drawn keeps its place, so a
+    /// live refresh does not rearrange the graph under the user (§6.3).
     /// </summary>
-    public WorkspaceViewModel(WorkspaceSnapshot snapshot, string graphIdentity, SessionEvidenceSource? evidenceSource = null)
+    public WorkspaceViewModel(
+        WorkspaceSnapshot snapshot,
+        string graphIdentity,
+        SessionEvidenceSource? evidenceSource = null,
+        IReadOnlyDictionary<string, GraphPoint>? carriedLayout = null)
+        : this(snapshot, graphIdentity, evidenceSource, carriedLayout, new GraphLayoutScheduler())
     {
+    }
+
+    /// <summary>The same workspace with an injected layout scheduler, so a test can hold a layout while it reads a frame.</summary>
+    internal WorkspaceViewModel(
+        WorkspaceSnapshot snapshot,
+        string graphIdentity,
+        SessionEvidenceSource? evidenceSource,
+        IReadOnlyDictionary<string, GraphPoint>? carriedLayout,
+        GraphLayoutScheduler layoutScheduler)
+    {
+        graphLayout = layoutScheduler ?? throw new ArgumentNullException(nameof(layoutScheduler));
         wholeSnapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
         realOverview = graphIdentity.StartsWith("session:", StringComparison.Ordinal);
@@ -82,10 +122,34 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 : snapshot.Redaction is null
                     ? OverviewWorkspace.SessionDisclosure
                     : OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.SessionDisclosure;
-        // The snapshot's saved positions are a first-frame fallback. The complete layout is computed off-thread
-        // and applied only if its identity is still the graph the window is showing.
-        GraphPositions = new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(
-            Snapshot.Processes.ToDictionary(node => node.Id, node => new GraphPoint(node.X, node.Y)));
+        // The drawn graph is projected from the whole session, so a brush re-counts it without re-clustering it (§6.4).
+        this.graphIdentity = graphIdentity;
+        relatedProcesses = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
+        wholeDisplay = ProjectGraph(null, null);
+        graphDisplay = wholeDisplay;
+
+        // The first frame draws each node where the layout will start it: a carried position if the node was drawn before,
+        // else its band's deterministic lattice (§19.4). The complete layout is computed off-thread and applied only if its
+        // identity is still the graph shown. The snapshot's own coordinates are not positions anyone has seen.
+        foreach ((string key, GraphPoint point) in carriedLayout ?? new Dictionary<string, GraphPoint>())
+        {
+            if (point.IsValid) layoutMemory[key] = point;
+        }
+
+        Dictionary<string, GraphPoint> kept = Remembered(wholeDisplay);
+        provisionalKeys.UnionWith(wholeDisplay.Nodes.Select(node => node.Key).Where(key => !kept.ContainsKey(key)));
+        try
+        {
+            displayPositions = GraphLayout.SeedDisplay(graphIdentity, wholeDisplay, kept);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            // The graph fails closed and says why; the tables, ladder and timeline stay usable.
+            displayPositions = new ReadOnlyDictionary<string, GraphPoint>(new Dictionary<string, GraphPoint>());
+            graphWorkerProblem = exception.Message;
+        }
+
+        GraphPositions = ProcessPositions();
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = LadderProjection.Project(Snapshot, ladder.Current);
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
@@ -98,7 +162,84 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             selection.SelectProcess(selectedProcess.Id);
         }
 
-        LayoutReady = BuildLayoutAsync(graphIdentity);
+        LayoutReady = BuildLayoutAsync(graphIdentity, wholeDisplay);
+    }
+
+    /// <summary>
+    /// The drawn graph for a focus. A workspace whose relationships name a process it does not hold cannot be drawn; the
+    /// graph is then empty and says why, while the tables, ladder and timeline keep working.
+    /// </summary>
+    private GraphDisplay ProjectGraph(string? expanded, ProcessInstanceId? kept)
+    {
+        try
+        {
+            GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept);
+            SetGraphProjectionProblem(null);
+            return projected;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidDataException or InvalidOperationException)
+        {
+            SetGraphProjectionProblem(exception.Message);
+            return new GraphDisplay([], [], wholeSnapshot.Processes.Count, expanded, kept);
+        }
+    }
+
+    /// <summary>Re-counts an existing drawing without allowing a malformed scoped snapshot to take down the workspace.</summary>
+    private GraphDisplay ScopeGraph(GraphDisplay display, WorkspaceSnapshot scoped)
+    {
+        if (display.Nodes.Count == 0 && display.TotalProcesses > 0 && graphProjectionProblem is not null)
+        {
+            return new GraphDisplay([], [], scoped.Processes.Count, display.ExpandedGroup, display.Kept);
+        }
+
+        try
+        {
+            GraphDisplay recounted = GraphProjection.Rescope(display, wholeSnapshot, scoped);
+            SetGraphProjectionProblem(null);
+            return recounted;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidDataException or InvalidOperationException)
+        {
+            SetGraphProjectionProblem(exception.Message);
+            return new GraphDisplay([], [], scoped.Processes.Count, display.ExpandedGroup, display.Kept);
+        }
+    }
+
+    private void SetGraphProjectionProblem(string? problem)
+    {
+        string? before = GraphLayoutProblem;
+        graphProjectionProblem = problem;
+        NotifyGraphProblemChanged(before);
+    }
+
+    private void SetGraphWorkerProblem(string? problem)
+    {
+        string? before = GraphLayoutProblem;
+        graphWorkerProblem = problem;
+        NotifyGraphProblemChanged(before);
+    }
+
+    private void NotifyGraphProblemChanged(string? before)
+    {
+        if (string.Equals(before, GraphLayoutProblem, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(GraphLayoutProblem));
+        OnPropertyChanged(nameof(GraphSummary));
+    }
+
+    /// <summary>The last laid-out position of each node of <paramref name="display"/> that has one.</summary>
+    private Dictionary<string, GraphPoint> Remembered(GraphDisplay display)
+    {
+        var remembered = new Dictionary<string, GraphPoint>(StringComparer.Ordinal);
+        foreach (GraphDisplayNode node in display.Nodes)
+        {
+            if (layoutMemory.TryGetValue(node.Key, out GraphPoint point)) remembered[node.Key] = point;
+        }
+
+        return remembered;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -224,7 +365,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Captures navigation independently of an evidence generation, for a same-session refresh only.</summary>
     public WorkspaceNavigationMemento CaptureNavigation() => new(
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
-        selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables);
+        selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -322,6 +463,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             notices.Add("The selected process is not in this generation; the selection was cleared.");
         }
 
+        // An aggregate's key names its role (no relationships, other processes, an opened group's other members), so it
+        // survives a publication whose aggregate has other members; one this generation no longer draws is not revived.
+        if (saved.SelectedGraphAggregate is { } aggregate
+            && graphDisplay.Node(aggregate) is { Kind: not (GraphNodeKind.Process or GraphNodeKind.Group) })
+        {
+            SelectGraphNode(aggregate);
+        }
+
         if (saved.SelectedInterval is { } interval)
         {
             long start = Math.Max(interval.StartTicks, Snapshot.Extent.StartTicks);
@@ -361,13 +510,291 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         return !lost ? new(start, end) : currentExtent;
     }
 
-    /// <summary>Stable graph coordinates, separate from evidence, time scope and the window transform.</summary>
+    /// <summary>
+    /// Stable graph coordinates of every process, separate from evidence, time scope and the window transform. A process
+    /// drawn inside a node that stands for several is at that node's position.
+    /// </summary>
     public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; private set; }
 
-    /// <summary>Completes when this workspace's initial off-thread layout has applied or reported a problem.</summary>
-    public Task LayoutReady { get; }
+    /// <summary>The graph as drawn (§6.3): every process is represented by exactly one node, within the display budget.</summary>
+    public GraphDisplay GraphDisplay => graphDisplay;
 
-    public string? GraphLayoutProblem { get; private set; }
+    /// <summary>
+    /// The graph's scope in one short line for the pane header: how many processes, how many relationships and among how
+    /// many of them, and how many nodes they are drawn as when groups are collapsed. Compaction is never called omission.
+    /// </summary>
+    public string GraphSummary
+    {
+        get
+        {
+            if (GraphLayoutProblem is not null && graphDisplay.Nodes.Count == 0)
+            {
+                return "Graph unavailable · the ranked table still lists every process";
+            }
+
+            int processes = wholeSnapshot.Processes.Count;
+            if (processes == 0)
+            {
+                return "No process observed yet";
+            }
+
+            int relationships = wholeSnapshot.Edges.Count;
+            string text = Counted(processes, "process", "processes") + " · " + (relationships == 0
+                ? "no relationship observed"
+                : Counted(relationships, "relationship", "relationships")
+                    + (relatedProcesses.Count < processes
+                        ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
+                        : string.Empty));
+            return graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
+                    or GraphNodeKind.Remainder)
+                ? text + string.Create(CultureInfo.CurrentCulture, $" · drawn as {graphDisplay.Nodes.Count:N0} nodes")
+                : text;
+        }
+    }
+
+    private static string Counted(int count, string one, string many) =>
+        string.Create(CultureInfo.CurrentCulture, $"{count:N0} {(count == 1 ? one : many)}");
+
+    /// <summary>Stable coordinates of every drawn node, by its key.</summary>
+    public IReadOnlyDictionary<string, GraphPoint> DisplayPositions => displayPositions;
+
+    /// <summary>Every position this workspace has laid out, copied for a later publication of the same session to keep.</summary>
+    public IReadOnlyDictionary<string, GraphPoint> LaidOutPositions =>
+        new ReadOnlyDictionary<string, GraphPoint>(new Dictionary<string, GraphPoint>(layoutMemory, StringComparer.Ordinal));
+
+    /// <summary>Completes when this workspace's most recent off-thread layout has applied or reported a problem.</summary>
+    public Task LayoutReady { get; private set; }
+
+    public string? GraphLayoutProblem => graphProjectionProblem ?? graphWorkerProblem;
+
+    /// <summary>
+    /// The drawn node keyboard focus follows: the selected aggregate, the selected group's collapsed node or first drawn
+    /// node, or the node the selected process is drawn as or inside.
+    /// </summary>
+    public string? SelectedGraphNodeKey
+    {
+        get
+        {
+            if (selectedClusterKey is { } cluster)
+            {
+                return graphDisplay.Node(cluster)?.Key;
+            }
+
+            if (selectedGroupKey is not null)
+            {
+                (IReadOnlySet<string> whole, IReadOnlySet<string> part) = GraphSelection();
+                return whole.Order(StringComparer.Ordinal).FirstOrDefault() ?? part.Order(StringComparer.Ordinal).FirstOrDefault();
+            }
+
+            return selectedProcess is { } process ? graphDisplay.NodeOf(process.Id)?.Key : null;
+        }
+    }
+
+    /// <summary>Drawn nodes that stand for nothing but the selection: selected rings in the graph.</summary>
+    public IReadOnlySet<string> SelectedGraphNodeKeys => GraphSelection().Whole;
+
+    /// <summary>
+    /// Aggregate nodes that hold part of the selection among other processes, such as a selected quiet process inside
+    /// No relationships. The graph marks them apart from a whole selection, so an aggregate is never passed off as the
+    /// selected process or group.
+    /// </summary>
+    public IReadOnlySet<string> PartlySelectedGraphNodeKeys => GraphSelection().Part;
+
+    /// <summary>The drawn aggregate the user selected when it is not one executable group; null otherwise.</summary>
+    public GraphDisplayNode? SelectedCluster => selectedClusterKey is { } key ? graphDisplay.Node(key) : null;
+
+    /// <summary>The executable group selected by its row or its collapsed node; null otherwise.</summary>
+    public ProcessGroup? SelectedGroup => selectedGroupKey is { } key
+        ? wholeSnapshot.Groups.FirstOrDefault(group => group.Key == key)
+        : null;
+
+    private (IReadOnlySet<string> Whole, IReadOnlySet<string> Part) GraphSelection()
+    {
+        var whole = new HashSet<string>(StringComparer.Ordinal);
+        var part = new HashSet<string>(StringComparer.Ordinal);
+        if (selectedClusterKey is { } cluster)
+        {
+            if (graphDisplay.Node(cluster) is not null) whole.Add(cluster);
+            return (whole, part);
+        }
+
+        HashSet<ProcessInstanceId> members = selectedGroupKey is { } group
+            ? [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group).Select(process => process.Id)]
+            : selectedProcess is { } process ? [process.Id] : [];
+        foreach (GraphDisplayNode node in members
+            .Select(member => graphDisplay.NodeOf(member))
+            .OfType<GraphDisplayNode>()
+            .DistinctBy(node => node.Key))
+        {
+            (node.Members.All(members.Contains) ? whole : part).Add(node.Key);
+        }
+
+        return (whole, part);
+    }
+
+    /// <summary>
+    /// Selects a drawn node. A process node selects that process everywhere; a collapsed group selects that group and, at
+    /// the machine rung, its row, so Enter opens it; another aggregate is selected in the graph, and the inspector says
+    /// what it holds and where each member is listed.
+    /// </summary>
+    public void SelectGraphNode(string key)
+    {
+        if (graphDisplay.Node(key) is not { } node)
+        {
+            return;
+        }
+
+        if (node.Process is { } process)
+        {
+            SelectProcess(process);
+            return;
+        }
+
+        if (node is { Kind: GraphNodeKind.Group, GroupKey: { } group })
+        {
+            SelectGroup(group, syncRow: true);
+            return;
+        }
+
+        SelectedProcess = null;
+        selectedGroupKey = null;
+        selectedClusterKey = key;
+        if (ladder.Current.Level == DetailLevel.Machine && selectedRung is not null)
+        {
+            // A machine-rung row is a group; an aggregate spans groups, so no row stands for it.
+            selectedRung = null;
+            OnPropertyChanged(nameof(SelectedRung));
+        }
+
+        RaiseGraphSelectionChanged();
+    }
+
+    /// <summary>Selects an executable group: from its ranked row, or from its collapsed node, which also selects the row.</summary>
+    private void SelectGroup(string groupKey, bool syncRow)
+    {
+        SelectedProcess = null;
+        selectedClusterKey = null;
+        selectedGroupKey = groupKey;
+        if (syncRow && ladder.Current.Level == DetailLevel.Machine
+            && RungRows.FirstOrDefault(row => row.Key == groupKey) is { } row)
+        {
+            selectedRung = row;
+            OnPropertyChanged(nameof(SelectedRung));
+        }
+
+        RaiseGraphSelectionChanged();
+    }
+
+    /// <summary>Opens a collapsed executable group only where the ladder can actually descend into that group.</summary>
+    public bool OpenGraphGroup(string key)
+    {
+        if (ladder.Current.Level != DetailLevel.Machine
+            || graphDisplay.Node(key) is not { Kind: GraphNodeKind.Group })
+        {
+            return false;
+        }
+
+        SelectGraphNode(key);
+        return Descend();
+    }
+
+    private void RaiseGraphSelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedGraphNodeKey));
+        OnPropertyChanged(nameof(SelectedGraphNodeKeys));
+        OnPropertyChanged(nameof(PartlySelectedGraphNodeKeys));
+        OnPropertyChanged(nameof(SelectedCluster));
+        OnPropertyChanged(nameof(SelectedGroup));
+        OnPropertyChanged(nameof(SelectionTitle));
+        OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(EvidenceHeading));
+        OnPropertyChanged(nameof(EvidenceSummary));
+    }
+
+    private ReadOnlyDictionary<ProcessInstanceId, GraphPoint> ProcessPositions() =>
+        new ReadOnlyDictionary<ProcessInstanceId, GraphPoint>(wholeDisplay.Nodes
+            .Where(node => displayPositions.ContainsKey(node.Key))
+            .SelectMany(node => node.Members.Select(member => (member, point: displayPositions[node.Key])))
+            .ToDictionary(entry => entry.member, entry => entry.point));
+
+    /// <summary>
+    /// The graph the ladder's focus asks for: the group it descended into draws its members, and the process it focuses
+    /// draws itself. A graph with the same nodes keeps its layout; one that changed is laid out again from where the
+    /// nodes it shares already are.
+    /// </summary>
+    private void RefreshGraphDisplay()
+    {
+        string? expanded = ladder.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.Group)?.Focus?.Key;
+        ProcessInstanceId? kept = ladder.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.ProcessInstance)?.Focus?.Key
+            is { } focus && Guid.TryParse(focus, out Guid id) ? new ProcessInstanceId(id) : null;
+        if (expanded == wholeDisplay.ExpandedGroup && kept == wholeDisplay.Kept)
+        {
+            return;
+        }
+
+        GraphDisplay previous = wholeDisplay;
+        GraphDisplay next = ProjectGraph(expanded, kept);
+        bool sameNodes = next.Nodes.Select(node => node.Key).SequenceEqual(previous.Nodes.Select(node => node.Key))
+            && next.Edges.Select(edge => edge.Key).SequenceEqual(previous.Edges.Select(edge => edge.Key));
+        wholeDisplay = next;
+        graphDisplay = scopedSnapshot is null ? wholeDisplay : ScopeGraph(wholeDisplay, Snapshot);
+        if (selectedClusterKey is not null && graphDisplay.Node(selectedClusterKey) is null)
+        {
+            selectedClusterKey = null;
+        }
+
+        if (!sameNodes)
+        {
+            // A node drawn before keeps its place: one still on screen, or one laid out earlier in this workspace, such as
+            // the machine rung's nodes on the way back up. Until the new layout arrives, a node new to this drawing is
+            // drawn where its members were drawn - an opened group's members where its cluster was - and is left out of
+            // the layout's starting positions, so the layout seeds it in its band instead of stacking it on its siblings.
+            var positions = new Dictionary<string, GraphPoint>(StringComparer.Ordinal);
+            provisionalKeys.Clear();
+            foreach (GraphDisplayNode node in next.Nodes)
+            {
+                if (displayPositions.TryGetValue(node.Key, out GraphPoint existing)
+                    || layoutMemory.TryGetValue(node.Key, out existing))
+                {
+                    positions[node.Key] = existing;
+                    continue;
+                }
+
+                GraphPoint[] origins = [.. node.Members
+                    .Select(member => previous.NodeOf(member)?.Key)
+                    .Where(key => key is not null && displayPositions.ContainsKey(key))
+                    .Select(key => displayPositions[key!])];
+                positions[node.Key] = origins.Length == 0
+                    ? new(0.5, 0.5)
+                    : new(origins.Average(point => point.X), origins.Average(point => point.Y));
+                provisionalKeys.Add(node.Key);
+            }
+
+            displayPositions = new ReadOnlyDictionary<string, GraphPoint>(positions);
+            GraphPositions = ProcessPositions();
+            OnPropertyChanged(nameof(DisplayPositions));
+            OnPropertyChanged(nameof(GraphPositions));
+        }
+
+        OnPropertyChanged(nameof(GraphDisplay));
+        OnPropertyChanged(nameof(GraphSummary));
+        RaiseGraphSelectionChanged();
+        if (!sameNodes)
+        {
+            LayoutReady = BuildLayoutAsync(expanded is null && kept is null
+                ? graphIdentity
+                : $"{graphIdentity}|expanded:{expanded}|kept:{kept}", next);
+        }
+    }
+
+    /// <summary>Nodes drawn at a provisional position until the layout for the current drawing arrives.</summary>
+    private readonly HashSet<string> provisionalKeys = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The last laid-out position of every node this workspace has drawn, and of those an earlier publication carried in.
+    /// Keys name roles that persist (a process instance, a group, an aggregate), so a node that returns returns to its place.
+    /// </summary>
+    private readonly Dictionary<string, GraphPoint> layoutMemory = new(StringComparer.Ordinal);
 
     /// <summary>Coverage is derived from the snapshot's intervals, never from a prototype constant.</summary>
     public string CoverageSummary
@@ -410,25 +837,34 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task BuildLayoutAsync(string graphIdentity)
+    private async Task BuildLayoutAsync(string identity, GraphDisplay display)
     {
         try
         {
-            GraphLayoutResult? result = await graphLayout.RequestAsync(
-                graphIdentity, Snapshot.Groups, Snapshot.Processes, Snapshot.Edges,
-                previous: GraphPositions);
-            if (disposed || result is null || result.GraphIdentity != graphIdentity)
+            // A node that existed before keeps its place; a node new to this drawing is seeded in its band.
+            GraphDisplayLayout? result = await graphLayout.RequestDisplayAsync(identity, display, previous: displayPositions
+                .Where(entry => display.Node(entry.Key) is not null && !provisionalKeys.Contains(entry.Key))
+                .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
+            if (disposed || result is null || result.GraphIdentity != identity || !ReferenceEquals(display, wholeDisplay))
             {
                 return;
             }
 
-            GraphPositions = result.Positions;
+            provisionalKeys.Clear();
+            displayPositions = result.Positions;
+            foreach ((string key, GraphPoint point) in result.Positions)
+            {
+                layoutMemory[key] = point;
+            }
+
+            GraphPositions = ProcessPositions();
+            SetGraphWorkerProblem(null);
+            OnPropertyChanged(nameof(DisplayPositions));
             OnPropertyChanged(nameof(GraphPositions));
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
         {
-            GraphLayoutProblem = exception.Message;
-            OnPropertyChanged(nameof(GraphLayoutProblem));
+            SetGraphWorkerProblem(exception.Message);
         }
     }
 
@@ -608,6 +1044,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             {
                 SelectedProcess = process;
             }
+            else if (value is not null && ladder.Current.Level == DetailLevel.Machine
+                && wholeSnapshot.Groups.Any(group => group.Key == value.Key))
+            {
+                // A machine-rung row is an executable group: the graph rings where its members are drawn.
+                SelectGroup(value.Key, syncRow: false);
+            }
         }
     }
 
@@ -674,41 +1116,160 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             }
 
             selectedProcess = value;
+            if (value is not null)
+            {
+                selectedClusterKey = null;
+                selectedGroupKey = null;
+            }
+
             OnPropertyChanged();
             selection.SelectProcess(value?.Id);
+            RaiseGraphSelectionChanged();
         }
     }
 
     public TimeRange? SelectedInterval => selectedInterval;
 
-    public string SelectionTitle => selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
+    public string SelectionTitle => SelectedCluster is { } cluster ? cluster.Label
+        : SelectedGroup is { } group ? group.Name
+        : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
 
-    public string SelectionSubtitle => selectedProcess is null
-        ? "Choose a node, ranked row, or timeline bucket."
-        : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
+    public string SelectionSubtitle => SelectedCluster is { } cluster ? DescribeCluster(cluster)
+        : SelectedGroup is { } group ? DescribeGroup(group)
+        : selectedProcess is null
+            ? "Choose a node, ranked row, or timeline bucket."
+            : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
+
+    /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
+    private string DescribeCluster(GraphDisplayNode cluster)
+    {
+        string members = Counted(cluster.Members.Count, "process", "processes");
+        string relationships = cluster.Relationships == 0
+            ? "no relationship"
+            : Counted(cluster.Relationships, "relationship", "relationships")
+                + (cluster.InternalRelationships > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $", {cluster.InternalRelationships:N0} among themselves")
+                    : string.Empty);
+        int quiet = cluster.Members.Count(member => !relatedProcesses.Contains(member));
+        return cluster.Kind switch
+        {
+            GraphNodeKind.Quiet => $"{members} with no admitted relationship in this session, counted in one node rather "
+                + "than drawn one by one. The ranked table lists each of them.",
+            GraphNodeKind.OtherMembers => $"{members} of this group not drawn on their own"
+                + (quiet == cluster.Members.Count ? ", none with a relationship"
+                    : quiet > 0 ? string.Create(CultureInfo.CurrentCulture,
+                        $": {quiet:N0} without a relationship, the rest its least active") : ", its least active")
+                + $" · {relationships}. The ranked table lists each of them.",
+            GraphNodeKind.Group => $"{members} · {relationships}. "
+                + (ladder.Current.Level == DetailLevel.Machine ? "Enter opens the group." : "Return to the machine rung to open it."),
+            _ => $"{members} folded together to keep the graph readable · {relationships}. The ranked table lists each of them.",
+        };
+    }
+
+    /// <summary>A selected executable group: its size, where its members are drawn, and the path its name stands for.</summary>
+    private string DescribeGroup(ProcessGroup group)
+    {
+        // Each member is counted once, by the node it is drawn in: on its own, in the group's collapsed node, or in an
+        // aggregate - where a member without a relationship is named as such rather than as folded activity.
+        ProcessNode[] members = [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key)];
+        int own = 0;
+        int collapsed = 0;
+        int folded = 0;
+        int quiet = 0;
+        foreach (ProcessNode member in members)
+        {
+            switch (graphDisplay.NodeOf(member.Id)?.Kind)
+            {
+                case GraphNodeKind.Process:
+                    own++;
+                    break;
+                case GraphNodeKind.Group:
+                    collapsed++;
+                    break;
+                case null:
+                    break;
+                default:
+                    if (relatedProcesses.Contains(member.Id)) folded++;
+                    else quiet++;
+                    break;
+            }
+        }
+
+        var parts = new List<string> { Counted(members.Length, "process", "processes") };
+        if (collapsed > 0)
+        {
+            parts.Add((collapsed == members.Length
+                ? "drawn as one node"
+                : string.Create(CultureInfo.CurrentCulture, $"{collapsed:N0} drawn as one node"))
+                + (ladder.Current.Level == DetailLevel.Machine
+                    ? "; Enter opens the group"
+                    : "; the machine rung opens it"));
+        }
+
+        if (own > 0)
+        {
+            parts.Add(own == members.Length && members.Length == 1
+                ? "drawn on its own"
+                : string.Create(CultureInfo.CurrentCulture, $"{own:N0} drawn on their own"));
+        }
+
+        if (folded > 0)
+        {
+            parts.Add(string.Create(CultureInfo.CurrentCulture, $"{folded:N0} in an aggregate"));
+        }
+
+        if (quiet > 0)
+        {
+            parts.Add(quiet == members.Length
+                ? (members.Length == 1 ? "no relationship" : "none has a relationship")
+                : string.Create(CultureInfo.CurrentCulture, $"{quiet:N0} without a relationship"));
+        }
+
+        // The path the short name stands for goes on its own line, where a long path can wrap without splitting a count.
+        return string.Join(" · ", parts) + (group.Detail is { } detail ? Environment.NewLine + detail : string.Empty);
+    }
 
     public string IntervalLabel => selectedInterval is { } interval
         ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
+    /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>
+    public string EvidenceHeading => SelectedCluster is not null ? "Selected aggregate"
+        : SelectedGroup is not null ? "Selected group"
+        : "Selected process";
+
     public string EvidenceSummary
     {
         get
         {
-            if (selectedProcess is null)
+            if (SelectedCluster is { } cluster)
+            {
+                return cluster.Relationships == 0
+                    ? "No admitted paired TCP relationship among these processes. Other activity may be present."
+                    : string.Create(CultureInfo.CurrentCulture, $"{cluster.Observations:N0} paired TCP observations on ")
+                        + Counted(cluster.Relationships, "relationship", "relationships") + " · bytes unknown";
+            }
+
+            HashSet<ProcessInstanceId> scope = SelectedGroup is { } group
+                ? [.. Snapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
+                : selectedProcess is { } process ? [process.Id] : [];
+            if (scope.Count == 0)
             {
                 return "No evidence selected";
             }
 
-            CommunicationEdge[] edges = Snapshot.Edges
-                .Where(edge => edge.SourceId == selectedProcess.Id || edge.TargetId == selectedProcess.Id)
-                .ToArray();
+            string subject = SelectedGroup is null ? "this process" : "this group's processes";
+            CommunicationEdge[] edges = [.. Snapshot.Edges
+                .Where(edge => scope.Contains(edge.SourceId) || scope.Contains(edge.TargetId))];
             long observations = edges.Sum(edge => edge.ObservationCount);
             if (realOverview)
             {
                 return edges.Length == 0
-                    ? "No admitted paired TCP relationship for this process. Other activity may be present."
-                    : $"{observations:N0} paired TCP observations · bytes unknown";
+                    ? $"No admitted paired TCP relationship for {subject}. Other activity may be present."
+                    : SelectedGroup is null
+                        ? $"{observations:N0} paired TCP observations · bytes unknown"
+                        : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} paired TCP observations on ")
+                            + Counted(edges.Length, "relationship", "relationships") + " · bytes unknown";
             }
             long knownBytes = edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value);
             return $"{observations:N0} observations · {knownBytes / 1_000_000m:N2} MB known";
@@ -748,11 +1309,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         TimeRange viewport = selectedInterval ?? ladder.Current.Viewport;
-        LadderDescent descent = realOverview && ladder.Current.Level == DetailLevel.Machine && selectedProcess is { } process
+        bool machine = realOverview && ladder.Current.Level == DetailLevel.Machine;
+        LadderDescent descent = machine && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.Name),
                 "Evidence was reached from the machine rung with this process selected.")
-            : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+            : machine && SelectedGroup is { } group
+                ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                    new(DetailLevel.Group, group.Key, group.Name),
+                    "Evidence was reached from the machine rung with this executable group selected.")
+                : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
         if (!ladder.TryDescend(descent, out _))
         {
             return false;
@@ -832,7 +1398,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     public void SelectInterval(TimeRange interval) => selection.SelectInterval(interval);
 
-    public void ClearSelection() => selection.Clear();
+    public void ClearSelection()
+    {
+        selectedClusterKey = null;
+        selectedGroupKey = null;
+        selection.Clear();
+        RaiseGraphSelectionChanged();
+    }
 
     private bool TryResolveProcess(string key, out ProcessNode? process)
     {
@@ -846,6 +1418,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         view = LadderProjection.Project(Snapshot, ladder.Current);
         selectedRung = null;
         selectedCrumb = null;
+
+        // A group selected by its row is left with that row; a descent into it makes it the ladder's focus instead.
+        selectedGroupKey = null;
+        RefreshGraphDisplay();
         SyncEvidence();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
@@ -1260,8 +1836,22 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         string? rowKey = selectedRung?.Key;
         scopedSnapshot = scoped;
         appliedInterval = scoped is null ? null : scopedInterval;
+        if (scoped is null)
+        {
+            graphDisplay = wholeDisplay;
+            if (wholeDisplay.Nodes.Count > 0 || wholeDisplay.TotalProcesses == 0)
+            {
+                SetGraphProjectionProblem(null);
+            }
+        }
+        else
+        {
+            graphDisplay = ScopeGraph(wholeDisplay, scoped);
+        }
         view = LadderProjection.Project(Snapshot, ladder.Current);
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        OnPropertyChanged(nameof(GraphDisplay));
+        OnPropertyChanged(nameof(GraphSummary));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
         OnPropertyChanged(nameof(Snapshot));
         OnPropertyChanged(nameof(IsRankedWithinInterval));
@@ -1329,15 +1919,16 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
         else if (selectedProcess?.Id != changed.ProcessId)
         {
+            // A process chosen elsewhere replaces a selected group or aggregate, as choosing it in the graph does.
             selectedProcess = Snapshot.Processes.FirstOrDefault(process => process.Id == changed.ProcessId);
+            selectedClusterKey = null;
+            selectedGroupKey = null;
         }
 
         OnPropertyChanged(nameof(SelectedProcess));
         OnPropertyChanged(nameof(SelectedInterval));
-        OnPropertyChanged(nameof(SelectionTitle));
-        OnPropertyChanged(nameof(SelectionSubtitle));
         OnPropertyChanged(nameof(IntervalLabel));
-        OnPropertyChanged(nameof(EvidenceSummary));
+        RaiseGraphSelectionChanged();
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

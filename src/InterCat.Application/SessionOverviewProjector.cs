@@ -73,19 +73,16 @@ public static class SessionOverviewProjector
         TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
         ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
 
-        if (processes.Instances.Count > GraphLayout.MaximumNodes)
-        {
-            throw new InvalidOperationException(
-                $"This generation has {processes.Instances.Count:N0} process instances, above the "
-                + $"{GraphLayout.MaximumNodes:N0}-node overview bound. Cluster compaction is required; silently "
-                + "omitting processes would make the graph and its table disagree with the evidence.");
-        }
-
+        // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
+        // display projection's bound (GraphProjection, §6.3): it clusters rather than omitting anyone.
         ProcessInstance[] ordered = [.. processes.Instances.OrderBy(instance => instance.Id.ToString(), StringComparer.Ordinal)];
-        ProcessGroup[] groups = [.. ordered
+        IGrouping<string, ProcessInstance>[] executables = [.. ordered
             .GroupBy(GroupKey, StringComparer.Ordinal)
-            .OrderBy(group => group.Key, StringComparer.Ordinal)
-            .Select(group => new ProcessGroup(group.Key, GroupName(group.First()), LaneGrouping.Executable))];
+            .OrderBy(group => group.Key, StringComparer.Ordinal)];
+        Dictionary<string, string> names = ExecutableNames.Label(
+            [.. executables.Select(group => (group.Key, group.First().ImagePath))]);
+        ProcessGroup[] groups = [.. executables.Select(group => new ProcessGroup(
+            group.Key, names[group.Key], LaneGrouping.Executable, GroupPath(group.First())))];
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
@@ -113,13 +110,6 @@ public static class SessionOverviewProjector
                 group.Sum(relation => relation.Records),
                 null,
                 group.Max(relation => relation.Strength)))];
-        if (edges.Length > GraphLayout.MaximumEdges)
-        {
-            throw new InvalidOperationException(
-                $"This generation has {edges.Length:N0} resolved process relationships, above the "
-                + $"{GraphLayout.MaximumEdges:N0}-edge overview bound. Cluster compaction is required; silently "
-                + "omitting relationships would make the graph and its table disagree with the evidence.");
-        }
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
@@ -137,6 +127,7 @@ public static class SessionOverviewProjector
                 "Two admitted TCP incarnations have the same raw-fact channel key. Refusing to merge them.");
         }
 
+        int unrelated = nodes.Length - edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId }).Distinct().Count();
         HashSet<int> eligibleChannels = [.. admitted.Select(relation => relation.Channel)];
         (TimeRange? extent, TimelineBucket[] timeline, TimelineBucket[] graphTimeline, SessionMinimap? minimap,
             long rows, long withoutTime, long graphRows, long graphWithoutTime, long unresolved) =
@@ -171,6 +162,18 @@ public static class SessionOverviewProjector
                 + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
                 + "remains in the all-observations timeline, not a guessed channel.",
             .. (channelProblem is null ? [] : new[] { channelProblem }),
+            .. (unrelated < 2 && nodes.Length <= GraphDisplayBudget.Default.Nodes
+                && edges.Length <= GraphDisplayBudget.Default.Edges
+                ? []
+                : new[]
+                {
+                    $"The Desktop graph draws relationships, not every process: {unrelated:N0} of {nodes.Length:N0} "
+                        + "process instances have no admitted relationship and are counted in one node, and a graph above "
+                        + $"{GraphDisplayBudget.Default.Nodes:N0} nodes or {GraphDisplayBudget.Default.Edges:N0} edges "
+                        + "collapses groups, lowest activity first, with explicit Other-members/remainder fallbacks. No "
+                        + "process is omitted: every instance stays individual in the ranked table and every source "
+                        + "relationship remains addressable.",
+                }),
             .. (redaction is null ? [] : new[] { SessionRedaction.Summary + " " + redaction.Warning }),
         ];
         return new(
@@ -348,6 +351,7 @@ public static class SessionOverviewProjector
     private static string GroupKey(ProcessInstance instance) =>
         string.IsNullOrWhiteSpace(instance.ImagePath) ? "executable:unknown" : "executable:" + instance.ImagePath.ToUpperInvariant();
 
-    private static string GroupName(ProcessInstance instance) =>
-        string.IsNullOrWhiteSpace(instance.ImagePath) ? "Executable not witnessed" : instance.ImagePath;
+    /// <summary>The witnessed image path a group's short name stands for; null when none was witnessed.</summary>
+    private static string? GroupPath(ProcessInstance instance) =>
+        string.IsNullOrWhiteSpace(instance.ImagePath) ? null : instance.ImagePath;
 }

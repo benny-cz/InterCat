@@ -5,10 +5,16 @@ namespace InterCat.Application;
 /// <summary>
 /// An L1 rung: process instances grouped by executable, service container or session (<c>EN-Grouping</c>).
 /// </summary>
+/// <param name="Key">The group's identity, unique within a workspace.</param>
+/// <param name="Name">A short label for rows and graph nodes.</param>
+/// <param name="Kind">What the members have in common.</param>
+/// <param name="Detail">The full identity behind a shortened name, such as an executable's image path; null when the name
+/// says it all.</param>
 public sealed record ProcessGroup(
     string Key,
     string Name,
-    LaneGrouping Kind);
+    LaneGrouping Kind,
+    string? Detail = null);
 
 public sealed record ProcessNode(
     ProcessInstanceId Id,

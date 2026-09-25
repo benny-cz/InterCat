@@ -5,10 +5,13 @@ using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
+using GeneratedRegexAttribute = System.Text.RegularExpressions.GeneratedRegexAttribute;
+using Regex = System.Text.RegularExpressions.Regex;
+using RegexOptions = System.Text.RegularExpressions.RegexOptions;
 
 namespace InterCat.Application.Tests;
 
-public sealed class RedactedShareExportTests
+public sealed partial class RedactedShareExportTests
 {
     private const string Secret = "SENSITIVE-host-user-process-resource";
     private static readonly DateTimeOffset Exported = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
@@ -62,9 +65,15 @@ public sealed class RedactedShareExportTests
 
         string report = RedactedShareExport.Evidence(format, Context() with { Rung = DetailLevel.Evidence }, records);
         AssertSafe(report);
-        foreach (string secret in new[] { "10.1.2.3", "10.1.2.4", "50000", "8080", "98765", "client.exe",
+        foreach (string secret in new[] { "10.1.2.3", "10.1.2.4", "client.exe",
             activity.ToString(), ownerId.ToString(), first.ProviderId.ToString(), "seg-0000000001-0000.icats" })
             Assert.DoesNotContain(secret, report, StringComparison.OrdinalIgnoreCase);
+
+        // Report tokens and the report's own id are random hex, which contains a short number such as "8080" by chance
+        // about once in a few hundred reports. A port or PID leaks only if it appears anywhere else.
+        string outsideRandomValues = RandomValues().Replace(report, "#");
+        foreach (string secret in new[] { "50000", "8080", "98765" })
+            Assert.DoesNotContain(secret, outsideRandomValues, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("endpoint-", report, StringComparison.Ordinal);
         Assert.Contains("record-", report, StringComparison.Ordinal);
         Assert.NotEqual(report, RedactedShareExport.Evidence(format, Context(), records));
@@ -147,6 +156,10 @@ public sealed class RedactedShareExportTests
     private static ExportContext Context() => new(Session, 3, DetailLevel.Machine,
         "Machine / " + Secret, [new ImpliedFilter(Secret, Secret, Secret)], new TimeRange(100, 2_000),
         Secret, false, [Secret], Exported);
+
+    /// <summary>A report token (kind, a hyphen, 24 random hex digits) or a random GUID such as the report id.</summary>
+    [GeneratedRegex("[a-z]+-[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOptions.IgnoreCase)]
+    private static partial Regex RandomValues();
 
     private static void AssertSafe(string report)
     {

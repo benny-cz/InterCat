@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-24 · Plan revision: 106 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 108 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -15,7 +15,9 @@ mechanism breadth remain. M2 has a real broker-driven Explore and saved-session 
 overview/evidence ladder, live publication, health, interval ranking, minimap and zoomed timeline; the full per-rung
 graph/operation view and steady-state feedback budget are open. M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
-does not. **A real session above 512 process instances cannot open in the Desktop overview yet** (see open work 1).
+does not. The communication graph is a bounded §6.3 projection, qualified on a real 534-process import: processes with
+no relationship are counted in one node, groups collapse only under budget pressure, executable groups read as file
+names, and positions survive descents and live publications.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -38,39 +40,55 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard implemented | §6.3 cluster collapse (a real 534-process session is refused at the 512-node bound), per-rung eligible graph/operation/byte composition, persisted overview pyramid, bounded steady-state feedback. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, and a bounded §6.3 graph qualified on real data (quiet fold, group collapse, table-shared selection, carried layout) | Stable group regions for many drawn groups; a densely related real capture; per-rung eligible graph/operation/byte composition, persisted overview pyramid, bounded steady-state feedback. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent completed slices
 
+- **Revision 108 — the graph qualified on real data (§6.3, §6.4, §19.4):** revision 107 arrived uncompiled
+  (five CA1859 and five xUnit2031 errors) and, on the real 534-process import (one admitted relationship), drew 197
+  isolated circles, one edge and colliding `\Device\HarddiskVolume8\…` labels. Now:
+  - **Quiet fold, first in the fallback order:** processes with no relationship in the published scope fold into one
+    edgeless **No relationships** node, or into an opened group's **Other members**. A lone quiet process stays
+    itself; the remainder never absorbs the quiet node; the focused process is never folded.
+  - **Cheaper, minimal fallbacks:** group collapse counts only individually drawn members. The node budget is met by
+    an exact count and the edge budget by bisection over the collapse order. Folds are monotone, so the shortest
+    fitting prefix is found in O(log n) drawings instead of one per group.
+  - **Readable names:** `ExecutableNames` labels a group by file name plus just enough folders to disambiguate
+    (`git.exe (cmd)`); the path moved to `ProcessGroup.Detail`, which the inspector shows on its own line.
+  - **Shared selection (§6.4):** a group row rings its drawn nodes, and a broken ring marks aggregates that hold part
+    of a selection. The inspector says where each member is drawn, E scopes evidence to the group, and a selected
+    aggregate survives a live publication.
+  - **Layout (§19.4):** a fresh workspace seeds on the lattice, not the overview's placeholder circle, so aggregates
+    no longer land on edges. A layout memory returns reappearing nodes to their place; positions carry across
+    publications of one session.
+  - **Presentation:** labels are single-line, ellipsized and placed without overlap. Pane headers give their summary a
+    full-width line. The header counts relationships "among N of them".
+  - **Tests:** an opt-in real-session UI test (`INTERCAT_REAL_SESSION`) replaced the throwaway local one, and a flaky
+    redaction test no longer fails when a random token contains "8080".
+  - **Plan:** the §19.4 claim that metric-ordered bands are stable across refreshes was corrected.
+- **Revision 107 — bounded communication-graph projection (§6.3):** `GraphProjection` keeps the drawing under the
+  200-node / 500-edge budget before layout, keeps every process in exactly one drawn node, preserves source
+  relationship identities through aggregate edges, re-counts rather than re-clusters under a brush, and fails the graph
+  closed without taking down the tables. The 512/4,096 layout caps remain a hard safety bound.
 - **Revision 106 — reopenable redacted session package (§11.3, I22):** `RedactedSessionPackage` builds a new session
-  under [`redacted-session-v1`](../contracts/redacted-session-v1.md): fresh session/capture/clock/host ids, one
-  synthetic journal record per row, rebuilt rows, source fields and dictionaries, a pseudonymized coverage ledger, and
-  a `RedactionPolicy` provenance dependency (store code 8) that retention refuses to release. Each namespace is a
-  bijection with fixed points where a value means the same on every machine (address/port 0, loopback, PIDs 0/4/-1).
-  Names are mapped a path component at a time, executables case-insensitively. Readings move to a whole-second epoch.
-  Source fields follow an allowlist; FILETIMEs and text are `Redacted`. Public Microsoft providers keep their names.
-  A package is built beside its destination and renamed only after verification: reopened, every value checked,
-  source tallies/sums/fixed points/distinct counts reproduced, bytes searched for source identities and names.
-  Entry points are `icat package --redacted [--check]` and Desktop “Share redacted session…”, with disclosure,
-  cancellable progress and an offer to open the package for review. `icat session`, `raw`, `rederive` and the Desktop
-  label a package and its synthetic records. The previously uncommitted report fix now emits 100-ns presentation ticks,
-  matching the report's own interval unit. Stale plan lines (§6.4/§14 "redacted export open", §20.4 pre-M2 CLI) and
-  `segment-v1` §10 were corrected.
-- **Revision 105 — minimap navigation:** wheel zooms at its pointer, including after the pointer moves outside the
-  current brush; the minimap is focusable and shares the timeline's arrow/Home/End/+/-/0 keyboard path. The same
-  revision's storage audit showed a replacement derivation could not be a redacted package (revision 106 built one).
-- **Revision 104 — redacted sharing report:** `intercat-share-report-v1`, an allowlisted pseudonymized JSON/CSV report
-  ([policy](design/SHARING-REPORT-REDACTION.md)), from `icat export --share-redacted` and the Desktop.
+  under [`redacted-session-v1`](../contracts/redacted-session-v1.md) with fresh identities, synthetic journal records,
+  bijective pseudonyms with meaningful fixed points, an allowlist for source fields and a retention-protected
+  `RedactionPolicy` dependency. A package is published only after it is reopened and verified value by value.
+  Entry points: `icat package --redacted [--check]` and Desktop “Share redacted session…”.
+- **Revisions 104–105:** the metadata-only `intercat-share-report-v1` ([policy](design/SHARING-REPORT-REDACTION.md));
+  minimap wheel and keyboard navigation.
 
 ## Open work, dependency order
 
-1. **Let every real session open in the Desktop.** On a real import (534 process instances, 476 of them rundown), the
-   overview refuses at the provisional 512-node bound, so the Desktop cannot open an ordinary capture. Implement
-   §6.3's cluster collapse (groups over 25 members, lowest-metric first, member and edge counts shown) so the overview
-   stays within the layout budget without omitting anyone, and qualify it on that session.
+1. **The graph on a busy real machine.** Revision 108's real import has one admitted relationship. Group collapse,
+   edge-budget bisection and the **Other processes** remainder are exercised only by synthetic tests. Two steps:
+   - Record a real capture with many loopback-related processes, such as several TestWorkloads pairs beside ordinary
+     applications, and qualify it with the opt-in UI test.
+   - Replace full-width group bands with stable group regions (§19.4's stated limitation). Today a newly drawn group
+     shifts every band, and dozens of groups make thin strips.
 2. Make the Desktop's per-rung graph, numeric ranking, timeline, evidence and coverage one eligible generation/scope
    bundle. Eliminate the whole-machine graph at a channel rung. Include operation/byte projections where derivations
    actually support them, and say unavailable otherwise.
@@ -83,13 +101,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Current tests: **875 passed in Debug and Release**, zero failures (+17 over revision 105): 12 package tests with
-  mutation-checked fidelity and leak assertions, 2 storage provenance tests, 1 re-derivation refusal, 2 headless
-  Desktop share/reopen tests. I22 moved from declared-uncovered to covered in `fixtures/index.json`.
-- Revision 106 real-data check: a real imported session (852 rows, 3,104 source fields, 534 processes) packaged,
-  verified and reopened. Process summary, 482 parent links, 6 executable groups and 534 per-process counts matched the
-  source exactly; an independent byte scan found no source identity, and readings moved from 1.8e13 to 1.5e5 ticks.
-  The same session is refused by the Desktop overview (534 > 512 nodes): open work 1.
+- Last executed clean baseline (revision 108): **897 passed, 1 skipped, in Debug and Release**, zero failures (+22 over
+  revision 106's 875).
+  - Application gained 17: projection, quiet fold, edge-budget bisection, remainder isolation and executable names.
+  - Desktop gained 6: group selection, partial selection, carried layout, ascend and memento.
+  - The skip is the opt-in real-session UI test. Run it with `INTERCAT_REAL_SESSION=<session dir>`; without the
+    variable it reports skipped, never passed.
+  - The ledger in `fixtures/index.json` lists the new R7/R8/R13 tests.
+- Revision 108 real-data check: `icat import` of the local
+  `bench/results/capture-comparison-20260921-baseline/etl/diagnostic-evidence.etl` reproduced 852 observations,
+  3,104 source fields and 534 processes (134 executable groups, one admitted relationship). The opt-in test passed in
+  Debug and Release, and its frames were inspected at 1456×939 and 1080×700:
+  - The machine rung draws 3 nodes: the related pair and **No relationships · 532**.
+  - Selecting `svchost.exe` names its 98 processes and its path.
+  - Opening it draws 4 nodes, with **Other members · 98**.
+  - A brush keeps the drawing's structure.
+  - Headless cold timings: overview 271 ms, graph projection 32 ms, layout 13 ms, group open plus layout 47 ms.
+  Revision 107 alone drew 197 nodes and 1 edge there.
 - Recent real evidence: `bench/results/first-feedback-20260924T140714Z-minimap` (live projection p50 16–32 ms,
   p95 21–129 ms; first overview 0.9–1.1 s after first record). The event-to-visible steady-state budget still
   missed in the prior run (`first-feedback-20260924T132726Z-live-counters`: p95 2.6–3.2 s).
@@ -98,8 +126,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - The broker/source measurements are on one pre-release Windows build; do not generalize capture overhead or
   capability tier to retail builds. The report is pseudonymized, **not anonymous**: times, counts and workload
   shapes may identify a machine. The detailed export is sensitive. Screen-reader audit is still open.
-- Keep user-owned untracked `Zip-GitFiles.ps1` untouched. Before each slice, inspect `git status` and these tables;
-  after each coherent slice, run proportional tests, update this file and the plan if needed, commit and push `main`.
+- Keep the user-owned untracked `Zip-GitFiles.ps1` and `InterCat.zip` untouched and uncommitted. Before each slice,
+  inspect `git status` and these tables. After each coherent slice, build and run the full suite in both
+  configurations: the analyzers treat warnings as errors, and revision 107 shows that an uncompiled slice hides failures.
+  Then update this file and the plan if needed, commit and push `main`.
 
 ## Key reference contracts
 
