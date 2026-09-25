@@ -517,7 +517,7 @@ public sealed class EvidenceRungWindowTests
     }
 
     [AvaloniaTheory(DisplayName = "R21: live counters state each loss so far, and an unreadable counter as unreadable")]
-    [InlineData(0L, 0L, 0L, "So far nothing dropped or reported lost")]
+    [InlineData(0L, 0L, 0L, "No loss reported yet · final coverage pending")]
     [InlineData(3L, 0L, 0L, "So far 3 records dropped by InterCat's queue · no ETW loss")]
     [InlineData(0L, 2L, 0L, "So far no drops · ETW lost 2 events")]
     [InlineData(0L, 0L, 1L, "So far no drops · ETW lost 1 buffer")]

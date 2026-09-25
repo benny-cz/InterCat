@@ -961,7 +961,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ({ } events, { } buffers) => $"ETW lost {Count(events, "event")} and {Count(buffers, "buffer")}",
         };
         return health.ApplicationDrops == 0 && etw is null
-            ? "So far nothing dropped or reported lost"
+            ? "No loss reported yet · final coverage pending"
             : $"So far {drops} · {etw ?? "no ETW loss"}";
 
         static string Count(long count, string noun) => count == 1 ? $"1 {noun}" : $"{count:N0} {noun}s";

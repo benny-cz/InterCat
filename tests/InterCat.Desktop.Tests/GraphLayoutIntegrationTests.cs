@@ -9,6 +9,21 @@ namespace InterCat.Desktop.Tests;
 
 public sealed class GraphLayoutIntegrationTests
 {
+    [Fact(DisplayName = "§3.1: a zero-edge graph does not imply the timeline recorded nothing")]
+    public async Task ZeroEdgeGraphStillNamesObservedTimelineActivity()
+    {
+        WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
+        {
+            Edges = [], Channels = [], Operations = [], Evidence = [],
+        };
+        using var viewModel = new WorkspaceViewModel(snapshot, "zero-edge-generation");
+        await viewModel.LayoutReady;
+
+        Assert.Equal("5 processes · no relationship drawn; observed records may still be in the timeline",
+            viewModel.GraphSummary);
+        Assert.NotEmpty(viewModel.Snapshot.Timeline);
+    }
+
     [Fact(DisplayName = "R13: a non-tour workspace labels its own extent and uses its own graph identity")]
     public async Task NonTourWorkspaceUsesItsOwnExtentAndGraphIdentity()
     {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-25 · Plan revision: 117 · Branch: `main`
+Updated: 2026-09-25 · Plan revision: 118 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -41,7 +41,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
-| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and elevated CLI Explore finalized on the affected host | Manually confirm the rebuilt Desktop first-run path; installer pre-creation, retail-build matrix and remaining broker release qualification. |
+| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope | Rolling retention policy and cross-process pin quota. |
@@ -53,6 +53,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 118 — qualify the repaired Desktop Explore and clarify live coverage (§3.1, §6.3):** The user opened
+  the rebuilt Desktop, captured, stopped/saved and closed successfully. Its final generation held **12,976 source
+  observations**, a coverage ledger and **two admitted graph relationships**; the opt-in real-session UI test passed.
+  At the earlier live screenshot, the graph had no paired relationship and the coverage ledger was not yet final;
+  that did not mean the timeline's records were lost. The legend now calls hatching a gap *or unknown coverage*, live
+  zero-loss wording states final coverage is pending, and a zero-edge graph header points to observed timeline data.
+  One Desktop regression added and existing UI assertions updated; **933 passed, 1 skipped** in both Debug and Release.
 - **Revision 117 — repair the actual Start exploring blocker (§3.1, IC-014):** An elevated five-second CLI
   Explore attempt had failed with broker exit 3. Direct broker stderr identified the cause: a standard ProgramData
   ACE rendered with `DCLCRPCR`, which the strict broker-root SDDL parser did not need to understand when checking
@@ -61,7 +68,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   milestones and 549 derived records. The Desktop now puts a persistent error and retry immediately below Start,
   with a bounded scrollable long reason and tooltip; generic launcher advice no longer asks for directory deletion.
   Both Debug client outputs contain the fixed broker. One security regression and three headless UI cases added;
-  **932 passed, 1 skipped** in both Debug and Release. Manual Desktop click-through is still owed.
+  **932 passed, 1 skipped** in both Debug and Release. Desktop click-through followed in revision 118.
 - **Revision 116 — exact L0 lane-ready timeline data (§3.2, §6.2):** The overview's existing leased timeline
   scan now publishes one bucket series per observed mechanism, and zoomed detail does the same. Lane counts partition
   every whole-timeline bucket without a second segment scan. The existing overview separately counts rows without
@@ -214,9 +221,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Manually confirm Start exploring in the rebuilt Debug Desktop on the affected host. The elevated CLI smoke
-   passed, but a human Desktop click-through has not yet been reported. Then render the L0 mechanism lanes now
-   available from revision 116 in a bounded, accessible, hit-testable timeline.
+1. Render the L0 mechanism lanes now available from revision 116 in a bounded, accessible, hit-testable timeline.
    Then give each deeper rung its own lanes (§3.2's timeline column): a lane per group, instance, or channel end,
    within §6.2's mark budget. Coverage should be judged on each focus's own mechanisms. Include operation/byte
    projections where derivations actually support them, and state unavailable where they do not. The focus overlay
@@ -236,7 +241,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
-- Last executed clean baseline (revision 117): **932 passed, 1 skipped, in Debug and Release**, zero failures.
+- Last executed clean baseline (revision 118): **933 passed, 1 skipped, in Debug and Release**, zero failures.
+  - Revision 118 added one Desktop zero-edge regression (+1) and updated UI legend/loss assertions. The user's
+    finalized Desktop Explore session passed the opt-in real-session UI check in a separate Release run.
   - Revision 117 added one broker-security regression and three UI refusal-layout cases (+4). An initial Release
     run caught the new test missing from `fixtures/index.json`; traceability was updated and both suites reran clean.
   - Revision 116 added one Application mechanism-lane invariant test (+1).

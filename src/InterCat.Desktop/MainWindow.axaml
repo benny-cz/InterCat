@@ -238,7 +238,8 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock Text="Diagonal hatch means a coverage gap · open outline means unmeasured"
+        <TextBlock x:Name="CoverageLegendText"
+                   Text="Hatching = coverage gap or unknown · outline = unmeasured"
                    Classes="muted" FontSize="11" VerticalAlignment="Center" />
         <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). -->
         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasFilters}">

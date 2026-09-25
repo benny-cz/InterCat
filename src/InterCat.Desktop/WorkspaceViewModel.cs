@@ -721,7 +721,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
             int relationships = wholeSnapshot.Edges.Count;
             string text = Counted(processes, "process", "processes") + " · " + (relationships == 0
-                ? "no relationship observed"
+                ? "no relationship drawn; observed records may still be in the timeline"
                 : Counted(relationships, "relationship", "relationships")
                     + (relatedProcesses.Count < processes
                         ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
