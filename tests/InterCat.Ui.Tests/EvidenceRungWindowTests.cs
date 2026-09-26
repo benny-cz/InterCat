@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -96,6 +97,51 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         Assert.Equal(2 * 25, refreshed.RungRows.Count);
         Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.4: a zoomed timeline ranks what it shows once it settles, and Keep this range holds that scope")]
+    public async Task AZoomedTimelineRanksWhatItShows()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        string whole = workspace.RungRows.Single().Observations;
+        Button keep = window.GetControl<Button>("KeepRangeButton");
+        TextBlock scope = window.GetControl<TextBlock>("RankingScope");
+        Assert.False(keep.IsVisible);
+
+        // A zoom to the extent's first quarter: once the viewport settles, the ranking counts only what is drawn.
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        TimeRange extent = workspace.Snapshot.Extent;
+        var quarter = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 4));
+        timeline.SetViewport(quarter);
+        timeline.RequestDetailNow();
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal(quarter, workspace.ScopeInterval);
+        Assert.NotEqual(whole, workspace.RungRows.Single().Observations);
+        Assert.True(scope.IsVisible);
+        Assert.StartsWith("Ranked within the visible ", scope.Text, StringComparison.Ordinal);
+        Assert.True(keep.IsVisible);
+
+        // Keeping the range makes it the interval: panning on leaves the counts where they are.
+        string kept = workspace.RungRows.Single().Observations;
+        keep.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatch();
+        Assert.Equal(quarter, workspace.SelectedInterval);
+        Assert.False(keep.IsVisible);
+        timeline.SetViewport(new TimeRange(quarter.EndTicks, quarter.EndTicks + quarter.SpanTicks));
+        timeline.RequestDetailNow();
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal(kept, workspace.RungRows.Single().Observations);
         window.Close();
     }
 
@@ -1095,6 +1141,38 @@ public sealed class EvidenceRungWindowTests
         workspace.SelectedRung = workspace.RungRows[3];
         Dispatch();
         WriteableBitmapCheck(window, $"real-evidence-{width}x{height}.png");
+        window.Close();
+    }
+
+    [AvaloniaTheory(DisplayName = "§6.8: at every supported size a ranked row keeps its name legible, and Forward leaves the header its title")]
+    [MemberData(nameof(Sizes))]
+    public async Task RowsAndHeaderStayLegible(int width, int height)
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 40));
+        var window = new MainWindow { Width = width, Height = height };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.Ascend());
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+
+        // A row's name has the rail's width less its count. The coverage words once shared the count's column and left
+        // the name about 60 px, so "PID 200" read "PID …".
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Control row = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
+        TextBlock name = row.GetVisualDescendants().OfType<TextBlock>()
+            .First(text => text.Text == workspace.RungRows[0].Label);
+        Assert.True(name.Bounds.Width >= 130, $"A ranked row's name has only {name.Bounds.Width:F0} px.");
+
+        // Forward's face is short, so the title keeps its room beside the rung's buttons.
+        Assert.True(window.GetControl<Button>("ForwardButton").IsVisible);
+        TextBlock title = window.GetControl<TextBlock>("HeaderTitle");
+        Assert.True(title.Bounds.Width >= 150, $"The header's title has only {title.Bounds.Width:F0} px.");
         window.Close();
     }
 

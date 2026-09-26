@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 133 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 134 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,13 +54,37 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 134 — the visible range is the default scope, with a scope lock (§6.4):**
+  - **Gap:** §6.4 makes the viewport the graph and ranking scope when nothing is brushed, with a scope lock and the
+    effective range always shown. Revision 98 left all three open, and this list had dropped them.
+  - **Scope:** with nothing brushed, the timeline's settled viewport is the scope of a published session. Every rung,
+    the graph, the tables, the inspector and `E` count only what is drawn. A brush wins however the view moves;
+    clearing it hands the scope back to the view, and fitting returns to the whole session.
+  - **Stated:** the rail reads "Ranking within the visible …" while it counts and "Ranked within the visible …" after.
+    It now shows while the first count loads, where before it appeared only once a count had applied. The
+    inspector's time scope reads "Visible …".
+  - **Lock:** **Keep this range** makes the visible range the analysis interval, drawn on the axis and cleared like
+    any brush, so zooming and panning to look around leave the counts where they are.
+  - **Kept apart:** a rung's own time never takes the view's range, so a descent does not freeze a zoom into the
+    ladder. `E` reads the scope on screen, so it lists exactly the records behind the counts (I5).
+  - **Found by looking:** rendered at the minimum window, three things read badly:
+    - Revision 132's Forward button read "Forward to Process: PID 200 (Alt+Ri", and the header's title shrank to
+      "Sessi…". Its face is now "Forward (Alt+Right)"; its tooltip and accessible name say which rung.
+    - Every ranked row's name had 55 px at every window size, because its coverage words shared the count's
+      column in the 250 px rail: "PID 200" read "PID …". Coverage now follows the detail on the line beneath.
+    - "Retry exploring (Ctrl+R)" was cut at the rail's edge. The capture card's buttons are one size smaller.
+  - **Tests:**
+    - One Desktop test: visible scope, brush precedence, fit, `E` and the lock.
+    - One UI test: a settled zoom re-ranks, and the button keeps the range while the view pans.
+    - One layout theory at both supported sizes: a row's name and the header's title keep their room. With the old
+      layout it fails at 55 px.
 - **Revision 133 — hover answers for what is under the pointer now (R13, P22, §6.2):**
   - **Found:** each pane re-read its hover only when the pointer moved. The timeline kept the instant it hovered and
     the graph the node. So a keyboard zoom or pan, a resize, a lane scroll, a moved pane or a newer generation under a
@@ -509,6 +533,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 134 was built and tested in the same Linux container: Debug and Release both ran **998 tests: 910 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 133 was built and tested in the same Linux container: Debug and Release both ran **994 tests: 906 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 132 was built and tested in the same Linux container: Debug and Release both ran **990 tests: 902 passed, 2 skipped, 86 failed**, and the

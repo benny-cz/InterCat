@@ -548,6 +548,73 @@ public sealed class EvidenceRungTests
             workspace.RungRows.Single().Observations);
     }
 
+    [Fact(DisplayName = "§6.4: with nothing brushed the ranking and E count the visible range, a brush wins, and keeping the range holds it")]
+    public async Task TheVisibleRangeIsTheScopeWhenNothingIsBrushed()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        string whole = workspace.RungRows.Single().Observations;
+        Assert.Null(workspace.ScopeInterval);
+        Assert.False(workspace.ShowsRankingScope);
+        Assert.False(workspace.CanKeepVisibleRange);
+
+        // The timeline zoomed to [10, 50): the ranking counts only what is visible there, and says so while it counts.
+        var visible = new TimeRange(10, 50);
+        workspace.ShowVisibleRange(visible);
+        Assert.Equal(visible, workspace.ScopeInterval);
+        Assert.True(workspace.ScopeFollowsView);
+        Assert.True(workspace.ShowsRankingScope);
+        Assert.StartsWith("Ranking within the visible ", workspace.RankingScopeText, StringComparison.Ordinal);
+        await workspace.IntervalReady;
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+        Assert.StartsWith("Ranked within the visible ", workspace.RankingScopeText, StringComparison.Ordinal);
+        Assert.Equal("Visible " + WorkspaceTime.FormatRange(visible, System.Globalization.CultureInfo.CurrentCulture),
+            workspace.IntervalLabel);
+        Assert.Equal(visible, workspace.DescribeExport(DateTimeOffset.UnixEpoch).Interval);
+
+        // A brush is explicit and wins however the timeline moves; clearing it gives the scope back to the view.
+        workspace.SelectInterval(new TimeRange(10, 30));
+        await workspace.IntervalReady;
+        Assert.Equal("20", workspace.RungRows.Single().Observations);
+        Assert.False(workspace.ScopeFollowsView);
+        Assert.False(workspace.CanKeepVisibleRange);
+        workspace.ShowVisibleRange(new TimeRange(10, 20));
+        await workspace.IntervalReady;
+        Assert.Equal("20", workspace.RungRows.Single().Observations);
+        workspace.ClearSelection();
+        await workspace.IntervalReady;
+        Assert.Equal(new TimeRange(10, 20), workspace.ScopeInterval);
+        Assert.Equal("10", workspace.RungRows.Single().Observations);
+
+        // Fitting the timeline shows everything, and the ranking counts the whole session again.
+        workspace.ShowVisibleRange(workspace.WholeSnapshot.Extent);
+        await workspace.IntervalReady;
+        Assert.Null(workspace.ScopeInterval);
+        Assert.False(workspace.ShowsRankingScope);
+        Assert.Equal(string.Empty, workspace.RankingScopeText);
+        Assert.Equal(whole, workspace.RungRows.Single().Observations);
+
+        // E lists exactly the records behind the counts on screen: the visible range's forty.
+        workspace.ShowVisibleRange(visible);
+        await workspace.IntervalReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(40, workspace.RungRows.Count);
+        Assert.False(workspace.CanLoadMoreEvidence);
+        Assert.True(workspace.Ascend());
+
+        // The scope lock keeps the visible range as the interval, so zooming on to look around counts the same range.
+        Assert.True(workspace.KeepVisibleRange());
+        Assert.Equal(visible, workspace.SelectedInterval);
+        Assert.False(workspace.CanKeepVisibleRange);
+        Assert.False(workspace.KeepVisibleRange());
+        workspace.ShowVisibleRange(new TimeRange(10, 20));
+        await workspace.IntervalReady;
+        Assert.Equal(visible, workspace.ScopeInterval);
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+    }
+
     [Fact]
     public async Task AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope()
     {

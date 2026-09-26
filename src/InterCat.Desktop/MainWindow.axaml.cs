@@ -276,6 +276,14 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private void KeepVisibleRange(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            _ = viewModel.KeepVisibleRange();
+        }
+    }
+
     private void ToggleTables(object? sender, RoutedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)

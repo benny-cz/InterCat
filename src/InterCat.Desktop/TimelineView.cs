@@ -289,6 +289,9 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (DataContext is WorkspaceViewModel viewModel)
         {
             viewModel.RequestTimelineDetail(Viewport, (int)Math.Clamp(PlotWidth / 10, 16, 256));
+
+            // The settled viewport is the ranking's scope while nothing is brushed (§6.4).
+            viewModel.ShowVisibleRange(IsFit ? null : Viewport);
         }
     }
 

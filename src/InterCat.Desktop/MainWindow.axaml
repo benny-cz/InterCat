@@ -36,10 +36,14 @@
           </Grid>
           <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      AutomationProperties.Name="What the ranked table holds" />
-          <!-- A brushed interval re-ranks every rung; its scope is stated where the totals are read (plan §6.4). -->
-          <TextBlock Text="{Binding RankingScopeText}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
-                     TextWrapping="Wrap" IsVisible="{Binding IsRankedWithinInterval}"
+          <!-- A brushed interval, or else the zoomed timeline's visible range, re-ranks every rung; the scope is stated
+               where the totals are read, and a range that follows the view can be kept (plan §6.4). -->
+          <TextBlock x:Name="RankingScope" Text="{Binding RankingScopeText}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
+                     TextWrapping="Wrap" IsVisible="{Binding ShowsRankingScope}"
                      AutomationProperties.Name="The time range the ranking counts" />
+          <Button x:Name="KeepRangeButton" Content="Keep this range" Click="KeepVisibleRange" FontSize="11"
+                  Padding="8,2" HorizontalAlignment="Left" IsVisible="{Binding CanKeepVisibleRange}"
+                  AutomationProperties.Name="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -88,17 +92,16 @@
                    AutomationProperties.Name="Ranked table for the current level">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:RungRow">
-                <Grid ColumnDefinitions="22,*,Auto" Margin="2,5" MinHeight="44">
-                  <TextBlock Text="{Binding Glyph}" VerticalAlignment="Center" />
-                  <StackPanel Grid.Column="1" Margin="6,0,6,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11"
-                               TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <TextBlock Text="{Binding Observations}" FontSize="11" TextAlignment="Right" />
-                    <TextBlock Text="{Binding Coverage}" Classes="muted" FontSize="10" TextAlignment="Right" />
-                  </StackPanel>
+                <!-- The name has the rail's width less the count; its detail and coverage share the line beneath. -->
+                <Grid ColumnDefinitions="22,*,Auto" RowDefinitions="Auto,Auto" Margin="2,5" MinHeight="44"
+                      VerticalAlignment="Center">
+                  <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Margin="6,0,6,0" Text="{Binding Label}" FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding Observations}" FontSize="11" TextAlignment="Right"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="6,0,0,0"
+                             Text="{Binding DetailLine}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
                 </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -133,7 +136,8 @@
             <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
             <TextBlock Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
-            <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)"
+            <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
+            <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13"
                     Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
             <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
@@ -146,9 +150,9 @@
             <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False"
                     Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
             <!-- Pausing the view is not pausing the capture: recording continues and the newest view is offered (§6.2). -->
-            <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False"
+            <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False" FontSize="13"
                     Click="ToggleFollow" AutomationProperties.Name="Pause or resume following the live capture" />
-            <Button x:Name="OpenSavedSessionButton" Content="Open saved session"
+            <Button x:Name="OpenSavedSessionButton" Content="Open saved session" FontSize="13"
                     Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
             <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
@@ -168,7 +172,7 @@
             Background="{DynamicResource Surface.Panel}">
       <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
         <StackPanel Spacing="2" ClipToBounds="True">
-          <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
+          <TextBlock x:Name="HeaderTitle" Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" />
           <!-- The breadcrumb states the position at every rung, and each crumb returns to it (section 3.2).
                It scrolls rather than pushing the header wider, so a deep rung cannot overrun the title. -->
@@ -201,16 +205,12 @@
         <Button Grid.Column="2" Margin="0,0,8,0" Content="{Binding TableToggleLabel}" Click="ToggleTables"
                 AutomationProperties.Name="Toggle the accessible table equivalents" />
         <!-- Alt+Right's visible equivalent (R15), shown while an ascent or a crumb has left a rung to re-enter. It stands
-             left of Back so Back never moves under a pointer that clicks it again and again. -->
-        <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="{Binding ForwardLabel}"
-                Click="GoForward" IsVisible="{Binding CanGoForward}" MaxWidth="280"
-                AutomationProperties.Name="{Binding ForwardLabel}">
-          <Button.Styles>
-            <Style Selector="Button > ContentPresenter > TextBlock">
-              <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-            </Style>
-          </Button.Styles>
-        </Button>
+             left of Back so Back never moves under a pointer that clicks it again and again. Its face stays short, so
+             the title and breadcrumb keep their room at the minimum width; the rung it re-enters is in its tooltip and
+             its accessible name. -->
+        <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="Forward (Alt+Right)"
+                Click="GoForward" IsVisible="{Binding CanGoForward}" ToolTip.Tip="{Binding ForwardLabel}"
+                AutomationProperties.Name="{Binding ForwardLabel}" />
         <Button x:Name="AscendButton" Grid.Column="4" Content="{Binding AscendLabel}" Click="AscendOrClear"
                 MaxWidth="280"
                 AutomationProperties.Name="Go back one level, or clear the selection at the machine level">

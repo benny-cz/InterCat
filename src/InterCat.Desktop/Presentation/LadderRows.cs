@@ -24,6 +24,14 @@ public sealed record RungRow(
     /// <summary>The sentence a screen reader hears when the ranked-row wording does not fit, as for a source record.</summary>
     public string? SpokenName { get; init; }
 
+    /// <summary>
+    /// The row's second line: what it holds, then its coverage. Coverage shares the line under the name rather than the
+    /// count's column, where a phrase such as "partial gap, not extrapolated" left the name a few letters in the rail.
+    /// </summary>
+    public string DetailLine => Coverage.Length == 0 ? Detail
+        : Detail.Length == 0 ? Coverage
+        : $"{Detail} · {Coverage}";
+
     public string AccessibleName => SpokenName
         ?? $"{Label}, {Detail}, {Spoken.Count(Source.ObservationCount, "observation")}, {KnownBytes}, "
             + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";

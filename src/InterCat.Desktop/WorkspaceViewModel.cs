@@ -137,6 +137,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private readonly HashSet<ProcessInstanceId> relatedProcesses;
     private TimeRange? scopedInterval;
 
+    // The timeline's settled viewport while it shows less than the whole extent; the scope when nothing is brushed (§6.4).
+    private TimeRange? visibleRange;
+
     // The interval the displayed counts actually answer; a brush still being counted is not yet applied.
     private TimeRange? appliedInterval;
     private CancellationTokenSource? intervalQuery;
@@ -861,8 +864,76 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 ? $"Counting {char.ToLowerInvariant(focus[0])}{focus[1..]}… · the rest of the machine in grey"
                 : $"{focus} in colour, the rest of the machine in grey · Shift+drag brushes a range";
 
-    /// <summary>Whether the ranking is scoped to the brushed interval rather than the whole session.</summary>
+    /// <summary>Whether the ranking counts an interval - the brush or the visible range - rather than the whole session.</summary>
     public bool IsRankedWithinInterval => scopedSnapshot is not null;
+
+    /// <summary>
+    /// The time the ranking, graph, tables, inspector and E answer (§6.4): the brushed interval if there is one, else the
+    /// visible range while the timeline is zoomed, else the whole session (null). Only a published session is counted
+    /// by interval; the tour always answers for all of it.
+    /// </summary>
+    public TimeRange? ScopeInterval => selectedInterval ?? VisibleScope;
+
+    /// <summary>Whether the scope is the visible range, which follows zoom and pan until it is kept.</summary>
+    public bool ScopeFollowsView => selectedInterval is null && VisibleScope is not null;
+
+    /// <summary>§6.4's scope lock is offered while the scope follows the view: it keeps that range as the interval.</summary>
+    public bool CanKeepVisibleRange => ScopeFollowsView;
+
+    /// <summary>Whether the rail states a scope: one is being counted, has been applied, or could not be counted.</summary>
+    public bool ShowsRankingScope => evidenceSource is not null && scopedInterval is not null;
+
+    private TimeRange? VisibleScope => evidenceSource is null ? null : visibleRange;
+
+    /// <summary>
+    /// The timeline's settled viewport (§6.4). A range narrower than the extent becomes the scope while nothing is
+    /// brushed; null or the whole extent means everything is visible, and the scope returns to the whole session.
+    /// </summary>
+    public void ShowVisibleRange(TimeRange? range)
+    {
+        TimeRange extent = wholeSnapshot.Extent;
+        TimeRange? next = null;
+        if (range is { } visible && (visible.StartTicks > extent.StartTicks || visible.EndTicks < extent.EndTicks))
+        {
+            long start = Math.Max(visible.StartTicks, extent.StartTicks);
+            long end = Math.Min(visible.EndTicks, extent.EndTicks);
+            next = end > start ? new TimeRange(start, end) : null;
+        }
+
+        if (disposed || next == visibleRange)
+        {
+            return;
+        }
+
+        visibleRange = next;
+        SyncIntervalScope();
+        RaiseScopeChanged();
+    }
+
+    /// <summary>
+    /// The scope lock (§6.4): keeps the visible range as the analysis interval, so zooming and panning to look around no
+    /// longer change what the ranking counts. The kept range is drawn on the axis and cleared like any brush.
+    /// </summary>
+    public bool KeepVisibleRange()
+    {
+        if (!ScopeFollowsView || VisibleScope is not { } visible)
+        {
+            return false;
+        }
+
+        SelectInterval(visible);
+        return true;
+    }
+
+    private void RaiseScopeChanged()
+    {
+        OnPropertyChanged(nameof(ScopeInterval));
+        OnPropertyChanged(nameof(ScopeFollowsView));
+        OnPropertyChanged(nameof(CanKeepVisibleRange));
+        OnPropertyChanged(nameof(ShowsRankingScope));
+        OnPropertyChanged(nameof(RankingScopeText));
+        OnPropertyChanged(nameof(IntervalLabel));
+    }
 
     /// <summary>What the ranking counts, stated wherever totals appear so a brushed number is never read as a session total.</summary>
     public string RankingScopeText
@@ -871,8 +942,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         {
             if (evidenceSource is null || scopedInterval is not { } interval) return string.Empty;
             string range = WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture);
-            return intervalProblem is { } problem ? $"Could not rank within {range}: {problem}"
-                : intervalLoading ? $"Ranking within {range}…"
+            bool visible = selectedInterval is null;
+            string where = visible ? $"the visible {range}" : range;
+            return intervalProblem is { } problem ? $"Could not rank within {where}: {problem}"
+                : intervalLoading ? $"Ranking within {where}…"
+                : visible ? $"Ranked within {where} · follows zoom and pan until you keep it"
                 : $"Ranked within {range} · Esc at the machine rung clears it";
         }
     }
@@ -2620,6 +2694,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public string IntervalLabel => selectedInterval is { } interval
         ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
+        : VisibleScope is { } visible ? "Visible " + WorkspaceTime.FormatRange(visible, CultureInfo.CurrentCulture)
         : emptyWorkspace ? "No time recorded yet"
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
@@ -2708,7 +2783,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
-        TimeRange viewport = selectedInterval ?? ladder.Current.Viewport;
+        // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5).
+        TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         bool machine = realOverview && ladder.Current.Level == DetailLevel.Machine;
         LadderDescent descent = machine && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
@@ -2741,7 +2817,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         LadderDescent descent = LadderProjection.EvidenceDescentFor(ladder.Current,
-            selectedInterval ?? ladder.Current.Viewport,
+            ScopeInterval ?? ladder.Current.Viewport,
             new(DetailLevel.Channel, channel.Key, channel.Name),
             "Evidence was reached from a channel chosen in the channel list.");
         if (!TryDescend(descent))
@@ -3263,7 +3339,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private void SyncIntervalScope()
     {
-        if (evidenceSource is null || selectedInterval == scopedInterval)
+        if (evidenceSource is null || ScopeInterval == scopedInterval)
         {
             return;
         }
@@ -3271,9 +3347,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
-        scopedInterval = selectedInterval;
+        scopedInterval = ScopeInterval;
         intervalProblem = null;
-        if (selectedInterval is not { } interval)
+        if (scopedInterval is not { } interval)
         {
             intervalLoading = false;
             ApplyScope(null);
@@ -3290,6 +3366,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         intervalLoading = true;
         OnPropertyChanged(nameof(RankingScopeText));
+        OnPropertyChanged(nameof(ShowsRankingScope));
         try
         {
             SessionIntervalCounts counts = await source.CountAsync(interval, query.Token);
@@ -3409,6 +3486,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         selectedInterval = changed.Interval;
         SyncIntervalScope();
+        RaiseScopeChanged();
         if (changed.ProcessId is null)
         {
             selectedProcess = null;
