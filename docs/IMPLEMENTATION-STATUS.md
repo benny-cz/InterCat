@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 147 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 148 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 256 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
@@ -63,6 +63,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 148 — a million rows fit the reader cache (§20.1, §12, S2):**
+  - **Found:** the 1M-row benchmark session holds 169 MiB of segment payload. The 64 MiB cache kept one segment of
+    four, so every warm projection, timeline detail and focused count re-read and re-hashed the rest. A sampled trace
+    put that at the largest share of warm time.
+  - **Measured before choosing**, warm medians by budget on that session: projection 315 → 127 ms, timeline detail
+    158 → 29 ms, group focus 329 → 145 ms at 256 MiB. Without the synthetic rows a run-once method keeps alive, the
+    product's own heap is the cached readers plus small derivations.
+  - **Changed:** the admission budget is 256 MiB, half of §12's 512 MiB analysis budget. Since revision 142 a viewer
+    keeps readers for the session it shows only, and a capture holds them once.
+  - **Window level** (`bench/results/interaction-latency-20260926T173620Z`, 1M rows): group level change 681 → 350
+    ms, process 315 → 95 ms, channel 414 → 139 ms, brush to ranking 337 → 182 ms, open 1,374 → 1,204 ms. Canvas pan,
+    zoom and hover are unchanged.
+  - **Still open:** the cliff returns near 1.5M rows. Column-granular reads are the structural fix (open work item 1).
+  - **Tests:** unchanged (a tunable); every cache test runs against the constant or its own budget.
 - **Revision 147 — the rest of the chrome, legible in high contrast (§6.1, §6.6):**
   - **Gap:** revision 140 restated only buttons and text boxes. Menus, tool tips, scroll bars and list selection kept
     the control theme's faint look in high contrast, and revision 146's Theme menu is how a user now reaches it.
@@ -792,13 +806,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
    re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
    S4 and incremental derivation land.
-   - **Measured next step:** at 1M rows the four segments hold about 200 MB, beyond the 64 MiB reader cache, so a warm
-     query re-reads and re-verifies most of them. In a sampled trace of warm projections and focused counts, opening
-     segments took 13.7% of the time: a whole-file SHA-256 took 9.1% and column checksums 8.8%. `BindingsOf` took 6.5%
-     and the per-row tallies about 3%. A plain scan of time and mechanism is 30 ms per million rows. The timeline's
-     detail over the same rows takes about 190 ms. §20.1 already allows mapping fixed-width columns: map segments,
-     verify each file once per store, and let the page cache hold them. Mind that Windows refuses to delete a mapped
-     file, so pruning and retention must unmap first.
+   - **Measured next step:** a warm query re-reads and re-verifies every segment the reader cache cannot hold. In a
+     sampled trace at 1M rows under the old 64 MiB budget, opening segments took 13.7% of the time: the whole-file
+     SHA-256 took 9.1% and column checksums 8.8%. Revision 148 raised the budget to 256 MiB, so a million rows (169 MiB)
+     now fit, but the cliff returns near 1.5M rows. The structural fix is **column-granular reads**. Open would read
+     the header, the directories and the time column; every other column would load on first use under its own CRC-32C.
+     The column and time-block directories and the variable chunk are covered only by the whole-file trailer, so this
+     needs a segment minor version with checksums of their own (the header's reserved word, and a text column entry's).
+     Mapping files instead would fight retention, since Windows will not delete a mapped file.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
    count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
@@ -830,6 +845,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 148 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,061 tests: 1,059
+  passed, 2 skipped**, zero failures.
 - Revision 147 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,061 tests: 1,059
   passed, 2 skipped**, zero failures.
 - Revision 146 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,060 tests: 1,058
@@ -874,8 +891,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 147, **1,059 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 146: 1,058 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 148, **1,059 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 147: 1,059 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

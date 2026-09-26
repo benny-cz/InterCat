@@ -233,11 +233,13 @@ public sealed class SessionStore
     public const int MaximumStagedFiles = 4_096;
 
     /// <summary>
-    /// Per open store, the immutable segment and dictionary payload most recently used by queries. This is a strict
-    /// admission budget over published payload bytes, not an entry count or a managed-memory measurement; a segment
-    /// larger than it is served without entering the cache (R8, §12).
+    /// Per open store, the verified immutable segment and dictionary payload its queries keep in memory, admitted while
+    /// it fits (§20.1). This is a strict admission budget over published payload bytes, not an entry count or a
+    /// managed-memory measurement; a reader that does not fit is served without entering the cache (R8, §12). Half of
+    /// §12's 512 MiB analysis budget: a million-row session's 169 MiB fits, which made its warm projections, timeline
+    /// detail and focused counts 2.3 to 5.4 times faster than at 64 MiB.
     /// </summary>
-    public const long DefaultSegmentReaderCacheBytes = 64L * 1024 * 1024;
+    public const long DefaultSegmentReaderCacheBytes = 256L * 1024 * 1024;
 
     /// <summary>
     /// How long a reader waits while a writer holds the evidence guard exclusively. A writer holds it only while it
