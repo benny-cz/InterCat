@@ -970,8 +970,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
         if (savedNavigation is not null)
         {
-            // The timeline keeps what it drew until this generation's own counts replace it, as the graph keeps its layout.
+            // The timeline keeps what it drew until this generation's own counts replace it, as the graph keeps its layout,
+            // and the ranking keeps its scope's counts instead of blinking back to the whole session meanwhile (§6.4).
             replacement.AdoptTimeline(workspace.CarryTimeline());
+            replacement.AdoptScope(workspace.CarryScope());
         }
 
         workspace.PropertyChanged -= OnWorkspaceChanged;
@@ -1188,7 +1190,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ToolTip.SetTip(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
             ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
                 : "Browse admitted paired TCP channels involving this process instance.")
-                + " Choosing one opens its source records; a time brush applies to them."
+                + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
             : "Open a session, or return to Machine or Process to browse paired channels.");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped.

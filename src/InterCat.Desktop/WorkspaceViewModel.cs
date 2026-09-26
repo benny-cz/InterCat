@@ -76,6 +76,12 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState>? Forward = null);
 
 /// <summary>
+/// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
+/// interval they answer. The next publication of the same session shows them, marked pending, until its own arrive.
+/// </summary>
+public sealed record ScopeCarry(TimeRange? VisibleRange, TimeRange? Interval, SessionIntervalCounts? Counts);
+
+/// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
 /// for, by that focus's key. The next publication of the same session shows them until its own counts arrive.
 /// </summary>
@@ -142,6 +148,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     // The interval the displayed counts actually answer; a brush still being counted is not yet applied.
     private TimeRange? appliedInterval;
+
+    // The counts on screen and the interval they answer: this generation's own, or an earlier publication's standing in
+    // while this one's are read. A stand-in is shown and carried on, but never claimed as applied or exported.
+    private SessionIntervalCounts? displayedCounts;
+    private TimeRange? displayedCountsInterval;
+    private bool scopeStandsIn;
     private CancellationTokenSource? intervalQuery;
     private bool intervalLoading;
     private string? intervalProblem;
@@ -621,6 +633,26 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>What this workspace's ranking counted, for the next publication of the same session to show until its own arrive.</summary>
+    public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts);
+
+    /// <summary>
+    /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
+    /// and shows that publication's counts while this one's own are read. Nothing stands in once they have arrived, or
+    /// when the scope is the whole session.
+    /// </summary>
+    public void AdoptScope(ScopeCarry carry)
+    {
+        ArgumentNullException.ThrowIfNull(carry);
+        ShowVisibleRange(carry.VisibleRange);
+        if (carry.Counts is { } counts && evidenceSource is { } source && counts.SessionId == source.SessionId
+            && scopedInterval is not null && intervalLoading && scopedSnapshot is null)
+        {
+            ApplyScope(counts, carry.Interval, standIn: true);
+            OnPropertyChanged(nameof(RankingScopeText));
+        }
+    }
+
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds);
@@ -945,6 +977,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             bool visible = selectedInterval is null;
             string where = visible ? $"the visible {range}" : range;
             return intervalProblem is { } problem ? $"Could not rank within {where}: {problem}"
+                : intervalLoading && scopeStandsIn ? $"Ranking within {where}… · the previous publication's counts until then"
                 : intervalLoading ? $"Ranking within {where}…"
                 : visible ? $"Ranked within {where} · follows zoom and pan until you keep it"
                 : $"Ranked within {range} · Esc at the machine rung clears it";
@@ -3383,7 +3416,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            ApplyScope(OverviewWorkspace.WithinInterval(wholeSnapshot, counts));
+            ApplyScope(counts, interval, standIn: false);
         }
         catch (OperationCanceledException) when (query.IsCancellationRequested)
         {
@@ -3401,12 +3434,32 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>
+    /// Shows interval counts: this generation's own once read, or an earlier publication's standing in while they are.
+    /// A stand-in keeps the ranking, graph and tables on the scope the user chose instead of blinking back to whole-
+    /// session numbers for the length of a count (§6.4); it is marked pending and replaced, never merged.
+    /// </summary>
+    private void ApplyScope(SessionIntervalCounts? counts, TimeRange? counted, bool standIn)
+    {
+        displayedCounts = counts;
+        displayedCountsInterval = counts is null ? null : counted;
+        scopeStandsIn = standIn && counts is not null;
+        ApplyScope(counts is null ? null : OverviewWorkspace.WithinInterval(wholeSnapshot, counts));
+    }
+
     /// <summary>Re-projects the ranking and the relationship table over the scoped or whole snapshot, keeping the selected row.</summary>
     private void ApplyScope(WorkspaceSnapshot? scoped)
     {
         string? rowKey = selectedRung?.Key;
         scopedSnapshot = scoped;
-        appliedInterval = scoped is null ? null : scopedInterval;
+        if (scoped is null)
+        {
+            displayedCounts = null;
+            displayedCountsInterval = null;
+            scopeStandsIn = false;
+        }
+
+        appliedInterval = scoped is null || scopeStandsIn ? null : scopedInterval;
         if (scoped is null)
         {
             graphDisplay = wholeDisplay;
@@ -3470,6 +3523,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 ? RedactedShareExport.Evidence(format, context, read.Records)
                 : WorkspaceExport.Evidence(format, context, read.Records);
             return new(content, context, read.Records.Count);
+        }
+
+        // A stand-in is an earlier publication's answer; the export names this generation, so it waits for its own counts,
+        // through a brush or two changed meanwhile, and refuses rather than wait on a count that no longer runs.
+        for (int wait = 0; scopeStandsIn; wait++)
+        {
+            if (disposed || wait == 4)
+            {
+                throw new InvalidOperationException(
+                    "This publication's interval counts are still being read; export again once the ranking says it is ranked.");
+            }
+
+            await IntervalReady.WaitAsync(cancellationToken);
         }
 
         ExportContext ranked = DescribeExport(exportedUtc);

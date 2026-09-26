@@ -100,6 +100,66 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.4: a live publication keeps the scope's counts on screen, marked pending, until its own arrive")]
+    public async Task APublicationKeepsTheScopeCountsUntilItsOwnArrive()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var first = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await first.LayoutReady;
+        string whole = first.RungRows.Single().Observations;
+        TimeRange extent = first.Snapshot.Extent;
+        var brush = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 4));
+        first.SelectInterval(brush);
+        await first.IntervalReady;
+        Dispatch();
+        string counted = first.RungRows.Single().Observations;
+        Assert.NotEqual(whole, counted);
+
+        // The next publication counts the brush afresh. Until it has, the previous publication's counts stand in, said to
+        // be pending, rather than the ranking blinking back to whole-session numbers; they are never claimed as its own.
+        Publish(session.Store, Exchange(100, 10));
+        window.ApplyCaptureUpdate(Update(session));
+        var second = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.NotSame(first, second);
+        Assert.True(second.IsRankedWithinInterval);
+        Assert.Equal(counted, second.RungRows.Single().Observations);
+        Assert.EndsWith("the previous publication's counts until then", second.RankingScopeText, StringComparison.Ordinal);
+        Assert.Null(second.DescribeExport(DateTimeOffset.UnixEpoch).Interval);
+
+        // An export asked for meanwhile waits for this generation's own counts, and names them.
+        Task<SessionExportResult> export = second.ExportAsync(ExportFormat.Json, DateTimeOffset.UnixEpoch);
+        await second.IntervalReady;
+        Dispatch();
+        Assert.StartsWith("Ranked within", second.RankingScopeText, StringComparison.Ordinal);
+        SessionExportResult exported = await export;
+        Assert.Equal(brush, exported.Context.Interval);
+        Assert.Equal(second.DisplayedGeneration, exported.Context.Generation);
+
+        // A zoomed view carries the same way: its range is the next publication's scope before the view is bound to it.
+        second.ClearSelection();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        timeline.SetViewport(brush);
+        timeline.RequestDetailNow();
+        await second.IntervalReady;
+        Dispatch();
+        Publish(session.Store, Exchange(110, 10));
+        window.ApplyCaptureUpdate(Update(session));
+        var third = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.Equal(brush, third.ScopeInterval);
+        Assert.True(third.ScopeFollowsView);
+        Assert.Equal(counted, third.RungRows.Single().Observations);
+        Assert.Contains("the visible", third.RankingScopeText, StringComparison.Ordinal);
+        await third.IntervalReady;
+        Dispatch();
+        Assert.StartsWith("Ranked within the visible ", third.RankingScopeText, StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.4: a zoomed timeline ranks what it shows once it settles, and Keep this range holds that scope")]
     public async Task AZoomedTimelineRanksWhatItShows()
     {

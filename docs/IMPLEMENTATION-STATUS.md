@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 135 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 136 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 136 — a live capture keeps the scope's counts on screen (§6.4, R7):**
+  - **Found:** each publication is a new workspace, which counts its scope afresh. Until it had, a brushed or (since
+    revision 134) zoomed ranking, graph and tables blinked back to whole-session numbers under "Ranking within …",
+    once per publication, for the length of the count.
+  - **Fixed:** the previous publication's counts stand in, marked "… the previous publication's counts until then",
+    and this generation's own replace them, never merged, as the timeline's carried detail does. A zoomed view's range
+    is carried too, so the next publication starts counting it before the view is bound.
+  - **Never claimed:** a stand-in leaves the export's interval empty, and an export asked for meanwhile waits for this
+    generation's own counts. It refuses rather than wait on a count that no longer runs.
+  - **Checked:** without the carry, the new workspace is not ranked within the interval at all.
+  - **Test harness:** revision 132's forward test failed once in Release. A plain xUnit test has no dispatcher, so a
+    count's continuation ran on a pool thread beside the navigation it followed and overwrote its projection. The app
+    never does this, because the UI dispatcher serializes both. `SingleThreadedContext` now runs such real-session tests
+    on one thread with a message loop, as the dispatcher would.
+  - **Also:** the channel browser's tooltip says its records follow the ranking's time scope, a brush or else the
+    zoomed range, not only a brush.
+  - **Tests:** one UI test for a brush, the export and a zoomed view across two publications (+1).
 - **Revision 135 — the minimum window during a capture (§6.8, §3.2):** found by looking at the evidence rung while
   recording at 1080×700.
   - **Card:** it kept its two idle actions, disabled, and its introduction, so the ranked list had room for about one
@@ -552,6 +569,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 136 was built and tested in the same Linux container: Debug and Release both ran **1,000 tests: 912 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 135 was built and tested in the same Linux container: Debug and Release both ran **999 tests: 911 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 134 was built and tested in the same Linux container: Debug and Release both ran **998 tests: 910 passed, 2 skipped, 86 failed**, and the

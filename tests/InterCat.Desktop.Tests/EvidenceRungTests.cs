@@ -549,7 +549,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§6.4: with nothing brushed the ranking and E count the visible range, a brush wins, and keeping the range holds it")]
-    public async Task TheVisibleRangeIsTheScopeWhenNothingIsBrushed()
+    public void TheVisibleRangeIsTheScopeWhenNothingIsBrushed() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -613,7 +613,7 @@ public sealed class EvidenceRungTests
         await workspace.IntervalReady;
         Assert.Equal(visible, workspace.ScopeInterval);
         Assert.Equal("40", workspace.RungRows.Single().Observations);
-    }
+    });
 
     [Fact]
     public async Task AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope()

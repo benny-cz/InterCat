@@ -20,7 +20,7 @@ public sealed class NavigationHistoryTests
     private const int Exchanges = 120;
 
     [Fact(DisplayName = "§6.7: an ascent brings back the interval its rung was left with, and the ranking counts that interval")]
-    public async Task AnAscentBringsBackTheIntervalItsRungWasLeftWith()
+    public void AnAscentBringsBackTheIntervalItsRungWasLeftWith() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -60,10 +60,10 @@ public sealed class NavigationHistoryTests
         Assert.False(workspace.IsRankedWithinInterval);
         Assert.Equal(string.Empty, workspace.RankingScopeText);
         Assert.Equal(whole, workspace.RungRows.Single().Observations);
-    }
+    });
 
     [Fact(DisplayName = "§6.7: going forward re-enters the rung left, with its interval, its filters and its graph")]
-    public async Task GoingForwardReentersTheRungLeft()
+    public void GoingForwardReentersTheRungLeft() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -105,7 +105,7 @@ public sealed class NavigationHistoryTests
         Assert.Equal(caption, workspace.TimelineCaption);
         Assert.False(workspace.CanGoForward);
         Assert.Equal("Nothing to go forward to (Alt+Right)", workspace.ForwardLabel);
-    }
+    });
 
     [Fact(DisplayName = "§6.7: a descent elsewhere or a removed filter ends forward history; the next rung is always named")]
     public void ADescentElsewhereOrARemovedFilterEndsForwardHistory()
