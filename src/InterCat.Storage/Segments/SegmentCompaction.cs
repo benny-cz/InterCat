@@ -277,10 +277,13 @@ public static class SegmentCompaction
             long? fieldRows = null;
             if (bytes < options.TargetBytes)
             {
-                rows = observations.Sum(dependency => (long)SessionSegments.Open(store.Root, manifest, dependency.Name).RowCount);
+                // A plan needs counts, not rows: each header's checksummed count, which the compaction's own reads of
+                // these segments then hold to their columns.
+                rows = observations.Sum(dependency =>
+                    (long)SessionSegments.DeclaredRowCount(store.Root, manifest, dependency.Name));
                 fieldRows = dependencies
                     .Where(dependency => IsFieldSegment(dependency.Name))
-                    .Sum(dependency => (long)SessionSegments.Open(store.Root, manifest, dependency.Name).RowCount);
+                    .Sum(dependency => (long)SessionSegments.DeclaredRowCount(store.Root, manifest, dependency.Name));
             }
 
             units.Add(new(

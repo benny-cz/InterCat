@@ -322,7 +322,7 @@ At open, before a row is served:
 - the header's magic, major version and required feature bits;
 - the header's own CRC-32C;
 - from minor 1, the directories' CRC-32C, before an entry is interpreted;
-- the SHA-256 trailer over the whole file;
+- the SHA-256 trailer over the whole file, when the reader holds the whole file (below);
 - every declared extent against the file's real length, and against the row count and each column's width;
 - each column's known and unknown counts against its row count;
 - every time block continues the block before it and together they cover every row;
@@ -340,6 +340,13 @@ column's values and null bitmap, and the variable chunk. Only alignment padding 
 what lets a reader check exactly the bytes it reads, rather than hash a whole file to trust one column of it. The
 trailer is still written and still pins the whole file, and a store's manifest records its length and digest
 (`contracts/store-v1.md` §3).
+
+A reader of a published segment reads what it checks. At minor 1 it reads the header and both directories, then the
+time column, which it checks as above; it reads every other column from the file when a caller first asks for it,
+and holds only what it has read. Each read first checks that the file still has the length its generation recorded.
+Such a reader never hashes the whole file. A minor-0 segment is read whole and checked against its trailer at open,
+because only the trailer covers its directories and its chunk. A segment given to a reader in memory is checked
+against its trailer too.
 
 A dictionary-coded column whose dictionary was not supplied refuses rather than returning the code rendered
 as a value. A row whose enumeration carries a code §23 does not define refuses. An empty segment is never

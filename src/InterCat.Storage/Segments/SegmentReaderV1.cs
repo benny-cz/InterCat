@@ -83,27 +83,35 @@ public readonly ref struct SegmentColumnSlice
 /// first use, and the ordering and time-block metadata against the time column itself.
 /// </summary>
 /// <remarks>
-/// The bytes are held as given. Fixed-width plain columns are exposed as spans over them, so a caller reads
-/// a column without decoding it; nothing here copies a column to serve one.
+/// Fixed-width plain columns are exposed as spans over their bytes, so a caller reads a column without decoding it.
+/// A segment opened from memory is held as given and each column is a slice of it. A published minor-1 segment is
+/// opened by its header, directories and time column, and every other column is read from the file when it is
+/// first asked for: a query that reads ten of 39 columns reads, checks and holds ten.
 /// </remarks>
 public sealed class SegmentReaderV1
 {
-    /// <summary>One flag per defined column code; a column's code is refused at open unless §20.1 defines it.</summary>
+    /// <summary>One slot per defined column code; a column's code is refused at open unless §20.1 defines it.</summary>
     private static readonly int ColumnCodeSlots = Enum.GetValues<SegmentColumnId>().Max(id => (int)id) + 1;
 
-    private readonly ReadOnlyMemory<byte> file;
+    private readonly SegmentBytes source;
     private readonly Dictionary<SegmentColumnId, SegmentColumnDescriptor> columns;
 
     /// <summary>
-    /// Which columns have passed every check, by column code. A store shares one reader between concurrent queries
-    /// (§20.1), so a column is marked only after its checks pass: another thread either sees the mark or checks the
-    /// immutable bytes again itself, and no thread reads a column it has not seen pass.
+    /// Each column's bytes once they passed every check, by column code. A store shares one reader between concurrent
+    /// queries (§20.1), so a column is published only after its checks pass: another thread either finds it or reads
+    /// and checks the immutable bytes itself, and no thread reads a column it has not seen pass.
     /// </summary>
-    private readonly bool[] verified = new bool[ColumnCodeSlots];
+    private readonly ColumnBytes?[] loaded = new ColumnBytes?[ColumnCodeSlots];
     private readonly Dictionary<ushort, SegmentDictionaryV1> dictionaries;
 
+    /// <summary>The variable chunk and its checksum once a chunk-encoded column needed it; published as the columns are.</summary>
+    private ChunkBytes? chunk;
+
+    /// <summary>The bytes a reader that reads its file in pieces holds: the columns and chunk it has read.</summary>
+    private long residentBytes;
+
     private SegmentReaderV1(
-        ReadOnlyMemory<byte> file,
+        SegmentBytes source,
         Guid segmentId,
         CaptureId captureId,
         ClockId clockId,
@@ -120,7 +128,7 @@ public sealed class SegmentReaderV1
         Dictionary<ushort, SegmentDictionaryV1> dictionaries,
         ushort formatMinor)
     {
-        this.file = file;
+        this.source = source;
         SegmentId = segmentId;
         CaptureId = captureId;
         ClockId = clockId;
@@ -173,16 +181,35 @@ public sealed class SegmentReaderV1
     internal int VariableChunkLength { get; }
 
     /// <summary>
+    /// The segment bytes this reader holds: the whole file when it was opened from memory or read whole at minor 0,
+    /// else the columns and variable chunk it has read so far. Decoded dictionaries are not counted.
+    /// </summary>
+    public long ResidentBytes => source.Whole is { } whole ? whole.Length : Interlocked.Read(ref residentBytes);
+
+    /// <summary>
     /// Opens a segment, with the dictionaries its columns reference. A column whose dictionary was not
     /// supplied is readable as a code and refuses to produce a value, because guessing one would invent a
     /// name that no evidence carries.
     /// </summary>
     public static SegmentReaderV1 Open(
         ReadOnlyMemory<byte> segment,
-        IReadOnlyList<SegmentDictionaryV1>? dictionaries = null)
+        IReadOnlyList<SegmentDictionaryV1>? dictionaries = null) =>
+        Open(new ResidentSegmentBytes(segment), segment, dictionaries);
+
+    /// <summary>
+    /// Opens a segment from <paramref name="source"/>, given its first bytes: at least its header and both directories.
+    /// A source held whole is checked against its trailer; one read in pieces must be minor 1 or later, because only
+    /// then does every byte a reader interprets have a checksum of its own.
+    /// </summary>
+    internal static SegmentReaderV1 Open(
+        SegmentBytes source,
+        ReadOnlyMemory<byte> prefix,
+        IReadOnlyList<SegmentDictionaryV1>? dictionaries)
     {
-        ReadOnlySpan<byte> file = segment.Span;
-        if (file.Length < SegmentFormatV1.HeaderLength + SegmentFormatV1.TrailerLength)
+        ArgumentNullException.ThrowIfNull(source);
+        ReadOnlySpan<byte> file = prefix.Span;
+        if (source.Length < SegmentFormatV1.HeaderLength + SegmentFormatV1.TrailerLength
+            || file.Length < SegmentFormatV1.HeaderLength)
         {
             throw new InvalidDataException("A segment-v1 file is shorter than its own header.");
         }
@@ -259,10 +286,10 @@ public sealed class SegmentReaderV1
                 + $"{SegmentFormatV1.MaximumRowsPerSegment} rows is refused.");
         }
 
-        if (fileLength != file.Length || fileLength > SegmentFormatV1.MaximumSegmentBytes)
+        if (fileLength != source.Length || fileLength > SegmentFormatV1.MaximumSegmentBytes)
         {
             throw new InvalidDataException(
-                $"This segment declares {fileLength} bytes and is {file.Length}.");
+                $"This segment declares {fileLength} bytes and is {source.Length}.");
         }
 
         if (directoryOffset != SegmentFormatV1.HeaderLength
@@ -282,18 +309,33 @@ public sealed class SegmentReaderV1
             throw new InvalidDataException("A segment-v1 variable chunk does not fit the file that declares it.");
         }
 
+        if (file.Length < dataStart)
+        {
+            throw new InvalidDataException("A segment-v1 directory is not where its header says it is.");
+        }
+
         if (minor >= SegmentFormatV1.StructureChecksumMinor)
         {
             VerifyDirectories(file, (int)dataStart);
         }
 
-        Span<byte> digest = stackalloc byte[SegmentFormatV1.TrailerLength];
-        SHA256.HashData(file[..(int)(fileLength - SegmentFormatV1.TrailerLength)], digest);
-        if (!CryptographicOperations.FixedTimeEquals(digest, file[(int)(fileLength - SegmentFormatV1.TrailerLength)..]))
+        if (source.Whole is { } whole)
         {
-            throw new InvalidDataException(
-                $"Segment {segmentId:D} fails its trailing digest: its bytes are not the bytes that were "
-                + "published.");
+            ReadOnlySpan<byte> all = whole.Span;
+            Span<byte> digest = stackalloc byte[SegmentFormatV1.TrailerLength];
+            SHA256.HashData(all[..(int)(fileLength - SegmentFormatV1.TrailerLength)], digest);
+            if (!CryptographicOperations.FixedTimeEquals(digest, all[(int)(fileLength - SegmentFormatV1.TrailerLength)..]))
+            {
+                throw new InvalidDataException(
+                    $"Segment {segmentId:D} fails its trailing digest: its bytes are not the bytes that were "
+                    + "published.");
+            }
+        }
+        else if (minor < SegmentFormatV1.StructureChecksumMinor)
+        {
+            // Only the trailer covers a minor-0 segment's directories and chunk, so one is never read in pieces.
+            throw new InvalidOperationException(
+                "A segment written before minor 1 is read whole and checked by its trailer, never a column at a time.");
         }
 
         var ordered = new List<SegmentColumnDescriptor>(columnCount);
@@ -376,7 +418,7 @@ public sealed class SegmentReaderV1
         }
 
         var reader = new SegmentReaderV1(
-            segment,
+            source,
             segmentId,
             captureId,
             clockId,
@@ -473,6 +515,28 @@ public sealed class SegmentReaderV1
     }
 
     /// <summary>
+    /// A segment's minor version and where its two directories end, from its checksummed header alone: how much of a
+    /// published file a reader must read before it can open it. The counts are held to their bounds, so a header
+    /// cannot ask for more than a segment-v1 directory can be.
+    /// </summary>
+    internal static (ushort Minor, int DirectoriesEnd) DirectoriesOf(ReadOnlySpan<byte> header)
+    {
+        _ = DeclaredRowCount(header);
+        ushort columnCount = BinaryPrimitives.ReadUInt16LittleEndian(header[88..]);
+        ushort timeBlockCount = BinaryPrimitives.ReadUInt16LittleEndian(header[90..]);
+        if (columnCount == 0 || timeBlockCount is 0 or > SegmentFormatV1.MaximumTimeBlocks)
+        {
+            throw new InvalidDataException("A segment-v1 directory is not where its header says it is.");
+        }
+
+        return (
+            BinaryPrimitives.ReadUInt16LittleEndian(header[10..]),
+            SegmentFormatV1.HeaderLength
+                + (columnCount * SegmentFormatV1.ColumnEntryLength)
+                + (timeBlockCount * SegmentFormatV1.TimeBlockEntryLength));
+    }
+
+    /// <summary>
     /// Resolves and verifies one column once, for a caller that reads it for every row. A variable-reference
     /// column has no numeric value and is refused here rather than read as its offset.
     /// </summary>
@@ -485,14 +549,14 @@ public sealed class SegmentReaderV1
                 $"Column {column.Id} holds a variable reference, not a number. Read it as text.");
         }
 
-        Verify(column);
+        ColumnBytes bytes = Bytes(column);
         int width = column.Encoding == SegmentColumnEncoding.Dictionary
             ? sizeof(uint)
             : SegmentFormatV1.WidthOf(column.Type);
         return new(
             column,
-            file.Span.Slice(column.ValueOffset, column.ValueLength),
-            column.Nullable ? file.Span.Slice(column.NullBitmapOffset, column.NullBitmapLength) : [],
+            bytes.Values.Span,
+            bytes.Nulls.Span,
             width);
     }
 
@@ -507,8 +571,7 @@ public sealed class SegmentReaderV1
     public ReadOnlySpan<byte> ValueBytes(SegmentColumnId id)
     {
         SegmentColumnDescriptor column = Require(id);
-        Verify(column);
-        return file.Span.Slice(column.ValueOffset, column.ValueLength);
+        return Bytes(column).Values.Span;
     }
 
     /// <summary>Whether a row has a value in a column. A column that is not nullable always has one.</summary>
@@ -521,8 +584,7 @@ public sealed class SegmentReaderV1
             return true;
         }
 
-        Verify(column);
-        return (file.Span[column.NullBitmapOffset + (row >> 3)] & (1 << (row & 7))) != 0;
+        return (Bytes(column).Nulls.Span[row >> 3] & (1 << (row & 7))) != 0;
     }
 
     /// <summary>The unsigned value of a row, or null when the row has none.</summary>
@@ -621,7 +683,7 @@ public sealed class SegmentReaderV1
             ? throw new InvalidDataException(
                 $"Row {row} of column {column.Id} spans [{offset}, {offset + length}) of a "
                 + $"{VariableChunkLength}-byte chunk.")
-            : Encoding.UTF8.GetString(file.Span.Slice(VariableChunkOffset + (int)offset, (int)length));
+            : Encoding.UTF8.GetString(ChunkOf(column).Span.Slice((int)offset, (int)length));
     }
 
     /// <summary>The descriptor schema behind a row, resolved through the segment's schema dictionary.</summary>
@@ -890,8 +952,7 @@ public sealed class SegmentReaderV1
     private void VerifyOrderAndExtents()
     {
         SegmentColumnDescriptor time = Require(SegmentColumnId.NativeTicks);
-        Verify(time);
-        ReadOnlySpan<byte> ticks = file.Span.Slice(time.ValueOffset, time.ValueLength);
+        ReadOnlySpan<byte> ticks = Bytes(time).Values.Span;
         long previous = long.MinValue;
         for (int row = 0; row < RowCount; row++)
         {
@@ -1005,41 +1066,68 @@ public sealed class SegmentReaderV1
         }
     }
 
-    private void Verify(SegmentColumnDescriptor column)
+    /// <summary>
+    /// One column's bytes, read from the source and checked the first time any caller asks for them. Two threads can
+    /// both read and check a column; the first to publish its copy is the one every later caller gets.
+    /// </summary>
+    private ColumnBytes Bytes(SegmentColumnDescriptor column)
     {
-        ref bool passed = ref verified[(int)column.Id];
-        if (Volatile.Read(ref passed))
+        ref ColumnBytes? slot = ref loaded[(int)column.Id];
+        if (Volatile.Read(ref slot) is { } known)
         {
-            return;
+            return known;
         }
 
-        VerifyBytes(column);
+        (ReadOnlyMemory<byte> values, ReadOnlyMemory<byte> nulls) = source.ReadColumn(column);
+        VerifyBytes(column, values.Span, nulls.Span);
+        if (column.Encoding == SegmentColumnEncoding.VariableReference)
+        {
+            _ = ChunkOf(column);
+        }
 
-        // Published only now, with release semantics: a thread that reads the mark reads a column that passed.
-        Volatile.Write(ref passed, true);
+        // Published only now, with release semantics: a thread that finds the column finds bytes that passed.
+        var bytes = new ColumnBytes(values, nulls);
+        if (Interlocked.CompareExchange(ref slot, bytes, null) is { } raced)
+        {
+            return raced;
+        }
+
+        if (source.Whole is null)
+        {
+            _ = Interlocked.Add(ref residentBytes, values.Length + nulls.Length);
+        }
+
+        return bytes;
     }
 
-    private void VerifyBytes(SegmentColumnDescriptor column)
+    /// <summary>
+    /// The variable chunk a chunk-encoded column's references point into, read once and checked against the column's
+    /// word for it. A minor-0 segment names no checksum for its chunk, which only its trailer covers.
+    /// </summary>
+    private ReadOnlyMemory<byte> ChunkOf(SegmentColumnDescriptor column)
     {
-        if (Crc32C.Compute(file.Span.Slice(column.ValueOffset, column.ValueLength)) != column.ValueCrc32C)
+        bool checksummed = FormatMinor >= SegmentFormatV1.StructureChecksumMinor;
+        if (Volatile.Read(ref chunk) is not { } known)
+        {
+            ReadOnlyMemory<byte> bytes = source.Read(VariableChunkOffset, VariableChunkLength);
+            var candidate = new ChunkBytes(bytes, checksummed ? Crc32C.Compute(bytes.Span) : 0);
+            known = Interlocked.CompareExchange(ref chunk, candidate, null) ?? candidate;
+            if (ReferenceEquals(known, candidate) && source.Whole is null)
+            {
+                _ = Interlocked.Add(ref residentBytes, bytes.Length);
+            }
+        }
+
+        return !checksummed || known.Crc32C == column.VariableChunkCrc32C
+            ? known.Bytes
+            : throw new InvalidDataException($"Column {column.Id}'s variable chunk fails its checksum.");
+    }
+
+    private void VerifyBytes(SegmentColumnDescriptor column, ReadOnlySpan<byte> values, ReadOnlySpan<byte> bitmap)
+    {
+        if (Crc32C.Compute(values) != column.ValueCrc32C)
         {
             throw new InvalidDataException($"Column {column.Id} fails its checksum.");
-        }
-
-        if (column.Nullable
-            && Crc32C.Compute(file.Span.Slice(column.NullBitmapOffset, column.NullBitmapLength))
-                != column.NullBitmapCrc32C)
-        {
-            throw new InvalidDataException($"Column {column.Id}'s null bitmap fails its checksum.");
-        }
-
-        // A chunk-encoded column's values are references; its text is in the chunk they point into. A minor-0 segment
-        // carries no checksum for the chunk, which its trailer covers alone.
-        if (column.Encoding == SegmentColumnEncoding.VariableReference
-            && FormatMinor >= SegmentFormatV1.StructureChecksumMinor
-            && Crc32C.Compute(file.Span.Slice(VariableChunkOffset, VariableChunkLength)) != column.VariableChunkCrc32C)
-        {
-            throw new InvalidDataException($"Column {column.Id}'s variable chunk fails its checksum.");
         }
 
         if (!column.Nullable)
@@ -1047,8 +1135,12 @@ public sealed class SegmentReaderV1
             return;
         }
 
+        if (Crc32C.Compute(bitmap) != column.NullBitmapCrc32C)
+        {
+            throw new InvalidDataException($"Column {column.Id}'s null bitmap fails its checksum.");
+        }
+
         int known = 0;
-        ReadOnlySpan<byte> bitmap = file.Span.Slice(column.NullBitmapOffset, column.NullBitmapLength);
         for (int row = 0; row < RowCount; row++)
         {
             if ((bitmap[row >> 3] & (1 << (row & 7))) != 0)
@@ -1074,5 +1166,21 @@ public sealed class SegmentReaderV1
                     $"Column {column.Id}'s null bitmap sets bit {bit} past its {RowCount} rows.");
             }
         }
+    }
+
+    /// <summary>One column's checked bytes: its values and, when it is nullable, its null bitmap.</summary>
+    private sealed class ColumnBytes(ReadOnlyMemory<byte> values, ReadOnlyMemory<byte> nulls)
+    {
+        public ReadOnlyMemory<byte> Values { get; } = values;
+
+        public ReadOnlyMemory<byte> Nulls { get; } = nulls;
+    }
+
+    /// <summary>The variable chunk as read, and the checksum computed over it (zero at minor 0, which names none).</summary>
+    private sealed class ChunkBytes(ReadOnlyMemory<byte> bytes, uint crc32C)
+    {
+        public ReadOnlyMemory<byte> Bytes { get; } = bytes;
+
+        public uint Crc32C { get; } = crc32C;
     }
 }

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 150 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 151 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -53,8 +53,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
-| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own | Column-granular reads (open work item 1). Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 256 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
+| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
@@ -63,6 +63,34 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 151 — a published segment reads a column when it is first asked for (§20.1, §12, segment-v1 §9):**
+  - **Changed:** a published minor-1 segment opens by its header, its directories and its time column. Every other
+    column, and the variable chunk, is read from the file when a caller first asks for it, checked, and held. Each
+    read opens the file, checks the length its generation recorded, reads and closes it. A reader therefore holds no
+    handle between reads, and the caller's evidence lease keeps the file in place. A minor-0 segment is still read
+    whole and checked by its trailer. Readers report `ResidentBytes`, what they hold.
+  - **Also:** the compaction planner counts a small unit's rows from each segment's checksummed header instead of
+    opening the segment.
+  - **Measured** at 1M rows (three alternating runs of each build):
+    - The Desktop's queries read about 43% of a segment's bytes: cached readers hold 73 MiB of 169 MiB of files.
+    - With a 64 MiB budget, where every query re-reads three segments of four: warm projection about 243 → 141 ms,
+      timeline detail 133 → 42 ms, a group's focused count 257 → 172 ms.
+    - At the 256 MiB default a million rows stay cached and warm queries are unchanged, but opening the session in
+      the window fell from 1,209 to 1,067 ms (`bench/results/interaction-latency-20260926T184644Z`).
+  - **Still admitted by file length:** the cache charges a reader its file's length, the most it can come to hold, so
+    the bound holds however many columns later queries read. Charging what a reader holds would keep about twice the
+    rows in the same budget (open work item 1, step 3).
+  - **Tests:** +5 in `SegmentV1Tests`, on files published to disk:
+    - a segment opens holding only its time column, and each column's first read adds exactly that column. Every row
+      reads as it does from the whole file in memory, and a reader that read every column holds exactly the columns'
+      bytes;
+    - damage to a column is refused when the column is read, every time, while other columns are still served;
+    - a minor-0 file is read whole, and its trailer refuses damage at open;
+    - a file whose length changed is refused, by a reader already open and by a fresh open;
+    - threads sharing a reader never read a column before it passes its checksum.
+
+    Five mutations each failed a test: no column check, no length check, a minor-0 file read in pieces, no count of
+    what a reader holds, and a column published before it is checked.
 - **Revision 150 — CRC-32C at the processor's speed, and two intermittent failures fixed (§18.1, §20.1, §3.1):**
   - **Found:** the byte-table CRC-32C ran at 0.51 GiB/s. It checks every journal record, every segment column and
     null bitmap, and since revision 149 the directories. A segment's columns are checked on each first read, so
@@ -865,10 +893,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      1. Done in revision 149: segment-v1 minor 1 gives the directories and the variable chunk checksums of their own,
         so a reader can check every byte it interprets without hashing the whole file. Revision 150 made each check
         about 18 times cheaper. A miss now costs mostly the whole-file read and its SHA-256.
-     2. A reader that reads the header, the directories and the time column at open, and every other column from the
-        file on its first read. A minor-0 segment keeps today's whole-file open. Mapping files instead would fight
-        retention, since Windows will not delete a mapped file.
-     3. The cache admits a reader by the bytes it holds, not by its file's length.
+     2. Done in revision 151: a published minor-1 segment opens by its header, directories and time column, and reads
+        every other column from the file on its first read. A minor-0 segment is still read whole. Mapping files instead
+        would fight retention, since Windows will not delete a mapped file.
+     3. The cache admits a reader by the bytes it holds, not by its file's length. Readers hold about 43% of their
+        files under the Desktop's queries (73 of 169 MiB at 1M rows), so the same budget would keep about twice the
+        rows. The charge must then grow as a cached reader reads another column, and still be refused past the bound.
 
      Then decide whether a fresh store must still hash every segment it names at open (store-v1 §3). S1's open budget
      at scale turns on it.
@@ -903,6 +933,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 151 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,073 tests: 1,071
+  passed, 2 skipped**, zero failures. Through the new reader, the sparse ETL sessions imported by revisions 148 and
+  149 read with the same row digests as before.
 - Revision 150 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,068 tests: 1,066
   passed, 2 skipped**, zero failures. Two further Debug runs were clean too.
 - Revision 149 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,066 tests: 1,064
@@ -953,8 +986,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 150, **1,066 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 149: 1,064 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 151, **1,071 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 150: 1,066 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

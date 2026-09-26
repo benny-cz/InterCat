@@ -1,0 +1,105 @@
+{
+  "schema": "intercat.interaction-latency.v1",
+  "measuredUtc": "2026-09-26T18:47:13.4929307+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "budgetsMs": {
+    "frame": 16.7,
+    "feedback": 100,
+    "coarseAnswer": 1000
+  },
+  "notes": [
+    "Canvas cost is TimelineView, MinimapView and GraphView building their drawing for one gesture, recorded into a drawing group without rasterizing; it is the UI thread\u0027s share of a frame, not GPU time.",
+    "Level change, brush and search are wall time from the gesture to the answer in the window, including off-thread queries and their hand-back to the UI thread.",
+    "Synthetic sessions are 50 paired loopback TCP conversations under one executable group; the real session, when measured, is named by the INTERCAT_REAL_SESSION variable and stays local."
+  ],
+  "sessions": [
+    {
+      "session": "synthetic 100\u00A0000",
+      "rows": 100000,
+      "openOverviewMs": 423.4647,
+      "openToLaidOutMs": 305.352,
+      "panCanvasMs": {
+        "p50": 3.81,
+        "p95": 9.36,
+        "max": 16.07
+      },
+      "zoomCanvasMs": {
+        "p50": 4.07,
+        "p95": 10.51,
+        "max": 15.98
+      },
+      "hoverFeedbackMs": {
+        "p50": 12.78,
+        "p95": 17.18,
+        "max": 29.79
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 83.5813,
+          "timelineCountedMs": 293.5074,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 59.242,
+          "timelineCountedMs": 84.7003,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 31.2371,
+          "timelineCountedMs": 152.693,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 112.9863,
+      "searchMs": 48.9271,
+      "searchHits": 50
+    },
+    {
+      "session": "synthetic 1\u00A0000\u00A0000",
+      "rows": 1000000,
+      "openOverviewMs": 1066.5726,
+      "openToLaidOutMs": 45.6511,
+      "panCanvasMs": {
+        "p50": 3.43,
+        "p95": 9.89,
+        "max": 15.91
+      },
+      "zoomCanvasMs": {
+        "p50": 2.04,
+        "p95": 7.35,
+        "max": 11.99
+      },
+      "hoverFeedbackMs": {
+        "p50": 11.19,
+        "p95": 18.08,
+        "max": 18.6
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 46.0436,
+          "timelineCountedMs": 359.462,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 10.8471,
+          "timelineCountedMs": 83.002,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 6.0961,
+          "timelineCountedMs": 144.7643,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 169.6498,
+      "searchMs": 16.7932,
+      "searchHits": 50
+    }
+  ]
+}

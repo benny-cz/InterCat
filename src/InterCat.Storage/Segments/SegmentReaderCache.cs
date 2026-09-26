@@ -15,10 +15,11 @@ public sealed record SegmentReaderCacheSnapshot(
     long Bypasses);
 
 /// <summary>
-/// A payload-bounded set of already-verified immutable segment readers. A reader owns the segment bytes and decoded
-/// dictionaries it was opened with, so reusing it avoids re-reading the file and re-running segment and dictionary
-/// integrity checks on every projection. Pruning drops only the cache's reference: a query already holding a reader
-/// remains valid for the generation it leased.
+/// A payload-bounded set of already-verified immutable segment readers. A reader holds the columns it has read and
+/// checked, and the dictionaries it decoded, so reusing it avoids reading them and running their checks again on every
+/// projection. A reader is admitted by its segment's and dictionaries' published lengths, the most it can come to
+/// hold, so the bound holds however many of its columns later queries read. Pruning drops only the cache's reference:
+/// a query already holding a reader remains valid for the generation it leased.
 /// </summary>
 /// <remarks>
 /// Readers are admitted while they fit and served uncached once the cache is full; a reachable reader is never evicted

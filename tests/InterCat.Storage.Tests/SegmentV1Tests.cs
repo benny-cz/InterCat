@@ -570,6 +570,168 @@ public sealed class SegmentV1Tests
         Assert.Contains("trailing digest", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a published segment opens by its header, directories and time column, and reads a column when first asked")]
+    public void APublishedSegmentReadsAColumnWhenFirstAsked()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+
+        SegmentReaderV1 segment = SessionSegments.Open(directory, published.Manifest, name);
+        SegmentColumnDescriptor ticks = segment.Column(SegmentColumnId.NativeTicks)!;
+        SegmentColumnDescriptor bytes = segment.Column(SegmentColumnId.ByteValue)!;
+
+        // Opening checks the time column, because the order and every time block rest on it; nothing else is read.
+        Assert.Equal(ticks.ValueLength, segment.ResidentBytes);
+        Assert.Equal(7, segment.SignedValue(SegmentColumnId.ByteValue, 7));
+        long afterOne = ticks.ValueLength + bytes.ValueLength + bytes.NullBitmapLength;
+        Assert.Equal(afterOne, segment.ResidentBytes);
+        Assert.Equal(8, segment.SignedValue(SegmentColumnId.ByteValue, 8));
+        Assert.Equal(afterOne, segment.ResidentBytes);
+
+        // Every row reads as it does from the whole file in memory, and having read every column the reader holds
+        // exactly their bytes: not the header, the directories, the padding or the trailer.
+        byte[] file = File.ReadAllBytes(Path.Combine(session.Path, name));
+        SegmentReaderV1 whole = SegmentReaderV1.Open(file, DictionariesOf(session.Path, published.Manifest.Generation, file));
+        Assert.Equal(file.Length, whole.ResidentBytes);
+        for (int row = 0; row < whole.RowCount; row++)
+        {
+            Assert.Equal(whole.Row(row), segment.Row(row));
+        }
+
+        Assert.Equal(
+            segment.Columns.Sum(column => (long)column.ValueLength + column.NullBitmapLength) + segment.VariableChunkLength,
+            segment.ResidentBytes);
+        Assert.True(segment.ResidentBytes < file.Length);
+    }
+
+    [Fact(DisplayName = "I15: damage to a published column is found when the column is read, and other columns are still served")]
+    public void DamageToAPublishedColumnIsFoundWhenItIsRead()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+        SegmentColumnDescriptor column = SessionSegments.Open(directory, published.Manifest, name).Column(SegmentColumnId.ByteValue)!;
+        Damage(Path.Combine(session.Path, name), column.ValueOffset);
+
+        // The trailer would find this at open, but a reader that reads a column at a time never hashes the whole file.
+        // The column's own checksum finds it when the column is read, every time it is asked for.
+        SegmentReaderV1 segment = SessionSegments.Open(directory, published.Manifest, name);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() =>
+            segment.SignedValue(SegmentColumnId.ByteValue, 0));
+        Assert.Contains("ByteValue fails its checksum", refusal.Message, StringComparison.Ordinal);
+        _ = Assert.Throws<InvalidDataException>(() => segment.SignedValue(SegmentColumnId.ByteValue, 1));
+        Assert.Equal(1_234, segment.SignedValue(SegmentColumnId.HeaderProcessId, 0));
+    }
+
+    [Fact(DisplayName = "I15: a published segment from before minor 1 is read whole and checked by its trailer")]
+    public void APublishedMinorZeroSegmentIsReadWhole()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        string path = Path.Combine(session.Path, name);
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+        ObservationRowV1 expected = SessionSegments.Open(directory, published.Manifest, name).Row(5);
+
+        // The file as minor 0 published it: the same length its generation recorded, with neither checksum.
+        byte[] file = File.ReadAllBytes(path);
+        BinaryPrimitives.WriteUInt16LittleEndian(file.AsSpan(10), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(124), 0);
+        for (int index = 0; index < BinaryPrimitives.ReadUInt16LittleEndian(file.AsSpan(88)); index++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                file.AsSpan(SegmentFormatV1.HeaderLength + (index * SegmentFormatV1.ColumnEntryLength) + 44),
+                0);
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(120), Crc32C.Compute(file.AsSpan(0, 120)));
+        Reseal(file);
+        File.WriteAllBytes(path, file);
+
+        SegmentReaderV1 legacy = SessionSegments.Open(directory, published.Manifest, name);
+        Assert.Equal(0, legacy.FormatMinor);
+        Assert.Equal(file.Length, legacy.ResidentBytes);
+        Assert.Equal(expected, legacy.Row(5));
+
+        // Its directories and chunk have no checksum of their own, so damage anywhere is found by the trailer, at open.
+        Damage(path, legacy.Column(SegmentColumnId.ByteValue)!.ValueOffset);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() =>
+            SessionSegments.Open(directory, published.Manifest, name));
+        Assert.Contains("trailing digest", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: a published segment whose length changed since its generation recorded it is not read")]
+    public void APublishedSegmentThatChangedLengthIsNotRead()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+        SegmentReaderV1 segment = SessionSegments.Open(directory, published.Manifest, name);
+        using (var stream = new FileStream(Path.Combine(session.Path, name), FileMode.Append))
+        {
+            stream.WriteByte(0);
+        }
+
+        InvalidDataException later = Assert.Throws<InvalidDataException>(() => segment.SignedValue(SegmentColumnId.ByteValue, 0));
+        InvalidDataException fresh = Assert.Throws<InvalidDataException>(() =>
+            SessionSegments.Open(directory, published.Manifest, name));
+
+        Assert.Contains("where its generation recorded", later.Message, StringComparison.Ordinal);
+        Assert.Contains("where its generation recorded", fresh.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: threads sharing a published segment's reader never read a column before it passes its checksum")]
+    public async Task ThreadsSharingAPublishedReaderNeverReadAnUncheckedColumn()
+    {
+        // Each thread that finds the column unread reads it from the file itself, so every one of them checks it.
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(50_000));
+        string name = published.Segments[0].Name;
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+        Damage(
+            Path.Combine(session.Path, name),
+            SessionSegments.Open(directory, published.Manifest, name).Column(SegmentColumnId.ByteValue)!.ValueOffset);
+        const int Attempts = 12;
+        int threads = Math.Clamp(Environment.ProcessorCount, 2, 8);
+        int served = 0;
+        int refused = 0;
+
+        for (int attempt = 0; attempt < Attempts; attempt++)
+        {
+            SegmentReaderV1 shared = SessionSegments.Open(directory, published.Manifest, name);
+            using var start = new Barrier(threads);
+            Task[] readers =
+            [
+                .. Enumerable.Range(0, threads).Select(_ => Task.Factory.StartNew(
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        try
+                        {
+                            _ = shared.ValueBytes(SegmentColumnId.ByteValue).Length;
+                            _ = Interlocked.Increment(ref served);
+                        }
+                        catch (InvalidDataException refusal)
+                            when (refusal.Message.Contains("fails its checksum", StringComparison.Ordinal))
+                        {
+                            _ = Interlocked.Increment(ref refused);
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default)),
+            ];
+            await Task.WhenAll(readers);
+        }
+
+        Assert.Equal(0, served);
+        Assert.Equal(Attempts * threads, refused);
+    }
+
     [Fact(DisplayName = "I15: an empty segment is never published, because absence is not data")]
     public void AnEmptySegmentIsNeverPublished()
     {
@@ -1051,6 +1213,27 @@ public sealed class SegmentV1Tests
                 ResourceName = index.ToString("D8", CultureInfo.InvariantCulture)
                     .PadRight(SegmentFormatV1.MaximumTextBytes, 'x'),
             });
+
+    /// <summary>Rows at distinct readings with distinct byte values, one per ordinal.</summary>
+    private static ObservationRowV1[] Spread(int count) =>
+        [.. Enumerable.Range(0, count).Select(index => Row(1_000 + index, bytes: index, ordinal: (ulong)index + 1))];
+
+    /// <summary>The dictionaries a published segment's bytes reference, decoded from the files its generation published.</summary>
+    private static SegmentDictionaryV1[] DictionariesOf(string sessionPath, long generation, byte[] segment) =>
+    [
+        .. SegmentReaderV1.ReferencedDictionaryIds(segment).Select(id => SegmentDictionaryV1.Decode(
+            File.ReadAllBytes(Path.Combine(sessionPath, SegmentFormatV1.DictionaryFileName(generation, id))))),
+    ];
+
+    /// <summary>Flips every bit of one byte of a file in place, keeping its length.</summary>
+    private static void Damage(string path, int offset)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite);
+        stream.Position = offset;
+        int value = stream.ReadByte();
+        stream.Position = offset;
+        stream.WriteByte((byte)(value ^ 0xFF));
+    }
 
     /// <summary>Where a segment's time-block directory ends, from its header.</summary>
     private static int DirectoriesEnd(byte[] segment) =>

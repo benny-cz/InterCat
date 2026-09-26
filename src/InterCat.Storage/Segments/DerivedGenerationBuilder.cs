@@ -794,6 +794,11 @@ public static class SessionSegments
     /// codes shown as values. This overload is deliberately uncached for low-level readers that do not own a
     /// <see cref="SessionStore"/> lifetime. Interactive/query paths should use the store overload below.
     /// </summary>
+    /// <remarks>
+    /// A minor-1 segment is opened by its header, its directories and its time column; the reader reads every other
+    /// column from <paramref name="directory"/> when it is first asked for. The caller keeps the generation's files
+    /// there for as long as it uses the reader, as an evidence lease does.
+    /// </remarks>
     public static SegmentReaderV1 Open(IOwnedDirectory directory, SessionManifestV1 manifest, string segmentName) =>
         OpenCore(directory, manifest, segmentName).Reader;
 
@@ -837,10 +842,14 @@ public static class SessionSegments
         StoreDependency segmentDependency = SegmentDependency(manifest, segmentName);
 
         long generation = GenerationOf(segmentDependency.Name);
-        byte[] bytes = ReadAll(directory, segmentDependency.Name);
+
+        // A minor-1 segment is opened by its header and directories, and a reader reads each column when it is first
+        // asked for; a minor-0 segment is read whole, because only its trailer covers its directories and chunk.
+        (SegmentBytes source, ReadOnlyMemory<byte> prefix) =
+            PublishedSegmentFile.Open(directory, segmentDependency.Name, segmentDependency.LengthBytes);
         var dictionaryDependencies = new List<StoreDependency>();
         var dictionaries = new List<SegmentDictionaryV1>();
-        foreach (ushort id in SegmentReaderV1.ReferencedDictionaryIds(bytes))
+        foreach (ushort id in SegmentReaderV1.ReferencedDictionaryIds(prefix.Span))
         {
             string name = SegmentFormatV1.DictionaryFileName(generation, id);
             StoreDependency dictionaryDependency = manifest.Dependencies.FirstOrDefault(dependency =>
@@ -853,7 +862,7 @@ public static class SessionSegments
             dictionaries.Add(SegmentDictionaryV1.Decode(ReadAll(directory, name)));
         }
 
-        SegmentReaderV1 reader = SegmentReaderV1.Open(bytes, dictionaries);
+        SegmentReaderV1 reader = SegmentReaderV1.Open(source, prefix, dictionaries);
         if (reader.Table != TableOf(segmentDependency.Name))
         {
             throw new InvalidDataException(
