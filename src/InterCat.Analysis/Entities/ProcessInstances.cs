@@ -242,6 +242,9 @@ public sealed class ProcessInstanceIndex
     private readonly Dictionary<int, int[]> instancesByPid;
     private readonly Dictionary<ObservationId, int> lifecycleBindings;
 
+    /// <summary>What this derivation read, kept so a later generation can extend it rather than read it again.</summary>
+    private readonly Evidence evidence;
+
     private ProcessInstanceIndex(
         IReadOnlyList<ProcessInstance> instances,
         Dictionary<int, int[]> instancesByPid,
@@ -251,7 +254,8 @@ public sealed class ProcessInstanceIndex
         ClockId clock,
         long lifecycleRecords,
         long lifecycleRecordsWithoutOwner,
-        bool startKeysAvailable)
+        bool startKeysAvailable,
+        Evidence evidence)
     {
         Instances = instances;
         this.instancesByPid = instancesByPid;
@@ -262,6 +266,7 @@ public sealed class ProcessInstanceIndex
         LifecycleRecords = lifecycleRecords;
         LifecycleRecordsWithoutOwner = lifecycleRecordsWithoutOwner;
         StartKeysAvailable = startKeysAvailable;
+        this.evidence = evidence;
     }
 
     /// <summary>Every instance, ordered by PID and then by lifecycle epoch.</summary>
@@ -369,48 +374,56 @@ public sealed class ProcessInstanceIndex
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segments);
-        var captures = new HashSet<CaptureId>();
-        var derivations = new HashSet<NormalizerContractVersion>();
-        foreach (SegmentReaderV1 segment in segments.Concat(fieldSegments ?? []))
-        {
-            if (segment.ClockId != clock.Id)
-            {
-                throw new ArgumentException(
-                    $"Segment {segment.SegmentId} is on clock {segment.ClockId} and the instances are being derived on "
-                    + $"{clock.Id}. Process lifetimes are compared on one clock only (I8).",
-                    nameof(segments));
-            }
+        var evidence = new Evidence(clock.Id);
+        evidence.Read(segments, fieldSegments ?? [], cancellationToken);
+        return Build(evidence, clock);
+    }
 
-            _ = captures.Add(segment.CaptureId);
-            _ = derivations.Add(segment.Derivation);
-        }
-
-        if (captures.Count > 1)
-        {
-            throw new ArgumentException(
-                $"These segments hold {captures.Count} captures. Process instances are derived per capture, because a "
-                + "PID from one capture says nothing about a process in another.",
-                nameof(segments));
-        }
-
-        if (derivations.Count > 1)
+    /// <summary>
+    /// The instances of <paramref name="segments"/>, extended from this derivation rather than read again, when they
+    /// hold every segment it was derived from: only the segments it has not read are read. The result is exactly
+    /// <see cref="Derive"/>'s over the same segments, because instances are built from what the records say taken
+    /// together - lifecycle records in canonical order, the fields keyed by the record they describe, the earliest
+    /// record of each PID - never from the order they were read in. Null when a segment it read is missing, as after a
+    /// compaction or a retention, which a full derivation answers.
+    /// </summary>
+    public ProcessInstanceIndex? Extend(
+        IReadOnlyList<SegmentReaderV1> segments,
+        SourceClockDescriptor clock,
+        IReadOnlyList<SegmentReaderV1>? fieldSegments = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        if (clock.Id != Clock)
         {
             throw new ArgumentException(
-                "Process observations and their source fields must belong to one normalizer derivation; fields "
-                + "from another derivation cannot be joined by their raw locator.",
-                nameof(fieldSegments));
+                $"These instances were derived on clock {Clock} and are being extended on {clock.Id}.", nameof(clock));
         }
 
-        Dictionary<RecordAddress, ProcessFields> fields = ReadProcessFields(fieldSegments ?? [], cancellationToken);
-        var lifecycle = new List<LifecycleFact>();
-        var firstActivity = new Dictionary<int, RecordKey>();
-        long withoutOwner = 0;
-        foreach (SegmentReaderV1 segment in segments)
+        fieldSegments ??= [];
+        if (!evidence.ReadAllOf(segments, fieldSegments))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            withoutOwner += Collect(segment, fields, lifecycle, firstActivity);
+            return null;
         }
 
+        Evidence extended = evidence.Clone();
+        extended.Read(
+            [.. segments.Where(segment => !evidence.HasRead(segment))],
+            [.. fieldSegments.Where(segment => !evidence.HasRead(segment))],
+            cancellationToken);
+        return Build(extended, clock);
+    }
+
+    /// <summary>The instances what one capture's records say support, and the rule that binds a record to one.</summary>
+    private static ProcessInstanceIndex Build(Evidence evidence, SourceClockDescriptor clock)
+    {
+        List<LifecycleFact> lifecycle = [.. evidence.Lifecycle.Select(row => new LifecycleFact(
+            row.ProcessId,
+            row.Kind,
+            row.Record,
+            row.ExitCode,
+            row.Name,
+            evidence.Fields.TryGetValue(row.Record.Address, out ProcessFields found) ? found : default))];
         lifecycle.Sort(static (left, right) =>
         {
             int order = left.ProcessId.CompareTo(right.ProcessId);
@@ -438,7 +451,7 @@ public sealed class ProcessInstanceIndex
         // evidence can tell - two would need a witnessed exit and creation between them. It gets one provisional
         // instance witnessed by the first record that names it.
         var lifecyclePids = lifecycle.Select(fact => fact.ProcessId).ToHashSet();
-        foreach ((int processId, RecordKey witness) in firstActivity.OrderBy(entry => entry.Key))
+        foreach ((int processId, RecordKey witness) in evidence.FirstActivity.OrderBy(entry => entry.Key))
         {
             if (lifecyclePids.Contains(processId))
             {
@@ -484,9 +497,80 @@ public sealed class ProcessInstanceIndex
             host,
             boot,
             clock.Id,
-            lifecycle.Count + withoutOwner,
-            withoutOwner,
-            fields.Values.Any(value => value.Sequence is not null));
+            lifecycle.Count + evidence.WithoutOwner,
+            evidence.WithoutOwner,
+            evidence.Fields.Values.Any(value => value.Sequence is not null),
+            evidence);
+    }
+
+
+    /// <summary>
+    /// Maps each instance of <paramref name="processId"/> that binds a reading in <c>[first, last]</c> here to the
+    /// instance of <paramref name="later"/> that binds the same reading there, when every reading in that range binds
+    /// alike in both: to corresponding instances with the same strength, or to none in both. False when any reading
+    /// would bind otherwise, so a caller that kept decisions made with this index knows they no longer hold.
+    /// </summary>
+    /// <remarks>
+    /// A binding changes only where a lifetime starts or ends: the instance found is the last one starting at or before
+    /// the reading, and it binds while its lifetime holds the reading. So the two indexes bind alike across the range
+    /// when they bind alike at its first reading and at every lifetime boundary inside it, in either index.
+    /// </remarks>
+    internal bool BindsAlike(ProcessInstanceIndex later, int processId, long first, long last, Dictionary<int, int> mapped)
+    {
+        ArgumentNullException.ThrowIfNull(later);
+        ArgumentNullException.ThrowIfNull(mapped);
+        if (!instancesByPid.TryGetValue(processId, out int[]? mine)
+            || !later.instancesByPid.TryGetValue(processId, out int[]? theirs))
+        {
+            return false;
+        }
+
+        var readings = new List<long> { first };
+        Boundaries(Instances, mine, first, last, readings);
+        Boundaries(later.Instances, theirs, first, last, readings);
+        var reverse = new Dictionary<int, int>();
+        foreach (long reading in readings)
+        {
+            ProcessBinding here = BindWithin(Instances, mine, reading, isLifecycleRecord: false);
+            ProcessBinding there = BindWithin(later.Instances, theirs, reading, isLifecycleRecord: false);
+            if (here.IsBound != there.IsBound)
+            {
+                return false;
+            }
+
+            if (!here.IsBound)
+            {
+                continue;
+            }
+
+            if (here.Strength != there.Strength
+                || (mapped.TryGetValue(here.Instance, out int known) && known != there.Instance)
+                || (reverse.TryGetValue(there.Instance, out int back) && back != here.Instance))
+            {
+                return false;
+            }
+
+            mapped[here.Instance] = there.Instance;
+            reverse[there.Instance] = here.Instance;
+        }
+
+        return true;
+
+        static void Boundaries(IReadOnlyList<ProcessInstance> instances, int[] indexes, long first, long last, List<long> readings)
+        {
+            foreach (int index in indexes)
+            {
+                if (instances[index].LifetimeStartNativeTicks is { } start && start > first && start <= last)
+                {
+                    readings.Add(start);
+                }
+
+                if (instances[index].LifetimeEndNativeTicks is { } end && end > first && end <= last)
+                {
+                    readings.Add(end);
+                }
+            }
+        }
     }
 
     private static ProcessBinding BindWithin(
@@ -587,13 +671,14 @@ public sealed class ProcessInstanceIndex
         return linked;
     }
 
-    /// <summary>The process fields of every lifecycle record, keyed by the observation they belong to.</summary>
-    private static Dictionary<RecordAddress, ProcessFields> ReadProcessFields(
+    /// <summary>Reads the process fields of every lifecycle record into <paramref name="evidence"/>, keyed by the observation they belong to.</summary>
+    private static void ReadProcessFields(
         IReadOnlyList<SegmentReaderV1> fieldSegments,
+        Evidence evidence,
         CancellationToken cancellationToken)
     {
-        var fields = new Dictionary<RecordAddress, ProcessFields>();
-        var seen = new HashSet<(RecordAddress Address, SourceField Field)>();
+        Dictionary<RecordAddress, ProcessFields> fields = evidence.Fields;
+        HashSet<(RecordAddress Address, SourceField Field)> seen = evidence.SeenFields;
         foreach (SegmentReaderV1 segment in fieldSegments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -655,17 +740,16 @@ public sealed class ProcessInstanceIndex
                 };
             }
         }
-
-        return fields;
     }
 
-    /// <summary>Reads one segment's lifecycle records and the first record that names each PID.</summary>
-    private static long Collect(
-        SegmentReaderV1 segment,
-        Dictionary<RecordAddress, ProcessFields> fields,
-        List<LifecycleFact> lifecycle,
-        Dictionary<int, RecordKey> firstActivity)
+    /// <summary>
+    /// Reads one segment's lifecycle records and the first record that names each PID into <paramref name="evidence"/>.
+    /// A lifecycle record's fields are joined when instances are built, so a field read later still reaches it.
+    /// </summary>
+    private static long Collect(SegmentReaderV1 segment, Evidence evidence)
     {
+        List<LifecycleRow> lifecycle = evidence.Lifecycle;
+        Dictionary<int, RecordKey> firstActivity = evidence.FirstActivity;
         SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
         SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
@@ -717,8 +801,7 @@ public sealed class ProcessInstanceIndex
                     kind,
                     record,
                     statuses.SignedAt(row),
-                    segment.TextValue(SegmentColumnId.ResourceName, row),
-                    fields.TryGetValue(record.Address, out ProcessFields found) ? found : default));
+                    segment.TextValue(SegmentColumnId.ResourceName, row)));
                 continue;
             }
 
@@ -730,6 +813,122 @@ public sealed class ProcessInstanceIndex
 
         return withoutOwner;
     }
+
+    /// <summary>
+    /// Everything one derivation read: the lifecycle records, the process fields keyed by the record they describe,
+    /// the earliest record naming each PID, and which segments it read. The instances are a function of this alone, and
+    /// none of it depends on the order segments were read in, so a later generation extends a copy of it with the
+    /// segments it adds and builds exactly what a full derivation would.
+    /// </summary>
+    private sealed class Evidence(ClockId clock)
+    {
+        private readonly HashSet<StoreDependency> read = [];
+
+        /// <summary>Whether a segment read here has no published identity, so a later generation's cannot be told apart from it.</summary>
+        private bool anonymous;
+        private readonly HashSet<CaptureId> captures = [];
+        private readonly HashSet<NormalizerContractVersion> derivations = [];
+
+        public List<LifecycleRow> Lifecycle { get; private init; } = [];
+
+        public Dictionary<RecordAddress, ProcessFields> Fields { get; private init; } = [];
+
+        public HashSet<(RecordAddress Address, SourceField Field)> SeenFields { get; private init; } = [];
+
+        public Dictionary<int, RecordKey> FirstActivity { get; private init; } = [];
+
+        public long WithoutOwner { get; private set; }
+
+        public bool HasRead(SegmentReaderV1 segment) => segment.Published is { } published && read.Contains(published);
+
+        /// <summary>
+        /// Whether these segments include every segment this evidence was read from, each told apart by the file its
+        /// generation publishes it as.
+        /// </summary>
+        public bool ReadAllOf(IReadOnlyList<SegmentReaderV1> segments, IReadOnlyList<SegmentReaderV1> fieldSegments) =>
+            !anonymous
+            && segments.Concat(fieldSegments).All(segment => segment.Published is not null)
+            && read.IsSubsetOf(segments.Concat(fieldSegments).Select(segment => segment.Published!));
+
+        public Evidence Clone()
+        {
+            var copy = new Evidence(clock)
+            {
+                Lifecycle = [.. Lifecycle],
+                Fields = new(Fields),
+                SeenFields = new(SeenFields),
+                FirstActivity = new(FirstActivity),
+                WithoutOwner = WithoutOwner,
+            };
+            copy.read.UnionWith(read);
+            copy.anonymous = anonymous;
+            copy.captures.UnionWith(captures);
+            copy.derivations.UnionWith(derivations);
+            return copy;
+        }
+
+        /// <summary>
+        /// Adds segments to what was read. Every segment must be of the capture and normalizer derivation already read,
+        /// on the clock given, because a PID is only meaningful inside one host's boot and one capture's timeline.
+        /// </summary>
+        public void Read(
+            IReadOnlyList<SegmentReaderV1> segments,
+            IReadOnlyList<SegmentReaderV1> fieldSegments,
+            CancellationToken cancellationToken)
+        {
+            foreach (SegmentReaderV1 segment in segments.Concat(fieldSegments))
+            {
+                if (segment.ClockId != clock)
+                {
+                    throw new ArgumentException(
+                        $"Segment {segment.SegmentId} is on clock {segment.ClockId} and the instances are being derived on "
+                        + $"{clock}. Process lifetimes are compared on one clock only (I8).",
+                        nameof(segments));
+                }
+
+                _ = captures.Add(segment.CaptureId);
+                _ = derivations.Add(segment.Derivation);
+            }
+
+            if (captures.Count > 1)
+            {
+                throw new ArgumentException(
+                    $"These segments hold {captures.Count} captures. Process instances are derived per capture, because a "
+                    + "PID from one capture says nothing about a process in another.",
+                    nameof(segments));
+            }
+
+            if (derivations.Count > 1)
+            {
+                throw new ArgumentException(
+                    "Process observations and their source fields must belong to one normalizer derivation; fields "
+                    + "from another derivation cannot be joined by their raw locator.",
+                    nameof(fieldSegments));
+            }
+
+            ReadProcessFields(fieldSegments, this, cancellationToken);
+            foreach (SegmentReaderV1 segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                WithoutOwner += Collect(segment, this);
+            }
+
+            foreach (SegmentReaderV1 segment in segments.Concat(fieldSegments))
+            {
+                if (segment.Published is { } published)
+                {
+                    _ = read.Add(published);
+                }
+                else
+                {
+                    anonymous = true;
+                }
+            }
+        }
+    }
+
+    /// <summary>A lifecycle record as a segment holds it; its source fields are joined when instances are built.</summary>
+    private readonly record struct LifecycleRow(int ProcessId, ObservationKind Kind, RecordKey Record, long? ExitCode, string? Name);
 
     /// <summary>
     /// Builds one PID's instances from its lifecycle records, in reading order. Each record creates an instance, ends

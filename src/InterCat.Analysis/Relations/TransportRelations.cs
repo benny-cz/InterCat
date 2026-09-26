@@ -95,11 +95,33 @@ public sealed class TransportRelationIndex
     /// <summary>Per related mechanism, the records whose endpoints name no end: they have no other end to find.</summary>
     private readonly Dictionary<Mechanism, long> withoutEnd;
 
+    /// <summary>
+    /// The published files these relations were derived from; null when a segment had no published identity, since a
+    /// later generation's segments could not then be told apart from it.
+    /// </summary>
+    private readonly HashSet<StoreDependency>? read;
+
+    /// <summary>The process index the holders here are positions in.</summary>
+    private readonly ProcessInstanceIndex processes;
+
     private TransportRelationIndex(
-        ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends, Dictionary<Mechanism, long> withoutEnd)
+        ProcessInstanceIndex processes,
+        Dictionary<EndKey, EndTimeline> ends,
+        Dictionary<Mechanism, long> withoutEnd,
+        HashSet<StoreDependency>? read)
     {
+        this.processes = processes;
         this.ends = ends;
         this.withoutEnd = withoutEnd;
+        this.read = read;
+        foreach ((EndKey key, EndTimeline timeline) in ends)
+        {
+            if (key.CompareTo(key.Mirror()) <= 0 && ends.TryGetValue(key.Mirror(), out EndTimeline? mirror))
+            {
+                EndTimeline.Pair(timeline, mirror);
+            }
+        }
+
         Channels = NumberChannels(ends);
         Relations = BuildRelations(processes, ends);
     }
@@ -153,55 +175,194 @@ public sealed class TransportRelationIndex
             timeline.Seal();
         }
 
-        // Then who holds each incarnation. An end no lifecycle record cut is one incarnation for the whole capture. Each
-        // incarnation also counts its records and those of them with no session time, and a related record with no end
-        // is counted too, so a count of records by their other end needs no second look at any row.
+        // Then who holds each incarnation. An end no lifecycle record cut is one incarnation for the whole capture.
         var withoutEnd = new Dictionary<Mechanism, long>();
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Observe(segment, processes, ends, withoutEnd);
+        }
+
+        return new(processes, ends, withoutEnd, PublishedAs(segments));
+    }
+
+    /// <summary>
+    /// The relations of <paramref name="segments"/>, extended from these rather than derived again, when the segments
+    /// hold every one these were derived from and what they add changes nothing the records already read decided. Only
+    /// the added segments are read. The result is exactly <see cref="Derive"/>'s over the same segments. Null, for a full
+    /// derivation to answer, when a segment read here is missing (after a compaction or a retention), when an added
+    /// connect, accept or disconnect falls before or among the records an end already holds (it would move them to
+    /// another incarnation), or when <paramref name="processes"/> would bind a record already read otherwise than the
+    /// process index these were derived with (such as a late rundown that re-identifies its process).
+    /// </summary>
+    public TransportRelationIndex? Extend(
+        IReadOnlyList<SegmentReaderV1> segments,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(processes);
+        if (read is null || PublishedAs(segments) is not { } offered || !read.IsSubsetOf(offered))
+        {
+            return null;
+        }
+
+        // Every holder here is a position in the old process index; each must bind the same records, as strongly, in
+        // the new one, where it may have another position or even another identity. The records an incarnation's holder
+        // rests on all name its one PID and lie between its first and last reading. An incarnation whose records name two
+        // PIDs has no holder under any process index, so nothing it read depends on one.
+        var readings = new Dictionary<int, (long First, long Last)>();
+        foreach (EndTimeline timeline in ends.Values)
+        {
+            foreach (Incarnation incarnation in timeline.Incarnations)
+            {
+                if (incarnation.Records > 0 && !incarnation.PidsDisagree && incarnation.ProcessId is { } processId)
+                {
+                    readings[processId] = readings.TryGetValue(processId, out (long First, long Last) seen)
+                        ? (Math.Min(seen.First, incarnation.First), Math.Max(seen.Last, incarnation.Last))
+                        : (incarnation.First, incarnation.Last);
+                }
+            }
+        }
+
+        var mapped = new Dictionary<int, int>();
+        foreach ((int processId, (long first, long last)) in readings)
+        {
+            if (!this.processes.BindsAlike(processes, processId, first, last, mapped))
+            {
+                return null;
+            }
+        }
+
+        var extended = new Dictionary<EndKey, EndTimeline>(ends.Count);
+        foreach ((EndKey key, EndTimeline timeline) in ends)
+        {
+            if (timeline.Copy(mapped) is not { } copy)
+            {
+                return null;
+            }
+
+            extended[key] = copy;
+        }
+
+        SegmentReaderV1[] added = [.. segments.Where(segment => !read.Contains(segment.Published!))];
+        var cuts = new Dictionary<EndKey, List<Cut>>();
+        foreach (SegmentReaderV1 segment in added)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             var columns = new EndColumns(segment);
-            SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
-            SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             for (int row = 0; row < segment.RowCount; row++)
             {
-                if (columns.KeyAt(row) is not { } key)
+                ObservationKind kind = columns.KindAt(row);
+                if (kind is not (ObservationKind.Connect or ObservationKind.Accept or ObservationKind.Disconnect)
+                    || columns.KeyAt(row) is not { } key)
                 {
-                    Mechanism mechanism = columns.MechanismAt(row);
-                    if (Relates(mechanism))
-                    {
-                        withoutEnd[mechanism] = withoutEnd.GetValueOrDefault(mechanism) + 1;
-                    }
-
                     continue;
                 }
 
-                if (!ends.TryGetValue(key, out EndTimeline? timeline))
+                Position position = columns.PositionAt(row);
+                if (extended.TryGetValue(key, out EndTimeline? known) && known.LastPosition is { } last && position.CompareTo(last) <= 0)
                 {
-                    timeline = new();
-                    timeline.Seal();
-                    ends[key] = timeline;
+                    return null;
                 }
 
-                Position position = columns.PositionAt(row);
-                long? owner = owners.SignedAt(row);
-                timeline.At(position).Observe(
-                    position,
-                    owner is { } pid ? (int)pid : null,
-                    processes.Bind(owner is { } bound ? (int)bound : null, position.Ticks, isLifecycleRecord: false),
-                    timed: sessionTimes.HasValue(row));
+                if (!cuts.TryGetValue(key, out List<Cut>? list))
+                {
+                    list = [];
+                    cuts[key] = list;
+                }
+
+                list.Add(new(position, AfterClose: kind == ObservationKind.Disconnect));
             }
         }
 
-        foreach ((EndKey key, EndTimeline timeline) in ends)
+        foreach ((EndKey key, List<Cut> list) in cuts)
         {
-            if (key.CompareTo(key.Mirror()) <= 0 && ends.TryGetValue(key.Mirror(), out EndTimeline? mirror))
+            if (extended.TryGetValue(key, out EndTimeline? known))
             {
-                EndTimeline.Pair(timeline, mirror);
+                known.Append(list);
+                continue;
             }
+
+            var timeline = new EndTimeline();
+            foreach (Cut cut in list)
+            {
+                timeline.Cut(cut.At, cut.AfterClose);
+            }
+
+            timeline.Seal();
+            extended[key] = timeline;
         }
 
-        return new(processes, ends, withoutEnd);
+        var countedWithoutEnd = new Dictionary<Mechanism, long>(withoutEnd);
+        foreach (SegmentReaderV1 segment in added)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Observe(segment, processes, extended, countedWithoutEnd);
+        }
+
+        return new(processes, extended, countedWithoutEnd, [.. read, .. added.Select(segment => segment.Published!)]);
+    }
+
+    /// <summary>The published files of these segments, or null when one of them has no published identity.</summary>
+    private static HashSet<StoreDependency>? PublishedAs(IReadOnlyList<SegmentReaderV1> segments)
+    {
+        var published = new HashSet<StoreDependency>(segments.Count);
+        foreach (SegmentReaderV1 segment in segments)
+        {
+            if (segment.Published is not { } file)
+            {
+                return null;
+            }
+
+            _ = published.Add(file);
+        }
+
+        return published;
+    }
+
+    /// <summary>
+    /// Places every record of a segment in its end's incarnation, which counts its records and those of them with no
+    /// session time and learns who holds it. A related record with no end is counted too, so a count of records by their
+    /// other end needs no second look at any row.
+    /// </summary>
+    private static void Observe(
+        SegmentReaderV1 segment,
+        ProcessInstanceIndex processes,
+        Dictionary<EndKey, EndTimeline> ends,
+        Dictionary<Mechanism, long> withoutEnd)
+    {
+        var columns = new EndColumns(segment);
+        SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+        SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if (columns.KeyAt(row) is not { } key)
+            {
+                Mechanism mechanism = columns.MechanismAt(row);
+                if (Relates(mechanism))
+                {
+                    withoutEnd[mechanism] = withoutEnd.GetValueOrDefault(mechanism) + 1;
+                }
+
+                continue;
+            }
+
+            if (!ends.TryGetValue(key, out EndTimeline? timeline))
+            {
+                timeline = new();
+                timeline.Seal();
+                ends[key] = timeline;
+            }
+
+            Position position = columns.PositionAt(row);
+            int? owner = owners.SignedAt(row) is { } pid ? (int)pid : null;
+            timeline.Observe(
+                position,
+                owner,
+                processes.Bind(owner, position.Ticks, isLifecycleRecord: false),
+                timed: sessionTimes.HasValue(row));
+        }
     }
 
     /// <summary>
@@ -648,6 +809,9 @@ public sealed class TransportRelationIndex
 
         public Incarnation[] Incarnations { get; private set; } = [];
 
+        /// <summary>The canonical position of the latest record placed at this end, or null before the first.</summary>
+        public Position? LastPosition { get; private set; }
+
         public void Cut(Position at, bool afterClose) => cuts.Add(new(at, afterClose));
 
         public void Seal()
@@ -656,14 +820,79 @@ public sealed class TransportRelationIndex
             Incarnations = new Incarnation[cuts.Count + 1];
             for (int index = 0; index < Incarnations.Length; index++)
             {
-                Cut? opening = index > 0 ? cuts[index - 1] : null;
-                Cut? closing = index < cuts.Count ? cuts[index] : null;
-                Incarnations[index] = new(
-                    Start: opening?.At.Ticks ?? long.MinValue,
-                    End: closing is { } close ? (close.AfterClose ? close.At.Ticks + 1 : close.At.Ticks) : long.MaxValue,
-                    OpenWitnessed: opening is { AfterClose: false },
-                    CloseWitnessed: closing is { AfterClose: true });
+                Incarnations[index] = Bounded(index);
             }
+        }
+
+        /// <summary>Places one record in its incarnation.</summary>
+        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed)
+        {
+            At(position).Observe(position, owner, binding, timed);
+            if (LastPosition is not { } last || position.CompareTo(last) > 0)
+            {
+                LastPosition = position;
+            }
+        }
+
+        /// <summary>
+        /// A copy sharing nothing with this end, for an extension to add records to and pair again: the same cuts and
+        /// records, each holder at the position <paramref name="mapped"/> gives it, and no pairing. Null when a holder has
+        /// no position there.
+        /// </summary>
+        public EndTimeline? Copy(Dictionary<int, int> mapped)
+        {
+            var copy = new EndTimeline { LastPosition = LastPosition };
+            copy.cuts.AddRange(cuts);
+            copy.Incarnations = new Incarnation[Incarnations.Length];
+            for (int index = 0; index < Incarnations.Length; index++)
+            {
+                if (Incarnations[index].Within(Incarnations[index], mapped) is not { } incarnation)
+                {
+                    return null;
+                }
+
+                copy.Incarnations[index] = incarnation;
+            }
+
+            return copy;
+        }
+
+        /// <summary>
+        /// Adds cuts that each fall after every record this end holds, as an extension's are: the last incarnation is
+        /// closed at the first of them and empty incarnations follow, so no record changes incarnation.
+        /// </summary>
+        public void Append(List<Cut> added)
+        {
+            added.Sort((left, right) => left.At.CompareTo(right.At));
+            if (LastPosition is { } last && added[0].At.CompareTo(last) <= 0)
+            {
+                throw new InvalidOperationException("A cut among an end's records cannot be appended; it would move them.");
+            }
+
+            int kept = Incarnations.Length - 1;
+            Incarnation closed = Incarnations[kept];
+            cuts.AddRange(added);
+            var incarnations = new Incarnation[cuts.Count + 1];
+            Array.Copy(Incarnations, incarnations, kept);
+            incarnations[kept] = closed.Within(Bounded(kept), mapped: null)!;
+            for (int index = kept + 1; index < incarnations.Length; index++)
+            {
+                incarnations[index] = Bounded(index);
+            }
+
+            Incarnations = incarnations;
+        }
+
+        /// <summary>The empty incarnation between the cut before <paramref name="index"/> and the cut at it.</summary>
+        private Incarnation Bounded(int index)
+        {
+            Cut? opening = index > 0 ? cuts[index - 1] : null;
+            Cut? closing = index < cuts.Count ? cuts[index] : null;
+            return new(
+                Start: opening?.At.Ticks ?? long.MinValue,
+                End: closing is { } close ? (close.AfterClose ? close.At.Ticks + 1 : close.At.Ticks) : long.MaxValue,
+                OpenWitnessed: opening is { AfterClose: false },
+                CloseWitnessed: closing is { AfterClose: true });
         }
 
         /// <summary>The incarnation a row at this position belongs to: the one after the last cut at or before it.</summary>
@@ -740,6 +969,15 @@ public sealed class TransportRelationIndex
     {
         private int? processId;
 
+        /// <summary>The PID the incarnation's records name, the first one when they name more than one.</summary>
+        public int? ProcessId => processId;
+
+        /// <summary>
+        /// Whether its records name two PIDs. Such an incarnation is ambiguous whatever instances they bind to, so no
+        /// holder it records matters, and a later process index cannot change that.
+        /// </summary>
+        public bool PidsDisagree { get; private set; }
+
         /// <summary>The first native tick of the incarnation's lifetime, or unbounded below when no boundary precedes it.</summary>
         public long Start { get; } = Start;
 
@@ -785,6 +1023,45 @@ public sealed class TransportRelationIndex
 
         public bool Overlaps(Incarnation other) => Start < other.End && other.Start < End;
 
+        /// <summary>
+        /// This incarnation's records and holder within the bounds of <paramref name="bounds"/>, unpaired, the holder moved
+        /// to the position <paramref name="mapped"/> gives it when a map is given. Null when the holder has no position
+        /// there, unless its records name two PIDs: such an incarnation keeps no holder anyone reads.
+        /// </summary>
+        public Incarnation? Within(Incarnation bounds, Dictionary<int, int>? mapped)
+        {
+            int holder = Holder;
+            if (holder >= 0 && mapped is not null)
+            {
+                if (mapped.TryGetValue(holder, out int moved))
+                {
+                    holder = moved;
+                }
+                else if (PidsDisagree)
+                {
+                    holder = -1;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed)
+            {
+                processId = processId,
+                PidsDisagree = PidsDisagree,
+                Holder = holder,
+                Ambiguous = Ambiguous,
+                Weakest = Weakest,
+                First = First,
+                FirstPosition = FirstPosition,
+                Last = Last,
+                Records = Records,
+                Untimed = Untimed,
+            };
+        }
+
         public void PairWith(Incarnation other)
         {
             Pairing = Pairing.Paired;
@@ -825,6 +1102,7 @@ public sealed class TransportRelationIndex
                 if (processId is { } seen && seen != pid)
                 {
                     Ambiguous = true;
+                    PidsDisagree = true;
                 }
 
                 processId ??= pid;

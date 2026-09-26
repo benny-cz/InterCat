@@ -147,7 +147,18 @@ public sealed class SegmentReaderV1
         columns = ordered.ToDictionary(column => column.Id);
     }
 
+    /// <summary>
+    /// The segment's identity as its header names it. It is derived from the capture, the derivation, the ordinal within
+    /// its generation and its extent, so it names the same segment when the same evidence is derived again; two
+    /// generations' segments can share it, so it does not tell a session's segments apart. <see cref="Published"/> does.
+    /// </summary>
     public Guid SegmentId { get; }
+
+    /// <summary>
+    /// The published file this reader reads, as the generation that opened it names it: its name, length and content
+    /// digest, which no other segment of the session shares. Null for a reader of bytes no generation names.
+    /// </summary>
+    public StoreDependency? Published { get; internal set; }
 
     public CaptureId CaptureId { get; }
 

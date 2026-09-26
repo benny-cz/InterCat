@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 156 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 157 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -20,8 +20,8 @@ an event (p95). The default 10-minute Explore capture runs to its bound on real 
 §12 budget to its end: at 105,944 records, projection p95 81 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and
 118 MiB of viewer memory at the end, 22.5 MiB of it cached segments. A crashed viewer's capture is stopped and
 finalized by its lease without a leaked trace, and the next launch offers to finish its session from the evidence the
-broker kept, including what the broker recorded after the crash. Projection still grows with the session, so large
-sessions wait on S4 and incremental derivation.
+broker kept, including what the broker recorded after the crash. Since revision 157, a live generation's derivation
+extends the previous one's. Projection still passes over every row, so large sessions wait on S4's persisted tiles.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. All three of §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
@@ -52,7 +52,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
-| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation | Incremental derivation that extends the previous generation's (open work item 1), canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
+| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
@@ -63,6 +63,39 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 157 — a live generation's derivation extends the previous generation's (IC-015):**
+  - **Found:** after revision 156, a new generation at 1M rows still spent about 110 of its 142 ms re-deriving
+    process instances and relations from every segment.
+  - **Changed:**
+    - A process index keeps what it read (lifecycle records, process fields by record, each PID's earliest record,
+      and the files read). A later generation extends a copy of that with only the segments it adds.
+    - The relation index extends a copy of every end's incarnations with the added records.
+    - An extension declines, and the generation is derived in full, in three cases:
+      - a segment it read is gone, after a compaction or a retention;
+      - an added connect, accept or disconnect falls before or among an end's records;
+      - the new process index binds an earlier record otherwise. Both indexes are compared at every lifetime boundary
+        inside each holder's readings.
+    - A rundown that re-identifies a process extends, its holders moved to the new identity.
+    - The shared cache extends from the latest earlier generation it keeps.
+    - A reader now carries the file its generation publishes it as. segment-v1 now says why: the header id repeats
+      across generations.
+    - The overview's row passes are compiled optimized at once. Promotion from the first JIT tier kept being delayed,
+      and in some runs they ran at a quarter of their speed.
+  - **Exact:**
+    - The full derivation is digest-identical to revision 156's, under all four policies, on the sparse ETL session
+      and a synthetic one.
+    - The sparse session, published again in 12 and in 40 chunks with late records, extended at every chunk and
+      equalled a full derivation each time.
+  - **Measured** (Release, 2,000-row chunks), a new generation's projection:
+    - 1M rows: 146–155 → 36–38 ms;
+    - 200k rows: 38–40 → 11–13 ms.
+    A full derivation went from 141 to 132 ms.
+  - **Tests:** +5.
+    - A seeded property test extends random captures chunk by chunk and compares every generation with a full
+      derivation. The captures include late records, reused and undecided ends, PID reuse and late start keys.
+    - A test that each declining case declines, and the rundown extends.
+    - A store-level test of eight live generations through the cache, with a compaction.
+    - Six mutations are each caught. A seventh, of an unreachable refusal, is not.
 - **Revision 156 — the overview counts relation rows from the relations, not row by row:**
   - **Found:** warm at 1M rows, one pass over the time and mechanism columns cost 3 ms. Locating every row in its
     connection incarnation cost 76 of the projection's 91 ms. The lookup fed only the unresolved-TCP count, the
@@ -1000,15 +1033,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture. Revision 156
-   took the per-row relation lookups out of the overview: warm at 1M rows a projection is 31 ms, and a new
-   generation's is 142 ms, about 110 of it the process and relation derivation it repeats.
-   - **Next:** IC-015's incremental process and relation derivation, which extends the previous generation's rather
-     than repeating it, so exact live results keep a sub-second cadence and viewer memory stops growing with the
-     session (S2). A late record, such as an end-of-capture rundown, can re-identify an instance and so every binding
-     of it, so the extension must prove itself equal to a full derivation.
-   - S4's persisted overview tiles (P25), so a reopen reads no segment's time column in full (S1). The plan's
-     revision 156 paragraph (§12) records how §10.3 keeps them exact over time-sorted segments.
+1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
+   - Revision 156 took the per-row relation lookups out of the overview.
+   - Revision 157 extends each live generation's derivation from the previous one's. At 1M rows, a new generation now
+     projects in 36–38 ms, about what the same generation costs again. Nearly all of that is the overview's pass over
+     every row.
+   - **Next:** S4's persisted overview tiles (P25), so neither a publication nor a reopen passes over every row, and a
+     reopen reads no segment's time column in full (S1). The plan's revision 156 paragraph (§12) records how §10.3
+     keeps tiles exact over time-sorted segments.
+   - Viewer memory still grows with the session (S2): a cached reader keeps the columns it has read.
    Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
    re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
    S4 and incremental derivation land.
@@ -1061,6 +1094,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 157 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,094 tests: 1,092
+  passed, 2 skipped**, zero failures.
 - Revision 156 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,089 tests: 1,087
   passed, 2 skipped**, zero failures.
 - Revision 155 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,086 tests: 1,084
@@ -1124,8 +1159,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 156, **1,087 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 155: 1,084 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 157, **1,092 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 156: 1,087 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

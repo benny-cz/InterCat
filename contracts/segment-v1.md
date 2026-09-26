@@ -99,6 +99,12 @@ segment's ordinal, its row count and its native interval. For table 2 the table 
 preimage; table 1 keeps its original preimage for byte compatibility. Rebuilding a generation from the same
 evidence therefore names the same segment.
 
+The ordinal counts within one generation, so two generations' segments with the same row count and native
+interval share an id even when they hold different records. The id names a segment of a derivation, not a file
+of a session. A reader that must tell a session's segments apart, such as a derivation extended by the segments a
+later generation adds, uses the published file instead: its name and the content digest the manifest records
+(`store-v1.md`).
+
 ### Column directory entry, 48 bytes
 
 | Offset | Width | Field |

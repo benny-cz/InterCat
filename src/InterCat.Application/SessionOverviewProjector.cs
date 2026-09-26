@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -209,6 +210,12 @@ public static class SessionOverviewProjector
         };
     }
 
+    /// <remarks>
+    /// It reads every row once per projection, so it is compiled optimized at once. Promotion from the first tier waits
+    /// until the process stops compiling new code, which a live capture's publications kept delaying: its two passes then
+    /// ran at about a quarter of their speed in some runs and not others (revision 157).
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static (TimeRange? Extent, TimelineBucket[] Buckets, MechanismTimelineLane[] Lanes, SessionMinimap? Minimap,
         long Rows, long WithoutTime)
         Timeline(

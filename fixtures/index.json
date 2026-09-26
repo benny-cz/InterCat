@@ -506,12 +506,15 @@
       "I14": [
         "I14: a cancelled import leaves no spilled run behind",
         "I14: a canonical key changes with every field the envelope carries",
+        "I14: an extension declines, for a full derivation, whatever would change a decision already made",
         "I14: an import bound that would be exceeded is a refusal, not a partial import",
         "I14: an import option outside its declared range is refused before anything is read",
         "I14: an import that spills to disk produces exactly the index it would in memory",
+        "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
         "I14: equal-time byte-identical records keep their multiplicity and gain no order",
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: instance identities do not depend on how the evidence was split into segments",
+        "I14: instances and relations extended chunk by chunk equal a derivation of every chunk at once",
         "I14: one admitted record cannot satisfy two truth operations",
         "I14: relations and peers do not depend on how records were split into segments or delivered"
       ],

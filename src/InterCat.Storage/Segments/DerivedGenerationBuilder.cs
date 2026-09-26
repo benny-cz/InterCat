@@ -863,6 +863,7 @@ public static class SessionSegments
         }
 
         SegmentReaderV1 reader = SegmentReaderV1.Open(source, prefix, dictionaries);
+        reader.Published = segmentDependency;
         if (reader.Table != TableOf(segmentDependency.Name))
         {
             throw new InvalidDataException(
