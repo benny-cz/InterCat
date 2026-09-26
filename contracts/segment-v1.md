@@ -1,7 +1,8 @@
 # InterCat derived segment v1
 
-Status: **frozen and implemented**. `observation-v1` and the additive `source-fields-v1` table are defined here.
-Entity binding revisions, relation revisions and aggregate tiles reuse the container and are not defined here.
+Status: **frozen and implemented**, at minor 1 (§11). `observation-v1` and the additive `source-fields-v1` table are
+defined here. Entity binding revisions, relation revisions and aggregate tiles reuse the container and are not defined
+here.
 
 This contract freezes what §20.1 calls the minimum store: immutable fixed-width little-endian columns, null
 bitmaps, variable-data chunks, dictionaries, a raw-record locator and time-block metadata. It owns nothing
@@ -72,7 +73,7 @@ identifier is printed.
 |---|---|---|
 | 0 | 8 | magic, `ICATSEG1` |
 | 8 | 2 | format major, 1 |
-| 10 | 2 | format minor, 0 |
+| 10 | 2 | format minor, 1 (§11) |
 | 12 | 4 | required feature bits; a non-zero bit this reader does not implement refuses the file |
 | 16 | 16 | segment id |
 | 32 | 16 | capture id |
@@ -91,7 +92,7 @@ identifier is printed.
 | 112 | 4 | file length |
 | 116 | 4 | table id: 1 `observation-v1`, 2 `source-fields-v1` |
 | 120 | 4 | CRC-32C over bytes `[0, 120)` |
-| 124 | 4 | reserved, zero |
+| 124 | 4 | CRC-32C over the column and time-block directories, bytes `[128, time-block directory offset + 32*timeBlocks)`; zero at minor 0 |
 
 The segment id is derived, not minted: it is a UUIDv8 over the capture, the clock, the derivation, the
 segment's ordinal, its row count and its native interval. For table 2 the table id is also in the segment-id
@@ -117,7 +118,7 @@ evidence therefore names the same segment.
 | 32 | 4 | unknown count — rows without one |
 | 36 | 4 | CRC-32C over the values |
 | 40 | 4 | CRC-32C over the null bitmap |
-| 44 | 4 | reserved, zero |
+| 44 | 4 | a chunk-encoded column: CRC-32C over the variable chunk; any other column, or minor 0: reserved, zero |
 
 Logical types: 1 `Unsigned8`, 2 `Unsigned16`, 3 `Unsigned32`, 4 `Unsigned64`, 5 `Signed32`, 6 `Signed64`,
 7 `Guid16`, 8 `Text`.
@@ -290,7 +291,7 @@ dictionary file:
 |---|---|---|
 | 0 | 8 | magic, `ICATDIC1` |
 | 8 | 2 | format major, 1 |
-| 10 | 2 | format minor, 0 |
+| 10 | 2 | format minor, 0; segment minor 1 changed nothing here (§11) |
 | 12 | 4 | required feature bits |
 | 16 | 2 | dictionary id |
 | 18 | 2 | kind: 1 `Utf8Text`, 2 `Schema` |
@@ -320,6 +321,7 @@ At open, before a row is served:
 
 - the header's magic, major version and required feature bits;
 - the header's own CRC-32C;
+- from minor 1, the directories' CRC-32C, before an entry is interpreted;
 - the SHA-256 trailer over the whole file;
 - every declared extent against the file's real length, and against the row count and each column's width;
 - each column's known and unknown counts against its row count;
@@ -328,9 +330,16 @@ At open, before a row is served:
   and maximum and with every time block's. The ordering and the interval are not trusted because everything
   above them — a viewport's boundary arithmetic, a block skip, a range scan — rests on them.
 
-On first read of any other column: its CRC-32C, and its null bitmap's. A caller that reads two columns pays
-for two rather than for the whole file. The per-column checksum is what distinguishes one damaged column
-from a damaged file; the trailer alone can only say that something changed.
+On first read of any other column: its CRC-32C, and its null bitmap's; from minor 1, for a chunk-encoded column,
+the variable chunk's too. A caller that reads two columns pays for two rather than for the whole file. The
+per-column checksum is what distinguishes one damaged column from a damaged file; the trailer alone can only say
+that something changed.
+
+From minor 1, every byte a reader interprets is under a CRC-32C of its own: the header, both directories, each
+column's values and null bitmap, and the variable chunk. Only alignment padding and the trailer are not. That is
+what lets a reader check exactly the bytes it reads, rather than hash a whole file to trust one column of it. The
+trailer is still written and still pins the whole file, and a store's manifest records its length and digest
+(`contracts/store-v1.md` §3).
 
 A dictionary-coded column whose dictionary was not supplied refuses rather than returning the code rendered
 as a value. A row whose enumeration carries a code §23 does not define refuses. An empty segment is never
@@ -348,3 +357,20 @@ would let absence be read as data (R21, P1).
 Compaction and evidence leases, listed here while this format was frozen, are now `contracts/store-v1.md` §8: a
 compaction rewrites rows unchanged, raw-record locator included, and a reader holds its generation under a lease. Neither
 changed a byte of this format.
+
+## 11. Minor versions
+
+A major version is a layout: a reader refuses one it does not implement (§9). A minor version only fills words an
+earlier minor reserved and wrote as zero; it never moves a field or changes what one means. So a reader reads any
+minor of its major, and checks the words the segment's own minor declares. A reader that predates a minor never
+reads the words it filled, and reads the file as it always did.
+
+| Minor | Written by | Adds |
+|---|---|---|
+| 0 | revisions up to 148 | The header's CRC-32C, each column's CRC-32C and its null bitmap's, and the trailer. The directories and the variable chunk rest on the trailer alone. |
+| 1 | revision 149 on | The directories' CRC-32C in the header's word at 124, and the variable chunk's in each chunk-encoded column's word at 44. |
+
+A reader never infers a checksum from a minor-0 segment's zero words: minor 0 carries none, and its trailer is
+checked at open. Sessions recorded before revision 149 keep their minor-0 segments until a later derivation or
+compaction publishes new ones. Dictionaries stay at minor 0: their header, offsets and values each carried a
+checksum from the start.

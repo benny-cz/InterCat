@@ -225,7 +225,22 @@ public static class SegmentFormatV1
 
     public const ushort FormatMajor = 1;
 
-    public const ushort FormatMinor = 0;
+    /// <summary>
+    /// The minor version a segment is written at. Minor 1 fills two words minor 0 reserved: the header's CRC-32C over
+    /// the column and time-block directories, and a chunk-encoded column's CRC-32C over the variable chunk. With them
+    /// every byte a reader interprets is under a checksum of its own, so a reader can check what it reads rather than
+    /// hash the whole file. A minor-0 reader ignores both words, and a minor-0 segment rests on its trailer.
+    /// </summary>
+    public const ushort FormatMinor = 1;
+
+    /// <summary>The first minor version whose segments carry the directory and variable-chunk checksums.</summary>
+    public const ushort StructureChecksumMinor = 1;
+
+    /// <summary>
+    /// The minor version a dictionary is written at. A dictionary's header, offsets and values each carry a checksum
+    /// since minor 0, so segment minor 1 changed nothing in it.
+    /// </summary>
+    public const ushort DictionaryFormatMinor = 0;
 
     public const int HeaderLength = 128;
 

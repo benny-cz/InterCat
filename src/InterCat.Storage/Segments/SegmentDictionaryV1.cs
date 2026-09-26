@@ -127,7 +127,7 @@ public sealed class SegmentDictionaryV1
         Span<byte> header = file.AsSpan(0, SegmentFormatV1.DictionaryHeaderLength);
         BinaryPrimitives.WriteUInt64LittleEndian(header, SegmentFormatV1.DictionaryMagic);
         BinaryPrimitives.WriteUInt16LittleEndian(header[8..], SegmentFormatV1.FormatMajor);
-        BinaryPrimitives.WriteUInt16LittleEndian(header[10..], SegmentFormatV1.FormatMinor);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[10..], SegmentFormatV1.DictionaryFormatMinor);
         BinaryPrimitives.WriteUInt32LittleEndian(header[12..], 0);
         BinaryPrimitives.WriteUInt16LittleEndian(header[16..], DictionaryId);
         BinaryPrimitives.WriteUInt16LittleEndian(header[18..], (ushort)Kind);

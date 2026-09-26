@@ -427,9 +427,14 @@ internal sealed class SegmentTableBuilder
         }
 
         byte[] file = new byte[fileLength];
+        uint chunkCrc = Crc32C.Compute(chunk);
         for (int index = 0; index < plan.Count; index++)
         {
             plan[index] = WriteColumn(file, plan[index], order, schemaDictionary, textDictionary);
+            if (plan[index].Encoding == SegmentColumnEncoding.VariableReference)
+            {
+                plan[index] = plan[index] with { VariableChunkCrc32C = chunkCrc };
+            }
         }
 
         chunk.CopyTo(file.AsSpan(chunkOffset));
@@ -714,7 +719,7 @@ internal sealed class SegmentTableBuilder
             BinaryPrimitives.WriteUInt32LittleEndian(entry[32..], (uint)column.UnknownCount);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[36..], column.ValueCrc32C);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[40..], column.NullBitmapCrc32C);
-            BinaryPrimitives.WriteUInt32LittleEndian(entry[44..], 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(entry[44..], column.VariableChunkCrc32C);
         }
     }
 
@@ -751,7 +756,15 @@ internal sealed class SegmentTableBuilder
         BinaryPrimitives.WriteUInt32LittleEndian(header[112..], (uint)fileLength);
         BinaryPrimitives.WriteUInt32LittleEndian(header[116..], (uint)table);
         BinaryPrimitives.WriteUInt32LittleEndian(header[120..], Crc32C.Compute(header[..120]));
-        BinaryPrimitives.WriteUInt32LittleEndian(header[124..], 0);
+
+        // The directories are written before the header, so their checksum covers their final bytes, the chunk
+        // checksums in the column entries included.
+        int directoriesEnd = SegmentFormatV1.HeaderLength
+            + (columns.Count * SegmentFormatV1.ColumnEntryLength)
+            + (TimeBlockCount * SegmentFormatV1.TimeBlockEntryLength);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header[124..],
+            Crc32C.Compute(file.AsSpan(SegmentFormatV1.HeaderLength, directoriesEnd - SegmentFormatV1.HeaderLength)));
     }
 
     private Span<byte> Slot(SegmentColumnId id, int row, int width)
@@ -808,6 +821,10 @@ internal readonly record struct SortKey(
 }
 
 /// <summary>One column as a segment's directory records it, including its availability counters (§10.2).</summary>
+/// <param name="VariableChunkCrc32C">
+/// A chunk-encoded column's CRC-32C over the segment's variable chunk, which its references point into. Zero for any
+/// other column, and for every column of a minor-0 segment, which reserved the word.
+/// </param>
 public sealed record SegmentColumnDescriptor(
     SegmentColumnId Id,
     SegmentColumnType Type,
@@ -822,7 +839,8 @@ public sealed record SegmentColumnDescriptor(
     int KnownCount,
     int UnknownCount,
     uint ValueCrc32C,
-    uint NullBitmapCrc32C);
+    uint NullBitmapCrc32C,
+    uint VariableChunkCrc32C = 0);
 
 internal static class StableSegmentId
 {

@@ -468,6 +468,108 @@ public sealed class SegmentV1Tests
         Assert.Equal(Attempts * threads, refused);
     }
 
+    [Fact(DisplayName = "I15: a segment's directories and its variable chunk carry checksums of their own")]
+    public void DirectoriesAndTheChunkCarryChecksumsOfTheirOwn()
+    {
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries(ChunkEncodedRows());
+        SegmentReaderV1 segment = SegmentReaderV1.Open(bytes, dictionaries);
+        uint chunkCrc = Crc32C.Compute(bytes.AsSpan(segment.VariableChunkOffset, segment.VariableChunkLength));
+
+        // Minor 1 fills the two words minor 0 reserved and moves nothing else, so a reader that predates it reads the
+        // file unchanged: it never read either word.
+        Assert.Equal(1, BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(10)));
+        Assert.Equal(1, segment.FormatMinor);
+        Assert.Equal(
+            Crc32C.Compute(bytes.AsSpan(SegmentFormatV1.HeaderLength, DirectoriesEnd(bytes) - SegmentFormatV1.HeaderLength)),
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(124)));
+        Assert.Equal(SegmentColumnEncoding.VariableReference, segment.Column(SegmentColumnId.ResourceName)!.Encoding);
+        Assert.NotEqual(0, segment.VariableChunkLength);
+        for (int index = 0; index < segment.Columns.Count; index++)
+        {
+            SegmentColumnDescriptor column = segment.Columns[index];
+            uint word = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.AsSpan(SegmentFormatV1.HeaderLength + (index * SegmentFormatV1.ColumnEntryLength) + 44));
+            uint expected = column.Encoding == SegmentColumnEncoding.VariableReference ? chunkCrc : 0;
+            Assert.Equal(expected, word);
+            Assert.Equal(expected, column.VariableChunkCrc32C);
+        }
+    }
+
+    [Theory(DisplayName = "I15: a damaged directory is refused by its own checksum before an entry is read")]
+    [InlineData("a time block's reserved word, which nothing else reads")]
+    [InlineData("a column's value offset, which would point the column at other bytes")]
+    public void ADamagedDirectoryIsRefusedByItsOwnChecksum(string damage)
+    {
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries(
+            [Row(100, bytes: 1), Row(200, bytes: 2)]);
+        int columns = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(88));
+        int offset = damage.StartsWith("a time block", StringComparison.Ordinal)
+            ? SegmentFormatV1.HeaderLength + (columns * SegmentFormatV1.ColumnEntryLength) + 24
+            : SegmentFormatV1.HeaderLength + 12;
+        bytes[offset] ^= 0x08;
+
+        // The trailer is rewritten, so the whole file passes and only the directories' own checksum disagrees. A
+        // reader that reads a column without hashing the file has nothing else to find this with.
+        Reseal(bytes);
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => SegmentReaderV1.Open(bytes, dictionaries));
+        InvalidDataException early = Assert.Throws<InvalidDataException>(() => SegmentReaderV1.ReferencedDictionaryIds(bytes));
+
+        Assert.Contains("directory fails its checksum", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("directory fails its checksum", early.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: a damaged variable chunk is refused when its column is read")]
+    public void ADamagedVariableChunkIsRefusedWhenItsColumnIsRead()
+    {
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries(ChunkEncodedRows());
+        SegmentReaderV1 intact = SegmentReaderV1.Open(bytes, dictionaries);
+        bytes[intact.VariableChunkOffset + intact.VariableChunkLength - 1] ^= 0x01;
+        Reseal(bytes);
+
+        // Opening reads no text, so it succeeds; the first read of the column that points into the chunk refuses,
+        // and a column that does not is still served.
+        SegmentReaderV1 segment = SegmentReaderV1.Open(bytes, dictionaries);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() =>
+            segment.TextValue(SegmentColumnId.ResourceName, 0));
+
+        Assert.Contains("ResourceName's variable chunk fails its checksum", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(1_000, segment.SignedValue(SegmentColumnId.NativeTicks, 0));
+    }
+
+    [Fact(DisplayName = "I15: a segment written before minor 1 still opens, and its trailer covers what it did not checksum")]
+    public void AMinorZeroSegmentStillOpens()
+    {
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries(ChunkEncodedRows());
+        SegmentReaderV1 written = SegmentReaderV1.Open(bytes, dictionaries);
+        string expected = written.TextValue(SegmentColumnId.ResourceName, 7)!;
+
+        // Rewrite the file exactly as minor 0 published it: the minor, and both words zero. Every session recorded
+        // before revision 149 holds segments like this.
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(10), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(124), 0);
+        for (int index = 0; index < written.Columns.Count; index++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(SegmentFormatV1.HeaderLength + (index * SegmentFormatV1.ColumnEntryLength) + 44),
+                0);
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(120), Crc32C.Compute(bytes.AsSpan(0, 120)));
+        Reseal(bytes);
+
+        SegmentReaderV1 legacy = SegmentReaderV1.Open(bytes, dictionaries);
+
+        Assert.Equal(0, legacy.FormatMinor);
+        Assert.Equal(expected, legacy.TextValue(SegmentColumnId.ResourceName, 7));
+        Assert.Equal(written.RowCount, legacy.RowCount);
+
+        // Without the chunk's own checksum, damage to it is found by the trailer, at open.
+        bytes[legacy.VariableChunkOffset] ^= 0x01;
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => SegmentReaderV1.Open(bytes, dictionaries));
+        Assert.Contains("trailing digest", refusal.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I15: an empty segment is never published, because absence is not data")]
     public void AnEmptySegmentIsNeverPublished()
     {
@@ -937,6 +1039,29 @@ public sealed class SegmentV1Tests
         MeasurementQuality = bytes is null ? QualityLevel.UnknownQuality : QualityLevel.Proven,
         TimingQuality = QualityLevel.Qualified,
     };
+
+    /// <summary>
+    /// Rows whose resource names pass the dictionary's byte budget with the fewest rows, so the writer stores them in
+    /// the variable chunk.
+    /// </summary>
+    private static IEnumerable<ObservationRowV1> ChunkEncodedRows() =>
+        Enumerable.Range(0, (SegmentFormatV1.MaximumDictionaryBytes / SegmentFormatV1.MaximumTextBytes) + 1)
+            .Select(index => Row(1_000 + index, bytes: index, ordinal: (ulong)index + 1) with
+            {
+                ResourceName = index.ToString("D8", CultureInfo.InvariantCulture)
+                    .PadRight(SegmentFormatV1.MaximumTextBytes, 'x'),
+            });
+
+    /// <summary>Where a segment's time-block directory ends, from its header.</summary>
+    private static int DirectoriesEnd(byte[] segment) =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(segment.AsSpan(100))
+        + (BinaryPrimitives.ReadUInt16LittleEndian(segment.AsSpan(90)) * SegmentFormatV1.TimeBlockEntryLength);
+
+    /// <summary>Rewrites a segment's trailing digest over its current bytes, as a file damaged before it was sealed.</summary>
+    private static void Reseal(byte[] segment) =>
+        System.Security.Cryptography.SHA256.HashData(
+            segment.AsSpan(0, segment.Length - SegmentFormatV1.TrailerLength),
+            segment.AsSpan(segment.Length - SegmentFormatV1.TrailerLength));
 
     private static byte[] Encode(IEnumerable<ObservationRowV1> rows) => EncodeWithDictionaries(rows).Bytes;
 

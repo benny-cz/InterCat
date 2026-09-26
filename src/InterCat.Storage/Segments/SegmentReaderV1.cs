@@ -78,9 +78,9 @@ public readonly ref struct SegmentColumnSlice
 
 /// <summary>
 /// Reads one immutable `observation-v1` segment. Everything a reader would otherwise have to trust is
-/// checked before a row is served: the header's own checksum, the trailing digest over the whole file, every
-/// declared extent against the file's real length, each column's checksum on first use, and the ordering and
-/// time-block metadata against the time column itself.
+/// checked before a row is served: the header's own checksum and, from minor 1, the directories', the trailing
+/// digest over the whole file, every declared extent against the file's real length, each column's checksum on
+/// first use, and the ordering and time-block metadata against the time column itself.
 /// </summary>
 /// <remarks>
 /// The bytes are held as given. Fixed-width plain columns are exposed as spans over them, so a caller reads
@@ -117,7 +117,8 @@ public sealed class SegmentReaderV1
         IReadOnlyList<SegmentTimeBlockV1> timeBlocks,
         int variableChunkOffset,
         int variableChunkLength,
-        Dictionary<ushort, SegmentDictionaryV1> dictionaries)
+        Dictionary<ushort, SegmentDictionaryV1> dictionaries,
+        ushort formatMinor)
     {
         this.file = file;
         SegmentId = segmentId;
@@ -134,6 +135,7 @@ public sealed class SegmentReaderV1
         VariableChunkOffset = variableChunkOffset;
         VariableChunkLength = variableChunkLength;
         this.dictionaries = dictionaries;
+        FormatMinor = formatMinor;
         columns = ordered.ToDictionary(column => column.Id);
     }
 
@@ -147,6 +149,12 @@ public sealed class SegmentReaderV1
     public TimestampEncoding TimestampEncoding { get; }
 
     public NormalizerContractVersion Derivation { get; }
+
+    /// <summary>
+    /// The minor version the segment was written at. From <see cref="SegmentFormatV1.StructureChecksumMinor"/> its
+    /// directories and variable chunk carry checksums of their own, and this reader checks them.
+    /// </summary>
+    public ushort FormatMinor { get; }
 
     public SegmentTableId Table { get; }
 
@@ -194,6 +202,9 @@ public sealed class SegmentReaderV1
                 + "guessed layout.");
         }
 
+        // A later minor version only fills words an earlier one reserved, so any minor is read. What it declares
+        // decides which of those words are checksums this reader must check.
+        ushort minor = BinaryPrimitives.ReadUInt16LittleEndian(header[10..]);
         uint required = BinaryPrimitives.ReadUInt32LittleEndian(header[12..]);
         if (required != 0)
         {
@@ -269,6 +280,11 @@ public sealed class SegmentReaderV1
             || (long)chunkOffset + chunkLength + SegmentFormatV1.TrailerLength > fileLength)
         {
             throw new InvalidDataException("A segment-v1 variable chunk does not fit the file that declares it.");
+        }
+
+        if (minor >= SegmentFormatV1.StructureChecksumMinor)
+        {
+            VerifyDirectories(file, (int)dataStart);
         }
 
         Span<byte> digest = stackalloc byte[SegmentFormatV1.TrailerLength];
@@ -374,7 +390,8 @@ public sealed class SegmentReaderV1
             timeBlocks,
             (int)chunkOffset,
             (int)chunkLength,
-            byId);
+            byId,
+            minor);
         reader.VerifyOrderAndExtents();
         return reader;
     }
@@ -398,11 +415,21 @@ public sealed class SegmentReaderV1
         }
 
         ushort columnCount = BinaryPrimitives.ReadUInt16LittleEndian(segment[88..]);
+        ushort timeBlockCount = BinaryPrimitives.ReadUInt16LittleEndian(segment[90..]);
         uint directoryOffset = BinaryPrimitives.ReadUInt32LittleEndian(segment[96..]);
-        if (directoryOffset != SegmentFormatV1.HeaderLength
-            || (long)directoryOffset + ((long)columnCount * SegmentFormatV1.ColumnEntryLength) > segment.Length)
+        long directoriesEnd = directoryOffset
+            + ((long)columnCount * SegmentFormatV1.ColumnEntryLength)
+            + ((long)timeBlockCount * SegmentFormatV1.TimeBlockEntryLength);
+        if (directoryOffset != SegmentFormatV1.HeaderLength || directoriesEnd > segment.Length)
         {
             throw new InvalidDataException("A segment-v1 directory is not where its header says it is.");
+        }
+
+        // A dictionary id read from a damaged entry would name a dictionary the generation does not publish, and the
+        // refusal would blame the generation rather than the segment.
+        if (BinaryPrimitives.ReadUInt16LittleEndian(segment[10..]) >= SegmentFormatV1.StructureChecksumMinor)
+        {
+            VerifyDirectories(segment, (int)directoriesEnd);
         }
 
         var ids = new List<ushort>();
@@ -779,6 +806,11 @@ public sealed class SegmentReaderV1
         uint valueCrc = BinaryPrimitives.ReadUInt32LittleEndian(entry[36..]);
         uint bitmapCrc = BinaryPrimitives.ReadUInt32LittleEndian(entry[40..]);
 
+        // The word is the chunk's checksum only in a chunk-encoded column; in any other it stays reserved.
+        uint chunkCrc = encoding == SegmentColumnEncoding.VariableReference
+            ? BinaryPrimitives.ReadUInt32LittleEndian(entry[44..])
+            : 0;
+
         int width = encoding switch
         {
             SegmentColumnEncoding.Dictionary => sizeof(uint),
@@ -832,7 +864,22 @@ public sealed class SegmentReaderV1
             known,
             unknown,
             valueCrc,
-            bitmapCrc);
+            bitmapCrc,
+            chunkCrc);
+    }
+
+    /// <summary>
+    /// Checks the column and time-block directories against the header's word at 124, which carries their CRC-32C
+    /// from minor 1. They sit between the header and the first column, and every extent the reader later trusts is
+    /// read from them, so a damaged entry is refused as damaged before one is interpreted.
+    /// </summary>
+    private static void VerifyDirectories(ReadOnlySpan<byte> file, int directoriesEnd)
+    {
+        if (Crc32C.Compute(file[SegmentFormatV1.HeaderLength..directoriesEnd])
+            != BinaryPrimitives.ReadUInt32LittleEndian(file[124..]))
+        {
+            throw new InvalidDataException("A segment-v1 directory fails its checksum.");
+        }
     }
 
     /// <summary>
@@ -984,6 +1031,15 @@ public sealed class SegmentReaderV1
                 != column.NullBitmapCrc32C)
         {
             throw new InvalidDataException($"Column {column.Id}'s null bitmap fails its checksum.");
+        }
+
+        // A chunk-encoded column's values are references; its text is in the chunk they point into. A minor-0 segment
+        // carries no checksum for the chunk, which its trailer covers alone.
+        if (column.Encoding == SegmentColumnEncoding.VariableReference
+            && FormatMinor >= SegmentFormatV1.StructureChecksumMinor
+            && Crc32C.Compute(file.Span.Slice(VariableChunkOffset, VariableChunkLength)) != column.VariableChunkCrc32C)
+        {
+            throw new InvalidDataException($"Column {column.Id}'s variable chunk fails its checksum.");
         }
 
         if (!column.Nullable)
