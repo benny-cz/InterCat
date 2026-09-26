@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -210,43 +209,33 @@ public static class SessionOverviewProjector
         };
     }
 
-    /// <remarks>
-    /// It reads every row once per projection, so it is compiled optimized at once. Promotion from the first tier waits
-    /// until the process stops compiling new code, which a live capture's publications kept delaying: its two passes then
-    /// ran at about a quarter of their speed in some runs and not others (revision 157).
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static (TimeRange? Extent, TimelineBucket[] Buckets, MechanismTimelineLane[] Lanes, SessionMinimap? Minimap,
         long Rows, long WithoutTime)
         Timeline(
-            IReadOnlyList<SegmentReaderV1> segments,
+            SegmentReaderV1[] segments,
             SourceClockDescriptor clock,
             CoverageLedgerV1? coverage,
             CancellationToken cancellationToken)
     {
-        // The extent comes first, from the time column alone; then each timed row is counted into its bucket and its
-        // minimap column. No row's relation is looked up: what the graph draws is counted from the relations.
+        // Every count comes from the segments' tiles (§12.1 S4's first level), built once per reader: the extent from
+        // their earliest and latest readings, and the buckets and minimap columns from tiles whole wherever a tile's
+        // records fall in one column. Only a tile a bucket boundary crosses has its rows read (§10.3).
         long rows = 0;
         long withoutTime = 0;
         long minimum = long.MaxValue;
         long maximum = long.MinValue;
-        foreach (SegmentReaderV1 segment in segments)
+        var tiles = new SegmentTimeTiles[segments.Length];
+        for (int index = 0; index < segments.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            for (int row = 0; row < segment.RowCount; row++)
+            SegmentTimeTiles segment = SegmentTimeTiles.Of(segments[index], cancellationToken);
+            tiles[index] = segment;
+            rows += segment.Rows;
+            withoutTime += segment.Untimed;
+            if (segment.First is { } first && segment.Last is { } last)
             {
-                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                rows++;
-                if (times.SignedAt(row) is not { } nanoseconds)
-                {
-                    withoutTime++;
-                    continue;
-                }
-
-                long tick = nanoseconds / 100;
-                minimum = Math.Min(minimum, tick);
-                maximum = Math.Max(maximum, tick);
+                minimum = Math.Min(minimum, first);
+                maximum = Math.Max(maximum, last);
             }
         }
 
@@ -257,31 +246,21 @@ public static class SessionOverviewProjector
 
         var extent = new TimeRange(minimum, maximum + 1);
         var main = new TimelineColumns(extent, MaximumTimelineBuckets, tallyMechanisms: true);
-        var minimap = new TimelineColumns(extent, SessionMinimap.MaximumColumns, tallyMechanisms: false);
-        foreach (SegmentReaderV1 segment in segments)
+        (TimeRange span, int count) = SessionMinimap.ColumnsFor(extent);
+        var minimap = new TimelineColumns(span, count, tallyMechanisms: false);
+        for (int index = 0; index < segments.Length; index++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            for (int row = 0; row < segment.RowCount; row++)
-            {
-                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (times.SignedAt(row) is not { } nanoseconds)
-                {
-                    continue;
-                }
-
-                long tick = nanoseconds / 100;
-                Mechanism mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                main.Add(main.ColumnOf(tick)!.Value, mechanism);
-                minimap.Add(minimap.ColumnOf(tick)!.Value, mechanism);
-            }
+            tiles[index].CountInto(segments[index], main, cancellationToken);
+            tiles[index].CountInto(segments[index], minimap, cancellationToken);
         }
 
         var overviewMinimap = new SessionMinimap(
             extent,
             Array.AsReadOnly([.. minimap.Counts]),
-            Array.AsReadOnly(minimap.CaptureCoverage(coverage, clock)));
+            Array.AsReadOnly(minimap.CaptureCoverage(coverage, clock, within: extent)))
+        {
+            ColumnSpan = span,
+        };
         return (extent, main.Buckets(coverage, clock), main.MechanismLanes(coverage, clock), overviewMinimap, rows, withoutTime);
     }
 

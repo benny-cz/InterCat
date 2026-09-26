@@ -15,7 +15,41 @@ public sealed record SessionMinimap(TimeRange Extent, IReadOnlyList<int> Counts,
     /// <summary>Plan §6.2 and §23: the minimap draws the retained extent in at most this many columns.</summary>
     public const int MaximumColumns = 2_000;
 
-    public TimeRange IntervalOf(int column) => TimelineColumns.IntervalOf(Extent, Counts.Count, column);
+    /// <summary>
+    /// The whole columns, end to end: since revision 158 multiples of one width from the 1-2-5 ladder (§6.2) that cover
+    /// the extent, the first level of §12.1's overview pyramid, so a column is the same interval in every generation of
+    /// the session that keeps its width. By default the extent itself, divided equally.
+    /// </summary>
+    public TimeRange ColumnSpan { get; init; } = Extent;
+
+    /// <summary>One column's interval, clipped to the extent: the first and last columns can begin or end outside it.</summary>
+    public TimeRange IntervalOf(int column)
+    {
+        TimeRange whole = TimelineColumns.IntervalOf(ColumnSpan, Counts.Count, column);
+        return new(Math.Max(whole.StartTicks, Extent.StartTicks), Math.Min(whole.EndTicks, Extent.EndTicks));
+    }
+
+    /// <summary>
+    /// The minimap's columns for an extent: the narrowest width of the 1-2-5 ladder that covers it in at most
+    /// <see cref="MaximumColumns"/> whole columns, aligned to multiples of that width.
+    /// </summary>
+    internal static (TimeRange Span, int Count) ColumnsFor(TimeRange extent)
+    {
+        long width = 1;
+        for (long decade = 1; ; decade = checked(decade * 10))
+        {
+            width = decade;
+            if (extent.SpanTicks <= (MaximumColumns - 2) * width) break;
+            width = decade * 2;
+            if (extent.SpanTicks <= (MaximumColumns - 2) * width) break;
+            width = decade * 5;
+            if (extent.SpanTicks <= (MaximumColumns - 2) * width) break;
+        }
+
+        long first = SegmentTimeTiles.FloorDivide(extent.StartTicks, width);
+        long last = SegmentTimeTiles.FloorDivide(extent.EndTicks - 1, width);
+        return (new TimeRange(first * width, (last + 1) * width), checked((int)(last - first + 1)));
+    }
 }
 
 /// <summary>
@@ -222,6 +256,14 @@ public static class SessionTimelineQuery
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (rows is null)
+            {
+                // Without a focus the whole timeline is all a count needs, and the segment's tiles hold it (S4): only a
+                // tile a column boundary crosses has its rows read.
+                SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
+                continue;
+            }
+
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
             SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
@@ -544,14 +586,36 @@ internal sealed class TimelineColumns
 
     public IReadOnlyList<int> Counts => counts;
 
+    /// <summary>The interval the columns divide.</summary>
+    public TimeRange Interval => interval;
+
+    /// <summary>One more than the largest mechanism code §23 defines: a table indexed by code has this many slots.</summary>
+    internal static int MechanismCodes => SlotOfCode.Length;
+
+    /// <summary>A defined mechanism's code; an undefined one is refused, as counting a record of it would be.</summary>
+    internal static int CodeOf(Mechanism mechanism)
+    {
+        _ = SlotOf(mechanism);
+        return (int)mechanism;
+    }
+
     /// <summary>The column holding a presentation tick, or null outside the interval.</summary>
     /// <remarks>
+    /// <para>
+    /// The column is the one whose interval (<see cref="IntervalOf(TimeRange, int, int)"/>, §10.3's
+    /// <c>b(i) = t0 + floor(span * i / W)</c>) holds the tick: the largest <c>i</c> with <c>b(i) &lt;= t</c>, which is
+    /// <c>floor(((t - t0 + 1) * W - 1) / span)</c>. Until revision 158 it was <c>floor((t - t0) * W / span)</c>, which
+    /// agrees only where <c>W</c> divides the span: a record exactly at any other boundary was counted in the column
+    /// before the one whose stated interval holds it.
+    /// </para>
+    /// <para>
     /// Called once per row. It is compiled optimized at once rather than waiting to be promoted from the first tier,
     /// which a projection called every couple of seconds would spend its first seconds waiting for.
+    /// </para>
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public int? ColumnOf(long tick) => interval.Contains(tick)
-        ? (int)Math.Min(counts.Length - 1, (long)(((Int128)(tick - interval.StartTicks) * counts.Length) / interval.SpanTicks))
+        ? (int)(((((Int128)(tick - interval.StartTicks) + 1) * counts.Length) - 1) / interval.SpanTicks)
         : null;
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -574,6 +638,30 @@ internal sealed class TimelineColumns
             }
 
             tally++;
+        }
+    }
+
+    /// <summary>Adds <paramref name="count"/> records of one mechanism to a column at once, as a tile holds them.</summary>
+    public void Add(int column, Mechanism mechanism, int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        if (counts[column] > int.MaxValue - count)
+        {
+            throw new InvalidOperationException(
+                "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                + "represent it without compaction, so it is refused rather than wrapped to a false value.");
+        }
+
+        counts[column] += count;
+        if (mechanisms is not null)
+        {
+            ref int tally = ref mechanisms[(column * Slots.Length) + SlotOf(mechanism)];
+            if (tally > int.MaxValue - count)
+            {
+                throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+            }
+
+            tally += count;
         }
     }
 
@@ -710,8 +798,12 @@ internal sealed class TimelineColumns
         return slots;
     }
 
-    /// <summary>The capture's own coverage over each column, independent of what was observed in it.</summary>
-    public CoverageState[] CaptureCoverage(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
+    /// <summary>
+    /// The capture's own coverage over each column, independent of what was observed in it, over the part of each
+    /// column inside <paramref name="within"/> when one is given: a column that begins before the extent is not judged
+    /// on readings from before it.
+    /// </summary>
+    public CoverageState[] CaptureCoverage(CoverageLedgerV1? coverage, SourceClockDescriptor clock, TimeRange? within = null)
     {
         if (coverage is null)
         {
@@ -719,12 +811,14 @@ internal sealed class TimelineColumns
         }
 
         // Adjacent columns share a boundary, so each boundary is mapped to its native reading once.
-        long?[] boundaries = [.. Enumerable.Range(0, counts.Length + 1).Select(index => FirstNativeAt(clock,
-            index == counts.Length ? interval.EndTicks : IntervalOf(interval, counts.Length, index).StartTicks))];
+        long?[] boundaries = [.. Enumerable.Range(0, counts.Length + 1).Select(index => FirstNativeAt(clock, Within(
+            index == counts.Length ? interval.EndTicks : IntervalOf(interval, counts.Length, index).StartTicks)))];
         return [.. SessionCoverage.CaptureStates(coverage, [.. Enumerable.Range(0, counts.Length).Select(index =>
             boundaries[index] is { } first && boundaries[index + 1] is { } last && last > first
                 ? new TimeRange(first, last)
                 : (TimeRange?)null)])];
+
+        long Within(long tick) => within is { } bounds ? Math.Clamp(tick, bounds.StartTicks, bounds.EndTicks) : tick;
     }
 
     public static TimeRange IntervalOf(TimeRange interval, int columns, int column)

@@ -673,7 +673,11 @@
         "I3: time ranges are half-open"
       ],
       "I4": [
+        "I4: a record is counted in the column whose stated interval holds it, at every boundary",
+        "I4: a segment whose session times go backwards has no tiles and is counted row by row",
+        "I4: counting segments through their tiles equals counting their rows, for any interval and columns",
         "I4: every eligible point belongs to exactly one bucket",
+        "I4: every minimap column is a union of whole tiles of every segment, so the minimap reads no row",
         "I4: the covered extent contains the requested one, including the final observation"
       ],
       "I5": [

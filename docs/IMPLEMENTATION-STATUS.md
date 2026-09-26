@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 157 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 158 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -21,7 +21,8 @@ an event (p95). The default 10-minute Explore capture runs to its bound on real 
 118 MiB of viewer memory at the end, 22.5 MiB of it cached segments. A crashed viewer's capture is stopped and
 finalized by its lease without a leaked trace, and the next launch offers to finish its session from the evidence the
 broker kept, including what the broker recorded after the crash. Since revision 157, a live generation's derivation
-extends the previous one's. Projection still passes over every row, so large sessions wait on S4's persisted tiles.
+extends the previous one's, and since revision 158 the overview and minimap come from each segment's in-memory tiles,
+S4's first level. A reopen still reads every segment's time column until the tiles are persisted.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. All three of §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
@@ -63,6 +64,33 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 158 — the overview and minimap come from time tiles, S4's first level:**
+  - **Changed:**
+    - Each segment's timed records are counted once per reader into aligned decimal tiles. A tile holds its counts per
+      mechanism, its row run and its earliest and latest reading.
+    - A count takes a tile whole where its records fall in one column, and reads the rows of a tile a column boundary
+      crosses (§10.3). A segment whose session times go backwards is read row by row.
+    - The overview's extent and buckets, and zoomed detail without a focus, come from tiles.
+    - The minimap's columns are aligned to the narrowest 1–2–5 width that covers the extent in at most 2,000 columns.
+      Each is then a union of whole tiles, and the first and last are clipped to the extent. The minimap reads no row.
+  - **Fixed:** a record exactly on a bucket boundary that the column count does not divide evenly was counted in the
+    bucket before the one whose stated interval holds it. Columns now invert §10.3's boundaries exactly.
+    - The real sparse session's buckets are unchanged.
+    - A synthetic session with a record at every tick moves one record per such boundary.
+    - Everything else is digest-identical to revision 157, relations and bindings included.
+  - **Measured** at 1M rows, Release:
+    - the same generation again: 32–33 → 1 ms;
+    - a live generation: 37–38 → 8 ms;
+    - a generation derived in full: 134–138 → 103–105 ms;
+    - zoomed detail over a sixth of the extent: 7.2–7.7 → 0.9 ms.
+  - **Tests:** +8.
+    - Tiles count what rows count, over random intervals and column counts.
+    - Minimap columns are whole tiles and read no row.
+    - Disordered times fall back to rows.
+    - Every column holds what it counts (the fixed defect's test failed before the fix).
+    - Five mutations of the tiles are each caught.
+  - **Open:** tiles are not persisted, so a reopen still reads every time column (S1), and a focused count still reads
+    its rows.
 - **Revision 157 — a live generation's derivation extends the previous generation's (IC-015):**
   - **Found:** after revision 156, a new generation at 1M rows still spent about 110 of its 142 ms re-deriving
     process instances and relations from every segment.
@@ -1035,16 +1063,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
    - Revision 156 took the per-row relation lookups out of the overview.
-   - Revision 157 extends each live generation's derivation from the previous one's. At 1M rows, a new generation now
-     projects in 36–38 ms, about what the same generation costs again. Nearly all of that is the overview's pass over
-     every row.
-   - **Next:** S4's persisted overview tiles (P25), so neither a publication nor a reopen passes over every row, and a
-     reopen reads no segment's time column in full (S1). The plan's revision 156 paragraph (§12) records how §10.3
-     keeps tiles exact over time-sorted segments.
+   - Revision 157 extends each live generation's derivation from the previous one's.
+   - Revision 158 serves the overview, zoomed detail and the minimap from each segment's tiles, built once per reader
+     (S4's first level, in memory). At 1M rows a live generation now projects in 8 ms, and the same generation again in
+     1 ms.
+   - **Next:** persist the tiles, in the segment or beside it, so a reopen reads no segment's time column in full (S1).
+     Then re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, and the 1M- and 10M-row
+     gates.
+   - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Viewer memory still grows with the session (S2): a cached reader keeps the columns it has read.
-   Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
-   re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
-   S4 and incremental derivation land.
    - **Measured next step:** a warm query re-reads and re-verifies every segment the reader cache cannot hold. In a
      sampled trace at 1M rows under the old 64 MiB budget, opening segments took 13.7% of the samples, 8.7% of them the
      whole-file SHA-256, and column checksums took 8.8%, nearly all on a column's first read after an open. Revision
@@ -1094,6 +1121,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 158 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,102 tests: 1,100
+  passed, 2 skipped**, zero failures.
 - Revision 157 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,094 tests: 1,092
   passed, 2 skipped**, zero failures.
 - Revision 156 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,089 tests: 1,087
@@ -1159,8 +1188,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 157, **1,092 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 156: 1,087 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 158, **1,100 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 157: 1,092 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

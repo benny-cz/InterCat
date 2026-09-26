@@ -351,7 +351,11 @@ public sealed class SessionTimelineTests
 
         SessionMinimap minimap = SessionOverviewProjector.Project(session.Store).Minimap!;
         Assert.Equal(new TimeRange(0, 12_001), minimap.Extent);
-        Assert.Equal(SessionMinimap.MaximumColumns, minimap.Counts.Count);
+
+        // The columns are whole multiples of the narrowest 1-2-5 width that spans the extent in at most 2,000 of them:
+        // here 1,201 columns of 10 ticks, the last one clipped to the extent.
+        Assert.Equal(new TimeRange(0, 12_010), minimap.ColumnSpan);
+        Assert.Equal(1_201, minimap.Counts.Count);
         Assert.Equal(ticks.Length, minimap.Counts.Sum());
         Assert.Equal(0, minimap.IntervalOf(0).StartTicks);
         Assert.Equal(12_001, minimap.IntervalOf(minimap.Counts.Count - 1).EndTicks);
