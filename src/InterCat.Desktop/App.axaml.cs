@@ -34,7 +34,19 @@ public sealed partial class App : Avalonia.Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            var window = new MainWindow();
+            desktop.MainWindow = window;
+
+            // A viewer that crashed while recording loses no evidence; this launch offers to finish its session (§3.1
+            // step 6). Only the application looks in the user's own session folder, never a test.
+            try
+            {
+                _ = window.OfferInterruptedCapturesAsync(DesktopCaptureRunner.DefaultSessionRoot());
+            }
+            catch (InvalidOperationException)
+            {
+                // Windows gave no local user-data folder, so no capture could have saved a session there either.
+            }
         }
 
         base.OnFrameworkInitializationCompleted();

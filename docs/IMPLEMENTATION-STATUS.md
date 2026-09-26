@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 142 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 143 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -16,11 +16,12 @@ overview/evidence ladder, live publication, health, interval ranking, minimap an
 L0 mechanism lanes, exact L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by
 direction. While recording, a labelled **live edge** previews records not yet published, which brings real-ETW
 event-to-visible to p95 0.72–0.77 s and meets §12's steady-state budget. Exact results still arrive about 2.6 s after
-an event (p95). The default 10-minute Explore capture runs to its bound on real ETW and saves whole, and a crashed
-viewer's capture is stopped and finalized by its lease without a leaked trace. That capture meets every §12 budget
-to its end: at 105,944 records, projection p95 81 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and 118 MiB of
-viewer memory at the end, 22.5 MiB of it cached segments. Projection still grows with the session, so large sessions
-wait on S4 and incremental derivation.
+an event (p95). The default 10-minute Explore capture runs to its bound on real ETW and saves whole. It meets every
+§12 budget to its end: at 105,944 records, projection p95 81 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and
+118 MiB of viewer memory at the end, 22.5 MiB of it cached segments. A crashed viewer's capture is stopped and
+finalized by its lease without a leaked trace, and the next launch offers to finish its session from the evidence the
+broker kept, including what the broker recorded after the crash. Projection still grows with the session, so large
+sessions wait on S4 and incremental derivation.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
@@ -50,18 +51,47 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
-| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
+| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, and a launch-time offer to finish a session a crashed viewer left | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 143 — the next launch finishes a crashed viewer's session (§3.1 step 6, ADR-027):**
+  - **Gap:** §3.1 promises that a viewer that crashes loses no evidence and that the next launch offers to finish its
+    session. The broker kept the evidence, but nothing recorded where it was, so the session stayed as far as the viewer
+    had followed it.
+  - **Ticket** ([`live-follow-v1`](../contracts/live-follow-v1.md)): while it follows, the runner holds
+    `<session>.follow.json` beside the session. It names the evidence and the owner lease's expiry, and each renewal
+    rewrites the expiry. A held ticket is never taken for an interrupted one. The runner removes it once every chunk the
+    closed capture published is in the session.
+  - **What a launch finds**, reading only. A capture has *settled* 60 s after its lease expiry: the broker stops a
+    capture within seconds of the lapse and finalizes it within a few more.
+    - **Finishable:** finalized, with chunks missing.
+    - **Still stopping:** unfinalized and unsettled; the card looks again every 5 s.
+    - **Ended unfinalized:** settled without finality, as when the broker or the machine stopped first.
+    - **Evidence gone**, and **complete**, whose ticket is removed without a word.
+  - **Finish:** takes the ticket, so two launches cannot finish one capture at once. The ordinary follower then derives
+    the rest and refuses other evidence. Progress is reported every 16 chunks. The ticket goes once the session holds
+    finality, or every chunk of a capture that settled unfinalized. The session then opens through the finish's own
+    store, so nothing is hashed twice.
+  - **Window:** an **Unfinished capture** card sits above the Explore card and never takes first run's focus. It hides
+    while a capture runs. **Forget** removes only the ticket. While a finish runs, its button stops it, keeping what was
+    derived. Only the application looks in the user's session folder; tests and headless windows never do.
+  - **Found by looking:** at 1080×700 the first layout clipped **Open saved session** at the window's edge. The card's
+    actions now share a row, and the window test asserts every rail action lies inside the rail.
+  - **Real ETW** (`bench/results/crashed-viewer-20260926T162109Z`, a new `crashed-viewer` scenario): a Desktop capture
+    runner was terminated after following 6 chunks. Its ticket held one renewal. The broker stopped and finalized the
+    capture 29.7 s later. The finish derived all 22 chunks, 3,393 records, in 1.6 s, and they re-derive identically. The
+    16 chunks after the crash were recorded during the lease window, and only the finish recovers them.
+  - **Tests:** 17 journal (5 facts, 12 decision cases), 8 wording and 2 window tests (+27). Mutations fail them: a
+    ticket offered for a session it is not beside, and an unsettled capture read as ended.
 - **Revision 142 — verified segment readers reused across queries and generations (§20.1, §12; S2 support, not S4):**
   - **Found:** `SessionStore` already memoized dependency hashes, but each projection still reopened every immutable
     segment, reread its bytes and dictionaries, and reran their integrity checks.
@@ -689,17 +719,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
    re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
    S4 and incremental derivation land.
-2. Finish a crashed viewer's session (§3.1 step 6): record where a live session's evidence is, outside the session
-   directory, and on the next launch offer to derive the chunks the broker published after the crash.
-3. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
+2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
    count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
-   wait on item 4's operations; L5 keeps its marks.
-4. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
+   wait on item 3's operations; L5 keeps its marks.
+3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-5. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
+4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
    rows.
-6. Interaction follow-ups with no dependents:
+5. Interaction follow-ups with no dependents:
+   - `icat capture` writes no follow ticket, so only the Desktop offers to finish a crashed capture's session; a CLI
+     user runs `icat follow` on the evidence again.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -722,6 +752,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 143 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,050 tests: 1,048
+  passed, 2 skipped**, zero failures. The crashed-viewer scenario passed on real ETW, and it leaked no ETW session.
 - Revision 142 was written without an SDK and then built and tested on Windows with the pinned SDK 10.0.401: Debug and
   Release both ran **1,023 tests: 1,021 passed, 2 skipped**, zero failures. This is the first full clean run on Windows
   since revision 129, so the 86 CaptureBroker tests the Linux container could not run pass again.
@@ -756,8 +788,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 142, **1,021 passed, 2 skipped, in Debug and Release**. Before it,
-  revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two Desktop and two broker tests (+6). Its real-ETW measurements are
+- Last executed clean baseline on Windows: revision 143, **1,048 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 142: 1,021 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+  Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
   - Run nothing else while a first-feedback run records: a concurrent build or suite would be measured as projection
@@ -849,4 +882,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`,
-`query-identity-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–028; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–028; the complete historical ledger linked above.

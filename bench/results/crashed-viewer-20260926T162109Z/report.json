@@ -1,0 +1,51 @@
+{
+  "Schema": "intercat.crashed-viewer.v1",
+  "StartedUtc": "2026-09-26T16:21:09.7918439+00:00",
+  "FinishedUtc": "2026-09-26T16:22:01.5158982+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "RecordingSeconds": 12,
+  "Notes": [
+    "The viewer is a child process running the Desktop\u0027s capture runner unchanged, with this tool as its broker over a qualification root. After recording for the stated time with paced loopback traffic, it terminates itself: no stop request, no disposal, no closed pipe beforehand.",
+    "The broker is a separate process and outlives the viewer. It stops the capture when the owner lease the viewer renewed lapses, and finalizes it.",
+    "This process then does what the next launch does: it finds the ticket the runner left beside the session, assesses it until it can be finished, finishes it, and checks the session re-derives from its journal."
+  ],
+  "ViewerExitCode": -1,
+  "ViewerLog": [
+    "recording",
+    "terminating after 6 overviews"
+  ],
+  "ViewerTerminated": true,
+  "TicketStartedUtc": "2026-09-26T16:21:10.6899519+00:00",
+  "TicketOwnerLeaseExpiresUtc": "2026-09-26T16:21:50.8916506+00:00",
+  "StateAfterCrash": "StillRecording",
+  "ChunksFollowedBeforeCrash": 6,
+  "EvidenceChunksAfterCrash": 6,
+  "SettledState": "Finishable",
+  "SecondsUntilSettled": 29.7,
+  "EvidenceChunks": 22,
+  "FinishMs": 1553,
+  "FinishProgressReports": 1,
+  "FinishCompleted": true,
+  "SessionFinished": true,
+  "SessionChunks": 22,
+  "SessionRecords": 3393,
+  "RederivedRows": 3393,
+  "TicketRemoved": true,
+  "NothingLeftToOffer": true,
+  "LeakedSessions": [],
+  "Passed": true,
+  "Failure": null
+}

@@ -131,7 +131,30 @@
                   AutomationProperties.Name="Load the next page of source records" />
         </Grid>
 
-        <Border Grid.Row="3" Classes="card" Margin="0,12,0,0" Padding="9" CornerRadius="8"
+        <StackPanel Grid.Row="3" Margin="0,12,0,0" Spacing="8">
+        <!-- A capture a crashed or interrupted viewer left unfinished: the broker kept its evidence, and the next launch
+             offers to finish the session from it (section 3.1 step 6). Hidden unless there is something to offer. -->
+        <Border x:Name="UnfinishedCaptureCard" Classes="card" Padding="9" CornerRadius="8" IsVisible="False"
+                Background="{DynamicResource Surface.Elevated}">
+          <StackPanel Spacing="6">
+            <TextBlock Text="UNFINISHED CAPTURE" Classes="eyebrow" Foreground="{DynamicResource Status.Caution}" />
+            <TextBlock x:Name="UnfinishedCaptureHeadline" FontWeight="SemiBold" TextWrapping="Wrap"
+                       AutomationProperties.Name="Unfinished capture" />
+            <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto"
+                          AutomationProperties.Name="What the broker kept and what finishing does; scroll for all of it">
+              <TextBlock x:Name="UnfinishedCaptureDetail" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            </ScrollViewer>
+            <!-- Side by side when they fit, so the Explore card below keeps its actions in view at the minimum window. -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+              <Button x:Name="FinishCaptureButton" FontSize="13" IsVisible="False" Click="FinishInterruptedCapture" />
+              <Button x:Name="ForgetCaptureButton" Content="Forget" FontSize="13" Click="ForgetInterruptedCapture"
+                      ToolTip.Tip="{x:Static pres:InterruptedCaptureOffer.ForgetExplanation}"
+                      AutomationProperties.Name="Stop offering to finish this capture; the session and the evidence stay" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card" Padding="9" CornerRadius="8"
                 Background="{DynamicResource Surface.Elevated}">
           <StackPanel Spacing="7">
             <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
@@ -165,6 +188,7 @@
             <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
+        </StackPanel>
       </Grid>
     </Border>
 

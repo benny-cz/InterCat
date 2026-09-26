@@ -214,8 +214,12 @@ public static class DesktopCaptureRunner
                 .ConfigureAwait(false);
             string evidencePath = status.EvidenceDirectory
                 ?? throw new InvalidDataException("The broker did not publish an evidence location.");
-            string sessionRoot = options.SessionRoot ?? LocalSessionRoot();
+            string sessionRoot = options.SessionRoot ?? DefaultSessionRoot();
             sessionPath = Path.Combine(sessionRoot, $"explore-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}-{started.Value:N}");
+
+            // Where this session's evidence is, held beside the session while it is followed, so a later launch can
+            // finish a follow that ends early (§3.1 step 6). Without it only that offer is lost, never the capture.
+            using LiveFollowHold? ticket = HoldTicket(started, evidencePath, sessionPath, status.LeaseExpiresAtUtc);
             report(new(CaptureUiPhase.Recording, "Recording · follow latest",
                 "Raw evidence is broker-owned. Published chunks are derived into your session below. "
                 + "Unobserved activity is not zero.", summary, sessionPath));
@@ -272,6 +276,13 @@ public static class DesktopCaptureRunner
                                     bool hasSession = derivation.HasSession;
                                     bool allPublishedFollowed = derivation.Last is { } last
                                         && last.DerivedChunks == last.EvidenceChunks;
+
+                                    // A closed capture publishes nothing more: a session holding every chunk it
+                                    // published has nothing left for a later launch to finish.
+                                    if (allPublishedFollowed)
+                                    {
+                                        ticket?.Complete();
+                                    }
                                     report(new(CaptureUiPhase.Complete,
                                         !hasSession ? "Capture closed without a derived session"
                                             : final.StopMilestones.FullyFinalized && allPublishedFollowed
@@ -342,8 +353,12 @@ public static class DesktopCaptureRunner
 
                             if (!stopSent && closedStatus is null && DateTimeOffset.UtcNow >= nextRenewal)
                             {
-                                _ = await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started), work)
-                                    .ConfigureAwait(false);
+                                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started), work)
+                                        .ConfigureAwait(false) is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
+                                {
+                                    ticket?.Renew(expires);
+                                }
+
                                 nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
                             }
                         }
@@ -441,8 +456,26 @@ public static class DesktopCaptureRunner
         previous is not null && fresh.OpenChunk == previous.OpenChunk && fresh.RetainedChunks == previous.RetainedChunks
         && fresh.CountedRecords == previous.CountedRecords && fresh.UnbinnedRecords == previous.UnbinnedRecords;
 
+    /// <summary>
+    /// Writes and holds the follow's ticket; null when it cannot be written, which costs only a later launch's offer to
+    /// finish the session, never the capture.
+    /// </summary>
+    private static LiveFollowHold? HoldTicket(
+        CaptureId capture, string evidencePath, string sessionPath, DateTimeOffset ownerLeaseExpiresUtc)
+    {
+        try
+        {
+            return LiveFollowTicket.For(capture.Value, evidencePath, sessionPath, DateTimeOffset.UtcNow, ownerLeaseExpiresUtc)
+                .Hold();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The user's own session folder; a viewer never writes derived sessions into broker-owned space (ADR-027).</summary>
-    private static string LocalSessionRoot()
+    public static string DefaultSessionRoot()
     {
         string userData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return string.IsNullOrWhiteSpace(userData)

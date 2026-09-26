@@ -6,9 +6,12 @@ using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Application;
+using InterCat.Capture.Journal;
 using InterCat.CaptureBroker;
+using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -58,6 +61,14 @@ public sealed partial class MainWindow : Window, IDisposable
     // preview draws the chunks after those (§12, §19.3).
     private BrokerCapturePreview? livePreview;
     private int displayedChunks;
+
+    // A capture an earlier viewer left unfinished, offered in the rail (§3.1 step 6): where to look for one, the one
+    // offered, what its card says, and the finish running for it, whose cancellation is the finish button's second meaning.
+    private string? interruptedRoot;
+    private InterruptedFollow? offeredFollow;
+    private InterruptedCaptureOffer? offer;
+    private CancellationTokenSource? finishingCapture;
+    private readonly DispatcherTimer offerRecheck = new() { Interval = TimeSpan.FromSeconds(5) };
     private string? appliedDetail;
     private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -107,6 +118,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ThemeResources.ModeChanged += OnThemeModeChanged;
         healthClock.Tick += (_, _) => UpdateHealthStrip();
         healthClock.Start();
+        offerRecheck.Tick += (_, _) => _ = RefreshInterruptedOfferAsync();
         Closing += OnClosing;
         Closed += (_, _) =>
         {
@@ -479,7 +491,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OpenSavedSession(object? sender, RoutedEventArgs eventArgs)
     {
-        if (openingSession || choosingSession || packaging is not null || captureTask is { IsCompleted: false }) return;
+        if (openingSession || choosingSession || packaging is not null || finishingCapture is not null
+            || captureTask is { IsCompleted: false }) return;
         IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders;
         choosingSession = true;
         try
@@ -502,7 +515,7 @@ public sealed partial class MainWindow : Window, IDisposable
     /// nobody mistakes its pseudonyms for the source machine's names and IDs. False when the directory could not open;
     /// the current workspace is then unchanged.
     /// </summary>
-    internal async Task<bool> OpenSessionAsync(string path)
+    internal async Task<bool> OpenSessionAsync(string path, (string Headline, string Detail)? status = null)
     {
         if (openingSession || captureTask is { IsCompleted: false }) return false;
         openingSession = true;
@@ -520,9 +533,11 @@ public sealed partial class MainWindow : Window, IDisposable
             ApplyCaptureUpdate(overview.Redaction is { } redaction
                 ? new(CaptureUiPhase.Complete, "Redacted session package open",
                     SessionRedaction.Summary + " " + redaction.Warning, SessionPath: path, Overview: overview)
-                : new(CaptureUiPhase.Complete, "Saved session open",
-                    "This is a published generation. The graph contains admitted paired TCP only; "
-                    + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
+                : status is { } stated
+                    ? new(CaptureUiPhase.Complete, stated.Headline, stated.Detail, SessionPath: path, Overview: overview)
+                    : new(CaptureUiPhase.Complete, "Saved session open",
+                        "This is a published generation. The graph contains admitted paired TCP only; "
+                        + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
                 forceOverview: true);
             return true;
         }
@@ -543,6 +558,189 @@ public sealed partial class MainWindow : Window, IDisposable
                 UpdateEvidenceAction();
             }
         }
+    }
+
+    /// <summary>
+    /// Looks under <paramref name="sessionRoot"/> for captures an earlier viewer left unfinished and offers the newest in
+    /// the rail (§3.1 step 6). The application calls it once at launch with the user's session folder. A capture whose
+    /// session is already whole is let go without a word.
+    /// </summary>
+    internal Task OfferInterruptedCapturesAsync(string sessionRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionRoot);
+        interruptedRoot = sessionRoot;
+        return RefreshInterruptedOfferAsync();
+    }
+
+    private async Task RefreshInterruptedOfferAsync()
+    {
+        if (closed || interruptedRoot is not { } root || finishingCapture is not null) return;
+        InterruptedFollow? found;
+        try
+        {
+            found = await Task.Run(() => FindInterruptedCapture(root));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The session folder cannot be read just now: nothing is offered, and nothing is lost.
+            found = null;
+        }
+
+        if (!closed && finishingCapture is null) ShowInterruptedOffer(found);
+    }
+
+    /// <summary>The newest capture with something to offer. One whose session is already whole loses its ticket.</summary>
+    private static InterruptedFollow? FindInterruptedCapture(string root)
+    {
+        foreach (LiveFollowTicket ticket in LiveFollowTicket.FindInterrupted(root))
+        {
+            InterruptedFollow follow = InterruptedFollow.Assess(ticket);
+            if (follow.State != InterruptedFollowState.Complete) return follow;
+            _ = LiveFollowTicket.Remove(ticket.SessionDirectory);
+        }
+
+        return null;
+    }
+
+    private void ShowInterruptedOffer(InterruptedFollow? follow)
+    {
+        offeredFollow = follow;
+        offer = follow is null
+            ? null
+            : InterruptedCaptureOffer.For(follow, DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+        UnfinishedCaptureCard.IsVisible = offer is not null
+            && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
+        if (offer is null)
+        {
+            offerRecheck.Stop();
+            return;
+        }
+
+        UnfinishedCaptureHeadline.Text = offer.Headline;
+        UnfinishedCaptureDetail.Text = offer.Detail;
+        FinishCaptureButton.IsVisible = offer.Action != InterruptedCaptureAction.None;
+        FinishCaptureButton.Content = offer.ActionLabel;
+        FinishCaptureButton.IsEnabled = true;
+        Avalonia.Automation.AutomationProperties.SetName(FinishCaptureButton, offer.ActionLabel + ": " + offer.Headline);
+        ForgetCaptureButton.Content = offer.ForgetLabel;
+        ForgetCaptureButton.IsEnabled = true;
+        if (offer.Rechecks) offerRecheck.Start();
+        else offerRecheck.Stop();
+    }
+
+    private void FinishInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => _ = ActOnInterruptedCaptureAsync();
+
+    private void ForgetInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => _ = ForgetInterruptedCaptureAsync();
+
+    /// <summary>
+    /// The card's action: finish the session from the evidence the broker kept, or open what was saved when the evidence
+    /// is gone. While a finish runs the same button stops it; the session keeps what it derived either way.
+    /// </summary>
+    internal async Task ActOnInterruptedCaptureAsync()
+    {
+        if (finishingCapture is { } running)
+        {
+            FinishCaptureButton.IsEnabled = false;
+            await running.CancelAsync();
+            return;
+        }
+
+        if (offeredFollow is not { } follow || offer is not { } shown || openingSession
+            || captureTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        if (shown.Action == InterruptedCaptureAction.Open)
+        {
+            if (await OpenSessionAsync(follow.Ticket.SessionDirectory, ("Partial session open", shown.Detail)))
+            {
+                // Nothing further can be derived for it: once seen, it is not offered again.
+                _ = LiveFollowTicket.Remove(follow.Ticket.SessionDirectory);
+                await RefreshInterruptedOfferAsync();
+            }
+
+            return;
+        }
+
+        if (shown.Action != InterruptedCaptureAction.Finish) return;
+        using var finishing = new CancellationTokenSource();
+        finishingCapture = finishing;
+        offerRecheck.Stop();
+        ShowFinishing(follow, step: null);
+        var progress = new Progress<FollowStep>(step =>
+        {
+            if (!closed && finishingCapture == finishing) ShowFinishing(follow, step);
+        });
+        try
+        {
+            InterruptedFollowResult result = await Task.Run(
+                () => InterruptedFollow.Finish(follow.Ticket, progress, cancellationToken: finishing.Token));
+
+            // The finish's store becomes the session's shared store, so opening the session hashes nothing again.
+            SharedSessionStores.Registry.Adopt(follow.Ticket.SessionDirectory, result.Session);
+            EndFinishing();
+            if (closed) return;
+            UnfinishedCaptureCard.IsVisible = false;
+            _ = await OpenSessionAsync(
+                follow.Ticket.SessionDirectory, InterruptedCaptureOffer.Finished(result, CultureInfo.CurrentCulture));
+            await RefreshInterruptedOfferAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            EndFinishing();
+            await RefreshInterruptedOfferAsync();
+            if (UnfinishedCaptureCard.IsVisible)
+            {
+                UnfinishedCaptureDetail.Text = "Finishing stopped, and what it derived is kept. " + UnfinishedCaptureDetail.Text;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            EndFinishing();
+            if (closed) return;
+            ShowInterruptedOffer(follow);
+            UnfinishedCaptureDetail.Text = exception.Message + " Your session keeps what was derived before this.";
+        }
+    }
+
+    /// <summary>Forgets the offered capture: its ticket goes, and the session so far and the evidence stay.</summary>
+    internal async Task ForgetInterruptedCaptureAsync()
+    {
+        if (offeredFollow is not { } follow || finishingCapture is not null) return;
+        if (!LiveFollowTicket.Remove(follow.Ticket.SessionDirectory))
+        {
+            UnfinishedCaptureDetail.Text = "Another InterCat window is following this capture, so it is not forgotten here. "
+                + offer?.Detail;
+            return;
+        }
+
+        await RefreshInterruptedOfferAsync();
+    }
+
+    private void ShowFinishing(InterruptedFollow follow, FollowStep? step)
+    {
+        (string headline, string detail) = InterruptedCaptureOffer.Finishing(
+            follow, step, DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+        UnfinishedCaptureHeadline.Text = headline;
+        UnfinishedCaptureDetail.Text = detail;
+        FinishCaptureButton.Content = "Stop finishing";
+        Avalonia.Automation.AutomationProperties.SetName(
+            FinishCaptureButton, "Stop finishing; the session keeps what is derived");
+        ForgetCaptureButton.IsEnabled = false;
+        StartExploringButton.IsEnabled = false;
+        OpenSavedSessionButton.IsEnabled = false;
+    }
+
+    private void EndFinishing()
+    {
+        finishingCapture = null;
+        if (closed) return;
+        StartExploringButton.IsEnabled = true;
+        OpenSavedSessionButton.IsEnabled = true;
+        FinishCaptureButton.IsEnabled = true;
+        ForgetCaptureButton.IsEnabled = true;
     }
 
     /// <summary>
@@ -749,7 +947,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void BeginCapture()
     {
-        if (openingSession || captureTask is { IsCompleted: false })
+        if (openingSession || finishingCapture is not null || captureTask is { IsCompleted: false })
         {
             return;
         }
@@ -836,6 +1034,7 @@ public sealed partial class MainWindow : Window, IDisposable
         StartExploringButton.IsVisible = !busy;
         OpenSavedSessionButton.IsVisible = !busy;
         CaptureIntro.IsVisible = !busy;
+        UnfinishedCaptureCard.IsVisible = !busy && offer is not null;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
             && captureStop?.IsCancellationRequested != true;
@@ -1292,6 +1491,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         ThemeResources.ModeChanged -= OnThemeModeChanged;
         healthClock.Stop();
+        offerRecheck.Stop();
+        finishingCapture?.Cancel();
         packaging?.Cancel();
         captureStop?.Cancel();
         captureStop?.Dispose();

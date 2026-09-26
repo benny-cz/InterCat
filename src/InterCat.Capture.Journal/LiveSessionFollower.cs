@@ -438,6 +438,13 @@ public sealed class LiveSessionFollower
         }
     }
 
+    /// <summary>
+    /// How many journal chunks a generation names, and whether it carries the capture's finality: for an evidence
+    /// session, whether its capture has stopped; for a derived one, whether its follow finished.
+    /// </summary>
+    public static (int Chunks, bool Finished) Progress(SessionManifestV1? manifest) =>
+        (manifest is null ? 0 : Chunks(manifest).Length, IsFinished(manifest));
+
     private static StoreDependency[] Chunks(SessionManifestV1 manifest) =>
     [
         .. manifest.Dependencies

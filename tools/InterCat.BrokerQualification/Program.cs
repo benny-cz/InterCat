@@ -34,6 +34,10 @@ return args.FirstOrDefault() switch
     "run" => await Qualification.RunAsync(args, cancellation.Token),
     "impact" => await Qualification.ImpactAsync(args, cancellation.Token),
     "first-feedback" => await Qualification.FirstFeedbackAsync(args, cancellation.Token),
+    "crashed-viewer" => await Qualification.CrashedViewerAsync(args, cancellation.Token),
+
+    // The viewer the crashed-viewer scenario terminates mid-capture.
+    "crashed-viewer-child" => await Qualification.CrashedViewerChildAsync(args, cancellation.Token),
     _ => Qualification.Usage(),
 };
 
@@ -52,6 +56,7 @@ internal static partial class Qualification
         Console.Error.WriteLine("Usage: InterCat.BrokerQualification run --output <new directory> [--traffic-seconds <2-60>]");
         Console.Error.WriteLine("       InterCat.BrokerQualification impact --output <new directory> [--triplets <1-15>]");
         Console.Error.WriteLine("       InterCat.BrokerQualification first-feedback --output <new directory> [--runs <1-10>] [--seconds <5-600>] [--bounded]");
+        Console.Error.WriteLine("       InterCat.BrokerQualification crashed-viewer --output <new directory> [--seconds <5-60>]");
         Console.Error.WriteLine("Runs elevated. Starts real ETW sessions in a broker child process and stops every one it started.");
         return 2;
     }
