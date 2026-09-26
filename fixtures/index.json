@@ -677,6 +677,7 @@
         "I5: a cross-side total groups each record under the process at its other end, or its reason",
         "I5: a total resolves to exactly the records it counted, with identities that survive a re-read",
         "I5: cell counts match the records those cells resolve to",
+        "I5: counts by other end, and a relation's untimed records, equal what its rows' own bindings count",
         "I5: grouped by peer, a focus's counterparts and its unresolved ends partition its total",
         "I5: grouped rows, the remainder and the unattributed rows partition the total exactly"
       ],
@@ -1089,7 +1090,7 @@
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a worker result naming another graph identity is refused",
         "R7: caller cancellation propagates instead of looking like a superseded query",
-        "R7: one leased generation yields a stable graph and exact graph-eligible timeline",
+        "R7: one leased generation yields a stable graph and exact graph-eligible counts",
         "R7: pausing the live view holds its generation while recording continues, and F resumes it",
         "R7: records hold the view still; a newer generation is offered, and applied on leaving"
       ],

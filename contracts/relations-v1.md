@@ -96,8 +96,13 @@ records on that connection the capture does not hold. It is never read as "remot
 
 A **relation** is two paired incarnations that each have a holder: the two holders, the endpoint each holds, the weaker
 of the two incarnations' binding strengths, the earliest and latest reading of any record of either, how many records
-they hold, and whether each end's open and close were witnessed. A process connected to itself is a relation with
-itself. Relations are listed by the end whose key sorts first, then by incarnation.
+they hold and how many of those have no usable session time, and whether each end's open and close were witnessed. A
+process connected to itself is a relation with itself. Relations are listed by the end whose key sorts first, then by
+incarnation.
+
+Every record of an incarnation has that incarnation's other end (§4), so a count of records by their other end is a
+sum over incarnations, plus the records with no end, and needs no second read of any record: how many records of a
+mechanism have no other end a policy admits is exactly how many of them a per-record read would find unadmitted.
 
 ## 5a. Channels
 

@@ -801,6 +801,112 @@ public sealed class RelationTests
         Assert.Equal((1L, 2), (topTwo.Remainder!.Value, topTwo.Remainder.GroupsMerged));
     }
 
+    [Theory(DisplayName = "I5: counts by other end, and a relation's untimed records, equal what its rows' own bindings count")]
+    [InlineData(7)]
+    [InlineData(31)]
+    [InlineData(20_260_926)]
+    public void EntityCountsEqualTheRowsBindings(int seed)
+    {
+        var random = new Random(seed);
+        TransportRelationIndex? last = null;
+        for (int trial = 0; trial < 12; trial++)
+        {
+            ObservationRowV1[] rows = RandomTransportSession(random);
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(1, rows.Length + 1));
+            (_, TransportRelationIndex relations) = Derive(session.Store);
+            last = relations;
+            IReadOnlyList<SegmentReaderV1> segments = Segments(session.Store);
+            var bound = new List<(Mechanism Mechanism, ProcessBinding Peer, ChannelBinding Channel, bool Timed)>();
+            foreach (SegmentReaderV1 segment in segments)
+            {
+                (ProcessBinding[] peers, ChannelBinding[] channels) = relations.BindingsOf(segment);
+                for (int row = 0; row < segment.RowCount; row++)
+                {
+                    ObservationRowV1 read = segment.Row(row);
+                    bound.Add((read.Mechanism, peers[row], channels[row], read.SessionRelativeTicks is not null));
+                }
+            }
+
+            foreach (Mechanism mechanism in new[] { Mechanism.Tcp, Mechanism.Udp })
+            {
+                foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+                {
+                    Assert.Equal(
+                        bound.LongCount(entry => entry.Mechanism == mechanism && !entry.Peer.IsAdmittedUnder(policy)),
+                        relations.RecordsWithoutAdmittedPeer(mechanism, policy));
+                }
+            }
+
+            foreach (TransportRelation relation in relations.Relations)
+            {
+                Assert.Equal(
+                    (bound.LongCount(entry => entry.Channel.IsKnown && entry.Channel.Channel == relation.Channel),
+                        bound.LongCount(entry => entry.Channel.IsKnown && entry.Channel.Channel == relation.Channel && !entry.Timed)),
+                    (relation.Records, relation.RecordsWithoutSessionTime));
+            }
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            last!.RecordsWithoutAdmittedPeer(Mechanism.NamedPipe, EvidencePolicy.DirectOnly));
+    }
+
+    /// <summary>
+    /// A random capture over a few endpoints and PIDs, so ends are reused, paired, one-sided and undecided, owners are
+    /// bound, candidates or unbound, and some records have no end, another mechanism, or no session time.
+    /// </summary>
+    private static ObservationRowV1[] RandomTransportSession(Random random)
+    {
+        string[] clients = ["127.0.0.1:50000", "127.0.0.1:50001", "10.0.0.5:50002"];
+        string[] servers = ["127.0.0.1:8080", "127.0.0.1:9090"];
+        int[] pids = [100, 200, 300, 400];
+        ObservationKind[] kinds =
+        [
+            ObservationKind.Send, ObservationKind.Receive, ObservationKind.Send, ObservationKind.Receive,
+            ObservationKind.Connect, ObservationKind.Accept, ObservationKind.Disconnect,
+        ];
+        var rows = new List<ObservationRowV1>();
+        ulong ordinal = 0;
+        long ticks = 0;
+        int count = random.Next(8, 80);
+        for (int index = 0; index < count; index++)
+        {
+            ticks += random.Next(0, 4);
+            int pid = pids[random.Next(pids.Length)];
+            int choice = random.Next(20);
+            ObservationRowV1 row;
+            if (choice == 0)
+            {
+                // A creation or an exit, so one PID can be two instances and a binding only a candidate.
+                row = Lifecycle(ticks, random.Next(2) == 0 ? ObservationKind.Create : ObservationKind.Exit, pid, ++ordinal);
+            }
+            else
+            {
+                ObservationKind kind = kinds[random.Next(kinds.Length)];
+                row = Transfer(ticks, kind, kind is ObservationKind.Send ? AccountingSide.SendSide
+                    : kind is ObservationKind.Receive ? AccountingSide.ReceiveSide : AccountingSide.EndpointActivity,
+                    kind is ObservationKind.Send or ObservationKind.Receive ? 16 : 0,
+                    random.Next(12) == 0 ? null : pid, ++ordinal);
+                string client = clients[random.Next(clients.Length)];
+                string server = servers[random.Next(servers.Length)];
+                row = choice switch
+                {
+                    1 => row with { Mechanism = Mechanism.NamedPipe },
+                    2 => row,
+                    _ => random.Next(2) == 0 ? row.Between(client, server) : row.Between(server, client),
+                };
+                if (random.Next(4) == 0)
+                {
+                    row = row with { Mechanism = row.Mechanism == Mechanism.Tcp ? Mechanism.Udp : row.Mechanism };
+                }
+            }
+
+            rows.Add(random.Next(3) == 0 ? row : row with { SessionRelativeTicks = ticks * 100 });
+        }
+
+        return [.. rows];
+    }
+
     /// <summary>
     /// A client (PID 100, created and exited in the capture) connects to a server (PID 200, running at capture start)
     /// over loopback and they exchange 100 and 40 bytes. A third process sends to an endpoint nothing in the capture

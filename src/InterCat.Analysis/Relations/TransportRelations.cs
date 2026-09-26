@@ -48,6 +48,9 @@ public sealed record TransportRelation
     /// <summary>How many records the incarnation's two ends hold together.</summary>
     public required long Records { get; init; }
 
+    /// <summary>How many of <see cref="Records"/> have no usable session time, and so no place on a timeline.</summary>
+    public required long RecordsWithoutSessionTime { get; init; }
+
     /// <summary>Whether a connect or an accept opened it at each end, and a disconnect closed it at each end.</summary>
     public required bool OpenWitnessed { get; init; }
 
@@ -89,9 +92,14 @@ public sealed class TransportRelationIndex
 
     private readonly Dictionary<EndKey, EndTimeline> ends;
 
-    private TransportRelationIndex(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
+    /// <summary>Per related mechanism, the records whose endpoints name no end: they have no other end to find.</summary>
+    private readonly Dictionary<Mechanism, long> withoutEnd;
+
+    private TransportRelationIndex(
+        ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends, Dictionary<Mechanism, long> withoutEnd)
     {
         this.ends = ends;
+        this.withoutEnd = withoutEnd;
         Channels = NumberChannels(ends);
         Relations = BuildRelations(processes, ends);
     }
@@ -145,16 +153,26 @@ public sealed class TransportRelationIndex
             timeline.Seal();
         }
 
-        // Then who holds each incarnation. An end no lifecycle record cut is one incarnation for the whole capture.
+        // Then who holds each incarnation. An end no lifecycle record cut is one incarnation for the whole capture. Each
+        // incarnation also counts its records and those of them with no session time, and a related record with no end
+        // is counted too, so a count of records by their other end needs no second look at any row.
+        var withoutEnd = new Dictionary<Mechanism, long>();
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var columns = new EndColumns(segment);
             SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+            SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if (columns.KeyAt(row) is not { } key)
                 {
+                    Mechanism mechanism = columns.MechanismAt(row);
+                    if (Relates(mechanism))
+                    {
+                        withoutEnd[mechanism] = withoutEnd.GetValueOrDefault(mechanism) + 1;
+                    }
+
                     continue;
                 }
 
@@ -170,7 +188,8 @@ public sealed class TransportRelationIndex
                 timeline.At(position).Observe(
                     position,
                     owner is { } pid ? (int)pid : null,
-                    processes.Bind(owner is { } bound ? (int)bound : null, position.Ticks, isLifecycleRecord: false));
+                    processes.Bind(owner is { } bound ? (int)bound : null, position.Ticks, isLifecycleRecord: false),
+                    timed: sessionTimes.HasValue(row));
             }
         }
 
@@ -182,7 +201,45 @@ public sealed class TransportRelationIndex
             }
         }
 
-        return new(processes, ends);
+        return new(processes, ends, withoutEnd);
+    }
+
+    /// <summary>
+    /// How many records of a related mechanism have no other end that <paramref name="policy"/> admits: exactly the
+    /// records whose <see cref="PeersOf"/> binding the policy does not admit. Every record of an incarnation has that
+    /// incarnation's other end, so this is a sum over incarnations, plus the records with no end, and reads no row.
+    /// </summary>
+    public long RecordsWithoutAdmittedPeer(Mechanism mechanism, EvidencePolicy policy)
+    {
+        if (!Relates(mechanism))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mechanism), mechanism,
+                "This rule relates no record of that mechanism, so every one of them has no other end.");
+        }
+
+        if (!Enum.IsDefined(policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        }
+
+        long records = withoutEnd.GetValueOrDefault(mechanism);
+        foreach ((EndKey key, EndTimeline timeline) in ends)
+        {
+            if (key.Protocol != (byte)mechanism)
+            {
+                continue;
+            }
+
+            foreach (Incarnation incarnation in timeline.Incarnations)
+            {
+                if (incarnation.Records > 0 && !PeerOf(incarnation).IsAdmittedUnder(policy))
+                {
+                    records += incarnation.Records;
+                }
+            }
+        }
+
+        return records;
     }
 
     /// <summary>
@@ -490,6 +547,7 @@ public sealed class TransportRelationIndex
                     FirstNativeTicks = Math.Min(incarnation.First, other.First),
                     LastNativeTicks = Math.Max(incarnation.Last, other.Last),
                     Records = incarnation.Records + other.Records,
+                    RecordsWithoutSessionTime = incarnation.Untimed + other.Untimed,
                     OpenWitnessed = incarnation.OpenWitnessed && other.OpenWitnessed,
                     CloseWitnessed = incarnation.CloseWitnessed && other.CloseWitnessed,
                 });
@@ -706,6 +764,9 @@ public sealed class TransportRelationIndex
 
         public long Records { get; private set; }
 
+        /// <summary>How many of <see cref="Records"/> have no session time.</summary>
+        public long Untimed { get; private set; }
+
         public Pairing Pairing { get; private set; }
 
         public Incarnation? Partner { get; private set; }
@@ -744,10 +805,15 @@ public sealed class TransportRelationIndex
             Candidates = overlapping;
         }
 
-        public void Observe(Position position, int? owner, ProcessBinding binding)
+        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed)
         {
             long reading = position.Ticks;
             Records++;
+            if (!timed)
+            {
+                Untimed++;
+            }
+
             First = Math.Min(First, reading);
             Last = Math.Max(Last, reading);
             if (FirstPosition is not { } prior || position.CompareTo(prior) < 0)

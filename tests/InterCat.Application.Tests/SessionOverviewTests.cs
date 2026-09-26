@@ -61,7 +61,7 @@ public sealed class SessionOverviewTests
         Assert.Empty(newer.Channels);
     }
 
-    [Fact(DisplayName = "R7: one leased generation yields a stable graph and exact graph-eligible timeline")]
+    [Fact(DisplayName = "R7: one leased generation yields a stable graph and exact graph-eligible counts")]
     public void OneGenerationProjectsStableOverview()
     {
         using var session = new TemporarySession();
@@ -116,7 +116,7 @@ public sealed class SessionOverviewTests
         Assert.Equal((long?)10, first.Extent?.StartTicks);
         Assert.Equal((long?)21, first.Extent?.EndTicks);
         Assert.Equal(3, first.Timeline.Sum(bucket => bucket.ObservationCount));
-        Assert.Equal(2, first.GraphEligibleTimeline.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal((2L, 0L), (first.GraphEligibleRows, first.GraphRowsWithoutSessionTime));
         Assert.Equal(edge.ObservationCount, first.GraphEligibleRows);
         Assert.All(first.Timeline, bucket =>
         {
@@ -173,11 +173,11 @@ public sealed class SessionOverviewTests
             session.Store, EvidencePolicy.IncludeCandidates);
         Assert.Empty(conservative.Edges);
         Assert.Empty(conservative.Channels);
-        Assert.Equal(0, conservative.GraphEligibleTimeline.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(0, conservative.GraphEligibleRows);
         Assert.Equal(1, conservative.RelationshipsNotAdmitted);
         Assert.Equal(RelationStrength.Candidate, Assert.Single(admitted.Edges).Strength);
         Assert.Single(admitted.Channels);
-        Assert.Equal(2, admitted.GraphEligibleTimeline.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(2, admitted.GraphEligibleRows);
         Assert.NotEqual(conservative.GraphIdentity, admitted.GraphIdentity);
     }
 
@@ -196,7 +196,6 @@ public sealed class SessionOverviewTests
         Assert.Equal((2L, 2L), (overview.GraphEligibleRows, overview.GraphRowsWithoutSessionTime));
         Assert.Null(overview.Extent);
         Assert.Empty(overview.Timeline);
-        Assert.Empty(overview.GraphEligibleTimeline);
     }
 
     [Theory(DisplayName = "R21: a leased overview applies imported coverage only to observed mechanism buckets")]
@@ -218,8 +217,6 @@ public sealed class SessionOverviewTests
         Assert.True(overview.CoverageLedgerPublished);
         Assert.Equal(expected, overview.Timeline[0].Coverage);
         Assert.Equal(expected, overview.Timeline[^1].Coverage);
-        Assert.Equal(expected, overview.GraphEligibleTimeline[0].Coverage);
-        Assert.Equal(expected, overview.GraphEligibleTimeline[^1].Coverage);
         Assert.All(overview.Timeline.Where(bucket => bucket.ObservationCount == 0),
             bucket => Assert.Equal(CoverageState.UnknownCoverage, bucket.Coverage));
         Assert.Equal(CoverageState.UnknownCoverage,
