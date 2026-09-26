@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
 using InterCat.Desktop;
 using InterCat.Desktop.Theme;
 using Xunit;
@@ -83,6 +84,69 @@ public sealed class HighContrastTests
         {
             ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
             window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.1: in high contrast a selected row has an accent edge on the elevated face, nothing moves when it is selected, and menus and tool tips take the tokens")]
+    public async Task HighContrastSelectionIsSeen()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.HighContrast", Guid.NewGuid().ToString("N"));
+        foreach (string name in new[] { "explore-a", "explore-b" })
+        {
+            string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+            _ = InterCat.Analysis.Tests.TestSessions.Publish(
+                InterCat.Storage.SessionStore.Open(InterCat.Storage.LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "hc-tests"),
+                [InterCat.Analysis.Tests.TestSessions.Lifecycle(100, InterCat.Domain.ObservationKind.Create, 400, 1)
+                    with { SessionRelativeTicks = 100 }]);
+        }
+
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        ListBox list = window.GetControl<ListBox>("RecentSessionsList");
+        try
+        {
+            await window.UseSessionRootAsync(root);
+            foreach (ThemeMode mode in new[] { ThemeMode.HighContrastDark, ThemeMode.HighContrastLight })
+            {
+                ThemeResources.Apply(Avalonia.Application.Current!, mode);
+                list.SelectedIndex = -1;
+                _ = Settle(window);
+                ListBoxItem row = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
+                TextBlock title = row.GetVisualDescendants().OfType<TextBlock>().First();
+                Point before = title.TranslatePoint(default, window)!.Value;
+
+                list.SelectedIndex = 0;
+                WriteableBitmap frame = Settle(window);
+                SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
+                Assert.Equal(ThemeResources.ToColor(surfaces.Accent),
+                    At(frame, row.TranslatePoint(new(0.5, row.Bounds.Height / 2), window)!.Value));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Elevated),
+                    At(frame, row.TranslatePoint(new(row.Bounds.Width - 4, 3), window)!.Value));
+                Assert.Equal(before, title.TranslatePoint(default, window)!.Value);
+
+                // Menus and tool tips draw in popups, so their tokens are read where the control theme reads them.
+                IResourceDictionary resources = Avalonia.Application.Current!.Resources;
+                Assert.Equal(ThemeResources.ToColor(surfaces.Elevated), ColorOf((IBrush)resources["MenuFlyoutPresenterBackground"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Divider), ColorOf((IBrush)resources["MenuFlyoutPresenterBorderBrush"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Accent), ColorOf((IBrush)resources["MenuFlyoutItemBackgroundPointerOver"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Canvas), ColorOf((IBrush)resources["MenuFlyoutItemForegroundPointerOver"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.MutedInk), ColorOf((IBrush)resources["MenuFlyoutItemForegroundDisabled"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Ink), ColorOf((IBrush)resources["ToolTipForeground"]!));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Divider), ColorOf((IBrush)resources["ScrollBarPanningThumbBackground"]!));
+            }
+
+            // An ordinary mode hands selection back to the control theme: no accent edge is left on the selected row.
+            ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
+            WriteableBitmap ordinary = Settle(window);
+            ListBoxItem selected = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
+            Assert.NotEqual(ThemeResources.ToColor(ThemePalette.Surfaces(ThemeMode.HighContrastDark).Accent),
+                At(ordinary, selected.TranslatePoint(new(0.5, selected.Bounds.Height / 2), window)!.Value));
+        }
+        finally
+        {
+            ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
+            window.Close();
+            Directory.Delete(root, recursive: true);
         }
     }
 

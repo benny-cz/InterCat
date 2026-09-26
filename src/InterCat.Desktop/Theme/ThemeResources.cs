@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Styling;
 using InterCat.Domain;
@@ -58,9 +60,11 @@ public static class ThemeResources
     }
 
     /// <summary>
-    /// The control theme's own keys a high-contrast mode restates: a button's face, edge and label in every state, and a
-    /// text box's edge. The control theme draws them faint against the ground; in high contrast every interactive edge
-    /// must be seen, so they are taken from the verified tokens there and left to the control theme otherwise.
+    /// The control theme's own keys a high-contrast mode restates: a button's face, edge and label in every state, a
+    /// text box's edge, a menu's face, edge and items, a tool tip, a scroll bar's thumb and track, and a list row under
+    /// the pointer, pressed or selected. The control theme draws them faint against the ground; in high contrast every
+    /// interactive edge and state must be seen, so they are taken from the verified tokens there and left to the control
+    /// theme otherwise.
     /// </summary>
     internal static IReadOnlyList<string> ControlChromeKeys { get; } =
     [
@@ -68,10 +72,30 @@ public static class ThemeResources
         "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ButtonForegroundDisabled",
         "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
         "TextControlBorderBrush", "TextControlBorderBrushPointerOver", "TextControlBorderBrushFocused",
+        "MenuFlyoutPresenterBackground", "MenuFlyoutPresenterBorderBrush",
+        "MenuFlyoutItemBackground", "MenuFlyoutItemBackgroundPointerOver", "MenuFlyoutItemBackgroundPressed",
+        "MenuFlyoutItemBackgroundDisabled", "MenuFlyoutItemForeground", "MenuFlyoutItemForegroundPointerOver",
+        "MenuFlyoutItemForegroundPressed", "MenuFlyoutItemForegroundDisabled",
+        "ToolTipBackground", "ToolTipForeground", "ToolTipBorderBrush",
+        "ScrollBarPanningThumbBackground", "ScrollBarThumbFillPointerOver", "ScrollBarThumbFillPressed",
+        "ScrollBarThumbFillDisabled", "ScrollBarTrackFill", "ScrollBarTrackFillPointerOver", "ScrollBarTrackStroke",
+        "ScrollBarTrackStrokePointerOver",
+        "SystemControlHighlightListLowBrush", "SystemControlHighlightListMediumBrush",
+        "SystemControlHighlightListAccentLowBrush", "SystemControlHighlightListAccentMediumBrush",
+        "SystemControlHighlightListAccentHighBrush", "SystemControlHighlightAltBaseHighBrush",
     ];
+
+    /// <summary>The high-contrast styles no resource key reaches, while a high-contrast mode is applied.</summary>
+    private static Styles? highContrastStyles;
 
     private static void ApplyControlChrome(Avalonia.Application application, ThemeMode mode, SurfaceTokens surfaces)
     {
+        if (highContrastStyles is { } applied)
+        {
+            _ = application.Styles.Remove(applied);
+            highContrastStyles = null;
+        }
+
         if (!ThemePalette.IsHighContrast(mode))
         {
             foreach (string key in ControlChromeKeys)
@@ -106,7 +130,68 @@ public static class ThemeResources
         application.Resources["TextControlBorderBrush"] = edge;
         application.Resources["TextControlBorderBrushPointerOver"] = accent;
         application.Resources["TextControlBorderBrushFocused"] = accent;
+
+        // A menu is the elevated face inside a divider edge. The item under the pointer, or pressed, is the action pair
+        // the report measures, the canvas on the accent; one that cannot be chosen keeps the muted ink, not a faint grey.
+        SolidColorBrush muted = Brush(surfaces.MutedInk);
+        application.Resources["MenuFlyoutPresenterBackground"] = face;
+        application.Resources["MenuFlyoutPresenterBorderBrush"] = edge;
+        application.Resources["MenuFlyoutItemBackground"] = face;
+        application.Resources["MenuFlyoutItemBackgroundPointerOver"] = accent;
+        application.Resources["MenuFlyoutItemBackgroundPressed"] = accent;
+        application.Resources["MenuFlyoutItemBackgroundDisabled"] = face;
+        application.Resources["MenuFlyoutItemForeground"] = label;
+        application.Resources["MenuFlyoutItemForegroundPointerOver"] = ground;
+        application.Resources["MenuFlyoutItemForegroundPressed"] = ground;
+        application.Resources["MenuFlyoutItemForegroundDisabled"] = muted;
+
+        // A tool tip is a card: body ink on the elevated face inside a divider edge.
+        application.Resources["ToolTipBackground"] = face;
+        application.Resources["ToolTipForeground"] = label;
+        application.Resources["ToolTipBorderBrush"] = edge;
+
+        // A scroll bar's resting thumb is a divider line, the accent under the pointer, on the bare ground.
+        application.Resources["ScrollBarPanningThumbBackground"] = edge;
+        application.Resources["ScrollBarThumbFillPointerOver"] = accent;
+        application.Resources["ScrollBarThumbFillPressed"] = accent;
+        application.Resources["ScrollBarThumbFillDisabled"] = edge;
+        application.Resources["ScrollBarTrackFill"] = ground;
+        application.Resources["ScrollBarTrackFillPointerOver"] = ground;
+        application.Resources["ScrollBarTrackStroke"] = edge;
+        application.Resources["ScrollBarTrackStrokePointerOver"] = edge;
+
+        // A list row under the pointer, pressed or selected lies on the elevated face, where every ink a row carries,
+        // muted included, is measured. A fill alone could not both stand apart from the ground and keep muted ink
+        // legible, so selection is also an accent edge, drawn by a style no resource key reaches.
+        application.Resources["SystemControlHighlightListLowBrush"] = face;
+        application.Resources["SystemControlHighlightListMediumBrush"] = face;
+        application.Resources["SystemControlHighlightListAccentLowBrush"] = face;
+        application.Resources["SystemControlHighlightListAccentMediumBrush"] = face;
+        application.Resources["SystemControlHighlightListAccentHighBrush"] = face;
+        application.Resources["SystemControlHighlightAltBaseHighBrush"] = label;
+        highContrastStyles = SelectionEdges(accent);
+        application.Styles.Add(highContrastStyles);
     }
+
+    /// <summary>
+    /// In high contrast every list row keeps a transparent two-pixel edge, so selecting one moves nothing, and the
+    /// selected row draws that edge in the accent.
+    /// </summary>
+    private static Styles SelectionEdges(IBrush accent) =>
+    [
+        new Style(selector => selector.OfType<ListBoxItem>())
+        {
+            Setters =
+            {
+                new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(2)),
+                new Setter(TemplatedControl.BorderBrushProperty, Brushes.Transparent),
+            },
+        },
+        new Style(selector => selector.OfType<ListBoxItem>().Class(":selected"))
+        {
+            Setters = { new Setter(TemplatedControl.BorderBrushProperty, accent) },
+        },
+    ];
 
     /// <summary>The fill token of a mechanism, resolved through its family so no hue is invented.</summary>
     public static Color FillOf(Mechanism mechanism, ThemeMode mode) =>

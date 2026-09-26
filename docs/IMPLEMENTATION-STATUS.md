@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 146 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 147 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -63,6 +63,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 147 — the rest of the chrome, legible in high contrast (§6.1, §6.6):**
+  - **Gap:** revision 140 restated only buttons and text boxes. Menus, tool tips, scroll bars and list selection kept
+    the control theme's faint look in high contrast, and revision 146's Theme menu is how a user now reaches it.
+  - **Menus:** the elevated face inside a divider edge. The item under the pointer or pressed is the measured action
+    pair, the canvas on the accent. A line that cannot be chosen, such as where the settings are kept, keeps the muted
+    ink instead of a faint grey.
+  - **Tool tips:** body ink on the elevated face inside a divider edge.
+  - **Scroll bars:** a divider-toned thumb on the bare ground, the accent under the pointer.
+  - **List selection:** a highlighted row lies on the elevated face, where every ink a row carries is measured, muted
+    included. A fill cannot both stand 3:1 from the ground and keep muted ink at 4.5:1, so a selected row also draws a
+    two-pixel accent edge, from a style no resource key reaches. Every row keeps a transparent edge of the same width,
+    so selecting one moves nothing.
+  - **Tests:** one window test in both high-contrast modes (+1). It checks the selected row's accent edge and elevated
+    fill, that the row's text does not move, the menu, tool tip and scroll-bar tokens, and that an ordinary mode drops
+    the edge. It failed with the edge style removed; the existing test already checks every new key is handed back.
 - **Revision 146 — the application's own settings, starting with the theme (§26.3, §26.2, §6.1):**
   - **Gap:** §26.3 names three settings scopes and none existed, so the theme could only follow the operating system.
     The open work listed storing the mode "once §26.3's per-user configuration exists".
@@ -807,8 +822,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      test that runs here. A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.
-     - In high contrast, list selection, scroll bars and tool tips keep the control theme's look; restate them from
-       the tokens as buttons and text boxes are.
+     Revision 147 restated menus, tool tips, scroll bars and list selection in high contrast.
      - On Windows, check each of the system's high-contrast themes, and whether Avalonia reports light or dark for
        each as expected.
    - §6.6's unmeasured encoding (an open cross-hatch outline) is drawn nowhere, because no pane plots a value that can
@@ -816,6 +830,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 147 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,061 tests: 1,059
+  passed, 2 skipped**, zero failures.
 - Revision 146 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,060 tests: 1,058
   passed, 2 skipped**, zero failures.
 - Revision 145 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,055 tests: 1,053
@@ -858,8 +874,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 146, **1,058 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 145: 1,053 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 147, **1,059 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 146: 1,058 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
