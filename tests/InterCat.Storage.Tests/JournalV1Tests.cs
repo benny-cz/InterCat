@@ -319,6 +319,29 @@ public sealed class JournalV1Tests
         Assert.Equal(0x62A8AB43u, Crc32C.Compute(ones));
     }
 
+    [Fact(DisplayName = "CRC-32C agrees with a bitwise reference at every length, alignment and split")]
+    public void Crc32CAgreesWithABitwiseReference()
+    {
+        // Every checksum ever published was computed a byte at a time. A word-at-a-time path that disagreed on any
+        // tail length or starting offset would refuse those files as damaged, so each is compared with the bit-level
+        // definition rather than only with the vectors above.
+        byte[] data = new byte[96];
+        new Random(20260926).NextBytes(data);
+        for (int offset = 0; offset < 8; offset++)
+        {
+            for (int length = 0; offset + length <= data.Length; length++)
+            {
+                ReadOnlySpan<byte> span = data.AsSpan(offset, length);
+                uint expected = BitwiseCrc32C(span);
+                Assert.Equal(expected, Crc32C.Compute(span));
+
+                int split = length / 3;
+                uint running = Crc32C.Append(Crc32C.Append(Crc32C.Start(), span[..split]), span[split..]);
+                Assert.Equal(expected, Crc32C.Finish(running));
+            }
+        }
+    }
+
     [Fact(DisplayName = "§20.1: a lookup by raw identity decodes only a batch whose declaration can hold it")]
     public void FindRecordUsesBatchDeclarations()
     {
@@ -548,6 +571,22 @@ public sealed class JournalV1Tests
                 Bytes = EnvelopeBuffer.Empty,
             },
         };
+    }
+
+    /// <summary>CRC-32C from its definition: the reflected polynomial applied one bit at a time, seeded and inverted.</summary>
+    private static uint BitwiseCrc32C(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte value in data)
+        {
+            crc ^= value;
+            for (int bit = 0; bit < 8; bit++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0x82F63B78 : crc >> 1;
+            }
+        }
+
+        return crc ^ 0xFFFFFFFF;
     }
 
     private static string GoldenPath()

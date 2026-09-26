@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 149 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 150 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -63,6 +63,32 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 150 — CRC-32C at the processor's speed, and two intermittent failures fixed (§18.1, §20.1, §3.1):**
+  - **Found:** the byte-table CRC-32C ran at 0.51 GiB/s. It checks every journal record, every segment column and
+    null bitmap, and since revision 149 the directories. A segment's columns are checked on each first read, so
+    checking a 42 MiB segment in full took about 80 ms, and every cache miss paid it again.
+  - **Changed:** eight bytes at a time through `BitOperations.Crc32C`, which uses the SSE4.2 or Arm64 CRC-32C
+    instruction where there is one: 9.4 GiB/s over 64 MiB. Every checksum is unchanged, with the same polynomial and
+    bit order. The published vectors, the committed journal fixture and a new test against the bit-level definition
+    (every length to 96 bytes, every alignment, and a split) all agree.
+  - **Measured** at 1M rows with a 64 MiB budget, where every query re-reads and re-checks three segments of four
+    (medians of four alternating runs of each build): warm projection 336 → 239 ms, timeline detail 167 → 136 ms, a
+    group's focused count 355 → 254 ms. At the 256 MiB default a million rows stay cached, and the window-level
+    benchmark is unchanged within noise: open 1,070 → 1,056 ms, group level change 336 → 320 ms
+    (`bench/results/interaction-latency-20260926T180747Z`).
+  - **Two intermittent failures, each found by running the full suite repeatedly:**
+    - **R11's paint test** failed in about 3 of 25 runs. One batch allocated 3.6–5.7 KB with no collection during
+      it, and each of three batches measured right after allocated nothing. A batch over the tolerance is now
+      measured again, up to three times, and the least is taken. A pen made per frame still fails it, on every rung
+      (2,456 B a frame).
+    - **§3.1's still-stopping test** failed once in about 12 runs. Under load, the recording fixture could publish
+      every record and the finality in one generation, so there was no generation to rewind to. The fixture's second
+      burst now waits for the first publication instead of sleeping 400 ms.
+  - **A real race, found while looking:** the unfinished-capture card's five-second recheck could begin before the
+    user forgot a capture and end after it. It then showed the forgotten card again until the next recheck. Only
+    the latest look's answer is shown now.
+  - **Tests:** +2: the CRC reference, and a window test that holds a recheck's answer back until after a forget. It
+    fails without the fix.
 - **Revision 149 — a segment checks every byte a reader interprets (segment-v1 minor 1, §20.1):**
   - **Why:** column-granular reads (open work item 1) load a column when it is first read, not the whole file. At
     minor 0 the column and time-block directories and the variable chunk were covered only by the whole-file trailer,
@@ -837,7 +863,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      148 raised the budget to 256 MiB, so a million rows (169 MiB) now fit, but the cliff returns near 1.5M rows. The
      structural fix is **column-granular reads**, in three steps:
      1. Done in revision 149: segment-v1 minor 1 gives the directories and the variable chunk checksums of their own,
-        so a reader can check every byte it interprets without hashing the whole file.
+        so a reader can check every byte it interprets without hashing the whole file. Revision 150 made each check
+        about 18 times cheaper. A miss now costs mostly the whole-file read and its SHA-256.
      2. A reader that reads the header, the directories and the time column at open, and every other column from the
         file on its first read. A minor-0 segment keeps today's whole-file open. Mapping files instead would fight
         retention, since Windows will not delete a mapped file.
@@ -876,6 +903,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 150 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,068 tests: 1,066
+  passed, 2 skipped**, zero failures. Two further Debug runs were clean too.
 - Revision 149 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,066 tests: 1,064
   passed, 2 skipped**, zero failures.
 - Revision 148 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,061 tests: 1,059
@@ -924,8 +953,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 149, **1,064 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 148: 1,059 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 150, **1,066 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 149: 1,064 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

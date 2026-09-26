@@ -72,6 +72,10 @@ public sealed partial class MainWindow : Window, IDisposable
     private CancellationTokenSource? finishingCapture;
     private readonly DispatcherTimer offerRecheck = new() { Interval = TimeSpan.FromSeconds(5) };
 
+    // Which look at the session folder is the latest. The recheck's timer and the user's own actions each start one, and
+    // only the latest one's answer is shown: an older one may have read a ticket the user has since forgotten.
+    private int offerRefresh;
+
     // The application's settings (§26.3): where they are kept, when a file is in use, and what reading it found.
     private ApplicationSettingsStore? settingsStore;
     private ApplicationSettings settings = ApplicationSettings.Default;
@@ -699,13 +703,19 @@ public sealed partial class MainWindow : Window, IDisposable
         return row is not null && await OpenSessionAsync(row.Path);
     }
 
-    private async Task RefreshInterruptedOfferAsync()
+    /// <summary>How the window looks for an unfinished capture in the session folder; a test holds one look back with it.</summary>
+    internal Func<string, InterruptedFollow?> InterruptedCaptureFinder { get; set; } = FindInterruptedCapture;
+
+    /// <summary>Looks again for an unfinished capture, as the recheck's timer does, and shows what the latest look found.</summary>
+    internal async Task RefreshInterruptedOfferAsync()
     {
         if (closed || sessionRoot is not { } root || finishingCapture is not null) return;
+        int refresh = ++offerRefresh;
+        Func<string, InterruptedFollow?> find = InterruptedCaptureFinder;
         InterruptedFollow? found;
         try
         {
-            found = await Task.Run(() => FindInterruptedCapture(root));
+            found = await Task.Run(() => find(root));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -713,7 +723,7 @@ public sealed partial class MainWindow : Window, IDisposable
             found = null;
         }
 
-        if (!closed && finishingCapture is null) ShowInterruptedOffer(found);
+        if (refresh == offerRefresh && !closed && finishingCapture is null) ShowInterruptedOffer(found);
     }
 
     /// <summary>The newest capture with something to offer. One whose session is already whole loses its ticket.</summary>

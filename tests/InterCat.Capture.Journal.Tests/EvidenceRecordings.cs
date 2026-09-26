@@ -15,7 +15,11 @@ internal static class EvidenceRecordings
 {
     public static readonly Guid Provider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
 
-    /// <summary>Records bursts of records 400 ms apart as evidence only, publishing every 100 ms, and finalizes it.</summary>
+    /// <summary>
+    /// Records two bursts of records as evidence only, publishing every 100 ms, and finalizes it. The second burst waits
+    /// for the first to be published, so the recording always has a generation before its last: a fixed pause did not
+    /// guarantee that, because under load one publication could take every record and the finality.
+    /// </summary>
     public static async Task<LiveRecordingResult> RecordEvidence(
         string directory,
         int[] ordinals,
@@ -28,7 +32,7 @@ internal static class EvidenceRecordings
         {
             if (index == 2)
             {
-                host.Pause(TimeSpan.FromMilliseconds(400));
+                host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
             }
 
             var admitted = new AdmittedEvent
@@ -160,6 +164,15 @@ internal sealed class ScriptedHost : IEtwSessionHost
     });
 
     public void Pause(TimeSpan pause) => script.Add(_ => Thread.Sleep(pause));
+
+    /// <summary>Holds delivery until <paramref name="condition"/> holds, and refuses to wait past <paramref name="timeout"/>.</summary>
+    public void PauseUntil(Func<bool> condition, TimeSpan timeout) => script.Add(_ =>
+    {
+        if (!SpinWait.SpinUntil(condition, timeout))
+        {
+            throw new TimeoutException($"The scripted capture waited {timeout.TotalSeconds:N0} s for a condition that never held.");
+        }
+    });
 
     public void Omit(DeliveredRecord delivered, OmissionReason reason) => script.Add(sink =>
     {

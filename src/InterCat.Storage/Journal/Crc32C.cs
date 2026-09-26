@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Numerics;
 
 namespace InterCat.Storage;
 
@@ -9,15 +10,15 @@ namespace InterCat.Storage;
 /// </summary>
 /// <remarks>
 /// It is implemented here rather than taken from a package so the journal's integrity primitive does not
-/// add a dependency to the format. The implementation is the standard reflected table-driven one and is
-/// checked against published test vectors.
+/// add a dependency to the format. Eight bytes at a time go through <see cref="BitOperations.Crc32C(uint, ulong)"/>,
+/// which is the processor's own CRC-32C instruction where there is one (SSE4.2, Arm64) and a software table
+/// elsewhere: a byte table checked a 64 MiB column at 0.5 GiB/s, and a segment's columns are checked on every
+/// first read. The result is the standard reflected CRC-32C, checked against published test vectors and a
+/// bitwise reference at every length and alignment.
 /// </remarks>
 public static class Crc32C
 {
-    private const uint Polynomial = 0x82F63B78;
     private const uint Seed = 0xFFFFFFFF;
-
-    private static readonly uint[] Table = BuildTable();
 
     /// <summary>The CRC-32C of a span, in the usual reflected, inverted form.</summary>
     public static uint Compute(ReadOnlySpan<byte> data) => Finish(Append(Seed, data));
@@ -25,9 +26,17 @@ public static class Crc32C
     /// <summary>Continues a CRC over another span. The caller finishes it with <see cref="Finish"/>.</summary>
     public static uint Append(uint crc, ReadOnlySpan<byte> data)
     {
+        // The instruction consumes a word's bytes lowest first, which is their order in memory once the word is read
+        // little-endian, so the words and the byte tail make the same checksum a byte-at-a-time pass would.
+        while (data.Length >= sizeof(ulong))
+        {
+            crc = BitOperations.Crc32C(crc, BinaryPrimitives.ReadUInt64LittleEndian(data));
+            data = data[sizeof(ulong)..];
+        }
+
         foreach (byte value in data)
         {
-            crc = Table[(crc ^ value) & 0xFF] ^ (crc >> 8);
+            crc = BitOperations.Crc32C(crc, value);
         }
 
         return crc;
@@ -42,21 +51,4 @@ public static class Crc32C
     /// <summary>Writes a CRC little-endian, which is how journal-v1 stores every fixed-width field.</summary>
     public static void Write(Span<byte> destination, uint crc) =>
         BinaryPrimitives.WriteUInt32LittleEndian(destination, crc);
-
-    private static uint[] BuildTable()
-    {
-        uint[] table = new uint[256];
-        for (uint index = 0; index < table.Length; index++)
-        {
-            uint value = index;
-            for (int bit = 0; bit < 8; bit++)
-            {
-                value = (value & 1) != 0 ? (value >> 1) ^ Polynomial : value >> 1;
-            }
-
-            table[index] = value;
-        }
-
-        return table;
-    }
 }

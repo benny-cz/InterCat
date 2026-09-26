@@ -81,7 +81,10 @@ public sealed class PaintAllocationTests
         }
     }
 
-    /// <summary>What one repaint of <paramref name="control"/> allocates beyond the drawing context's own cost.</summary>
+    /// <summary>
+    /// What one repaint of <paramref name="control"/> allocates beyond the drawing context's own cost, in the least of up to
+    /// three batches.
+    /// </summary>
     private static long OwnAllocationPerFrame(Control control)
     {
         // The first frames build what later ones reuse (laid-out text, dash geometry, the runtime's own warm-up), so a
@@ -107,16 +110,26 @@ public sealed class PaintAllocationTests
             return GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        // The context grows its opacity and clip stacks on their first use in a frame; that is its cost, not the pane's.
-        long empty = Frames(static context =>
+        // A batch can include a one-off allocation that no pane code makes. Under full-suite load one batch in a few runs
+        // allocated 3.6-5.7 KB with no collection during it, and each of three batches measured right after allocated
+        // nothing. So a batch over the tolerance is measured again, up to three times, and the least is taken. An
+        // allocation on every frame shows in every batch, and still fails.
+        long least = long.MaxValue;
+        for (int batch = 0; batch < 3 && least > ToleratedBytesPerFrame; batch++)
         {
-            using (context.PushOpacity(0.5))
-            using (context.PushClip(new Rect(0, 0, 1, 1)))
+            // The context grows its opacity and clip stacks on their first use in a frame; that is its cost, not the pane's.
+            long empty = Frames(static context =>
             {
-            }
-        });
-        long drawn = Frames(control.Render);
-        return Math.Max(0, drawn - empty) / frames;
+                using (context.PushOpacity(0.5))
+                using (context.PushClip(new Rect(0, 0, 1, 1)))
+                {
+                }
+            });
+            long drawn = Frames(control.Render);
+            least = Math.Min(least, Math.Max(0, drawn - empty) / frames);
+        }
+
+        return least;
     }
 
     private static async Task Settle(Window window, WorkspaceViewModel workspace)

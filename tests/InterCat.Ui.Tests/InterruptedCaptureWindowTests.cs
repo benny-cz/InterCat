@@ -115,6 +115,58 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.1: a recheck that looked before the user forgot a capture does not bring its card back")]
+    public async Task AStaleRecheckDoesNotBringAForgottenCardBack()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, string session, _) = await CrashedFollow(root.Path, unfinalized: true);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        using var release = new ManualResetEventSlim();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Border card = window.GetControl<Border>("UnfinishedCaptureCard");
+            Assert.True(card.IsVisible);
+
+            // The card's recheck looks at the folder and reads the ticket, and its answer is held back until the user
+            // has forgotten the capture: under load, a look can end after a later one that it began before.
+            var looked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Func<string, InterruptedFollow?> find = window.InterruptedCaptureFinder;
+            int looks = 0;
+            window.InterruptedCaptureFinder = folder =>
+            {
+                InterruptedFollow? found = find(folder);
+                if (Interlocked.Increment(ref looks) == 1)
+                {
+                    looked.SetResult();
+                    release.Wait();
+                }
+
+                return found;
+            };
+            Task recheck = window.RefreshInterruptedOfferAsync();
+            await looked.Task;
+
+            await window.ForgetInterruptedCaptureAsync();
+            Dispatch();
+            Assert.False(card.IsVisible);
+
+            release.Set();
+            await recheck;
+            Dispatch();
+            Assert.False(card.IsVisible);
+            Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
+            Assert.Equal(2, looks);
+        }
+        finally
+        {
+            release.Set();
+            window.Close();
+        }
+    }
+
     /// <summary>
     /// A capture's evidence, and a session whose viewer followed its first chunk and crashed, leaving its ticket. An
     /// unfinalized capture is the evidence as its first publication left it, and its owner lease has not settled yet.
