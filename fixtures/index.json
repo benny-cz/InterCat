@@ -841,6 +841,8 @@
         "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"
       ],
       "R15": [
+        "R15: Ctrl+click and Ctrl+Space build a multi-selection the timeline highlights, and Enter lists exactly its records",
+        "R15: Ctrl+click on graph nodes composes a set with the node selected before it, and a plain click replaces it",
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
         "R15: a custom workspace header names its session without inventing a capture gap",
         "R15: a lane selector's options and its chosen value read as sentences and labels, not record fields",

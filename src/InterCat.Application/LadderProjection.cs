@@ -382,10 +382,12 @@ public static class LadderProjection
 
     private static HashSet<string> ResolveEdgeScope(WorkspaceSnapshot snapshot, string scopeKey)
     {
+        HashSet<ProcessInstanceId> chosen = ProcessSetFilter.TryParse(scopeKey, out ProcessInstanceId[] set) ? [.. set] : [];
         ProcessNode[] members =
         [
             .. snapshot.Processes.Where(process =>
-                string.Equals(process.Id.ToString(), scopeKey, StringComparison.Ordinal)
+                chosen.Contains(process.Id)
+                || string.Equals(process.Id.ToString(), scopeKey, StringComparison.Ordinal)
                 || string.Equals(process.GroupKey, scopeKey, StringComparison.Ordinal)),
         ];
         return members.Length == 0

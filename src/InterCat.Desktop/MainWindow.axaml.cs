@@ -103,6 +103,9 @@ public sealed partial class MainWindow : Window, IDisposable
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
 
+        // §6.7: Ctrl+click on a ranked row adds it to the multi-selection or removes it, before the list would select it alone.
+        RungList.AddHandler(PointerPressedEvent, OnRungListPointerPressed, RoutingStrategies.Tunnel);
+
         // The current rung is the last crumb. When a descent or a long channel name widens the trail, it scrolls so
         // that crumb stays in view instead of being clipped behind the level badge (section 3.2, position stated).
         CrumbScroller.ScrollChanged += (_, change) =>
@@ -204,6 +207,12 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         if (e.Source is TextBox) return;
+
+        if (HandleRungListSelectionKey(viewModel, e))
+        {
+            e.Handled = true;
+            return;
+        }
 
         switch (e.Key)
         {
@@ -339,6 +348,49 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>The pointer equivalent of E: one step to the current rung's source records (section 3.2).</summary>
     private void ShowSourceRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ShowEvidence();
+
+    /// <summary>The visible equivalent of Enter on a multi-selection (§6.7): its records, the set their filter.</summary>
+    private void ShowChosenRecords(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (workspace.ShowChosenRecords())
+        {
+            RungList.Focus();
+        }
+    }
+
+    /// <summary>The menu equivalent of Ctrl+click on a ranked row (§6.7, R15).</summary>
+    private void ToggleRowInSelection(object? sender, RoutedEventArgs eventArgs) =>
+        workspace.ToggleRungInSelection((sender as StyledElement)?.DataContext as RungRow);
+
+    /// <summary>§6.7's Ctrl+click on a ranked row: adds it to the multi-selection or removes it, never selecting it alone.</summary>
+    private void OnRungListPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control)
+            || !eventArgs.GetCurrentPoint(RungList).Properties.IsLeftButtonPressed
+            || (eventArgs.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is not RungRow row)
+        {
+            return;
+        }
+
+        workspace.ToggleRungInSelection(row);
+        eventArgs.Handled = true;
+    }
+
+    /// <summary>
+    /// The ranked table's keyboard multi-selection, as Windows lists have it: Ctrl+Up and Ctrl+Down already move the
+    /// list's focus without selecting, and Ctrl+Space adds the focused row to the multi-selection or removes it.
+    /// </summary>
+    private bool HandleRungListSelectionKey(WorkspaceViewModel viewModel, KeyEventArgs eventArgs)
+    {
+        if (!RungList.IsKeyboardFocusWithin || eventArgs.Key != Key.Space || !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return false;
+        }
+
+        ListBoxItem? focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as ListBoxItem;
+        viewModel.ToggleRungInSelection(focused?.DataContext as RungRow ?? viewModel.SelectedRung);
+        return true;
+    }
 
     private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreEvidenceAsync();
 

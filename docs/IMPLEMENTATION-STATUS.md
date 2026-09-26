@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 159 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 160 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -57,13 +57,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 160 — `Ctrl`+click builds a multi-selection, and `Enter` makes it a filter (§6.7):**
+  - **Changed:**
+    - `Ctrl`+click on a graph node, or on a ranked row that stands for processes, adds them to a set or removes them.
+      A single selection already standing becomes its first member, and a plain click, a clear or a navigation lets
+      it go.
+    - The set is ringed in the graph, named in the inspector and highlighted in the timeline.
+    - `Enter`, or the inspector's **Show their records**, opens the evidence rung scoped to exactly the chosen
+      processes. It uses a visible filter keyed by their instance identities (`ProcessSetFilter`).
+    - Keyboard: `Ctrl`+`Up`/`Down` move the ranked table's focus without selecting (Avalonia's own list behaviour), and
+      `Ctrl`+`Space` toggles the focused row, or the graph's keyboard node.
+    - A row's context menu toggles it.
+  - **Found:** a handler for `Ctrl`+`Up`/`Down` duplicated the list's built-in behaviour; a mutation removing it
+    changed nothing, so it was removed.
+  - **Tests:** +3: the set filter's scope and parsing, the table path with `Enter`, and the graph path with a plain
+    click replacing the set. Five mutations are each caught.
+  - **Open:** channel sets, a lane view of an arbitrary set, and marking the set's rows in the ranked table.
 - **Revision 159 — a selection is highlighted in the timeline (§6.4):**
   - **Changed:**
     - Selecting any of these counts that entity's own records on the columns the timeline draws, with the rung
@@ -1128,9 +1144,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
-   - §6.7's remaining row: `Ctrl`+click multi-selection as an explicit predicate. Since revision 159 selecting one
-     entity highlights its records in the timeline (§6.4). Next, let a set of them extend that highlight, and `Enter`
-     turn the set into a filter. Indexed/progressive search belongs to the later M4 scale gate.
+   - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
+     - a set of channels, which a timeline focus cannot name;
+     - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
+     - marking the set's rows in the ranked table itself, where today its members show in the graph and inspector.
+     Indexed/progressive search belongs to the later M4 scale gate.
    - §6.2's minimum drawn width (5 px) and pointer snapping belong with the density regime, where a column is one
      device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
      target, and snapping would take an empty neighbouring interval away from the pointer.
@@ -1147,6 +1165,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 160 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,109 tests: 1,107
+  passed, 2 skipped**, zero failures; two consecutive full Debug runs were clean.
 - Revision 159 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,106 tests: 1,104
   passed, 2 skipped**, zero failures; three consecutive full Debug runs were clean.
 - Revision 158 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,102 tests: 1,100
@@ -1216,8 +1236,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 159, **1,104 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 158: 1,100 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 160, **1,107 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 159: 1,104 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

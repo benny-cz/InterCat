@@ -988,6 +988,15 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         IReadOnlyList<GraphDisplayNode> order = Traversal(viewModel.GraphDisplay);
         keyboardIndex = Math.Max(0, order.ToList().FindIndex(node => node.Key == key));
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            // §6.7's Ctrl+click adds the node's processes to the multi-selection or removes them; it never starts a drag.
+            viewModel.ToggleGraphNodeInSelection(key);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         viewModel.SelectGraphNode(key);
 
         // A press may become a drag that pins the node where it is dropped; until it moves, it is only a selection.
@@ -1108,6 +1117,15 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         {
             keyboardIndex = (keyboardIndex + delta + order.Count) % order.Count;
             viewModel.SelectGraphNode(order[keyboardIndex].Key);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            // The keyboard equivalent of Ctrl+click: the node the keyboard is on joins or leaves the multi-selection.
+            viewModel.ToggleGraphNodeInSelection(order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key);
             InvalidateVisual();
             e.Handled = true;
             return;

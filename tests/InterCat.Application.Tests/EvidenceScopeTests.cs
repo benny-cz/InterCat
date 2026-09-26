@@ -141,6 +141,35 @@ public sealed class EvidenceScopeTests
         Assert.Null(machineStep.Key);
     }
 
+    [Fact(DisplayName = "§6.7: a multi-selection turned into a filter reads exactly the chosen processes still present")]
+    public void AChosenSetIsAFilterOfExactlyItsMembers()
+    {
+        // Two of the three, across two groups: neither group's membership, and never a PID.
+        string key = ProcessSetFilter.KeyOf([Other, Client, Client]);
+        Assert.True(ProcessSetFilter.TryParse(key, out ProcessInstanceId[] parsed));
+        Assert.Equal([Client, Other], parsed);
+        Assert.Equal(key, ProcessSetFilter.KeyOf([Client, Other]));
+
+        EvidenceScope chosen = EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", ProcessSetFilter.Label(2), DetailLevel.Group, key)));
+        Assert.Equal([Client, Other], chosen.OwnerProcesses);
+        Assert.Null(chosen.ChannelKey);
+        Assert.Null(chosen.Problem);
+        Assert.StartsWith("Records owned by 2 selected processes", chosen.Description, StringComparison.Ordinal);
+
+        // A member this generation no longer holds is not read, and a set with none left is no scope at all.
+        var gone = new ProcessInstanceId(Guid.Parse("44444444-4444-4444-8444-444444444444"));
+        Assert.Equal([Client], EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", "2 selected processes", DetailLevel.Group, ProcessSetFilter.KeyOf([Client, gone])))).OwnerProcesses);
+        Assert.NotNull(EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", "1 selected process", DetailLevel.Group, ProcessSetFilter.KeyOf([gone])))).Problem);
+
+        // Keys that name no set are not read as one.
+        Assert.False(ProcessSetFilter.TryParse("executable:C:\\APP.EXE", out _));
+        Assert.False(ProcessSetFilter.TryParse(ProcessSetFilter.Prefix, out _));
+        Assert.False(ProcessSetFilter.TryParse(ProcessSetFilter.Prefix + "not-a-guid", out _));
+    }
+
     private static NavigationState Rung(params ImpliedFilter[] filters) => new()
     {
         Level = DetailLevel.Evidence,

@@ -113,6 +113,12 @@
                 <!-- The name has the rail's width less the count; its detail and coverage share the line beneath. -->
                 <Grid ColumnDefinitions="22,*,Auto" RowDefinitions="Auto,Auto" Margin="2,5" MinHeight="44"
                       VerticalAlignment="Center">
+                  <!-- §6.7's Ctrl+click and Ctrl+Space, as a menu a pointer or a context-menu key reaches. -->
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Add to or remove from the selection (Ctrl+Space)" Click="ToggleRowInSelection" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Margin="6,0,6,0" Text="{Binding Label}" FontWeight="SemiBold"
                              TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
@@ -423,6 +429,10 @@
             <StackPanel Spacing="4" IsVisible="{Binding !IsEvidenceRung}">
               <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding SelectionSubtitle}" Classes="muted" TextWrapping="Wrap" />
+              <!-- §6.7: Enter turns a multi-selection into a filter; this is its visible equivalent. -->
+              <Button x:Name="ShowChosenRecordsButton" Margin="0,6,0,0" Content="Show their records (Enter)"
+                      Click="ShowChosenRecords" IsVisible="{Binding HasMultiSelection}"
+                      AutomationProperties.Name="Show the selected processes' records" />
             </StackPanel>
             <Border Classes="card" Margin="0,18,0,0" Padding="11" CornerRadius="8"
                     Background="{DynamicResource Surface.Elevated}">

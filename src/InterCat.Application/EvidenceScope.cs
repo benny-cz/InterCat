@@ -20,6 +20,52 @@ public sealed record EvidenceScope(
 }
 
 /// <summary>
+/// An explicit set of process instances as one filter: §6.7's multi-selection, which <c>Enter</c> turns into a filter.
+/// Its key names every member, so the scope it reads is exactly the processes chosen and never a group's current
+/// membership or a guessed PID.
+/// </summary>
+public static class ProcessSetFilter
+{
+    public const string Prefix = "processes:";
+
+    /// <summary>The filter key for these members, in a stable order.</summary>
+    public static string KeyOf(IEnumerable<ProcessInstanceId> members)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        return Prefix + string.Join(",", members.Select(member => member.Value.ToString("N")).Distinct().Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>How the set reads in a breadcrumb or a caption.</summary>
+    public static string Label(int count) => count == 1
+        ? "1 selected process"
+        : string.Create(CultureInfo.CurrentCulture, $"{count:N0} selected processes");
+
+    /// <summary>The members a set's key names; false for a key that names no set.</summary>
+    public static bool TryParse(string? key, out ProcessInstanceId[] members)
+    {
+        members = [];
+        if (key is null || !key.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var parsed = new List<ProcessInstanceId>();
+        foreach (string part in key[Prefix.Length..].Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!Guid.TryParseExact(part, "N", out Guid id) || id == Guid.Empty)
+            {
+                return false;
+            }
+
+            parsed.Add(new(id));
+        }
+
+        members = [.. parsed];
+        return members.Length > 0;
+    }
+}
+
+/// <summary>
 /// Resolves an evidence rung's scope from the filters its breadcrumb shows. The latest filter that names an entity
 /// decides: the rung evidence was reached from, or - once the user removes that filter - the next one out. Removing
 /// filters therefore widens the scope one visible step at a time, and a rung with none reads the whole session.
@@ -37,6 +83,15 @@ public static class EvidenceScopes
         for (int index = rung.Filters.Count - 1; index >= 0; index--)
         {
             ImpliedFilter filter = rung.Filters[index];
+            if (ProcessSetFilter.TryParse(filter.Key, out ProcessInstanceId[] chosen))
+            {
+                // A multi-selection turned into a filter reads exactly its members that this generation still holds.
+                ProcessInstanceId[] present = [.. snapshot.Processes.Where(node => chosen.Contains(node.Id)).Select(node => node.Id)];
+                return present.Length == 0
+                    ? Unreadable("None of the selected processes is in this generation.", interval)
+                    : new($"Records owned by {ProcessSetFilter.Label(present.Length)}{time}", null, present, interval, null);
+            }
+
             switch (filter.Level)
             {
                 case DetailLevel.Machine:

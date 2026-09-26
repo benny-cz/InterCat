@@ -191,6 +191,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     // A channel chosen among a process's rows; any other selection, and every navigation, lets it go.
     private string? chosenChannelKey;
+
+    // §6.7's multi-selection: the processes Ctrl+click added, an explicit predicate. A plain selection or a navigation
+    // lets it go; Enter turns it into a filter.
+    private readonly HashSet<ProcessInstanceId> chosenProcesses = [];
     private CancellationTokenSource? highlightQuery;
     private (TimeRange Viewport, int Columns, string Focus)? requestedHighlight;
     private IReadOnlyList<TimelineBucket>? highlightBuckets;
@@ -652,6 +656,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         if (evidenceSource is null)
         {
             return (null, null);
+        }
+
+        if (chosenProcesses.Count > 0)
+        {
+            ProcessInstanceId[] members = [.. ChosenProcesses.Select(process => process.Id)];
+            return members.Length == 0 ? (null, null) : (new(null, members), ProcessSetFilter.Label(members.Length));
         }
 
         if (chosenChannelKey is { } channelKey
@@ -1590,7 +1600,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             return (whole, part);
         }
 
-        HashSet<ProcessInstanceId> members = selectedGroupKey is { } group
+        HashSet<ProcessInstanceId> members = chosenProcesses.Count > 0 ? [.. chosenProcesses]
+            : selectedGroupKey is { } group
             ? [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group).Select(process => process.Id)]
             : selectedProcess is { } process ? [process.Id] : [];
         foreach (GraphDisplayNode node in members
@@ -1632,6 +1643,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         selectedGroupKey = null;
         selectedClusterKey = key;
         chosenChannelKey = null;
+        chosenProcesses.Clear();
+        graphSelection = null;
         if (ladder.Current.Level == DetailLevel.Machine && selectedRung is not null)
         {
             // A machine-rung row is a group; an aggregate spans groups, so no row stands for it.
@@ -1649,6 +1662,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         selectedClusterKey = null;
         selectedGroupKey = groupKey;
         chosenChannelKey = null;
+        chosenProcesses.Clear();
+        graphSelection = null;
         if (syncRow && ladder.Current.Level == DetailLevel.Machine
             && RungRows.FirstOrDefault(row => row.Key == groupKey) is { } row)
         {
@@ -2512,6 +2527,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 selectedClusterKey = null;
                 selectedGroupKey = null;
                 chosenChannelKey = null;
+                chosenProcesses.Clear();
+                graphSelection = null;
             }
 
             OnPropertyChanged();
@@ -2527,17 +2544,32 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     public TimeRange? SelectedInterval => selectedInterval;
 
-    public string SelectionTitle => SelectedCluster is { } cluster ? cluster.Label
+    public string SelectionTitle => HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
+        : SelectedCluster is { } cluster ? cluster.Label
         : SelectedGroup is { } group ? group.Name
         : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
 
-    public string SelectionSubtitle => SelectedCluster is { } cluster ? DescribeCluster(cluster)
+    public string SelectionSubtitle => HasMultiSelection ? DescribeChosen()
+        : SelectedCluster is { } cluster ? DescribeCluster(cluster)
         : SelectedGroup is { } group ? DescribeGroup(group)
         : selectedProcess is null
             ? "Choose a node, ranked row, or timeline bucket."
             : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
+    /// <summary>What a multi-selection holds, by name, and the two gestures that change or apply it (§6.7).</summary>
+    private string DescribeChosen()
+    {
+        IReadOnlyList<ProcessNode> chosen = ChosenProcesses;
+        string names = string.Join(", ", chosen.Take(3).Select(process => process.NameWithPid));
+        if (chosen.Count > 3)
+        {
+            names += string.Create(CultureInfo.CurrentCulture, $" and {chosen.Count - 3:N0} more");
+        }
+
+        return $"{names} · Ctrl+click or Ctrl+Space adds or removes · Enter lists their records";
+    }
+
     private string DescribeCluster(GraphDisplayNode cluster)
     {
         string members = Counted(cluster.Members.Count, "process", "processes");
@@ -2995,7 +3027,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>
-    public string EvidenceHeading => SelectedCluster is not null ? "Selected aggregate"
+    public string EvidenceHeading => HasMultiSelection ? "Selected processes"
+        : SelectedCluster is not null ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : "Selected process";
 
@@ -3011,7 +3044,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                         + Counted(cluster.Relationships, "relationship", "relationships") + " · bytes unknown";
             }
 
-            HashSet<ProcessInstanceId> scope = SelectedGroup is { } group
+            HashSet<ProcessInstanceId> scope = HasMultiSelection ? [.. chosenProcesses]
+                : SelectedGroup is { } group
                 ? [.. Snapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
                 : selectedProcess is { } process ? [process.Id] : [];
             if (scope.Count == 0)
@@ -3019,7 +3053,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return "No evidence selected";
             }
 
-            string subject = SelectedGroup is null ? "this process" : "this group's processes";
+            string subject = HasMultiSelection ? "these processes"
+                : SelectedGroup is null ? "this process" : "this group's processes";
             CommunicationEdge[] edges = [.. Snapshot.Edges
                 .Where(edge => scope.Contains(edge.SourceId) || scope.Contains(edge.TargetId))];
             long observations = edges.Sum(edge => edge.ObservationCount);
@@ -3027,7 +3062,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             {
                 return edges.Length == 0
                     ? $"No admitted paired TCP relationship for {subject}. Other activity may be present."
-                    : SelectedGroup is null
+                    : SelectedGroup is null && !HasMultiSelection
                         ? $"{observations:N0} paired TCP observations · bytes unknown"
                         : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} paired TCP observations on ")
                             + Counted(edges.Length, "relationship", "relationships") + " · bytes unknown";
@@ -3043,6 +3078,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Descends one rung from the selected row. One gesture, at every rung (section 3.2).</summary>
     public bool Descend()
     {
+        if (chosenProcesses.Count > 0)
+        {
+            // Enter on a multi-selection is §6.7's Focus: the set becomes a filter.
+            return ShowChosenRecords();
+        }
+
         if (selectedRung is null)
         {
             return false;
@@ -3060,6 +3101,126 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         AfterNavigation();
         return true;
     }
+
+    /// <summary>The processes of §6.7's multi-selection, by PID and then instance, as they are named; empty without one.</summary>
+    public IReadOnlyList<ProcessNode> ChosenProcesses => chosenProcesses.Count == 0
+        ? []
+        : [.. wholeSnapshot.Processes.Where(process => chosenProcesses.Contains(process.Id))
+            .OrderBy(process => process.ProcessId).ThenBy(process => process.Id.Value)];
+
+    /// <summary>Whether Ctrl+click has built a multi-selection.</summary>
+    public bool HasMultiSelection => chosenProcesses.Count > 0;
+
+    /// <summary>§6.7's Ctrl+click on a drawn node: adds its processes to the multi-selection, or removes them.</summary>
+    public void ToggleGraphNodeInSelection(string key)
+    {
+        if (graphDisplay.Node(key) is { } node)
+        {
+            Toggle(node.Members);
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+click or Ctrl+Space on a ranked row: adds its process, or a machine-rung group's processes, to the
+    /// multi-selection, or removes them. Channel and record rows are not processes and add nothing.
+    /// </summary>
+    public void ToggleRungInSelection(RungRow? row)
+    {
+        if (row is null || IsEvidenceRung)
+        {
+            return;
+        }
+
+        if (TryResolveProcess(row.Key, out ProcessNode? process))
+        {
+            Toggle([process!.Id]);
+        }
+        else if (ladder.Current.Level == DetailLevel.Machine && wholeSnapshot.Groups.Any(group => group.Key == row.Key))
+        {
+            Toggle([.. wholeSnapshot.Processes
+                .Where(member => string.Equals(member.GroupKey, row.Key, StringComparison.Ordinal))
+                .Select(member => member.Id)]);
+        }
+    }
+
+    /// <summary>
+    /// Enter on a multi-selection (§6.7): lists exactly the chosen processes' records, the set being the evidence rung's
+    /// visible, removable filter. The timeline there draws them in colour, as any rung's focus.
+    /// </summary>
+    public bool ShowChosenRecords()
+    {
+        ProcessInstanceId[] members = [.. ChosenProcesses.Select(process => process.Id)];
+        if (members.Length == 0 || ladder.Current.Level == DetailLevel.Evidence)
+        {
+            return false;
+        }
+
+        TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
+        LadderDescent descent = LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+            new(DetailLevel.Group, ProcessSetFilter.KeyOf(members), ProcessSetFilter.Label(members.Length)),
+            "Enter on a multi-selection scopes to exactly the processes chosen (§6.7).");
+        if (!TryDescend(descent))
+        {
+            return false;
+        }
+
+        AfterNavigation();
+        OnPropertyChanged(nameof(ChosenProcesses));
+        OnPropertyChanged(nameof(HasMultiSelection));
+        return true;
+    }
+
+    /// <summary>
+    /// Adds an entity's processes to the multi-selection, or removes them when every one is in it already. A single
+    /// selection beside it becomes the set's first member, as a list's selected item does when another is Ctrl+clicked;
+    /// from then on the set is the selection.
+    /// </summary>
+    private void Toggle(IReadOnlyCollection<ProcessInstanceId> members)
+    {
+        if (members.Count == 0)
+        {
+            return;
+        }
+
+        if (chosenProcesses.Count == 0)
+        {
+            chosenProcesses.UnionWith(SingleSelectionMembers());
+        }
+
+        if (members.All(chosenProcesses.Contains))
+        {
+            chosenProcesses.ExceptWith(members);
+        }
+        else
+        {
+            chosenProcesses.UnionWith(members);
+        }
+
+        selectedClusterKey = null;
+        selectedGroupKey = null;
+        chosenChannelKey = null;
+        graphSelection = null;
+        if (selectedProcess is not null)
+        {
+            // The set replaces the single selection; the coordinator's cleared process does not clear the set.
+            selectedProcess = null;
+            OnPropertyChanged(nameof(SelectedProcess));
+            selection.SelectProcess(null);
+        }
+
+        OnPropertyChanged(nameof(ChosenProcesses));
+        OnPropertyChanged(nameof(HasMultiSelection));
+        RaiseGraphSelectionChanged();
+    }
+
+    /// <summary>The processes the single selection stands for: an aggregate's, a group's, or the one process.</summary>
+    private IEnumerable<ProcessInstanceId> SingleSelectionMembers() =>
+        SelectedCluster is { } cluster ? cluster.Members
+        : SelectedGroup is { } group ? wholeSnapshot.Processes
+            .Where(process => string.Equals(process.GroupKey, group.Key, StringComparison.Ordinal))
+            .Select(process => process.Id)
+        : selectedProcess is { } process ? [process.Id]
+        : [];
 
     /// <summary>Descends one rung, first recording on the rung being left the interval the user had there (§6.7).</summary>
     private bool TryDescend(LadderDescent descent)
@@ -3222,6 +3383,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         selectedClusterKey = null;
         selectedGroupKey = null;
         chosenChannelKey = null;
+        chosenProcesses.Clear();
+        graphSelection = null;
         selection.Clear();
         RaiseGraphSelectionChanged();
     }
@@ -3242,6 +3405,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         // A group selected by its row is left with that row; a descent into it makes it the ladder's focus instead.
         selectedGroupKey = null;
         chosenChannelKey = null;
+        chosenProcesses.Clear();
+        graphSelection = null;
         RefreshGraphDisplay();
         UpdateTimelineFocus();
         UpdateHighlight();
@@ -3841,6 +4006,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             selectedClusterKey = null;
             selectedGroupKey = null;
             chosenChannelKey = null;
+            chosenProcesses.Clear();
+            graphSelection = null;
         }
 
         OnPropertyChanged(nameof(SelectedProcess));
