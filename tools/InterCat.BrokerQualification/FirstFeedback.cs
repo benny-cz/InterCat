@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Capture.Windows;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
@@ -59,7 +60,7 @@ internal static partial class Qualification
         Directory.CreateDirectory(output);
         var report = new FirstFeedbackReport
         {
-            Schema = "intercat.first-feedback.v4",
+            Schema = "intercat.first-feedback.v5",
             StartedUtc = DateTimeOffset.UtcNow,
             Environment = CapabilityInventoryProbe.DescribeEnvironment(etw.IsElevated),
             QpcFrequency = Stopwatch.Frequency,
@@ -91,6 +92,10 @@ internal static partial class Qualification
                     + "whichever came first, preview or exact, and is what the event-to-visible budget is judged on "
                     + "(plan §12, §19.3's labelled preview). Schema v2 added the preview; v1's event-to-visible is v2's "
                     + "event-to-exact.",
+                "Schema v5 adds what the viewer publishes once the follow finishes, a derivation checkpoint and a "
+                    + "persisted overview (derivation-checkpoint-v1, overview-v1), and what a fresh store opening the saved "
+                    + "session reads before its first overview. It is measured in this process, whose derivations of the "
+                    + "session are already made.",
                 "Schema v4 adds the manifests the derived session and the broker's evidence hold at the end, and their "
                     + "bytes: a writer removes superseded manifests (store-v1 §9), so a long capture keeps a few, not one "
                     + "per publication.",
@@ -235,6 +240,20 @@ internal static partial class Qualification
         result.SessionBytes = Directory.EnumerateFiles(seen.SessionPath, "*", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
         (result.SessionManifests, result.SessionManifestBytes) = Manifests(seen.SessionPath);
+
+        // What the viewer published once the follow finished (derivation-checkpoint-v1, overview-v1), and what a fresh
+        // store opening the saved session reads before its first overview.
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(seen.SessionPath));
+        if (reopened.Current is { } final)
+        {
+            (StoreDependency? checkpoint, StoreDependency? overview) = SessionCheckpoints.NamedBy(final);
+            result.CheckpointBytes = checkpoint?.LengthBytes;
+            result.OverviewBytes = overview?.LengthBytes;
+            var reopening = Stopwatch.StartNew();
+            _ = SessionOverviewProjector.Project(reopened, cancellationToken: cancellationToken);
+            result.ReopenProjectionMs = reopening.ElapsedMilliseconds;
+            result.ReopenSegmentsOpened = reopened.SegmentReaderCache.Entries;
+        }
         if (new DirectoryInfo(Path.Combine(CliRootParent, RootName)) is { Exists: true } brokerRoot
             && brokerRoot.EnumerateDirectories("capture-*").MaxBy(capture => capture.CreationTimeUtc) is { } evidence)
         {
@@ -693,6 +712,15 @@ internal sealed class FirstFeedbackRun
     /// <summary>Manifests the derived session and the broker's evidence hold at the end, and their bytes (store-v1 §9).</summary>
     public int SessionManifests { get; set; }
     public long SessionManifestBytes { get; set; }
+
+    /// <summary>
+    /// The derivation checkpoint and persisted overview the saved session names, null when it names none, and what a
+    /// fresh store projecting its first overview took and how many segments it opened (schema v5).
+    /// </summary>
+    public long? CheckpointBytes { get; set; }
+    public long? OverviewBytes { get; set; }
+    public long? ReopenProjectionMs { get; set; }
+    public int? ReopenSegmentsOpened { get; set; }
     public int? EvidenceManifests { get; set; }
     public long? EvidenceManifestBytes { get; set; }
     public long RecordsWithoutJournalIndex { get; set; }

@@ -123,6 +123,13 @@ public static class SessionCheckpoints
     }
 
     /// <summary>
+    /// The derivation checkpoint and the persisted overview a generation names, each null when it names none. A report
+    /// states what a writer published; whether they are used is decided where the session is read.
+    /// </summary>
+    public static (StoreDependency? Checkpoint, StoreDependency? Overview) NamedBy(SessionManifestV1 manifest) =>
+        (DerivationCheckpoint.NamedBy(manifest), SessionOverviewIndex.NamedBy(manifest));
+
+    /// <summary>
     /// Whether the generation names a readable checkpoint and a readable persisted overview, each covering exactly the
     /// segments it names.
     /// </summary>

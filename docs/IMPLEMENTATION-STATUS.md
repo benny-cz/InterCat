@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 163 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 164 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -66,6 +66,30 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 164 — checkpoints qualified on real ETW and in the window:**
+  - **Changed:**
+    - `first-feedback` report schema v5 records what the viewer publishes when the follow finishes: the checkpoint's and
+      the overview's bytes. It also records what a fresh store opening the saved session reads before its first
+      overview.
+    - The §6.8 latency benchmark measures each synthetic session twice: derived from its segments, and reopened from
+      the checkpoint and overview its writer published.
+    - `SessionCheckpoints.NamedBy` states which indexes a generation names.
+  - **Measured:**
+    - Real ETW, a bounded 10-minute Explore capture (`bench/results/first-feedback-20260926T232454Z-10min-bounded`):
+      - it passed and met every budget, with 128,467 records and event-to-visible p95 796 ms;
+      - derivation p95 53 ms and projection p95 23 ms, against 147 and 67 ms in revision 129's run;
+      - the saved session names a 1.2 MiB checkpoint and a 12 KiB overview;
+      - a fresh store projects it in 8 ms, opening no segment.
+    - The window (`bench/results/interaction-latency-20260926T233525Z`, synthetic):
+
+      | Session | Overview, derived | Overview, from its checkpoint | Opened to laid out, from its checkpoint |
+      |---|---|---|---|
+      | 100,000 rows | 242 ms | 12 ms | 29 ms |
+      | 1,000,000 rows | 539 ms | 2 ms | 27 ms |
+
+      Level changes, the brush and search stay within §6.8's second at both sizes. They read the segments they count,
+      as before.
+  - **Tests:** none added; the opt-in benchmark gains its two reopened sessions.
 - **Revision 163 — a finished session's first view opens no segment (S1, S4's top level):**
   - **Found:** with revision 162's checkpoint, most of what still grew with a session was the tiles: at 10M rows,
     400 ms of a 0.62 s reopen went to reading every segment's session-time and mechanism columns, and 160 ms to
@@ -1190,9 +1214,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      A 10M-row session reopens in 0.62–0.65 s, down from 2.2–2.4 s, and holds 223 MiB, down from 787 MiB.
    - Revision 163 persists the whole-session overview beside it, S4's top level, and a finished session's first view
      opens no segment: 4M and 10M rows both reopen in about 0.17 s, holding 37 MiB.
-   - **Next:** re-run the bounded 10-minute first-feedback on real ETW, which now ends by publishing the checkpoint and
-     overview, and revision 127's latency benchmark with the window's own open at 4M and 10M rows. Then the 1M- and
-     10M-row gates. A live session still counts its overview from tiles until its writer finishes.
+   - Revision 164 qualified both on real ETW and in the window. A 10-minute capture ends by publishing them, and its
+     saved session reopens without opening a segment. The window opens a 1M-row session from them in 27 ms to laid
+     out.
+   - **Next:** the 1M- and 10M-row gates as the plan states them (§12's table, cold and warm), with the window's own
+     open at 4M and 10M rows; the latency benchmark's in-memory synthetic builder stops at 1M. A live session still
+     counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Metric queries (`icat metric`) still derive their own instances and read no checkpoint.
@@ -1247,6 +1274,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 164 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,125 tests: 1,123
+  passed, 2 skipped**, zero failures. The bounded 10-minute first-feedback passed on real ETW, and the opt-in latency
+  benchmark ran in Release.
 - Revision 163 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,125 tests: 1,123
   passed, 2 skipped**, zero failures.
 - Revision 162 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,122 tests: 1,120
@@ -1324,8 +1354,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 163, **1,123 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 162: 1,120 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 164, **1,123 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 163: 1,123 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

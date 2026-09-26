@@ -1,0 +1,194 @@
+{
+  "schema": "intercat.interaction-latency.v1",
+  "measuredUtc": "2026-09-26T23:35:39.7981893+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "budgetsMs": {
+    "frame": 16.7,
+    "feedback": 100,
+    "coarseAnswer": 1000
+  },
+  "notes": [
+    "Canvas cost is TimelineView, MinimapView and GraphView building their drawing for one gesture, recorded into a drawing group without rasterizing; it is the UI thread\u0027s share of a frame, not GPU time.",
+    "Level change, brush and search are wall time from the gesture to the answer in the window, including off-thread queries and their hand-back to the UI thread.",
+    "Synthetic sessions are 50 paired loopback TCP conversations under one executable group; the real session, when measured, is named by the INTERCAT_REAL_SESSION variable and stays local.",
+    "Each synthetic session is measured twice: derived from its segments, and then reopened from the derivation checkpoint and persisted overview its writer published (derivation-checkpoint-v1, overview-v1), which the second open reads instead of any segment."
+  ],
+  "sessions": [
+    {
+      "session": "synthetic 100\u00A0000",
+      "rows": 100000,
+      "openOverviewMs": 242.0841,
+      "openToLaidOutMs": 248.0364,
+      "panCanvasMs": {
+        "p50": 3.42,
+        "p95": 7.18,
+        "max": 12.3
+      },
+      "zoomCanvasMs": {
+        "p50": 3.33,
+        "p95": 6.77,
+        "max": 6.92
+      },
+      "hoverFeedbackMs": {
+        "p50": 10.39,
+        "p95": 16.75,
+        "max": 28.59
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 72.8718,
+          "timelineCountedMs": 207.9736,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 47.8173,
+          "timelineCountedMs": 47.8209,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 33.2339,
+          "timelineCountedMs": 183.8069,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 102.7016,
+      "searchMs": 40.6784,
+      "searchHits": 50
+    },
+    {
+      "session": "synthetic 100\u00A0000, from its checkpoint",
+      "rows": 100000,
+      "openOverviewMs": 12.1535,
+      "openToLaidOutMs": 29.1137,
+      "panCanvasMs": {
+        "p50": 3.02,
+        "p95": 6.45,
+        "max": 10.5
+      },
+      "zoomCanvasMs": {
+        "p50": 3.12,
+        "p95": 7.28,
+        "max": 7.35
+      },
+      "hoverFeedbackMs": {
+        "p50": 10.72,
+        "p95": 11.81,
+        "max": 12.88
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 41.6947,
+          "timelineCountedMs": 136.2553,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 39.4455,
+          "timelineCountedMs": 39.4476,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 24.6146,
+          "timelineCountedMs": 97.4689,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 71.2448,
+      "searchMs": 22.0692,
+      "searchHits": 50
+    },
+    {
+      "session": "synthetic 1\u00A0000\u00A0000",
+      "rows": 1000000,
+      "openOverviewMs": 538.9603,
+      "openToLaidOutMs": 34.9379,
+      "panCanvasMs": {
+        "p50": 1.53,
+        "p95": 5.89,
+        "max": 7.54
+      },
+      "zoomCanvasMs": {
+        "p50": 1.48,
+        "p95": 5.58,
+        "max": 6.24
+      },
+      "hoverFeedbackMs": {
+        "p50": 10.15,
+        "p95": 13.28,
+        "max": 13.59
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 41.4995,
+          "timelineCountedMs": 291.5668,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 36.8871,
+          "timelineCountedMs": 61.2534,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 9.706,
+          "timelineCountedMs": 111.4509,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 140.2393,
+      "searchMs": 6.9265,
+      "searchHits": 50
+    },
+    {
+      "session": "synthetic 1\u00A0000\u00A0000, from its checkpoint",
+      "rows": 1000000,
+      "openOverviewMs": 2.179,
+      "openToLaidOutMs": 26.503,
+      "panCanvasMs": {
+        "p50": 1.45,
+        "p95": 5.56,
+        "max": 12.17
+      },
+      "zoomCanvasMs": {
+        "p50": 1.35,
+        "p95": 5.46,
+        "max": 5.65
+      },
+      "hoverFeedbackMs": {
+        "p50": 8.67,
+        "p95": 13.73,
+        "max": 111.16
+      },
+      "levelChanges": [
+        {
+          "level": "group",
+          "graphLaidOutMs": 34.2803,
+          "timelineCountedMs": 260.885,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "process",
+          "graphLaidOutMs": 7.2411,
+          "timelineCountedMs": 71.5074,
+          "withinCoarseAnswer": true
+        },
+        {
+          "level": "channel",
+          "graphLaidOutMs": 5.1387,
+          "timelineCountedMs": 110.0145,
+          "withinCoarseAnswer": true
+        }
+      ],
+      "brushRankedMs": 102.9058,
+      "searchMs": 10.3172,
+      "searchHits": 50
+    }
+  ]
+}

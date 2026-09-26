@@ -63,6 +63,10 @@ public sealed class InteractionLatencyTests
             using var session = new TemporarySession();
             Publish(session.Store, Synthetic(rows));
             sessions.Add(await MeasureAsync($"synthetic {rows:N0}", session.Path, rows));
+
+            // The same records once their writer finished: reopened from the checkpoint and overview it published.
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, DateTimeOffset.UtcNow).Outcome);
+            sessions.Add(await MeasureAsync($"synthetic {rows:N0}, from its checkpoint", session.Path, rows));
         }
 
         if (RealSessionFactAttribute.SessionPath is { } real)
@@ -87,6 +91,9 @@ public sealed class InteractionLatencyTests
                     + "off-thread queries and their hand-back to the UI thread.",
                 "Synthetic sessions are 50 paired loopback TCP conversations under one executable group; the real session, "
                     + "when measured, is named by the INTERCAT_REAL_SESSION variable and stays local.",
+                "Each synthetic session is measured twice: derived from its segments, and then reopened from the "
+                    + "derivation checkpoint and persisted overview its writer published (derivation-checkpoint-v1, "
+                    + "overview-v1), which the second open reads instead of any segment.",
             },
             ["sessions"] = sessions,
         };
