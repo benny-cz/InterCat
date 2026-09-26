@@ -242,8 +242,8 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="pres:LegendEntry">
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                <TextBlock Text="{Binding Glyph}" FontSize="12" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Glyph}" FontSize="12" VerticalAlignment="Center" Foreground="{Binding FillBrush}" />
+                <TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center" Foreground="{Binding InkBrush}" />
               </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

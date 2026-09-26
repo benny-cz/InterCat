@@ -20,7 +20,8 @@ namespace InterCat.Desktop;
 /// </summary>
 public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 {
-    private const ThemeMode Mode = ThemeMode.Dark;
+    /// <summary>The mode the graph draws in: the tokens' current one, so a change of theme reaches the canvas (§6.1).</summary>
+    private static ThemeMode Mode => ThemeResources.CurrentMode;
 
     /// <summary>Below this pane width the graph drops secondary labels instead of overlapping them.</summary>
     private const double NarrowPaneWidth = 620;
@@ -37,27 +38,32 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>§19.4: a node is hit within its radius plus this many logical pixels.</summary>
     private const double HitSlop = 4;
 
-    private static readonly IBrush NodeBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
-    private static readonly IBrush NodeBorderBrush = Token(ThemePalette.Surfaces(Mode).Accent);
-    private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
-    private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).Ink);
-    private static readonly IBrush MutedTextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
-    private static readonly IBrush PlotBrush = Token(ThemePalette.Surfaces(Mode).Plot);
-    private static readonly Pen NodePen = new(NodeBorderBrush, 1.5);
-    private static readonly Pen FocusPen = new(NodeBorderBrush, 3);
-    private static readonly Pen SelectionPen = new(SelectedBrush, 3);
-    private static readonly Pen HaloPen = new(SelectedBrush, 9) { LineCap = PenLineCap.Round };
-    private static readonly Pen InternalRelationshipPen = new(SelectedBrush, 4);
-    private static readonly Pen StackPen = new(NodeBorderBrush, 1);
-    private static readonly Pen MutedPen = new(MutedTextBrush, 1.5);
-    private static readonly Pen RemainderPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([4, 3], 0) };
-    private static readonly Pen QuietPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([1, 3], 0) };
-    private static readonly Pen PartialSelectionPen = new(SelectedBrush, 2) { DashStyle = new DashStyle([3, 3], 0) };
-    private static readonly Pen HoverPen = new(TextBrush, 1.5);
-    private static readonly Pen HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
-    private static readonly Pen PinHeadPen = new(PlotBrush, 1.5);
-    private static readonly Pen ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
-    private static readonly Pen ContextRimPen = new(MutedTextBrush, 1);
+    // Paint resources are built once per theme mode and cached per semantic key, so a frame allocates no brush or pen per
+    // edge (R11, §19.4) and a change of mode swaps every one of them at once.
+    private static readonly Dictionary<ThemeMode, Ink> Inks = [];
+
+    private static Ink Current => Inks.TryGetValue(Mode, out Ink? ink) ? ink : Inks[Mode] = new Ink(Mode);
+
+    private static IBrush NodeBrush => Current.NodeBrush;
+    private static IBrush SelectedBrush => Current.SelectedBrush;
+    private static IBrush TextBrush => Current.TextBrush;
+    private static IBrush MutedTextBrush => Current.MutedTextBrush;
+    private static IBrush PlotBrush => Current.PlotBrush;
+    private static Pen NodePen => Current.NodePen;
+    private static Pen FocusPen => Current.FocusPen;
+    private static Pen SelectionPen => Current.SelectionPen;
+    private static Pen HaloPen => Current.HaloPen;
+    private static Pen InternalRelationshipPen => Current.InternalRelationshipPen;
+    private static Pen StackPen => Current.StackPen;
+    private static Pen MutedPen => Current.MutedPen;
+    private static Pen RemainderPen => Current.RemainderPen;
+    private static Pen QuietPen => Current.QuietPen;
+    private static Pen PartialSelectionPen => Current.PartialSelectionPen;
+    private static Pen HoverPen => Current.HoverPen;
+    private static Pen HoverHaloPen => Current.HoverHaloPen;
+    private static Pen PinHeadPen => Current.PinHeadPen;
+    private static Pen ContextPen => Current.ContextPen;
+    private static Pen ContextRimPen => Current.ContextRimPen;
 
     /// <summary>A press moves this far before it is a drag that pins, so a slightly unsteady click still only selects.</summary>
     private const double DragThreshold = 4;
@@ -77,21 +83,75 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private GraphDisplay? hoverCardDisplay;
     private bool hoverCardPinned;
 
-    // Paint resources are cached per semantic key, so a frame allocates no brush or pen per edge (R11, §19.4).
-    private static readonly Dictionary<Mechanism, SolidColorBrush> MechanismBrushes = [];
-    private static readonly Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens = [];
-    private readonly Dictionary<(string Text, double Width, double Size, bool Strong), FormattedText> labels = [];
+    // Label text carries its brush, so it is cached per theme mode as well as per text.
+    private readonly Dictionary<(string Text, double Width, double Size, bool Strong, ThemeMode Mode), FormattedText> labels = [];
     private int keyboardIndex;
 
-    private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
+    /// <summary>The graph's brushes and pens in one theme mode, from its verified tokens (§6.6).</summary>
+    private sealed class Ink
+    {
+        public Ink(ThemeMode mode)
+        {
+            SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
+            NodeBrush = Token(surfaces.Elevated);
+            IBrush border = Token(surfaces.Accent);
+            SelectedBrush = Token(surfaces.Accent);
+            TextBrush = Token(surfaces.Ink);
+            MutedTextBrush = Token(surfaces.MutedInk);
+            PlotBrush = Token(surfaces.Plot);
+            NodePen = new(border, 1.5);
+            FocusPen = new(border, 3);
+            SelectionPen = new(SelectedBrush, 3);
+            HaloPen = new(SelectedBrush, 9) { LineCap = PenLineCap.Round };
+            InternalRelationshipPen = new(SelectedBrush, 4);
+            StackPen = new(border, 1);
+            MutedPen = new(MutedTextBrush, 1.5);
+            RemainderPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([4, 3], 0) };
+            QuietPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([1, 3], 0) };
+            PartialSelectionPen = new(SelectedBrush, 2) { DashStyle = new DashStyle([3, 3], 0) };
+            HoverPen = new(TextBrush, 1.5);
+            HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
+            PinHeadPen = new(PlotBrush, 1.5);
+            ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
+            ContextRimPen = new(MutedTextBrush, 1);
+        }
+
+        public IBrush NodeBrush { get; }
+        public IBrush SelectedBrush { get; }
+        public IBrush TextBrush { get; }
+        public IBrush MutedTextBrush { get; }
+        public IBrush PlotBrush { get; }
+        public Pen NodePen { get; }
+        public Pen FocusPen { get; }
+        public Pen SelectionPen { get; }
+        public Pen HaloPen { get; }
+        public Pen InternalRelationshipPen { get; }
+        public Pen StackPen { get; }
+        public Pen MutedPen { get; }
+        public Pen RemainderPen { get; }
+        public Pen QuietPen { get; }
+        public Pen PartialSelectionPen { get; }
+        public Pen HoverPen { get; }
+        public Pen HoverHaloPen { get; }
+        public Pen PinHeadPen { get; }
+        public Pen ContextPen { get; }
+        public Pen ContextRimPen { get; }
+
+        /// <summary>Mechanism fills and edge pens, cached per semantic key within this mode.</summary>
+        public Dictionary<Mechanism, SolidColorBrush> MechanismBrushes { get; } = [];
+
+        public Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens { get; } = [];
+
+        private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
+    }
 
     /// <summary>Mechanism owns hue; evidence quality owns the dash pattern, never a hue (section 6.6).</summary>
     private static SolidColorBrush MechanismBrush(Mechanism mechanism)
     {
-        if (!MechanismBrushes.TryGetValue(mechanism, out SolidColorBrush? brush))
+        if (!Current.MechanismBrushes.TryGetValue(mechanism, out SolidColorBrush? brush))
         {
             brush = new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode));
-            MechanismBrushes[mechanism] = brush;
+            Current.MechanismBrushes[mechanism] = brush;
         }
 
         return brush;
@@ -101,7 +161,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         // Thickness is kept to a quarter pixel, which no eye resolves, so the cache stays small.
         int quarter = (int)Math.Round(thickness * 4);
-        if (!EdgePens.TryGetValue((mechanism, strength, quarter), out Pen? pen))
+        if (!Current.EdgePens.TryGetValue((mechanism, strength, quarter), out Pen? pen))
         {
             pen = new Pen(MechanismBrush(mechanism), quarter / 4d)
             {
@@ -112,7 +172,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                     _ => new DashStyle([2, 3], 0),
                 },
             };
-            EdgePens[(mechanism, strength, quarter)] = pen;
+            Current.EdgePens[(mechanism, strength, quarter)] = pen;
         }
 
         return pen;
@@ -839,7 +899,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>One line of label text, trimmed with an ellipsis at <paramref name="width"/>; cached, as layout is costly.</summary>
     private FormattedText Text(string text, double size, bool strong, double width)
     {
-        if (!labels.TryGetValue((text, width, size, strong), out FormattedText? formatted))
+        if (!labels.TryGetValue((text, width, size, strong, Mode), out FormattedText? formatted))
         {
             if (labels.Count > 512) labels.Clear();
             formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), size,
@@ -849,7 +909,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 MaxLineCount = 1,
                 Trimming = TextTrimming.CharacterEllipsis,
             };
-            labels[(text, width, size, strong)] = formatted;
+            labels[(text, width, size, strong, Mode)] = formatted;
         }
 
         return formatted;

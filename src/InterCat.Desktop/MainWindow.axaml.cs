@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.CaptureBroker;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -100,6 +101,10 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         Opened += (_, _) => StartExploringButton.Focus();
+
+        // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
+        // legend's hues are redrawn from the new mode's tokens here.
+        ThemeResources.ModeChanged += OnThemeModeChanged;
         healthClock.Tick += (_, _) => UpdateHealthStrip();
         healthClock.Start();
         Closing += OnClosing;
@@ -1272,8 +1277,18 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private void OnThemeModeChanged(object? sender, EventArgs eventArgs)
+    {
+        workspace.RefreshTheme();
+        GraphSurface.InvalidateVisual();
+        TimelineSurface.InvalidateVisual();
+        MinimapSurface.InvalidateVisual();
+        HoverLayer.InvalidateVisual();
+    }
+
     public void Dispose()
     {
+        ThemeResources.ModeChanged -= OnThemeModeChanged;
         healthClock.Stop();
         packaging?.Cancel();
         captureStop?.Cancel();

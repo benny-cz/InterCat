@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 137 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 138 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 138 — the Desktop follows the operating system's light or dark setting (§6.1, §6.6, §26.2):**
+  - **Runtime mode:** the app applies the platform's light or dark variant at start and again whenever the platform
+    reports a change. Tests pin dark in code, not through an environment variable, which §26.3 would count as a hidden
+    fourth settings scope.
+  - **Canvases:** the graph, timeline, minimap and hover layer built their brushes once from dark tokens. Each now
+    keeps one brush set per mode, built once and reused every frame (R11), and draws with the current mode's. The
+    graph's cached label text is keyed by mode too, because it carries its brush.
+  - **Legend (found):** it computed each family's fill and ink and bound neither, so the chip glyph and the name were
+    drawn in body text and the legend keyed no hue. The glyph now takes the family's fill and the name its ink (§6.6).
+  - **Checked:** a UI test switches to light and back. Each time it samples the graph pane's ground and a node's centre
+    from the rendered frame, and reads the legend's colours. With the graph pinned to dark, the node reads #152b3d
+    where light's #e8edf3 is due.
+  - **Still open:** a verified high-contrast token set, the mode as a stored application setting (§26.3), and a
+    coverage/warning token of its own: the hatch and warning text borrow the RPC family's amber ink.
+  - **Tests:** one UI test (+1).
 - **Revision 137 — P17, P21 and P23 asserted; the theme gap stated (§13.5, §6.1):**
   - **Ledger:** P21 and P23 were uncovered "until IC-017", which is well under way, and P17 "until M5", although
     redacted packages shipped in revision 106. Each now names tests:
@@ -580,14 +595,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      because a hit takes the whole column's time. Widening must stay cosmetic (R13).
    - R11: the drawn panes allocate and use LINQ every frame. Measure a frame budget and add an allocation test before
      removing it.
-   - Theme modes (§6.1, §26.2):
-     - Follow the operating system's light or dark setting at runtime; the Desktop always runs dark today.
-     - The graph, timeline, minimap and hover layer build their brushes once from dark tokens, and the view model
-       writes dark colours into legend and table rows; both need the current mode.
-     - Define and verify a high-contrast token set.
+   - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138.
+     - Define and verify a high-contrast token set, and follow the platform's high-contrast setting with it.
+     - Store the mode as an application setting once §26.3's per-user configuration exists.
+     - Give coverage hatches and warnings a token of their own; they borrow the RPC family's amber ink today.
 
 ## Verification and cautions
 
+- Revision 138 was built and tested in the same Linux container: Debug and Release both ran **1,005 tests: 917 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 137 was built and tested in the same Linux container: Debug and Release both ran **1,004 tests: 916 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 136 was built and tested in the same Linux container: Debug and Release both ran **1,000 tests: 912 passed, 2 skipped, 86 failed**, and the

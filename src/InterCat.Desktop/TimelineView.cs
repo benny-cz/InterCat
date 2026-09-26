@@ -14,19 +14,50 @@ namespace InterCat.Desktop;
 
 public sealed class TimelineView : Control, IHoverCardSource
 {
-    private const ThemeMode Mode = ThemeMode.Dark;
+    /// <summary>The mode the timeline draws in: the tokens' current one, so a change of theme reaches the canvas (§6.1).</summary>
+    private static ThemeMode Mode => ThemeResources.CurrentMode;
 
-    private static readonly IBrush GapBrush = Token(ThemePalette.TokensFor(Mode, MechanismFamily.RemoteCall).Ink);
-    private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
-    private static readonly IBrush GridBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
-    private static readonly IBrush TextBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
-    private static readonly SolidColorBrush DimBrush = Token(ThemePalette.Surfaces(Mode).Plot);
+    // Brushes are built once per theme mode and reused every frame (R11); a change of mode swaps them all at once.
+    private static readonly Dictionary<ThemeMode, Ink> Inks = [];
+
+    private static Ink Current => Inks.TryGetValue(Mode, out Ink? ink) ? ink : Inks[Mode] = new Ink(Mode);
+
+    private static IBrush GapBrush => Current.GapBrush;
+    private static IBrush SelectedBrush => Current.SelectedBrush;
+    private static IBrush GridBrush => Current.GridBrush;
+    private static IBrush TextBrush => Current.TextBrush;
+    private static SolidColorBrush DimBrush => Current.DimBrush;
 
     /// <summary>A focused rung's rest of the machine: muted ink, so no bar of it is read as a mechanism's hue (§6.6).</summary>
-    private static readonly SolidColorBrush ContextBarBrush =
-        new(ThemeResources.ToColor(ThemePalette.Surfaces(Mode).MutedInk), 0.4);
+    private static SolidColorBrush ContextBarBrush => Current.ContextBarBrush;
 
-    private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
+    private static Pen HoverPen => Current.HoverPen;
+
+    /// <summary>The timeline's brushes in one theme mode, from its verified tokens (§6.6).</summary>
+    private sealed class Ink
+    {
+        public Ink(ThemeMode mode)
+        {
+            SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
+            GapBrush = Token(ThemePalette.TokensFor(mode, MechanismFamily.RemoteCall).Ink);
+            SelectedBrush = Token(surfaces.Accent);
+            GridBrush = Token(surfaces.Elevated);
+            TextBrush = Token(surfaces.MutedInk);
+            DimBrush = Token(surfaces.Plot);
+            ContextBarBrush = new(ThemeResources.ToColor(surfaces.MutedInk), 0.4);
+            HoverPen = new(Token(surfaces.Ink), 1.5);
+        }
+
+        public IBrush GapBrush { get; }
+        public IBrush SelectedBrush { get; }
+        public IBrush GridBrush { get; }
+        public IBrush TextBrush { get; }
+        public SolidColorBrush DimBrush { get; }
+        public SolidColorBrush ContextBarBrush { get; }
+        public Pen HoverPen { get; }
+
+        private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
+    }
 
     /// <summary>A press that moves at least this far brushes a range; a shorter one selects the bucket under it.</summary>
     private const double BrushThreshold = 4;
@@ -49,7 +80,6 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>How long the viewport must rest before the timeline asks for its own resolution (§6.2, P25).</summary>
     private static readonly TimeSpan DetailSettle = TimeSpan.FromMilliseconds(150);
 
-    private static readonly Pen HoverPen = new(Token(ThemePalette.Surfaces(Mode).Ink), 1.5);
 
     // Hover (§6.2): where the pointer rests while it is over this control outside a gesture, kept relative to the window.
     // What it hovers - an instant on the plot, or a live edge bin - is answered from that point on every read, against the

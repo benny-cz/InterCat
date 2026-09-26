@@ -18,17 +18,28 @@ namespace InterCat.Desktop;
 /// </summary>
 public sealed class MinimapView : Control
 {
-    private const ThemeMode Mode = ThemeMode.Dark;
+    /// <summary>The mode the minimap draws in: the tokens' current one, so a change of theme reaches it (§6.1).</summary>
+    private static ThemeMode Mode => ThemeResources.CurrentMode;
 
     /// <summary>The minimap as a screen reader meets it: its role and its keyboard path.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "minimap",
         "The whole session: arrows pan the timeline's view, plus and minus zoom, Home and End jump to its edges, and 0 "
         + "fits the whole session.", () => null);
 
-    private static readonly IBrush InkBrush = Token(ThemePalette.Surfaces(Mode).MutedInk);
-    private static readonly IBrush SelectedBrush = Token(ThemePalette.Surfaces(Mode).Accent);
-    private static readonly SolidColorBrush GridBrush = Token(ThemePalette.Surfaces(Mode).Elevated);
-    private static readonly SolidColorBrush DimBrush = Token(ThemePalette.Surfaces(Mode).Plot);
+    // Brushes are built once per theme mode and reused every frame (R11).
+    private static readonly Dictionary<ThemeMode, (IBrush Ink, IBrush Selected, SolidColorBrush Grid, SolidColorBrush Dim)> Inks = [];
+
+    private static (IBrush Ink, IBrush Selected, SolidColorBrush Grid, SolidColorBrush Dim) Current =>
+        Inks.TryGetValue(Mode, out var ink) ? ink : Inks[Mode] = (
+            Token(ThemePalette.Surfaces(Mode).MutedInk),
+            Token(ThemePalette.Surfaces(Mode).Accent),
+            Token(ThemePalette.Surfaces(Mode).Elevated),
+            Token(ThemePalette.Surfaces(Mode).Plot));
+
+    private static IBrush InkBrush => Current.Ink;
+    private static IBrush SelectedBrush => Current.Selected;
+    private static SolidColorBrush GridBrush => Current.Grid;
+    private static SolidColorBrush DimBrush => Current.Dim;
 
     private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
 

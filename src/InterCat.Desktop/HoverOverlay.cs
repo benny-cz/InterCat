@@ -25,14 +25,27 @@ internal interface IHoverCardSource
 /// </summary>
 internal sealed class HoverOverlay : Control
 {
-    private const ThemeMode Mode = ThemeMode.Dark;
-
     private readonly List<Visual> sources = [];
-    private readonly HoverCardPainter painter = new(
-        Token(ThemePalette.Surfaces(Mode).Elevated),
-        Token(ThemePalette.Surfaces(Mode).Ink),
-        Token(ThemePalette.Surfaces(Mode).MutedInk),
-        new Pen(Token(ThemePalette.Surfaces(Mode).MutedInk), 1));
+
+    // One painter per theme mode, so a card drawn after a change of theme is in that theme's tokens (§6.1).
+    private readonly Dictionary<ThemeMode, HoverCardPainter> painters = [];
+
+    private HoverCardPainter Painter
+    {
+        get
+        {
+            ThemeMode mode = ThemeResources.CurrentMode;
+            if (!painters.TryGetValue(mode, out HoverCardPainter? painter))
+            {
+                SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
+                painter = new(Token(surfaces.Elevated), Token(surfaces.Ink), Token(surfaces.MutedInk),
+                    new Pen(Token(surfaces.MutedInk), 1));
+                painters[mode] = painter;
+            }
+
+            return painter;
+        }
+    }
 
     public HoverOverlay()
     {
@@ -61,7 +74,7 @@ internal sealed class HoverOverlay : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        CardBounds = Current() is { } current ? painter.Draw(context, current.Card, current.Point, Bounds.Size) : null;
+        CardBounds = Current() is { } current ? Painter.Draw(context, current.Card, current.Point, Bounds.Size) : null;
     }
 
     private (HoverCard Card, Point Point)? Current()

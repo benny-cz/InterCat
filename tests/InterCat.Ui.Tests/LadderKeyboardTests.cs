@@ -24,10 +24,15 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public static class TestApplication
 {
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>()
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        // Every rendering in these tests is of the dark theme, whatever the headless platform reports; a test that needs
+        // the light one applies it and restores dark.
+        App.PinnedMode = InterCat.Desktop.Theme.ThemeMode.Dark;
+        return AppBuilder.Configure<App>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+    }
 }
 
 public sealed class LadderKeyboardTests

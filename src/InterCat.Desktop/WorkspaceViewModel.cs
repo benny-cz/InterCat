@@ -266,8 +266,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         GraphPositions = ProcessPositions();
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = LadderProjection.Project(Snapshot, ladder.Current);
-        Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeMode.Dark);
-        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeResources.CurrentMode);
+        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
         timelineLaneOptions = Array.AsReadOnly([new TimelineLaneOption(null, "All mechanisms"),
             .. wholeSnapshot.MechanismLanes.Select(lane =>
                 new TimelineLaneOption(lane.Mechanism, EvidenceRowText.MechanismName(lane.Mechanism)))]);
@@ -278,7 +278,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 new DirectionLaneOption(direction, DirectionLabel(direction))),
         ]);
         selectedDirectionLane = directionLaneOptions[0];
-        intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeMode.Dark);
+        intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeResources.CurrentMode);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
         if (selectedProcess is not null)
@@ -567,7 +567,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 ? timelineDetail!.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
-        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeMode.Dark,
+        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode,
             selected is null && processLane is null && directionLane is null && endLane is null ? focus : null);
         if (selectedIntervalRow is { } row)
         {
@@ -1996,7 +1996,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>Mechanism legend with glyphs, the redundant channel beside hue (R14).</summary>
-    public IReadOnlyList<LegendEntry> Legend { get; }
+    public IReadOnlyList<LegendEntry> Legend { get; private set; }
+
+    /// <summary>Rebuilds what carries a colour after the theme's mode changed: the legend's hues and inks (§6.1, §6.6).</summary>
+    public void RefreshTheme()
+    {
+        Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeResources.CurrentMode);
+        OnPropertyChanged(nameof(Legend));
+    }
 
     /// <summary>Table equivalent of the graph. It yields the same relationships the canvas draws (R15).</summary>
     public IReadOnlyList<RelationshipRow> Relationships => relationships;
@@ -2045,7 +2052,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// The ranked table of the rung the user is on. The same gesture works at every rung. At a published session's
     /// evidence rung it lists the admitted source records of the rung's scope, in reading order, as they load.
     /// </summary>
-    public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows : LadderRowBuilder.Rows(view, ThemeMode.Dark);
+    public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows : LadderRowBuilder.Rows(view, ThemeResources.CurrentMode);
 
     /// <summary>The breadcrumb. It always names the level and the selection at each rung (section 3.2).</summary>
     public IReadOnlyList<CrumbRow> Crumbs => LadderRowBuilder.Crumbs(ladder);
@@ -2398,7 +2405,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         Channel[] channels = [.. Snapshot.Channels.Where(channel => relationships.Contains(channel.EdgeKey))];
         var lines = new List<string>
         {
-            $"{ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(drawn.Mechanism)).Label} · {DescribeStrength(drawn.Strength)} evidence · "
+            $"{ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(drawn.Mechanism)).Label} · {DescribeStrength(drawn.Strength)} evidence · "
                 + Counted(drawn.Relationships.Count, "relationship", "relationships") + " · "
                 + Counted(channels.Length, "channel", "channels"),
             scope,
@@ -2482,7 +2489,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 candidate.ProcessId == ownerLane.Id && candidate.Buckets.Contains(bucket))
             || directionLane is { } zoomedDirection && timelineDirectionLanes is { } directionRows
                 && directionRows.Any(candidate => candidate.Direction == zoomedDirection && candidate.Buckets.Contains(bucket)));
-        string mechanism = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
+        string mechanism = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
         double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
         var lines = new List<string>
         {
@@ -3288,7 +3295,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private static RungRow EvidenceRow(SessionEvidenceRecord record, string recordNoun)
     {
         ObservationRowV1 row = record.Observation;
-        FamilyTokens tokens = ThemePalette.TokensFor(ThemeMode.Dark, ThemePalette.FamilyOf(row.Mechanism));
+        FamilyTokens tokens = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(row.Mechanism));
         string title = EvidenceRowText.Title(row);
         string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
         string owner = EvidenceRowText.Owner(record, CultureInfo.CurrentCulture);
@@ -3473,7 +3480,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             graphDisplay = ScopeGraph(wholeDisplay, scoped);
         }
         view = LadderProjection.Project(Snapshot, ladder.Current);
-        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeMode.Dark);
+        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(GraphSummary));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Media;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -13,6 +14,12 @@ public sealed record LegendEntry(string Label, string Glyph, string FillHex, str
 {
     /// <summary>The mechanism family's name; its glyph and hue repeat what the word says.</summary>
     public string AccessibleName => Label;
+
+    /// <summary>The chip glyph in the family's fill, the hue its marks are drawn in: what makes the legend a key (§6.6).</summary>
+    public IBrush FillBrush => SolidColorBrush.Parse(FillHex);
+
+    /// <summary>The family's name in its ink variant, verified for text on the theme's grounds (§6.6).</summary>
+    public IBrush InkBrush => SolidColorBrush.Parse(InkHex);
 
     public static LegendEntry For(Mechanism mechanism, ThemeMode mode)
     {

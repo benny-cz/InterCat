@@ -11,6 +11,15 @@ namespace InterCat.Desktop.Theme;
 /// </summary>
 public static class ThemeResources
 {
+    /// <summary>
+    /// The mode the tokens were last applied in. The drawn panes and the rows that carry a colour read it, so one change
+    /// of mode reaches the canvases as it reaches every resource.
+    /// </summary>
+    public static ThemeMode CurrentMode { get; private set; } = ThemeMode.Dark;
+
+    /// <summary>Raised on the UI thread after the tokens have been applied in another mode.</summary>
+    public static event EventHandler? ModeChanged;
+
     public static void Apply(Avalonia.Application application, ThemeMode mode)
     {
         ArgumentNullException.ThrowIfNull(application);
@@ -32,6 +41,11 @@ public static class ThemeResources
         }
 
         application.RequestedThemeVariant = mode == ThemeMode.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+        if (CurrentMode != mode)
+        {
+            CurrentMode = mode;
+            ModeChanged?.Invoke(null, EventArgs.Empty);
+        }
     }
 
     /// <summary>The fill token of a mechanism, resolved through its family so no hue is invented.</summary>
