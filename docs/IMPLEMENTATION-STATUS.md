@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 143 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 144 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, and a launch-time offer to finish a session a crashed viewer left | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
@@ -63,6 +63,32 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 144 — superseded manifests go as a session publishes (store-v1 §9, §20.1, S2):**
+  - **Found:** every generation's manifest lists every dependency it names, and `store-v1` kept each superseded one
+    as an orphan until asked. A live session therefore held manifest bytes growing with the square of its length: 297
+    manifests and 16 MB after the default 10-minute capture, and far more at the broker's 1,024-chunk cap.
+  - **Which ones:** a writer that publishes, by commit or retention, follows the chain of previous generations back from
+    the current one. It removes the manifests on that chain that no pointer names. A manifest an interrupted
+    publication left was never current and no chain reaches it, so it stays an orphan for recovery to judge. Only
+    manifests go: no dependency, pointer, lock or staging file.
+  - **Found on the way:** removing by generation number, the first version, deleted exactly such an interrupted
+    publication's manifest, and an existing I15 test caught it.
+  - **When:** only while the writer can take the evidence guard exclusively, which no reader anywhere holds.
+    Otherwise a later publication removes the backlog at once. Removal never fails a publication.
+  - **Readers wait:** a reader meeting that exclusive hold used to fail its lease, which would have ended a live capture
+    as interrupted. It now waits up to 1 s, and does so before taking its store's lock, so the store's other threads
+    are not held up.
+  - **Real ETW** (`bench/results/first-feedback-20260926T163447Z-10min-bounded`): the bounded 10-minute capture met
+    every budget. It ended with **1 manifest (68 KB)** in the session and **2 (121 KB)** in the broker's evidence, and
+    37 MB in all. Projection p95 was 67 ms, event-to-visible p95 815 ms and exact p95 2.71 s. The follower read the
+    evidence throughout while the broker removed manifests, and nothing failed. The crashed-viewer scenario passed again
+    on the final build.
+  - **Measurement caution:** follow p95 read 147 ms against revision 142's 87 ms. That came from minutes 1–2 (187 and
+    181 ms), while light file searches ran beside the capture. Minutes 3–10 read 71–86 ms, as revision 142's 68–94 ms.
+  - **Tests:** a live session keeping only its pointers' manifests, a reader in another process deferring removal, and
+    a reader waiting out a removal, with its bound (+3). Two fixtures rewound evidence to `manifest-0000000001.json`,
+    which removal can take; one failed in a Debug run. They now rewind to the retained previous generation. The waiting
+    test fails with the wait set to zero.
 - **Revision 143 — the next launch finishes a crashed viewer's session (§3.1 step 6, ADR-027):**
   - **Gap:** §3.1 promises that a viewer that crashes loses no evidence and that the next launch offers to finish its
     session. The broker kept the evidence, but nothing recorded where it was, so the session stayed as far as the viewer
@@ -714,8 +740,6 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - S4's persisted overview pyramid (P25).
    - IC-015's incremental process and relation derivation, so exact live results keep a sub-second cadence and viewer
      memory stops growing with the session (S2).
-   - Remove a live session's superseded manifests once nothing can read them. `store-v1` keeps them until asked, and
-     they reached 16 MB after 10 minutes.
    Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
    re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
    S4 and incremental derivation land.
@@ -752,6 +776,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 144 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,053 tests: 1,051
+  passed, 2 skipped**, zero failures.
 - Revision 143 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,050 tests: 1,048
   passed, 2 skipped**, zero failures. The crashed-viewer scenario passed on real ETW, and it leaked no ETW session.
 - Revision 142 was written without an SDK and then built and tested on Windows with the pinned SDK 10.0.401: Debug and
@@ -788,8 +814,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 143, **1,048 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 142: 1,021 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 144, **1,051 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 143: 1,048 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

@@ -777,6 +777,99 @@ public sealed class SessionStoreTests
         }
     }
 
+    [Fact(DisplayName = "§20.1: a live session keeps the manifests its pointers name and lets every superseded one go")]
+    public void ALiveSessionKeepsOnlyTheManifestsItsPointersName()
+    {
+        using var session = new TemporarySession();
+        for (int generation = 1; generation <= 6; generation++)
+        {
+            using StoreStagingFile staged = Stage(session.Store, $"segment-{generation:D4}.icats", $"rows {generation}");
+            _ = staged.Complete();
+            _ = session.Store.Commit([staged], CommittedBoundary.None, Committed);
+
+            // Each generation lists every dependency it names; keeping one per publication grows as a square.
+            Assert.Equal(
+                generation == 1 ? Manifests(1) : Manifests(generation - 1, generation),
+                ManifestsIn(session.Path));
+        }
+
+        SessionStore reopened = session.Reopen();
+        Assert.Equal(6, reopened.Current!.Generation);
+        Assert.False(reopened.Recovery.RolledBackToLastKnownGood);
+        Assert.Empty(reopened.Recovery.OrphanFiles);
+    }
+
+    [Fact(DisplayName = "I18: a reader in another process keeps superseded manifests until a later publication finds none")]
+    public void AReaderElsewhereDefersManifestRemoval()
+    {
+        using var session = new TemporarySession();
+        void Publish(int generation)
+        {
+            using StoreStagingFile staged = Stage(session.Store, $"segment-{generation:D4}.icats", $"rows {generation}");
+            _ = staged.Complete();
+            _ = session.Store.Commit([staged], CommittedBoundary.None, Committed);
+        }
+
+        Publish(1);
+        Publish(2);
+
+        // Another process's lease holds the guard shared while it reads, exactly as this handle does.
+        using (new FileStream(
+            Path.Combine(session.Path, SessionStore.EvidenceLeaseLockFileName), FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite))
+        {
+            Publish(3);
+            Publish(4);
+            Assert.Equal(Manifests(1, 2, 3, 4), ManifestsIn(session.Path));
+        }
+
+        // Once nothing reads, the next publication lets every superseded one go at once.
+        Publish(5);
+        Assert.Equal(Manifests(4, 5), ManifestsIn(session.Path));
+    }
+
+    [Fact(DisplayName = "I18: a reader waits out a writer's removal instead of failing its lease")]
+    public async Task AReaderWaitsOutARemoval()
+    {
+        using var session = new TemporarySession();
+        using (StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "rows"))
+        {
+            _ = staged.Complete();
+            _ = session.Store.Commit([staged], CommittedBoundary.None, Committed);
+        }
+
+        // A writer removing files holds the guard exclusively, for a moment.
+        string guard = Path.Combine(session.Path, SessionStore.EvidenceLeaseLockFileName);
+        var removal = new FileStream(guard, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Task released = Task.Delay(TimeSpan.FromMilliseconds(200)).ContinueWith(
+            _ => removal.Dispose(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            Assert.Equal(1, lease.Manifest.Generation);
+        }
+
+        await released;
+
+        // One that holds it far longer than any removal is reported, not waited on for ever.
+        using (new FileStream(guard, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Contains(
+                "shared evidence lease guard",
+                Assert.Throws<IOException>(() => session.Store.AcquireLease()).Message,
+                StringComparison.Ordinal);
+        }
+    }
+
+    private static string[] Manifests(params long[] generations) => [.. generations.Select(SessionManifestV1.FileNameFor)];
+
+    private static string[] ManifestsIn(string directory) =>
+    [
+        .. Directory.EnumerateFiles(directory, "manifest-*.json")
+            .Select(path => Path.GetFileName(path)!)
+            .Order(StringComparer.Ordinal),
+    ];
+
     private static StoreStagingFile Stage(SessionStore store, string name, string content)
     {
         StoreStagingFile staged = store.Stage(

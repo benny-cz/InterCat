@@ -266,9 +266,10 @@ public sealed class EvidenceRetentionTests
         Assert.Null(reopened.Current.VerifyDigest());
 
         // The generation the retention superseded is unreferenced now: both pointers name the retention
-        // generation, because the earlier one is missing the file retention released. Its manifest is reported
-        // and kept, like any other unreferenced file.
-        Assert.Equal(["manifest-0000000001.json"], reopened.Recovery.OrphanFiles);
+        // generation, because the earlier one is missing the file retention released. Nothing can read it any
+        // more, so its manifest went with the publication (store-v1 §9).
+        Assert.Empty(reopened.Recovery.OrphanFiles);
+        Assert.False(File.Exists(Path.Combine(session.Path, "manifest-0000000001.json")));
     }
 
     [Fact(DisplayName = "I15: a retention record with no stated reason is refused")]
@@ -382,7 +383,7 @@ public sealed class EvidenceRetentionTests
 
         SessionStore reopened = session.Reopen();
         Assert.Equal(2, reopened.Current!.Generation);
-        Assert.Equal(["manifest-0000000001.json"], reopened.Recovery.OrphanFiles);
+        Assert.Empty(reopened.Recovery.OrphanFiles);
     }
 
     [Fact(DisplayName = "I15: a journal release that would leave no evidence at all is refused")]

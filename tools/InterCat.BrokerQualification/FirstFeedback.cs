@@ -59,7 +59,7 @@ internal static partial class Qualification
         Directory.CreateDirectory(output);
         var report = new FirstFeedbackReport
         {
-            Schema = "intercat.first-feedback.v3",
+            Schema = "intercat.first-feedback.v4",
             StartedUtc = DateTimeOffset.UtcNow,
             Environment = CapabilityInventoryProbe.DescribeEnvironment(etw.IsElevated),
             QpcFrequency = Stopwatch.Frequency,
@@ -91,6 +91,9 @@ internal static partial class Qualification
                     + "whichever came first, preview or exact, and is what the event-to-visible budget is judged on "
                     + "(plan §12, §19.3's labelled preview). Schema v2 added the preview; v1's event-to-visible is v2's "
                     + "event-to-exact.",
+                "Schema v4 adds the manifests the derived session and the broker's evidence hold at the end, and their "
+                    + "bytes: a writer removes superseded manifests (store-v1 §9), so a long capture keeps a few, not one "
+                    + "per publication.",
                 "Schema v3 adds bounded runs, memory samples every 10 s and 60-second trend windows: overviews by their "
                     + "hand-off time, records by their own acquisition time, both from the first recording update.",
                 "Memory: the viewer is this process, which runs the Desktop's capture runner (follower, derived session "
@@ -231,6 +234,12 @@ internal static partial class Qualification
 
         result.SessionBytes = Directory.EnumerateFiles(seen.SessionPath, "*", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
+        (result.SessionManifests, result.SessionManifestBytes) = Manifests(seen.SessionPath);
+        if (new DirectoryInfo(Path.Combine(CliRootParent, RootName)) is { Exists: true } brokerRoot
+            && brokerRoot.EnumerateDirectories("capture-*").MaxBy(capture => capture.CreationTimeUtc) is { } evidence)
+        {
+            (result.EvidenceManifests, result.EvidenceManifestBytes) = Manifests(evidence.FullName);
+        }
 
         // Each record's delays: from its own QPC reading to the first live preview, and to the first overview, that held it.
         var exactDelays = new List<double>();
@@ -510,6 +519,12 @@ internal static partial class Qualification
         return true;
     }
 
+    private static (int Count, long Bytes) Manifests(string sessionDirectory)
+    {
+        FileInfo[] manifests = new DirectoryInfo(sessionDirectory).GetFiles("manifest-*.json");
+        return (manifests.Length, manifests.Sum(manifest => manifest.Length));
+    }
+
     private static void TryDelete(string directory)
     {
         try
@@ -674,6 +689,12 @@ internal sealed class FirstFeedbackRun
     public BrokerCaptureHealth? LastLiveCounters { get; set; }
     public long Records { get; set; }
     public long SessionBytes { get; set; }
+
+    /// <summary>Manifests the derived session and the broker's evidence hold at the end, and their bytes (store-v1 §9).</summary>
+    public int SessionManifests { get; set; }
+    public long SessionManifestBytes { get; set; }
+    public int? EvidenceManifests { get; set; }
+    public long? EvidenceManifestBytes { get; set; }
     public long RecordsWithoutJournalIndex { get; set; }
     public long RecordsFirstVisibleAfterStop { get; set; }
     public long RecordsWithNegativeDelay { get; set; }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -127,11 +126,7 @@ public sealed class InterruptedCaptureWindowTests
         _ = await EvidenceRecordings.RecordEvidence(evidencePath, ordinals: [1, 2, 3, 4]);
         if (unfinalized)
         {
-            SessionManifestV1 first = JsonSerializer.Deserialize<SessionManifestV1>(
-                File.ReadAllText(Path.Combine(evidencePath, SessionManifestV1.FileNameFor(1))), SessionManifestV1.Json)!;
-            File.WriteAllText(
-                Path.Combine(evidencePath, SessionPointerV1.FileName),
-                JsonSerializer.Serialize(SessionPointerV1.For(first), SessionManifestV1.Json));
+            _ = EvidenceRecordings.RewindToUnfinalized(evidencePath);
         }
 
         SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));

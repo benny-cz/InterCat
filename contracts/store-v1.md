@@ -2,7 +2,8 @@
 
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
 dictionaries a generation publishes, evidence leases and the retention of a dependency or a journal prefix
-and journal re-derivation are implemented and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats
+and journal re-derivation, and the removal of superseded manifests, are implemented and tested; the entity-state
+checkpoint of §20.2 is not**. The segment and dictionary formats
 are frozen separately in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
@@ -356,8 +357,8 @@ between chunks, at most one segment's worth of rows. When the capture stops, eve
 ### What a reader sees afterwards
 
 A retention generation is a generation like any other: it reopens, its manifest verifies against its own
-digest, and every dependency it names is re-measured. The generation it superseded becomes unreferenced and
-its manifest is reported as an orphan and kept, like any other unreferenced file.
+digest, and every dependency it names is re-measured. The generation it superseded becomes unreferenced, and its
+manifest is removed as §9's superseded manifests are.
 
 ## 9. What the sweep treats as referenced
 
@@ -365,6 +366,23 @@ Opening a session reports every file no generation needs. Both lock guards and b
 dependency list of **each** generation a pointer names — including the retained last-known-good. A sweep that
 treated the last-known-good as unreferenced would let `RemoveOrphans` delete the one thing a rollback needs,
 and the next torn pointer would turn a recoverable interruption into a refused session.
+
+**Superseded manifests.** A writer that publishes a generation, by commit or by retention, then removes the
+manifests of generations that were current once and that no pointer names any more. Each lists every dependency
+its generation named, so a live session keeping one per publication would hold manifest bytes growing with the
+square of its length: 16 MB after the default 10-minute capture.
+
+- **Which ones.** A generation was current once exactly when a later manifest names it as its previous generation.
+  The writer follows that chain back from the current generation, and only the chain's manifests go. A manifest an
+  interrupted publication left was never current, and no chain reaches it whatever its number, so it stays an orphan
+  for recovery to judge. Nothing else is removed this way: no dependency, pointer, lock or staging file.
+- **When.** Only while the writer can take the evidence guard exclusively, which no reader anywhere holds, and only
+  for manifests no lease of the writer's names. Otherwise a later publication removes them all at once. Removal is
+  cleanup: a failure is ignored, and the publication already succeeded.
+- **Readers.** A writer holds the guard exclusively only for the removal, for milliseconds. A reader acquiring a
+  lease meanwhile waits up to one second for it instead of failing, and reports the guard only after that.
+
+A session written before this rule keeps its superseded manifests until its next publication walks the chain.
 
 ## 10. Not yet implemented
 

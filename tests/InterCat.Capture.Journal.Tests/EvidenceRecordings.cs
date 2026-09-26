@@ -55,6 +55,23 @@ internal static class EvidenceRecordings
             output: LiveRecordingOutput.EvidenceOnly);
     }
 
+    /// <summary>
+    /// Turns a finalized evidence recording back into what a broker that died before finalizing leaves: its current
+    /// pointer names the generation before the last, which the retained pointer keeps, so its manifest was never
+    /// removed. Finality comes only with the last chunk, so that generation has none. Returns its manifest.
+    /// </summary>
+    public static SessionManifestV1 RewindToUnfinalized(string evidenceDirectory)
+    {
+        SessionPointerV1 previous = System.Text.Json.JsonSerializer.Deserialize<SessionPointerV1>(
+            File.ReadAllText(Path.Combine(evidenceDirectory, SessionPointerV1.PreviousFileName)), SessionManifestV1.Json)!;
+        SessionManifestV1 manifest = System.Text.Json.JsonSerializer.Deserialize<SessionManifestV1>(
+            File.ReadAllText(Path.Combine(evidenceDirectory, previous.ManifestName)), SessionManifestV1.Json)!;
+        File.WriteAllText(
+            Path.Combine(evidenceDirectory, SessionPointerV1.FileName),
+            System.Text.Json.JsonSerializer.Serialize(SessionPointerV1.For(manifest), SessionManifestV1.Json));
+        return manifest;
+    }
+
     public static OwnedSessionPlan Plan(bool withFields = false)
     {
         var request = new ProviderEnablementRequest

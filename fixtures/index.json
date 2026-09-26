@@ -598,6 +598,8 @@
         "I18: a lease on a session with no generation is refused rather than empty",
         "I18: a pin that reserves less than it holds is refused, not silently promised",
         "I18: a published coverage ledger survives reopen and cannot be released as a derived index",
+        "I18: a reader in another process keeps superseded manifests until a later publication finds none",
+        "I18: a reader waits out a writer's removal instead of failing its lease",
         "I18: a stale reader acquires the freshly published generation",
         "I18: a viewer leases a published generation using read-only root access",
         "I18: an expired lease holds nothing, and is not revivable",

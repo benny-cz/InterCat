@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -237,6 +238,12 @@ public sealed class SessionStore
     /// larger than it is served without entering the cache (R8, §12).
     /// </summary>
     public const long DefaultSegmentReaderCacheBytes = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// How long a reader waits while a writer holds the evidence guard exclusively. A writer holds it only while it
+    /// removes files no reader can reach, for milliseconds; a reader waits that out rather than failing its lease.
+    /// </summary>
+    private static readonly TimeSpan EvidenceGuardWait = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// An upper bound on the metadata one publication writes besides its staged files: the generation's manifest
@@ -637,6 +644,7 @@ public sealed class SessionStore
                 file.MarkPublished();
             }
 
+            _ = RemoveSupersededManifests(DateTimeOffset.UtcNow);
             return new(manifest, [.. published.Select(dependency => dependency.Name)], previousGeneration);
         }
     }
@@ -658,12 +666,14 @@ public sealed class SessionStore
         }
 
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+
+        // Hold the shared marker before reading the pointer. Retention may publish concurrently, but it cannot remove
+        // any old dependency while this handle is open. Readers need only read access to the broker-owned root; they
+        // never take the writer's publication lock. Taking the marker can wait out a writer's removal, so it is taken
+        // before this store's lock, which the store's other threads need meanwhile.
+        FileStream hold = AcquireEvidenceReadHold();
         lock (gate)
         {
-            // Hold the shared marker before reading the pointer. Retention may publish concurrently,
-            // but it cannot remove any old dependency while this handle is open. Readers need only
-            // read access to the broker-owned root; they never take the writer's publication lock.
-            FileStream hold = AcquireEvidenceReadHold();
             try
             {
                 (SessionManifestV1? disk, _, _) = Acquire(directory, measurements, current);
@@ -1174,6 +1184,79 @@ public sealed class SessionStore
         }
     }
 
+    /// <summary>
+    /// Removes the manifests of generations that were once current and that no pointer names any more (store-v1 §9).
+    /// Each lists every dependency its generation named, so a live session that kept one per publication would hold
+    /// manifest bytes growing with the square of its length.
+    /// </summary>
+    /// <remarks>
+    /// A generation was current once exactly when a later one names it as its previous generation, so the walk follows
+    /// that chain back from the current generation. A manifest an interrupted publication left was never current, and
+    /// no chain reaches it, whatever its number: it stays an orphan for recovery to judge. Only manifests go, never a
+    /// dependency, and only while no reader anywhere holds the evidence guard and no lease here names them; otherwise a
+    /// later publication tries again. It never throws: cleanup is optional, preserving evidence is not.
+    /// </remarks>
+    /// <param name="removalLockHeld">Whether the caller already holds the evidence guard exclusively, as retention does.</param>
+    /// <returns>How many manifests were removed.</returns>
+    private int RemoveSupersededManifests(DateTimeOffset now, bool removalLockHeld = false)
+    {
+        try
+        {
+            if (current is not { } kept)
+            {
+                return 0;
+            }
+
+            var named = new HashSet<long> { kept.Generation };
+            if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
+                && previous.Validate() is null)
+            {
+                _ = named.Add(previous.Generation);
+            }
+
+            // Manifests are immutable, so the chain is read before the guard is taken; a reader waits only for deletion.
+            var superseded = new List<string>();
+            long? generation = kept.PreviousGeneration is { } first && first < kept.Generation ? first : null;
+            while (generation is { } older)
+            {
+                string name = SessionManifestV1.FileNameFor(older);
+                if (Read<SessionManifestV1>(directory, name) is not { } manifest
+                    || manifest.Validate() is not null
+                    || manifest.Generation != older
+                    || manifest.SessionId != kept.SessionId)
+                {
+                    break;
+                }
+
+                if (!named.Contains(older))
+                {
+                    superseded.Add(name);
+                }
+
+                generation = manifest.PreviousGeneration is { } prior && prior < older ? prior : null;
+            }
+
+            if (superseded.Count == 0)
+            {
+                return 0;
+            }
+
+            using FileStream? removalLock = removalLockHeld ? null : TryAcquireRemovalLock();
+            if (!removalLockHeld && removalLock is null)
+            {
+                return 0;
+            }
+
+            Sweep(now);
+            return superseded.Count(name => !IsLeased(name, now) && directory.RemoveOwnedFile(name));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentOutOfRangeException)
+        {
+            return 0;
+        }
+    }
+
     /// <summary>Inspects staging without changing it. A preview is advisory; cleanup repeats every check.</summary>
     public StagingCleanupReport PreviewStagingCleanup()
     {
@@ -1353,6 +1436,11 @@ public sealed class SessionStore
         if (released.Count > 0)
         {
             Write(directory, SessionPointerV1.PreviousFileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+        }
+
+        if (removalLock is not null)
+        {
+            _ = RemoveSupersededManifests(now, removalLockHeld: true);
         }
 
         return new(manifest, [.. released.Select(dependency => dependency.Name)], removed, heldByLease, reclaimed);
@@ -1806,42 +1894,53 @@ public sealed class SessionStore
 
     private FileStream AcquireEvidenceReadHold()
     {
-        try
+        // A writer holds the guard exclusively only while it removes files no reader can reach, which takes
+        // milliseconds; a reader waits that out rather than failing its lease.
+        long waitStarted = Stopwatch.GetTimestamp();
+        while (true)
         {
-            return directory.OpenOwnedFile(
-                EvidenceLeaseLockFileName,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite,
-                FileOptions.None);
-        }
-        catch (FileNotFoundException)
-        {
-            // Older sessions predate the guard. A writable local reader can establish it;
-            // a read-only viewer must ask the owner to upgrade the session first.
             try
             {
                 return directory.OpenOwnedFile(
                     EvidenceLeaseLockFileName,
-                    FileMode.OpenOrCreate,
-                    FileAccess.ReadWrite,
+                    FileMode.Open,
+                    FileAccess.Read,
                     FileShare.ReadWrite,
                     FileOptions.None);
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            catch (FileNotFoundException)
+            {
+                // Older sessions predate the guard. A writable local reader can establish it;
+                // a read-only viewer must ask the owner to upgrade the session first.
+                try
+                {
+                    return directory.OpenOwnedFile(
+                        EvidenceLeaseLockFileName,
+                        FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite,
+                        FileShare.ReadWrite,
+                        FileOptions.None);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    throw new IOException(
+                        "This older session has no evidence lease guard and the reader could not create one. "
+                        + "Have the session owner establish the guard with write access before viewing "
+                        + "concurrently with retention.",
+                        exception);
+                }
+            }
+            catch (IOException exception) when (exception is not DirectoryNotFoundException
+                && Stopwatch.GetElapsedTime(waitStarted) < EvidenceGuardWait)
+            {
+                Thread.Sleep(5);
+            }
+            catch (IOException exception)
             {
                 throw new IOException(
-                    "This older session has no evidence lease guard and the reader could not create one. "
-                    + "Have the session owner establish the guard with write access before viewing "
-                    + "concurrently with retention.",
-                    exception);
+                    "Could not acquire the session's shared evidence lease guard. Retention may be removing "
+                    + "released files; retry once it finishes.", exception);
             }
-        }
-        catch (IOException exception)
-        {
-            throw new IOException(
-                "Could not acquire the session's shared evidence lease guard. Retention may be removing "
-                + "released files; retry once it finishes.", exception);
         }
     }
 

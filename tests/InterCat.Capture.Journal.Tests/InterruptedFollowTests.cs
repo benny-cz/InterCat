@@ -1,4 +1,3 @@
-using System.Text.Json;
 using InterCat.Capture.Journal;
 using InterCat.Storage;
 using Xunit;
@@ -130,14 +129,12 @@ public sealed class InterruptedFollowTests
         Directory.CreateDirectory(evidencePath);
         _ = await RecordEvidence(evidencePath, ordinals: [1, 2, 3, 4]);
 
-        // The broker died after its first publication: the evidence names one chunk and no finality.
-        SessionManifestV1 first = JsonSerializer.Deserialize<SessionManifestV1>(
-            File.ReadAllText(Path.Combine(evidencePath, SessionManifestV1.FileNameFor(1))), SessionManifestV1.Json)!;
-        File.WriteAllText(
-            Path.Combine(evidencePath, SessionPointerV1.FileName),
-            JsonSerializer.Serialize(SessionPointerV1.For(first), SessionManifestV1.Json));
-        Assert.Equal((1, false), LiveSessionFollower.Progress(
-            SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath)).Current));
+        // The broker died before its last publication: the evidence names its earlier chunks and no finality.
+        SessionManifestV1 first = RewindToUnfinalized(evidencePath);
+        (int published, bool finalized) = LiveSessionFollower.Progress(
+            SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath)).Current);
+        Assert.True(published >= 1);
+        Assert.False(finalized);
         string session = Path.Combine(root.Path, "explore-1");
 
         // Within the owner lease and the broker's time to finalize, the capture may still be recording.
@@ -154,7 +151,7 @@ public sealed class InterruptedFollowTests
 
         Assert.True(finished.Completed);
         Assert.False(finished.Step.Finished);
-        Assert.Equal((1, 1), (finished.Step.DerivedChunks, finished.Step.EvidenceChunks));
+        Assert.Equal((published, published), (finished.Step.DerivedChunks, finished.Step.EvidenceChunks));
         Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
     }
 
