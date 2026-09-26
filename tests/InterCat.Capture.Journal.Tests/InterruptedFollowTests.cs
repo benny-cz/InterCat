@@ -54,6 +54,29 @@ public sealed class InterruptedFollowTests
         Assert.Empty(LiveFollowTicket.FindInterrupted(root.Path));
     }
 
+    [Fact(DisplayName = "§3.1: naming a session finds its own ticket, and only once no follow holds it")]
+    public void NamingASessionFindsItsOwnTicket()
+    {
+        using var root = new TemporaryDirectory();
+        string session = Path.Combine(root.Path, "capture-cli");
+        LiveFollowTicket ticket = LiveFollowTicket.For(
+            Guid.NewGuid(), Path.Combine(root.Path, "evidence"), session, Now, Now.AddSeconds(30));
+        Assert.Null(LiveFollowTicket.FindInterruptedFor(session));
+
+        // `icat follow <session>` asks this way. A running follow holds the ticket, so nothing is found while it runs.
+        using (LiveFollowHold running = ticket.Hold())
+        {
+            Assert.Null(LiveFollowTicket.FindInterruptedFor(session));
+        }
+
+        Assert.Equal(ticket, LiveFollowTicket.FindInterruptedFor(session + Path.DirectorySeparatorChar));
+
+        // A copy beside another session names a directory other than its own, so it is not that session's ticket.
+        string other = Path.Combine(root.Path, "capture-other");
+        File.Copy(LiveFollowTicket.PathFor(session), LiveFollowTicket.PathFor(other));
+        Assert.Null(LiveFollowTicket.FindInterruptedFor(other));
+    }
+
     [Fact(DisplayName = "§3.1: a crashed follow is finished from the evidence the broker kept, and its ticket goes")]
     public async Task ACrashedFollowIsFinishedFromTheEvidence()
     {

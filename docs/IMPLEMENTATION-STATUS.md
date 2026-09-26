@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 152 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 153 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -51,7 +51,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
-| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
+| IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
@@ -63,6 +63,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 153 — a crashed `icat capture` can be finished by naming its session (§3.1 step 6, live-follow-v1 §5):**
+  - **Gap:** only the Desktop's runner wrote a follow ticket. A command-line capture that ended early left no note of
+    its evidence, and `icat capture` prints the evidence directory only when it finishes, so a user could not even
+    run `icat follow <evidence> <session>` by hand.
+  - **Changed:**
+    - `icat capture` holds a ticket beside the session and renews it with every owner-lease renewal. It completes the
+      ticket once the capture closed with every published chunk followed, or with none published. A ticket that
+      cannot be written costs only this shortcut, and the command says how to finish without it.
+    - `icat follow <session>` finishes the capture beside a session from its ticket (`LiveFollowTicket.FindInterruptedFor`),
+      wherever the session is. It warns when the capture may still be recording, derives what was published, and keeps
+      the ticket for a later run. It removes the ticket once the session holds everything.
+  - **Qualified on real ETW** against the qualification broker (never the production root):
+    - `icat capture` was killed after following 8 chunks.
+    - `icat follow` at once derived the 15 chunks published so far and kept the ticket, with exit code 1.
+    - Once the lease settled, it finished all 27 chunks (3,276 records) with their finality and removed the ticket.
+    - No ETW session was left, and `icat session` reads the result as generation 28.
+  - **Tests:** +1: naming a session finds its ticket only once no follow holds it, and never a copy beside another
+    session. The command itself was checked end to end on the scripted-host fixture: finishing, still stopping,
+    `--json`, and a second run once nothing is left.
 - **Revision 152 — a viewer opens a session without hashing it first, and states a fallback (S1, S7, store-v1 §6):**
   - **Found:** a fresh open hashed every file a generation names. At a million rows (309 MiB, 140 MiB of it journal)
     that took about 420 ms, so about 3 s at T1's 2 GiB and 30 s at T2, where S1 wants time-to-interactive independent
@@ -942,8 +961,6 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
    rows.
 5. Interaction follow-ups with no dependents:
-   - `icat capture` writes no follow ticket, so only the Desktop offers to finish a crashed capture's session; a CLI
-     user runs `icat follow` on the evidence again.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -964,6 +981,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 153 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,080 tests: 1,078
+  passed, 2 skipped**, zero failures. A crashed `icat capture` was finished on real ETW, leaving no ETW session.
 - Revision 152 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,079 tests: 1,077
   passed, 2 skipped**, zero failures.
 - Revision 151 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,073 tests: 1,071
@@ -1019,8 +1038,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 152, **1,077 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 151: 1,071 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 153, **1,078 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 152: 1,077 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

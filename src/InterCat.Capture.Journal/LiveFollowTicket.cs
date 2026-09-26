@@ -120,6 +120,18 @@ public sealed record LiveFollowTicket
     }
 
     /// <summary>
+    /// The ticket beside one session directory when its follow is not running; null when there is none, a running follow
+    /// holds it, or it does not read as that session's ticket. It is how a finish is asked for by naming the session.
+    /// </summary>
+    public static LiveFollowTicket? FindInterruptedFor(string sessionDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionDirectory);
+        string path = PathFor(sessionDirectory);
+        using FileStream? stream = File.Exists(path) ? TryOpenUnheld(path) : null;
+        return stream is null ? null : Read(stream, path);
+    }
+
+    /// <summary>
     /// Takes an interrupted follow's ticket for a finish, as the follow held it; null while another process holds it or
     /// when it no longer reads as this ticket. The finish completes the hold once the session holds everything.
     /// </summary>

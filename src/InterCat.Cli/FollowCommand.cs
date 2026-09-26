@@ -52,6 +52,11 @@ internal static class FollowCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (evidenceOption is not null && sessionOption is null && pollOption is null && !once)
+        {
+            return FinishInterrupted(Path.GetFullPath(evidenceOption), json, cancellationToken);
+        }
+
         if (evidenceOption is null || sessionOption is null)
         {
             ConsoleUi.Failure("An evidence directory and a session directory are required: icat follow <evidence-dir> <session-dir>.");
@@ -176,6 +181,112 @@ internal static class FollowCommand
         return document.Finished ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
     }
 
+    /// <summary>
+    /// `icat follow <session-dir>`: finishes a session whose follow ended early - `icat capture` or the Desktop stopped
+    /// before every published chunk was derived - from the ticket beside it, which names the evidence (live-follow-v1).
+    /// Nothing is recorded again: the chunks the broker kept are derived here, as the follow would have.
+    /// </summary>
+    private static InterCatExitCode FinishInterrupted(string sessionPath, bool json, CancellationToken cancellationToken)
+    {
+        LiveFollowTicket? ticket = LiveFollowTicket.FindInterruptedFor(sessionPath);
+        if (ticket is null)
+        {
+            ConsoleUi.Failure(File.Exists(LiveFollowTicket.PathFor(sessionPath))
+                ? $"The capture beside {sessionPath} is being followed or finished elsewhere right now. Let that end, "
+                    + "then run this again if the session is still unfinished."
+                : Directory.Exists(sessionPath)
+                    ? $"Nothing unfinished is recorded beside {sessionPath}: its capture's follow completed, or it was not "
+                        + "followed from a capture. To derive a session from evidence, name both: "
+                        + "icat follow <evidence-dir> <session-dir>."
+                    : $"There is no session at {sessionPath}, and no unfinished capture recorded beside it. To derive a "
+                        + "session from evidence, name both: icat follow <evidence-dir> <session-dir>.");
+            PrintHelp();
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        InterruptedFollow found = InterruptedFollow.Assess(ticket);
+        switch (found.State)
+        {
+            case InterruptedFollowState.Complete:
+                _ = LiveFollowTicket.Remove(sessionPath);
+                ConsoleUi.Progress($"{sessionPath} already holds everything its capture published; its ticket is removed.");
+                return InterCatExitCode.Success;
+            case InterruptedFollowState.EvidenceGone:
+                ConsoleUi.Failure(
+                    $"The capture's evidence at {ticket.EvidenceDirectory} can no longer be read"
+                    + (found.Problem is { } problem ? $" ({problem})" : string.Empty)
+                    + $". The session keeps the {ConsoleUi.Count(found.SessionChunks)} chunk(s) followed before.");
+                return InterCatExitCode.PartialResultSuccess;
+            case InterruptedFollowState.StillRecording:
+                ConsoleUi.Warn(
+                    $"The capture may still be recording or stopping until {found.SettledUtc.ToLocalTime():g}. What it has "
+                    + "published so far is derived now; run this again after then to finish it.");
+                break;
+            default:
+                break;
+        }
+
+        InterruptedFollowResult result;
+        try
+        {
+            ConsoleUi.Progress($"Finishing {sessionPath} from the evidence at {ticket.EvidenceDirectory}.");
+            result = InterruptedFollow.Finish(ticket, new StepReport(json), cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            ConsoleUi.Warn("Stopped. What was derived is kept; running this again continues.");
+            return InterCatExitCode.PartialResultSuccess;
+        }
+        catch (InvalidOperationException exception)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
+        var document = new FollowDocument
+        {
+            Contract = "follow-v1",
+            EvidencePath = ticket.EvidenceDirectory,
+            SessionPath = sessionPath,
+            Finished = result.Step.Finished,
+            EvidenceChunks = result.Step.EvidenceChunks,
+            DerivedChunks = result.Step.DerivedChunks,
+            DerivedRecords = result.Step.DerivedRecords,
+            Generation = result.Session.Current?.Generation,
+            Compactions = result.Step.Compactions,
+        };
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
+        }
+        else
+        {
+            Render(document);
+            if (result.Completed && !result.Step.Finished)
+            {
+                ConsoleUi.Note(
+                    "The capture ended before it was finalized, so records after its last publication were never kept. "
+                    + "The session holds everything it published.");
+            }
+        }
+
+        return result.Completed ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>Reports each step of a finish as it is taken, on the finishing thread, so lines never interleave.</summary>
+    private sealed class StepReport(bool json) : IProgress<FollowStep>
+    {
+        public void Report(FollowStep value)
+        {
+            if (!json && value.MirroredChunks > 0)
+            {
+                ConsoleUi.Progress(
+                    $"{ConsoleUi.Count(value.DerivedChunks)} of {ConsoleUi.Count(value.EvidenceChunks)} chunks derived, "
+                    + $"{ConsoleUi.Count(value.DerivedRecords)} records.");
+            }
+        }
+    }
+
     private static void Render(FollowDocument document)
     {
         ConsoleUi.Heading(document.Finished ? "Recording derived" : "Following stopped");
@@ -201,5 +312,8 @@ internal static class FollowCommand
         ConsoleUi.Line("      process: each committed journal chunk is copied byte for byte and checked, and its");
         ConsoleUi.Line("      rows derived here. It follows while the capture records, ends when it stops, and");
         ConsoleUi.Line("      continues where it stopped when run again. --once derives what is committed now.");
+        ConsoleUi.Line("  icat follow <session-dir> [--json]");
+        ConsoleUi.Line("      Finishes a session whose follow ended early, from the ticket icat capture or the");
+        ConsoleUi.Line("      Desktop left beside it. Nothing is recorded again: what the broker kept is derived.");
     }
 }

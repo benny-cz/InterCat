@@ -184,9 +184,21 @@ internal static class CaptureCommand
         ConsoleUi.Progress(
             $"Recording for up to {request.Quota.MaximumDurationSeconds:N0} s into {sessionPath}. Ctrl+C stops early; "
             + "everything published so far is kept.");
+
+        // Where this session's evidence is, held beside the session while it is followed (live-follow-v1). If this
+        // process ends early the broker still keeps the capture, and `icat follow <session>` or the Desktop's next launch
+        // finishes the session from it. Without a ticket only that shortcut is lost, never the capture.
+        using LiveFollowHold? ticket = HoldTicket(captureId, evidencePath, sessionPath, status.LeaseExpiresAtUtc);
         (FollowStep? last, BrokerCaptureStatusResponse final, SessionStore? derived) =
-            await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, cancellationToken)
+            await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, ticket, cancellationToken)
                 .ConfigureAwait(false);
+
+        // The follow returns only once the capture is closed, and a closed capture publishes nothing more: a session that
+        // holds every chunk it published, or a capture that published none, leaves nothing to finish.
+        if (last is null || last.DerivedChunks == last.EvidenceChunks)
+        {
+            ticket?.Complete();
+        }
 
         var document = new CaptureDocument
         {
@@ -231,6 +243,7 @@ internal static class CaptureCommand
         string evidencePath,
         string sessionPath,
         bool json,
+        LiveFollowHold? ticket,
         CancellationToken cancellationToken)
     {
         FollowStep? last = null;
@@ -297,7 +310,14 @@ internal static class CaptureCommand
 
             if (!stopRequested && DateTimeOffset.UtcNow >= nextRenewal)
             {
-                _ = await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId), cancellationToken).ConfigureAwait(false);
+                // The ticket keeps the lease's new expiry, which is how a later finish judges whether the capture can
+                // still be recording.
+                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId), cancellationToken).ConfigureAwait(false)
+                    is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
+                {
+                    ticket?.Renew(expires);
+                }
+
                 nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
             }
 
@@ -309,6 +329,33 @@ internal static class CaptureCommand
             {
                 // Ctrl+C: the next pass requests the stop and keeps deriving.
             }
+        }
+    }
+
+    /// <summary>
+    /// Writes and holds the follow's ticket beside the session directory; null when it cannot be written, which costs
+    /// only the shortcut to finishing the session later, never the capture.
+    /// </summary>
+    private static LiveFollowHold? HoldTicket(
+        CaptureId captureId, string evidencePath, string sessionPath, DateTimeOffset ownerLeaseExpiresUtc)
+    {
+        try
+        {
+            // The ticket lives in the folder that will hold the session, which need not exist before the first chunk.
+            if (Path.GetDirectoryName(sessionPath) is { Length: > 0 } parent)
+            {
+                _ = Directory.CreateDirectory(parent);
+            }
+
+            return LiveFollowTicket.For(captureId.Value, evidencePath, sessionPath, DateTimeOffset.UtcNow, ownerLeaseExpiresUtc)
+                .Hold();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ConsoleUi.Warn(
+                $"No follow ticket could be written beside {sessionPath} ({exception.Message}). If this command ends early, "
+                + $"finish the session with icat follow {evidencePath} {sessionPath}.");
+            return null;
         }
     }
 
@@ -454,6 +501,8 @@ internal static class CaptureCommand
         ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--broker <exe>] [--json]");
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval), records evidence only, and this process derives the session.");
-        ConsoleUi.Line("      Stops at --duration (default 60 s) or on Ctrl+C; everything published is kept.");
+        ConsoleUi.Line("      Stops at --duration (default 60 s) or on Ctrl+C; everything published is kept. If this");
+        ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
+        ConsoleUi.Line("      it leaves beside it.");
     }
 }

@@ -72,3 +72,16 @@ into the session with the ordinary follower, which resumes from what the session
 the session's own or that released chunks the session needs (ADR-027). It removes the ticket when the session holds the
 finalization marker, or when the capture has settled and the session holds every chunk it published. Otherwise the
 ticket stays for the next launch. A cancelled or failed finish keeps what it derived.
+
+## 5. Who writes a ticket, and who finishes from one
+
+Both followers of a live capture write a ticket: the Desktop's capture runner, and `icat capture` from revision 153.
+Either leaves one when it ends early, and either kind is finished the same way:
+
+- The Desktop's next launch offers the newest unheld ticket in its session folder.
+- `icat follow <session directory>` finishes the capture beside that session, wherever the session is. It reports a
+  capture that may still be recording, derives what it has published, and keeps the ticket for a later run. When the
+  session already holds everything, it removes the ticket.
+
+A follower that cannot write its ticket still records and follows. It loses only this shortcut: `icat capture` then
+names the evidence directory, so the session can still be finished with `icat follow <evidence> <session>`.
