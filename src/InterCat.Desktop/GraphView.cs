@@ -4,6 +4,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Rendering;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -17,7 +18,7 @@ namespace InterCat.Desktop;
 /// hue is the mechanism, and the dash pattern of an edge is its evidence quality. Aggregates state their counts in
 /// selection detail and in their canvas label whenever that label is placed.
 /// </summary>
-public sealed class GraphView : Control, IHoverCardSource
+public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 {
     private const ThemeMode Mode = ThemeMode.Dark;
 
@@ -70,7 +71,8 @@ public sealed class GraphView : Control, IHoverCardSource
     // Hover (§6.2): the node or edge under the pointer, where the pointer is, and its card - described once per key and
     // drawing, not on every move. Hover only highlights; it never changes selection or filters.
     private string? hovered;
-    private Point hoverPoint;
+    // The resting pointer relative to the window, so a pane moved under it is asked about the point it is really over.
+    private Point hoverInWindow;
     private HoverCard? hoverCard;
     private GraphDisplay? hoverCardDisplay;
     private bool hoverCardPinned;
@@ -293,7 +295,9 @@ public sealed class GraphView : Control, IHoverCardSource
     internal string? HoveredKey => hovered;
 
     /// <inheritdoc />
-    public Point HoverPoint => hoverPoint;
+    public Point HoverPoint => TopLevel.GetTopLevel(this) is { } window && window.TranslatePoint(hoverInWindow, this) is { } here
+        ? here
+        : hoverInWindow;
 
     /// <inheritdoc />
     public event EventHandler? HoverChanged;
@@ -354,14 +358,14 @@ public sealed class GraphView : Control, IHoverCardSource
         {
             hovered = under;
             hoverCard = null;
-            hoverPoint = pointer;
+            hoverInWindow = e.GetPosition(TopLevel.GetTopLevel(this));
             InvalidateVisual();
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
         else if (under is not null)
         {
             // The card follows the pointer across the mark it describes.
-            hoverPoint = pointer;
+            hoverInWindow = e.GetPosition(TopLevel.GetTopLevel(this));
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -376,6 +380,43 @@ public sealed class GraphView : Control, IHoverCardSource
             InvalidateVisual();
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// Answers the hover again at the resting pointer once the drawing has moved under it: a layout, a pin, a resize or
+    /// a newer generation. The card then describes the mark under the pointer now - another one, or none - never one
+    /// that moved away (R13, P22). A pointer resting on empty space starts no hover; it only moves.
+    /// </summary>
+    internal void RefreshHover()
+    {
+        if (hovered is null || dragKey is not null || DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        Point resting = HoverPoint;
+        string? under = HitTest(viewModel, resting) ?? EdgeHitTest(viewModel, resting);
+        if (under == hovered)
+        {
+            return;
+        }
+
+        hovered = under;
+        hoverCard = null;
+        InvalidateVisual();
+        HoverChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        RefreshHover();
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        RefreshHover();
     }
 
     /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
@@ -681,7 +722,20 @@ public sealed class GraphView : Control, IHoverCardSource
         Math.Clamp((point.X - LabelInset) / Math.Max(1, Bounds.Width - (LabelInset * 2)), 0, 1),
         Math.Clamp((point.Y - 28) / Math.Max(1, Bounds.Height - 72), 0, 1));
 
-    public GraphView() => DoubleTapped += OpenGroup;
+    /// <summary>
+    /// The whole pane answers the pointer, not only its ink. The graph draws no background, so a press on empty space
+    /// never reached it and never gave it the keyboard focus its arrow keys, P and L need; and a pointer over empty space
+    /// was invisible to it, so its hover depended on the ink under the pointer changing.
+    /// </summary>
+    bool ICustomHitTest.HitTest(Point point) => new Rect(Bounds.Size).Contains(point);
+
+    public GraphView()
+    {
+        DoubleTapped += OpenGroup;
+
+        // A banner or a resized pane moves the graph under a pointer that stays where it is.
+        EffectiveViewportChanged += (_, _) => RefreshHover();
+    }
 
     /// <summary>The graph as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "graph",

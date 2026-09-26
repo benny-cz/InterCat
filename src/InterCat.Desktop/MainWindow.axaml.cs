@@ -1109,7 +1109,9 @@ public sealed partial class MainWindow : Window, IDisposable
         TimelineSurface.InvalidateVisual();
         MinimapSurface.InvalidateVisual();
 
-        // A card describes what is drawn now, so a count or brush arriving under a resting pointer redraws it.
+        // A card describes what is drawn now, so a count or brush arriving under a resting pointer redraws it, and a
+        // layout or pin that moves a node away from the pointer takes the node's card with it (P22).
+        GraphSurface.RefreshHover();
         HoverLayer.InvalidateVisual();
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration))
         {

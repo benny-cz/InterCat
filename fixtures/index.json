@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "description": "Traceability matrix of section 13.5: fixtures to contracts to tests to milestones. Two checks in InterCat.Architecture.Tests keep it honest.",
-  "updatedUtc": "2026-09-22",
+  "updatedUtc": "2026-09-26",
   "fixtures": [
     {
       "id": "FX-TCP-001",
@@ -721,6 +721,10 @@
       "P2": [
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured"
       ],
+      "P22": [
+        "P22: a pin or a resize that moves graph nodes under a resting pointer re-answers its hover for the mark there now",
+        "P22: a zoom, a resize or a newer generation under a resting pointer re-answers the timeline's hover for what is there now"
+      ],
       "P24": [
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
         "P24: the unknown grey is never reused for a supported mechanism"
@@ -784,22 +788,7 @@
         "R12: related processes are drawn together, separate components apart, and none is omitted"
       ],
       "R13": [
-        "R13: Alt and Left ascend, the second gesture the ladder promises",
-        "R13: Enter descends a rung and Escape returns to exactly where it was",
-        "R13: a descent that skips a rung is refused with a reason, not reinterpreted",
-        "R13: a filter a descent implied can be removed without changing the level",
-        "R13: a level change alters grouping, never the observations in scope",
-        "R13: a non-tour workspace labels its own extent and uses its own graph identity",
-        "R13: a rung with no rows names the source that would supply them",
-        "R13: an empty session workspace opens without a fabricated selected process",
-        "R13: ascending restores the rung that was left, field for field",
-        "R13: collapsed edges preserve source identities and interval rescope changes counts, not membership",
-        "R13: descending adds only filters the filter bar shows and can remove",
-        "R13: descending to the deepest rung never leaves an unexplained empty pane",
-        "R13: evidence is one key away from the rung the user is on",
-        "R13: evidence is one step from every rung, and the step states its scope",
-        "R13: returning to a named rung keeps every rung above it and drops the rest",
-        "R13: the breadcrumb names every rung from the machine to the current position"
+        "R13: a timeline hit resolves by time to the bucket holding the instant under the pointer, not to the bar drawn nearest"
       ],
       "R14": [
         "R14: adjacent families stay separable under every simulated vision model",
@@ -1153,10 +1142,6 @@
         "reason": "Obsolete result publication is asserted with IC-017.",
         "plannedBy": "IC-017"
       },
-      "P22": {
-        "reason": "Stale geometry hit tests are asserted with IC-017.",
-        "plannedBy": "IC-017"
-      },
       "P23": {
         "reason": "In-flight analysis states are asserted with IC-017.",
         "plannedBy": "IC-017"
@@ -1182,7 +1167,7 @@
         "plannedBy": "M4"
       },
       "R11": {
-        "reason": "Paint and aggregate loops do not exist before IC-017.",
+        "reason": "Paint loops exist since IC-017 and still allocate and use LINQ every frame (the timeline's visible-bucket arrays, the graph's point dictionary); removing that needs a measured frame budget and an allocation test first.",
         "plannedBy": "IC-017"
       },
       "R4": {

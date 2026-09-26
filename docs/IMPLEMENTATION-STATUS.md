@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 132 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 133 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 133 — hover answers for what is under the pointer now (R13, P22, §6.2):**
+  - **Found:** each pane re-read its hover only when the pointer moved. The timeline kept the instant it hovered and
+    the graph the node. So a keyboard zoom or pan, a resize, a lane scroll, a moved pane or a newer generation under a
+    resting pointer left the card describing what used to be there. While recording, the live edge re-scales the plot
+    at 4 Hz, so the timeline's card went stale almost at once.
+  - **Fixed:**
+    - The timeline keeps where the pointer rests, relative to the window, and works out what it hovers on every read.
+    - The graph re-answers its hover on every layout, pin, resize and generation change.
+    - The graph drew no background, so Avalonia only saw the pointer over ink. That dropped the hover when a node
+      moved away, but not when another node arrived under the pointer. It also meant a press on empty graph space
+      never reached the pane, so the pane never took the keyboard focus its arrow keys, P and L need. The whole pane
+      now answers the pointer.
+  - **Traceability:**
+    - The ledger filed 16 tests under R13 (hit testing through a data-space index), and none tested hit testing. 13
+      were §3.2 ladder tests and 3 graph or workspace tests; they now carry §3.2, §6.3, §6.8 and §19.4 names.
+    - R13 now names a new test. The unpainted gap after a bar is still that bucket's time, and a click there selects the
+      bucket's exact interval.
+    - P22 moves from uncovered to two tests.
+    - R11's reason, "paint loops do not exist before IC-017", was stale: both drawn panes allocate and use LINQ every
+      frame.
+  - **Checked:** with the old views both P22 tests and the focus test fail. The R13 test passes, since it records a
+    property that already held.
+  - **Tests:** four UI tests (+4); the R13 and P22 ones are in the ledger.
 - **Revision 132 — forward history, and an ascent's lost brush (§3.2, §6.4, §6.7):**
   - **Forward:** `Alt`+`Right` re-enters the rung the latest ascent or crumb left, exactly as it was left, including
     a filter taken off there. A **Forward to …** button does the same (R15). It sits left of Back, so Back never
@@ -478,14 +501,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Pins that survive reopening, once §26.3's workspace persistence exists.
    - §6.7's remaining row: `Ctrl`+click multi-selection as an explicit predicate. Indexed/progressive search belongs
      to the later M4 scale gate.
-   - **Traceability (next):** R13 (hit testing resolves through a data-space index; cosmetic widening changes no
-     interval, count or evidence) is wrongly filed in the ledger.
-     - It lists 16 §3.2 ladder tests and not one hit test; the hit-target tests are filed under §3.2/§6.2 names.
-     - Fix: rename the ladder tests to §3.2, file the real hit tests under R13, and declare whatever R13 still lacks
-       as uncovered, with a reason.
+   - §6.2's minimum drawn width (5 px) and pointer snapping. At the minimum window the plot is 458 px, or 326–378 px
+     beside lane labels, so the 64 overview columns are 5–7 px and their bars 3–5 px. They can still be pointed at,
+     because a hit takes the whole column's time. Widening must stay cosmetic (R13).
+   - R11: the drawn panes allocate and use LINQ every frame. Measure a frame budget and add an allocation test before
+     removing it.
 
 ## Verification and cautions
 
+- Revision 133 was built and tested in the same Linux container: Debug and Release both ran **994 tests: 906 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 132 was built and tested in the same Linux container: Debug and Release both ran **990 tests: 902 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 131 was built and tested in the same Linux container: Debug and Release both ran **965 tests: 877 passed, 2 skipped, 86 failed**, and the

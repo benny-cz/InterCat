@@ -199,7 +199,7 @@ public sealed class GraphProjectionTests
         Assert.Equal(hot.Key, folded.GroupKey);
     }
 
-    [Fact(DisplayName = "R13: collapsed edges preserve source identities and interval rescope changes counts, not membership")]
+    [Fact(DisplayName = "§6.3: collapsed edges preserve source identities and interval rescope changes counts, not membership")]
     public void AggregationAndRescopePreserveIdentity()
     {
         ProcessGroup left = new("left", "Left", LaneGrouping.Executable);

@@ -15,7 +15,7 @@ public sealed class LadderProperties
 
     public static TheoryData<int> Seeds => [2, 11, 97, 20_260_921];
 
-    [Theory(DisplayName = "R13: ascending restores the rung that was left, field for field")]
+    [Theory(DisplayName = "§3.2: ascending restores the rung that was left, field for field")]
     [MemberData(nameof(Seeds))]
     public void AscendingRestoresTheRungThatWasLeft(int seed)
     {
@@ -52,7 +52,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "R13: the breadcrumb names every rung from the machine to the current position")]
+    [Theory(DisplayName = "§3.2: the breadcrumb names every rung from the machine to the current position")]
     [MemberData(nameof(Seeds))]
     public void BreadcrumbAlwaysStatesThePosition(int seed)
     {
@@ -82,7 +82,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "R13: evidence is one step from every rung, and the step states its scope")]
+    [Theory(DisplayName = "§3.2: evidence is one step from every rung, and the step states its scope")]
     [MemberData(nameof(Seeds))]
     public void EvidenceIsAlwaysOneStepAway(int seed)
     {
@@ -109,7 +109,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "R13: descending adds only filters the filter bar shows and can remove")]
+    [Theory(DisplayName = "§3.2: descending adds only filters the filter bar shows and can remove")]
     [MemberData(nameof(Seeds))]
     public void EveryImpliedFilterIsVisibleAndRemovable(int seed)
     {
@@ -141,7 +141,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "R13: a rung with no rows names the source that would supply them")]
+    [Theory(DisplayName = "§3.2: a rung with no rows names the source that would supply them")]
     [MemberData(nameof(Seeds))]
     public void NoRungIsADeadEnd(int seed)
     {
@@ -165,7 +165,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "R13: a level change alters grouping, never the observations in scope")]
+    [Theory(DisplayName = "§3.2: a level change alters grouping, never the observations in scope")]
     [MemberData(nameof(Seeds))]
     public void ALevelChangeDoesNotChangeTheNumbers(int seed)
     {
@@ -195,7 +195,7 @@ public sealed class LadderProperties
         Assert.True(seed > 0);
     }
 
-    [Theory(DisplayName = "R13: a descent that skips a rung is refused with a reason, not reinterpreted")]
+    [Theory(DisplayName = "§3.2: a descent that skips a rung is refused with a reason, not reinterpreted")]
     [MemberData(nameof(Seeds))]
     public void SkippingARungIsRefused(int seed)
     {
@@ -216,7 +216,7 @@ public sealed class LadderProperties
         Assert.True(seed > 0);
     }
 
-    [Theory(DisplayName = "R13: returning to a named rung keeps every rung above it and drops the rest")]
+    [Theory(DisplayName = "§3.2: returning to a named rung keeps every rung above it and drops the rest")]
     [MemberData(nameof(Seeds))]
     public void ReturningToACrumbTruncatesTheLadder(int seed)
     {

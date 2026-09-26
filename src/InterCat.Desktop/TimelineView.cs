@@ -51,11 +51,13 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     private static readonly Pen HoverPen = new(Token(ThemePalette.Surfaces(Mode).Ink), 1.5);
 
-    // Hover (§6.2): the tick under the pointer and where the pointer is. The card is described from the bucket drawn there
-    // at each frame, so it follows a count that arrives while the pointer rests. Hover never selects or brushes.
-    private long? hoverTick;
-    private bool hoverLive;
-    private Point hoverPoint;
+    // Hover (§6.2): where the pointer rests while it is over this control outside a gesture, kept relative to the window.
+    // What it hovers - an instant on the plot, or a live edge bin - is answered from that point on every read, against the
+    // drawing as it is now, and the card from the bucket drawn there. A zoom, a pan, a resize, a lane scroll, a lane
+    // change, a growing live edge, a pane moved by a banner or a newer generation under a resting pointer therefore never
+    // leaves the card describing what used to be there (R13, P22). Hover never selects or brushes.
+    private bool hovering;
+    private Point hoverInWindow;
     private double peakRate;
 
     private readonly DispatcherTimer detailTimer;
@@ -79,6 +81,16 @@ public sealed class TimelineView : Control, IHoverCardSource
         detailTimer = new DispatcherTimer { Interval = DetailSettle };
         detailTimer.Tick += (_, _) => RequestDetailNow();
         DoubleTapped += ZoomAtDoubleClick;
+
+        // Scrolled lanes, a banner or a resized pane move this control under a pointer that stays where it is.
+        EffectiveViewportChanged += (_, _) =>
+        {
+            if (hovering)
+            {
+                InvalidateVisual();
+                DrawingMovedUnderPointer();
+            }
+        };
         GestureRecognizers.Add(new PinchGestureRecognizer());
         AddHandler(Gestures.PinchEvent, ZoomByPinch);
         AddHandler(Gestures.PinchEndedEvent, (_, _) => pinchStart = null);
@@ -264,6 +276,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         viewport = next;
         RefreshLaneLayout();
         InvalidateVisual();
+        DrawingMovedUnderPointer();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
         detailTimer.Stop();
         detailTimer.Start();
@@ -287,12 +300,14 @@ public sealed class TimelineView : Control, IHoverCardSource
         RefreshLaneLayout();
         RequestDetailNow();
         InvalidateVisual();
+        DrawingMovedUnderPointer();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
     }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
+        DrawingMovedUnderPointer();
         detailTimer.Stop();
         detailTimer.Start();
     }
@@ -491,7 +506,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (HoveredLiveBin is { } hoveredLive && LiveEdgePlacement is { } liveArea)
         {
             (double x1, double x2) = liveArea.Columns(hoveredLive);
-            Rect row = ShowingLanes && LaneIndexAt(hoverPoint.Y) is { } index
+            Rect row = ShowingLanes && LaneIndexAt(HoverPoint.Y) is { } index
                 ? LaneRow(index, LaneCount, top, bottom)
                 : new Rect(liveArea.Left, top, liveArea.Width, bottom - top);
             using (context.PushOpacity(0.5))
@@ -506,7 +521,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         get
         {
-            if (hoverTick is not { } tick || DataContext is not WorkspaceViewModel viewModel)
+            if (HoverTick is not { } tick || DataContext is not WorkspaceViewModel viewModel)
             {
                 return null;
             }
@@ -534,7 +549,28 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
-    private int? HoveredLaneIndex => hoverTick is not null ? LaneIndexAt(hoverPoint.Y) : null;
+    private int? HoveredLaneIndex => HoverTick is not null ? LaneIndexAt(HoverPoint.Y) : null;
+
+    /// <summary>The instant under the resting pointer, on the published plot and on a lane where lanes are drawn.</summary>
+    private long? HoverTick => hovering && HoverPoint is var point && !OverLiveEdge(point) && OnPlot(point)
+        && (!ShowingLanes || LaneIndexAt(point.Y) is not null)
+        ? TickAt(point.X)
+        : null;
+
+    /// <summary>Whether the resting pointer is on the live edge, where it hovers a preview bin.</summary>
+    private bool HoverLive => hovering && OverLiveEdge(HoverPoint);
+
+    /// <summary>
+    /// Tells the hover layer that what lies under a resting pointer may have changed, because the drawing moved. The
+    /// answer itself is read afresh; only the card's redraw needs the nudge.
+    /// </summary>
+    private void DrawingMovedUnderPointer()
+    {
+        if (hovering)
+        {
+            HoverChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     private int? LaneIndexAt(double y)
     {
@@ -552,7 +588,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             if (HoveredLiveBin is { } liveBin && DataContext is WorkspaceViewModel live)
             {
-                return live.DescribeLiveEdgeHover(liveBin, ShowingMechanismLanes && LaneIndexAt(hoverPoint.Y) is { } lane
+                return live.DescribeLiveEdgeHover(liveBin, ShowingMechanismLanes && LaneIndexAt(HoverPoint.Y) is { } lane
                     ? live.Snapshot.MechanismLanes[lane].Mechanism : null);
             }
 
@@ -576,7 +612,10 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <inheritdoc />
-    public Point HoverPoint => hoverPoint;
+    /// <remarks>The resting pointer in this control's coordinates as it lies now, however the control moved under it.</remarks>
+    public Point HoverPoint => TopLevel.GetTopLevel(this) is { } window && window.TranslatePoint(hoverInWindow, this) is { } here
+        ? here
+        : hoverInWindow;
 
     /// <inheritdoc />
     public event EventHandler? HoverChanged;
@@ -1255,10 +1294,10 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
         if (!OnPlot(point.Position)) return;
-        if (hoverTick is not null)
+        if (hovering)
         {
             // A press begins a gesture; its card would describe a bucket the gesture is about to change.
-            hoverTick = null;
+            hovering = false;
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -1283,15 +1322,13 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (brushAnchor is null)
         {
             // No press: the pointer only explains the bucket - or live preview bin - under it, and the card follows it.
-            Point position = e.GetPosition(this);
-            bool overLive = OverLiveEdge(position);
-            long? tick = !overLive && OnPlot(position) && (!ShowingLanes || LaneIndexAt(position.Y) is not null)
-                ? TickAt(position.X) : null;
-            if (tick != hoverTick || overLive != hoverLive || ((tick is not null || overLive) && position != hoverPoint))
+            long? tick = HoverTick;
+            bool live = HoverLive;
+            Point previous = hoverInWindow;
+            hovering = true;
+            hoverInWindow = e.GetPosition(TopLevel.GetTopLevel(this));
+            if (HoverTick != tick || HoverLive != live || ((HoverTick is not null || HoverLive) && hoverInWindow != previous))
             {
-                hoverTick = tick;
-                hoverLive = overLive;
-                hoverPoint = position;
                 InvalidateVisual();
                 HoverChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -1360,10 +1397,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        if (hoverTick is not null || hoverLive)
+        if (hovering)
         {
-            hoverTick = null;
-            hoverLive = false;
+            hovering = false;
             InvalidateVisual();
             HoverChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -1381,17 +1417,18 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         get
         {
-            if (!hoverLive || LiveEdgePlacement is not { } live)
+            if (!HoverLive || LiveEdgePlacement is not { } live)
             {
                 return null;
             }
 
             LiveEdgeBin? nearest = null;
             double best = 6;
+            double x = HoverPoint.X;
             foreach (LiveEdgeBin bin in live.Edge.Bins)
             {
                 (double x1, double x2) = live.Columns(bin);
-                double distance = hoverPoint.X < x1 ? x1 - hoverPoint.X : hoverPoint.X > x2 ? hoverPoint.X - x2 : 0;
+                double distance = x < x1 ? x1 - x : x > x2 ? x - x2 : 0;
                 if (distance < best)
                 {
                     best = distance;

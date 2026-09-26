@@ -117,7 +117,7 @@ public sealed class LadderKeyboardTests
         window.Close();
     }
 
-    [AvaloniaFact(DisplayName = "R13: Enter descends a rung and Escape returns to exactly where it was")]
+    [AvaloniaFact(DisplayName = "§3.2: Enter descends a rung and Escape returns to exactly where it was")]
     public void EnterDescendsAndEscapeRestores()
     {
         (Window window, WorkspaceViewModel viewModel) = Open();
@@ -142,7 +142,7 @@ public sealed class LadderKeyboardTests
         Assert.Single(viewModel.Crumbs);
     }
 
-    [AvaloniaFact(DisplayName = "R13: Alt and Left ascend, the second gesture the ladder promises")]
+    [AvaloniaFact(DisplayName = "§3.2: Alt and Left ascend, the second gesture the ladder promises")]
     public void AltLeftAscends()
     {
         (Window window, WorkspaceViewModel viewModel) = Open();
@@ -195,7 +195,7 @@ public sealed class LadderKeyboardTests
         Assert.Equal(group, viewModel.LevelBadge);
     }
 
-    [AvaloniaFact(DisplayName = "R13: evidence is one key away from the rung the user is on")]
+    [AvaloniaFact(DisplayName = "§3.2: evidence is one key away from the rung the user is on")]
     public void EvidenceIsOneKeyAway()
     {
         (Window window, WorkspaceViewModel viewModel) = Open();
@@ -214,7 +214,7 @@ public sealed class LadderKeyboardTests
         Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
     }
 
-    [AvaloniaFact(DisplayName = "R13: a filter a descent implied can be removed without changing the level")]
+    [AvaloniaFact(DisplayName = "§3.2: a filter a descent implied can be removed without changing the level")]
     public void DeleteRemovesTheSelectedFilter()
     {
         (Window window, WorkspaceViewModel viewModel) = Open();
@@ -232,7 +232,7 @@ public sealed class LadderKeyboardTests
         Assert.Equal(level, viewModel.LevelBadge);
     }
 
-    [AvaloniaFact(DisplayName = "R13: descending to the deepest rung never leaves an unexplained empty pane")]
+    [AvaloniaFact(DisplayName = "§3.2: descending to the deepest rung never leaves an unexplained empty pane")]
     public void EveryRungEitherHasRowsOrSaysWhyNot()
     {
         (Window window, WorkspaceViewModel viewModel) = Open();

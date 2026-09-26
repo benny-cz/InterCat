@@ -24,7 +24,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.NotEmpty(viewModel.Snapshot.Timeline);
     }
 
-    [Fact(DisplayName = "R13: a non-tour workspace labels its own extent and uses its own graph identity")]
+    [Fact(DisplayName = "§19.4: a non-tour workspace labels its own extent and uses its own graph identity")]
     public async Task NonTourWorkspaceUsesItsOwnExtentAndGraphIdentity()
     {
         WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
@@ -51,7 +51,7 @@ public sealed class GraphLayoutIntegrationTests
             viewModel.IntervalLabel);
     }
 
-    [Fact(DisplayName = "R13: an empty session workspace opens without a fabricated selected process")]
+    [Fact(DisplayName = "§6.8: an empty session workspace opens without a fabricated selected process")]
     public async Task EmptyWorkspaceHasNoFabricatedSelection()
     {
         WorkspaceSnapshot empty = SyntheticWorkspace.Create() with
