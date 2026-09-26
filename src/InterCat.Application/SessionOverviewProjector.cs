@@ -261,8 +261,12 @@ public static class SessionOverviewProjector
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-                (ProcessBinding[] peers, ChannelBinding[] channels) = relations.BindingsOf(segment);
-                for (int row = 0; row < channels.Length; row++)
+                using var peerRows = RentedRows<ProcessBinding>.For(segment);
+                using var channelRows = RentedRows<ChannelBinding>.For(segment);
+                relations.BindingsOf(segment, peerRows.Span, channelRows.Span);
+                ProcessBinding[] peers = peerRows.Buffer;
+                ChannelBinding[] channels = channelRows.Buffer;
+                for (int row = 0; row < segment.RowCount; row++)
                 {
                     if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
                     if ((Mechanism)mechanisms.UnsignedAt(row)!.Value == Mechanism.Tcp && !peers[row].IsAdmittedUnder(policy))
@@ -291,7 +295,11 @@ public static class SessionOverviewProjector
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            (ProcessBinding[] peers, ChannelBinding[] channels) = relations.BindingsOf(segment);
+            using var peerRows = RentedRows<ProcessBinding>.For(segment);
+            using var channelRows = RentedRows<ChannelBinding>.For(segment);
+            relations.BindingsOf(segment, peerRows.Span, channelRows.Span);
+            ProcessBinding[] peers = peerRows.Buffer;
+            ChannelBinding[] channels = channelRows.Buffer;
             for (int row = 0; row < segment.RowCount; row++)
             {
                 if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();

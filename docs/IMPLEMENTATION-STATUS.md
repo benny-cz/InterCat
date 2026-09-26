@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 154 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 155 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -63,6 +63,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 155 — the window's aggregate queries allocate nothing per row (R11):**
+  - **Found:** R11 was tested for paint only. Measured warm, per row, a projection allocated 20 bytes, a group's
+    focused count 12 and an interval count 8. Every call rebuilt a segment-length array of each row's process or
+    channel binding. The focused count also kept a dictionary per column and chose each bucket's mechanism with LINQ:
+    about 3,200 dictionaries per call for a group of 50 owners.
+  - **Changed:**
+    - The bindings (`BindingsOf`, `ChannelsOf`, `OwnersOf`, `EndsOf`) fill buffers rented for one segment's pass and
+      returned after it. Caching them would have kept arrays the size of the session resident, against S2. A rented
+      buffer can be longer than its segment, so every loop bounds on the row count.
+    - A column's tally is a flat array of counts per defined mechanism, with the same dominant-mechanism rule: the most
+      rows, ties to the lowest code. An undefined mechanism code is now refused by these counts, as the row reader
+      refuses it.
+  - **Exact:** every answer (projection, detail, focused, interval) is digest-identical to revision 154's, on the real
+    sparse session and on a synthetic one.
+  - **Measured** warm at 1M rows, two runs each: timeline detail 35 → 21 ms, a group's focused count 145 → 100 ms,
+    projection about 118 → 105 ms.
+  - **Tests:** +1: the four queries measured warm at 10,000 and 30,000 rows fail on any allocation that grows with
+    the rows. Rented buffers made to allocate again brought back exactly 20, 12 and 8 bytes per row, and the test
+    named each query.
 - **Revision 154 — the original evidence package, §11.3's third preset:**
   - **Gap:** only the metadata-only report and the redacted session existed. `icat package --original` said "not
     implemented yet".
@@ -1002,7 +1021,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §6.2's minimum drawn width (5 px) and pointer snapping belong with the density regime, where a column is one
      device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
      target, and snapping would take an empty neighbouring interval away from the pointer.
-   - R11 beyond paint: the aggregate, admission and decode loops have IC-019's Windows allocation measurements but no
+   - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
+     allocation per row. The admission and decode loops keep IC-019's Windows allocation measurements and have no
      test that runs here. A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.
@@ -1014,6 +1034,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 155 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,086 tests: 1,084
+  passed, 2 skipped**, zero failures.
 - Revision 154 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,085 tests: 1,083
   passed, 2 skipped**, zero failures.
 - Revision 153 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,080 tests: 1,078
@@ -1073,8 +1095,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 154, **1,083 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 153: 1,078 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 155, **1,084 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 154: 1,083 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

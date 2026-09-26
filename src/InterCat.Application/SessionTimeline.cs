@@ -226,45 +226,53 @@ public static class SessionTimelineQuery
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
             SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
             FocusRows.SegmentRows? inFocus = null;
-            for (int row = 0; row < segment.RowCount; row++)
+            try
             {
-                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (times.SignedAt(row) is not { } nanoseconds || counted.ColumnOf(nanoseconds / 100) is not { } column)
+                for (int row = 0; row < segment.RowCount; row++)
                 {
-                    continue;
-                }
-
-                var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                counted.Add(column, mechanism);
-                if (rows is not null)
-                {
-                    // Bindings are derived only for a segment that has a row inside the interval.
-                    inFocus ??= rows.Of(segment);
-                    if (inFocus.Includes(row))
+                    if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if (times.SignedAt(row) is not { } nanoseconds || counted.ColumnOf(nanoseconds / 100) is not { } column)
                     {
-                        focused!.Add(column, mechanism);
-                        if (processColumns is not null && inFocus.OwnerId(row) is { } owner)
-                        {
-                            processColumns[owner].Add(column, mechanism);
-                        }
+                        continue;
+                    }
 
-                        if (directionColumns is not null)
+                    var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                    counted.Add(column, mechanism);
+                    if (rows is not null)
+                    {
+                        // Bindings are derived only for a segment that has a row inside the interval.
+                        inFocus ??= rows.Of(segment);
+                        if (inFocus.Includes(row))
                         {
-                            directionColumns[DirectionAt(directions, row)].Add(column, mechanism);
-                        }
-
-                        if (endColumns is not null)
-                        {
-                            int end = inFocus.EndOf(row);
-                            if (end is not (0 or 1))
+                            focused!.Add(column, mechanism);
+                            if (processColumns is not null && inFocus.OwnerId(row) is { } owner)
                             {
-                                throw new InvalidDataException("A record of the focused channel names no end of it.");
+                                processColumns[owner].Add(column, mechanism);
                             }
 
-                            endColumns[end].Add(column, mechanism, DirectionAt(directions, row));
+                            if (directionColumns is not null)
+                            {
+                                directionColumns[DirectionAt(directions, row)].Add(column, mechanism);
+                            }
+
+                            if (endColumns is not null)
+                            {
+                                int end = inFocus.EndOf(row);
+                                if (end is not (0 or 1))
+                                {
+                                    throw new InvalidDataException("A record of the focused channel names no end of it.");
+                                }
+
+                                endColumns[end].Add(column, mechanism, DirectionAt(directions, row));
+                            }
                         }
                     }
                 }
+            }
+            finally
+            {
+                // The bindings were rented for this segment's pass.
+                inFocus?.Dispose();
             }
         }
 
@@ -404,15 +412,78 @@ internal sealed class FocusRows
         return new(processes, relations, owners, relation, policy);
     }
 
-    /// <summary>The row test for one segment, with the bindings it needs derived once.</summary>
-    public SegmentRows Of(SegmentReaderV1 segment) => new(
-        this,
-        channel is null ? null : relations!.ChannelsOf(segment),
-        owners.Count == 0 ? null : processes!.OwnersOf(segment),
-        channel is null ? null : TransportRelationIndex.EndsOf(segment));
-
-    internal sealed class SegmentRows(FocusRows scope, ChannelBinding[]? channels, ProcessBinding[]? bindings, sbyte[]? ends)
+    /// <summary>
+    /// The row test for one segment, with the bindings it needs derived once into buffers rented for the segment's pass
+    /// (R11). The caller disposes it when that pass ends.
+    /// </summary>
+    public SegmentRows Of(SegmentReaderV1 segment)
     {
+        RentedRows<ChannelBinding>? channels = null;
+        RentedRows<ProcessBinding>? bindings = null;
+        RentedRows<sbyte>? ends = null;
+        try
+        {
+            if (channel is not null)
+            {
+                channels = RentedRows<ChannelBinding>.For(segment);
+                relations!.ChannelsOf(segment, channels.Value.Span);
+                ends = RentedRows<sbyte>.For(segment);
+                TransportRelationIndex.EndsOf(segment, ends.Value.Span);
+            }
+
+            if (owners.Count > 0)
+            {
+                bindings = RentedRows<ProcessBinding>.For(segment);
+                processes!.OwnersOf(segment, bindings.Value.Span);
+            }
+
+            return new(this, channels, bindings, ends);
+        }
+        catch
+        {
+            channels?.Dispose();
+            bindings?.Dispose();
+            ends?.Dispose();
+            throw;
+        }
+    }
+
+    internal sealed class SegmentRows : IDisposable
+    {
+        private readonly FocusRows scope;
+        private readonly RentedRows<ChannelBinding>? channelRows;
+        private readonly RentedRows<ProcessBinding>? bindingRows;
+        private readonly RentedRows<sbyte>? endRows;
+        private readonly ChannelBinding[]? channels;
+        private readonly ProcessBinding[]? bindings;
+        private readonly sbyte[]? ends;
+        private bool disposed;
+
+        public SegmentRows(
+            FocusRows scope,
+            RentedRows<ChannelBinding>? channelRows,
+            RentedRows<ProcessBinding>? bindingRows,
+            RentedRows<sbyte>? endRows)
+        {
+            this.scope = scope;
+            this.channelRows = channelRows;
+            this.bindingRows = bindingRows;
+            this.endRows = endRows;
+            channels = channelRows?.Buffer;
+            bindings = bindingRows?.Buffer;
+            ends = endRows?.Buffer;
+        }
+
+        /// <summary>Gives the rented buffers back, once.</summary>
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            channelRows?.Dispose();
+            bindingRows?.Dispose();
+            endRows?.Dispose();
+        }
+
         /// <summary>Which end of the focused channel an included row was made at: 0 its first end, 1 its second.</summary>
         public int EndOf(int row) => ends is null
             ? throw new InvalidOperationException("Only a channel focus has ends.")
@@ -445,9 +516,20 @@ internal sealed class FocusRows
 /// </summary>
 internal sealed class TimelineColumns
 {
+    /// <summary>Every defined mechanism, in code order: a column's tally holds one count per slot of this list.</summary>
+    private static readonly Mechanism[] Slots = [.. Enum.GetValues<Mechanism>().Order()];
+
+    /// <summary>A mechanism code's slot, or -1 for a code §23 does not define.</summary>
+    private static readonly int[] SlotOfCode = SlotsByCode();
+
     private readonly TimeRange interval;
     private readonly int[] counts;
-    private readonly Dictionary<Mechanism, int>[]? mechanisms;
+
+    /// <summary>
+    /// One count per column and mechanism slot, flat: the tally a row adds to is an index, never a dictionary, so counting
+    /// a row allocates and hashes nothing (R11).
+    /// </summary>
+    private readonly int[]? mechanisms;
 
     public TimelineColumns(TimeRange interval, int columns, bool tallyMechanisms)
     {
@@ -456,8 +538,7 @@ internal sealed class TimelineColumns
         counts = new int[(int)Math.Min(columns, interval.SpanTicks)];
         if (tallyMechanisms)
         {
-            mechanisms = new Dictionary<Mechanism, int>[counts.Length];
-            for (int index = 0; index < counts.Length; index++) mechanisms[index] = [];
+            mechanisms = new int[counts.Length * Slots.Length];
         }
     }
 
@@ -486,13 +567,13 @@ internal sealed class TimelineColumns
         counts[column]++;
         if (mechanisms is not null)
         {
-            Dictionary<Mechanism, int> tally = mechanisms[column];
-            if (tally.GetValueOrDefault(mechanism) == int.MaxValue)
+            ref int tally = ref mechanisms[(column * Slots.Length) + SlotOf(mechanism)];
+            if (tally == int.MaxValue)
             {
                 throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
             }
 
-            tally[mechanism] = tally.GetValueOrDefault(mechanism) + 1;
+            tally++;
         }
     }
 
@@ -502,22 +583,21 @@ internal sealed class TimelineColumns
     /// </summary>
     public TimelineBucket[] Buckets(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
     {
-        if (mechanisms is null)
-        {
-            throw new InvalidOperationException("These columns were counted without their mechanisms.");
-        }
-
-        return [.. Enumerable.Range(0, counts.Length).Select(index =>
+        int[] tallies = mechanisms ?? throw new InvalidOperationException("These columns were counted without their mechanisms.");
+        var buckets = new TimelineBucket[counts.Length];
+        for (int index = 0; index < counts.Length; index++)
         {
             TimeRange range = IntervalOf(interval, counts.Length, index);
-            return new TimelineBucket(
+            buckets[index] = new TimelineBucket(
                 range,
                 counts[index],
                 null,
-                mechanisms[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
-                    .Select(entry => entry.Key).DefaultIfEmpty(Mechanism.UnknownMechanism).First(),
-                BucketCoverage(coverage, clock, range, counts[index] == 0 ? [] : mechanisms[index].Keys));
-        })];
+                Dominant(tallies, index, Mechanism.UnknownMechanism),
+                coverage is null ? CoverageState.UnknownCoverage
+                    : BucketCoverage(coverage, clock, range, counts[index] == 0 ? [] : Observed(tallies, index, null)));
+        }
+
+        return buckets;
     }
 
     /// <summary>
@@ -527,19 +607,17 @@ internal sealed class TimelineColumns
     /// </summary>
     public TimelineBucket[] Buckets(CoverageLedgerV1? coverage, SourceClockDescriptor clock, Mechanism mechanism)
     {
-        if (mechanisms is null)
-        {
-            throw new InvalidOperationException("These columns were counted without their mechanisms.");
-        }
-
-        return [.. Enumerable.Range(0, counts.Length).Select(index =>
+        int[] tallies = mechanisms ?? throw new InvalidOperationException("These columns were counted without their mechanisms.");
+        var buckets = new TimelineBucket[counts.Length];
+        for (int index = 0; index < counts.Length; index++)
         {
             TimeRange range = IntervalOf(interval, counts.Length, index);
-            return new TimelineBucket(range, counts[index], null,
-                mechanisms[index].OrderByDescending(entry => entry.Value).ThenBy(entry => entry.Key)
-                    .Select(entry => entry.Key).DefaultIfEmpty(mechanism).First(),
-                BucketCoverage(coverage, clock, range, mechanisms[index].Keys.Append(mechanism).Distinct()));
-        })];
+            buckets[index] = new TimelineBucket(range, counts[index], null, Dominant(tallies, index, mechanism),
+                coverage is null ? CoverageState.UnknownCoverage
+                    : BucketCoverage(coverage, clock, range, Observed(tallies, index, mechanism)));
+        }
+
+        return buckets;
     }
 
     /// <summary>
@@ -548,14 +626,88 @@ internal sealed class TimelineColumns
     /// </summary>
     public MechanismTimelineLane[] MechanismLanes(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
     {
-        if (mechanisms is null) throw new InvalidOperationException("These columns were counted without mechanisms.");
-        return [.. mechanisms.SelectMany(tally => tally.Keys).Distinct().Order().Select(mechanism =>
-            new MechanismTimelineLane(mechanism, Array.AsReadOnly([.. Enumerable.Range(0, counts.Length).Select(index =>
+        int[] tallies = mechanisms ?? throw new InvalidOperationException("These columns were counted without mechanisms.");
+        var lanes = new List<MechanismTimelineLane>();
+        for (int slot = 0; slot < Slots.Length; slot++)
+        {
+            bool observed = false;
+            for (int index = 0; index < counts.Length && !observed; index++)
+            {
+                observed = tallies[(index * Slots.Length) + slot] > 0;
+            }
+
+            if (!observed) continue;
+            Mechanism mechanism = Slots[slot];
+            var buckets = new TimelineBucket[counts.Length];
+            for (int index = 0; index < counts.Length; index++)
             {
                 TimeRange range = IntervalOf(interval, counts.Length, index);
-                return new TimelineBucket(range, mechanisms[index].GetValueOrDefault(mechanism), null, mechanism,
+                buckets[index] = new TimelineBucket(range, tallies[(index * Slots.Length) + slot], null, mechanism,
                     BucketCoverage(coverage, clock, range, [mechanism]));
-            })])))];
+            }
+
+            lanes.Add(new MechanismTimelineLane(mechanism, Array.AsReadOnly(buckets)));
+        }
+
+        return [.. lanes];
+    }
+
+    /// <summary>
+    /// The mechanism with the most rows in a column; among equals the lowest code, so the choice never depends on the
+    /// order rows arrived in. A column with none has <paramref name="fallback"/>.
+    /// </summary>
+    private static Mechanism Dominant(int[] tallies, int column, Mechanism fallback)
+    {
+        int best = -1;
+        int most = 0;
+        for (int slot = 0; slot < Slots.Length; slot++)
+        {
+            int count = tallies[(column * Slots.Length) + slot];
+            if (count > most)
+            {
+                most = count;
+                best = slot;
+            }
+        }
+
+        return best < 0 ? fallback : Slots[best];
+    }
+
+    /// <summary>The mechanisms a column holds rows of, in code order, with <paramref name="also"/> when one is given.</summary>
+    private static Mechanism[] Observed(int[] tallies, int column, Mechanism? also)
+    {
+        var observed = new List<Mechanism>(2);
+        for (int slot = 0; slot < Slots.Length; slot++)
+        {
+            if (tallies[(column * Slots.Length) + slot] > 0 || Slots[slot] == also)
+            {
+                observed.Add(Slots[slot]);
+            }
+        }
+
+        return [.. observed];
+    }
+
+    private static int SlotOf(Mechanism mechanism)
+    {
+        int code = (int)mechanism;
+        int slot = (uint)code < (uint)SlotOfCode.Length ? SlotOfCode[code] : -1;
+        return slot >= 0
+            ? slot
+            : throw new InvalidDataException(
+                $"A record carries mechanism code {code}, which §23 does not define. It is refused rather than counted.");
+    }
+
+    private static int[] SlotsByCode()
+    {
+        int[] slots = new int[(int)Slots.Max() + 1];
+        Array.Fill(slots, -1);
+        for (int slot = 0; slot < Slots.Length; slot++)
+        {
+            slots[(int)Slots[slot]] = slot;
+        }
+
+        return slots;
     }
 
     /// <summary>The capture's own coverage over each column, independent of what was observed in it.</summary>

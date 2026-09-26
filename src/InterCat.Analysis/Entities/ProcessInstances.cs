@@ -309,6 +309,9 @@ public sealed class ProcessInstanceIndex
     /// </summary>
     public ProcessBinding[] OwnersOf(SegmentReaderV1 segment) => ProcessRoles.OwnersOf(this, segment);
 
+    /// <summary><see cref="OwnersOf(SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    public void OwnersOf(SegmentReaderV1 segment, Span<ProcessBinding> bindings) => ProcessRoles.OwnersOf(this, segment, bindings);
+
     /// <summary>
     /// Binds one record, given the owner its payload names, its native reading and whether it is a process
     /// lifecycle record. Pure: the same inputs bind the same way every time.

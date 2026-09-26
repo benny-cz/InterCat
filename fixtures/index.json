@@ -812,7 +812,8 @@
         "R10: zooming in and back out restores the viewport unless a clamp intervened"
       ],
       "R11": [
-        "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung"
+        "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
+        "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row"
       ],
       "R12": [
         "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",

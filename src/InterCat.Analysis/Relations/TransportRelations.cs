@@ -214,9 +214,22 @@ public sealed class TransportRelationIndex
     public (ProcessBinding[] Peers, ChannelBinding[] Channels) BindingsOf(SegmentReaderV1 segment)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        var columns = new EndColumns(segment);
         var peers = new ProcessBinding[segment.RowCount];
         var channels = new ChannelBinding[segment.RowCount];
+        BindingsOf(segment, peers, channels);
+        return (peers, channels);
+    }
+
+    /// <summary>
+    /// <see cref="BindingsOf(SegmentReaderV1)"/> into buffers the caller owns, one slot per row. A query that reads a
+    /// segment on every call rents them rather than allocating two arrays per row count per call (R11).
+    /// </summary>
+    public void BindingsOf(SegmentReaderV1 segment, Span<ProcessBinding> peers, Span<ChannelBinding> channels)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        RequireRows(segment, peers.Length);
+        RequireRows(segment, channels.Length);
+        var columns = new EndColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
             if (!Relates(columns.MechanismAt(row)))
@@ -237,8 +250,6 @@ public sealed class TransportRelationIndex
             peers[row] = PeerOf(incarnation);
             channels[row] = ChannelOf(incarnation);
         }
-
-        return (peers, channels);
     }
 
     /// <summary>
@@ -248,8 +259,17 @@ public sealed class TransportRelationIndex
     public ChannelBinding[] ChannelsOf(SegmentReaderV1 segment)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        var columns = new EndColumns(segment);
         var channels = new ChannelBinding[segment.RowCount];
+        ChannelsOf(segment, channels);
+        return channels;
+    }
+
+    /// <summary><see cref="ChannelsOf(SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    public void ChannelsOf(SegmentReaderV1 segment, Span<ChannelBinding> channels)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        RequireRows(segment, channels.Length);
+        var columns = new EndColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
             channels[row] = !Relates(columns.MechanismAt(row))
@@ -258,8 +278,16 @@ public sealed class TransportRelationIndex
                     ? ChannelOf(ends[key].At(columns.PositionAt(row)))
                     : ChannelBinding.Unknown(ProcessBindingReason.PeerEndpointIncomplete);
         }
+    }
 
-        return channels;
+    /// <summary>A buffer that holds fewer slots than the segment has rows would drop rows; it is refused.</summary>
+    private static void RequireRows(SegmentReaderV1 segment, int slots)
+    {
+        if (slots < segment.RowCount)
+        {
+            throw new ArgumentException(
+                $"The buffer holds {slots:N0} rows and the segment has {segment.RowCount:N0}.", nameof(slots));
+        }
     }
 
     private static ChannelBinding ChannelOf(Incarnation incarnation) => incarnation.Channel >= 0
@@ -276,14 +304,21 @@ public sealed class TransportRelationIndex
     public static sbyte[] EndsOf(SegmentReaderV1 segment)
     {
         ArgumentNullException.ThrowIfNull(segment);
-        var columns = new EndColumns(segment);
         var sides = new sbyte[segment.RowCount];
-        for (int row = 0; row < sides.Length; row++)
+        EndsOf(segment, sides);
+        return sides;
+    }
+
+    /// <summary><see cref="EndsOf(SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    public static void EndsOf(SegmentReaderV1 segment, Span<sbyte> sides)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        RequireRows(segment, sides.Length);
+        var columns = new EndColumns(segment);
+        for (int row = 0; row < segment.RowCount; row++)
         {
             sides[row] = columns.KeyAt(row) is { } key ? (sbyte)(key.CompareTo(key.Mirror()) <= 0 ? 0 : 1) : (sbyte)-1;
         }
-
-        return sides;
     }
 
     /// <summary>

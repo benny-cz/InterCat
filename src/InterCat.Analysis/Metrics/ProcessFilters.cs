@@ -105,6 +105,23 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
     /// </summary>
     public static ProcessBinding[] OwnersOf(ProcessInstanceIndex index, SegmentReaderV1 segment)
     {
+        ArgumentNullException.ThrowIfNull(segment);
+        var bindings = new ProcessBinding[segment.RowCount];
+        OwnersOf(index, segment, bindings);
+        return bindings;
+    }
+
+    /// <summary><see cref="OwnersOf(ProcessInstanceIndex, SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    public static void OwnersOf(ProcessInstanceIndex index, SegmentReaderV1 segment, Span<ProcessBinding> bindings)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(segment);
+        if (bindings.Length < segment.RowCount)
+        {
+            throw new ArgumentException(
+                $"The buffer holds {bindings.Length:N0} rows and the segment has {segment.RowCount:N0}.", nameof(bindings));
+        }
+
         SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
         SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
@@ -114,7 +131,6 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
         SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
         SegmentColumnSlice factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
         SegmentColumnSlice factLow = segment.Slice(SegmentColumnId.FactKeyLow);
-        var bindings = new ProcessBinding[segment.RowCount];
         for (int row = 0; row < segment.RowCount; row++)
         {
             bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(
@@ -132,8 +148,6 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
                 : null;
             bindings[row] = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle, exact);
         }
-
-        return bindings;
     }
 }
 

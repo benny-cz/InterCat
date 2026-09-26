@@ -62,21 +62,36 @@ public static class SessionIntervalQuery
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            ChannelBinding[]? bindings = null;
-            for (int row = 0; row < segment.RowCount; row++)
+            RentedRows<ChannelBinding>? rented = null;
+            try
             {
-                if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (times.SignedAt(row) is not { } nanoseconds || !interval.Contains(nanoseconds / 100)) continue;
-                observed++;
-                bindings ??= relations.ChannelsOf(segment);
-                if (!bindings[row].IsKnown || !channels.TryGetValue(bindings[row].Channel, out (string Edge, string Channel) keys))
+                for (int row = 0; row < segment.RowCount; row++)
                 {
-                    continue;
-                }
+                    if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if (times.SignedAt(row) is not { } nanoseconds || !interval.Contains(nanoseconds / 100)) continue;
+                    observed++;
 
-                graph++;
-                edgeRecords[keys.Edge] = edgeRecords.GetValueOrDefault(keys.Edge) + 1;
-                channelRecords[keys.Channel] = channelRecords.GetValueOrDefault(keys.Channel) + 1;
+                    // Bindings are derived only for a segment that has a row inside the interval.
+                    if (rented is null)
+                    {
+                        rented = RentedRows<ChannelBinding>.For(segment);
+                        relations.ChannelsOf(segment, rented.Value.Span);
+                    }
+
+                    ChannelBinding binding = rented.Value.Buffer[row];
+                    if (!binding.IsKnown || !channels.TryGetValue(binding.Channel, out (string Edge, string Channel) keys))
+                    {
+                        continue;
+                    }
+
+                    graph++;
+                    edgeRecords[keys.Edge] = edgeRecords.GetValueOrDefault(keys.Edge) + 1;
+                    channelRecords[keys.Channel] = channelRecords.GetValueOrDefault(keys.Channel) + 1;
+                }
+            }
+            finally
+            {
+                rented?.Dispose();
             }
         }
 
