@@ -287,11 +287,12 @@ public sealed class SessionStore
     public const int MaximumStagedFiles = 4_096;
 
     /// <summary>
-    /// Per open store, the verified immutable segment and dictionary payload its queries keep in memory, admitted while
-    /// it fits (§20.1). This is a strict admission budget over published payload bytes, not an entry count or a
-    /// managed-memory measurement; a reader that does not fit is served without entering the cache (R8, §12). Half of
-    /// §12's 512 MiB analysis budget: a million-row session's 169 MiB fits, which made its warm projections, timeline
-    /// detail and focused counts 2.3 to 5.4 times faster than at 64 MiB.
+    /// Per open store, the verified immutable segment payload its queries keep in memory (§20.1): what the cached readers
+    /// hold, their read columns, chunks and decoded dictionaries. A reader that does not fit is served without entering
+    /// the cache, and when a query leaves the cached readers holding more, they give back every column but session time
+    /// and mechanism (R8, §12). It is not an entry count or a managed-memory measurement. Half of §12's 512 MiB analysis
+    /// budget; trimmed readers hold about nine bytes a row, so it keeps a reader for every segment of a session of
+    /// tens of millions of rows.
     /// </summary>
     public const long DefaultSegmentReaderCacheBytes = 256L * 1024 * 1024;
 
@@ -1774,7 +1775,18 @@ public sealed class SessionStore
         {
             _ = leases.Remove(lease.Id);
         }
+
+        // A query may have read many columns of the cached readers; what they hold comes back within the budget when it
+        // ends, down to the columns every projection reads again.
+        _ = segmentReaders.Trim(ResidentColumns);
     }
+
+    /// <summary>
+    /// The columns a cached reader keeps when the cache trims: session time and mechanism, which every projection's time
+    /// tiles read (S4). Every other column is read, and checked, again when a query next asks for it.
+    /// </summary>
+    internal static IReadOnlySet<SegmentColumnId> ResidentColumns { get; } =
+        new HashSet<SegmentColumnId> { SegmentColumnId.SessionRelativeTicks, SegmentColumnId.Mechanism };
 
     /// <param name="verified">
     /// A manifest this instance already verified. When the current pointer still names it, its dependencies are

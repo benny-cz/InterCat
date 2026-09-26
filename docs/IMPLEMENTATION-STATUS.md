@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 160 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 161 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
-| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
+| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
@@ -64,6 +64,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 161 — the reader cache charges what a reader holds (column-granular step 3):**
+  - **Found:** tiles are kept with their reader, and the cache charged a reader its file's length. From about 1.5M
+    rows some readers went uncached, and every projection reopened them and rebuilt their tiles. A live generation took
+    7 ms at 1M rows and 64 ms at 3M.
+  - **Changed:**
+    - A cached reader is charged the columns and chunk it holds plus its decoded dictionaries.
+    - When a lease ends over budget, cached readers give back every column but session time and mechanism, one at a
+      time until the charge fits. None is evicted.
+    - A released column is read, and checked, again when next asked for.
+  - **Measured** (Release, synthetic):
+    - a live generation at 3M rows: 64 → 9 ms;
+    - a 4M-row session keeps all 16 readers cached where it kept 6.
+    Its reopen is unchanged at about 1.3 s, all derivation. The heap is larger, 244 against 110 MiB after a
+    collection, because the budget now bounds bytes really held.
+  - **Tests:** +1, a trim that keeps every reader and exactly the two columns where it trims. Two cache tests were
+    restated for the new charge. Three mutations are each caught.
 - **Revision 160 — `Ctrl`+click builds a multi-selection, and `Enter` makes it a filter (§6.7):**
   - **Changed:**
     - `Ctrl`+click on a graph node, or on a ranked row that stands for processes, adds them to a set or removes them.
@@ -1126,9 +1142,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      2. Done in revision 151: a published minor-1 segment opens by its header, directories and time column, and reads
         every other column from the file on its first read. A minor-0 segment is still read whole. Mapping files instead
         would fight retention, since Windows will not delete a mapped file.
-     3. The cache admits a reader by the bytes it holds, not by its file's length. Readers hold about 43% of their
-        files under the Desktop's queries (73 of 169 MiB at 1M rows), so the same budget would keep about twice the
-        rows. The charge must then grow as a cached reader reads another column, and still be refused past the bound.
+     3. Done in revision 161: the cache charges what a reader holds. When a lease ends over budget, readers give back
+        every column but session time and mechanism until the charge fits. A live generation at 3M rows went from 64
+        to 9 ms, and a 4M-row session keeps all 16 of its readers where it kept 6.
 
      Decided in revision 152: a viewer no longer hashes a session before its first view (store-v1 §6). It hashes
      afterwards, and falls back and says so when a file changed. The command line and writers still hash at open.
@@ -1165,6 +1181,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 161 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,110 tests: 1,108
+  passed, 2 skipped**, zero failures.
 - Revision 160 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,109 tests: 1,107
   passed, 2 skipped**, zero failures; two consecutive full Debug runs were clean.
 - Revision 159 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,106 tests: 1,104
@@ -1236,8 +1254,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 160, **1,107 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 159: 1,104 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 161, **1,108 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 160: 1,107 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

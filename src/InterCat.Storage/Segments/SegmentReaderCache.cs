@@ -1,10 +1,11 @@
 namespace InterCat.Storage;
 
 /// <summary>
-/// Current state of one store instance's immutable segment-reader cache. The byte budget is admission accounting over
-/// the published segment and dictionary payload lengths held by cached readers; managed object overhead is qualified
+/// Current state of one store instance's immutable segment-reader cache. The byte budget bounds what cached readers hold:
+/// the segment columns and chunks they have read and the dictionaries they decoded. Managed object overhead is qualified
 /// separately by the process memory budget (R8, §12, §19.3).
 /// </summary>
+/// <param name="AdmittedPayloadBytes">What the cached readers hold now, which a trim brings back within the budget.</param>
 /// <param name="Bypasses">Readers served uncached because admitting them would have exceeded the budget.</param>
 public sealed record SegmentReaderCacheSnapshot(
     long BudgetBytes,
@@ -15,19 +16,21 @@ public sealed record SegmentReaderCacheSnapshot(
     long Bypasses);
 
 /// <summary>
-/// A payload-bounded set of already-verified immutable segment readers. A reader holds the columns it has read and
+/// A bounded set of already-verified immutable segment readers. A reader holds the columns it has read and
 /// checked, and the dictionaries it decoded, so reusing it avoids reading them and running their checks again on every
-/// projection. A reader is admitted by its segment's and dictionaries' published lengths, the most it can come to
-/// hold, so the bound holds however many of its columns later queries read. Pruning drops only the cache's reference:
-/// a query already holding a reader remains valid for the generation it leased.
+/// projection. Since revision 161 a reader is charged what it holds - the columns and chunk it has read, and the
+/// dictionaries it decoded - not its file's length. What a reader holds grows as queries read more of it, so when the
+/// cache holds more than its budget, <see cref="Trim"/> gives back every column but the few every projection reads.
+/// Pruning drops only the cache's reference: a query already holding a reader remains valid for the generation it
+/// leased.
 /// </summary>
 /// <remarks>
 /// Readers are admitted while they fit and served uncached once the cache is full; a reachable reader is never evicted
-/// to make room. Until S4, every projection and query scans the whole session in the same order, and under such scans a
-/// recency policy evicts exactly the readers the next scan reads first: a session larger than the budget would hit
-/// nothing and still pay for the churn. Admitting only what fits keeps a stable share cached instead. Room is freed by
-/// pruning to the selected generation, as compaction and retention replace segments. A viewport-scoped reader (S4) is
-/// the point to revisit this.
+/// to make room. Every projection reads every segment's session time and mechanism, the columns of its tiles (S4), and
+/// under such scans a recency policy would evict exactly the readers the next scan reads first. A reader trimmed to
+/// those columns holds about nine bytes a row, so the budget keeps readers for tens of millions of rows rather than the
+/// million or so whole files it kept when it charged file lengths. Room is also freed by pruning to the selected
+/// generation, as compaction and retention replace segments.
 /// </remarks>
 internal sealed class SegmentReaderCache
 {
@@ -35,7 +38,6 @@ internal sealed class SegmentReaderCache
     private readonly Dictionary<string, Entry> entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly long budgetBytes;
     private SessionManifestV1? selectedManifest;
-    private long admittedPayloadBytes;
     private long hits;
     private long misses;
     private long bypasses;
@@ -52,7 +54,7 @@ internal sealed class SegmentReaderCache
         {
             lock (gate)
             {
-                return new(budgetBytes, admittedPayloadBytes, entries.Count, hits, misses, bypasses);
+                return new(budgetBytes, Charge(), entries.Count, hits, misses, bypasses);
             }
         }
     }
@@ -108,7 +110,6 @@ internal sealed class SegmentReaderCache
         lock (gate)
         {
             entries.Clear();
-            admittedPayloadBytes = 0;
         }
     }
 
@@ -124,8 +125,8 @@ internal sealed class SegmentReaderCache
         ArgumentNullException.ThrowIfNull(segment);
         ArgumentNullException.ThrowIfNull(dictionaries);
         ArgumentNullException.ThrowIfNull(reader);
-        long bytes = checked(segment.LengthBytes + dictionaries.Sum(dictionary => dictionary.LengthBytes));
-        var entry = new Entry(segment, [.. dictionaries], reader, bytes);
+        long dictionaryBytes = dictionaries.Sum(dictionary => dictionary.LengthBytes);
+        var entry = new Entry(segment, [.. dictionaries], reader, dictionaryBytes);
         lock (gate)
         {
             // A query can finish opening an older leased generation after retention selected a newer one. Cache the
@@ -147,30 +148,69 @@ internal sealed class SegmentReaderCache
                 Remove(existing);
             }
 
-            if (admittedPayloadBytes + bytes > budgetBytes)
+            if (Charge() + entry.Charge > budgetBytes)
             {
                 bypasses++;
                 return reader;
             }
 
             entries.Add(segment.Name, entry);
-            admittedPayloadBytes += bytes;
             return reader;
         }
+    }
+
+    /// <summary>
+    /// Keeps what the cache holds within its budget: when its readers hold more, they give back every column but
+    /// <paramref name="kept"/>, one reader at a time until the charge fits. No reader is evicted: a query holding one
+    /// keeps what it read, and the next read of a released column reads it again. Returns the bytes released.
+    /// </summary>
+    public long Trim(IReadOnlySet<SegmentColumnId> kept)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        lock (gate)
+        {
+            long charge = Charge();
+            long released = 0;
+            foreach (Entry entry in entries.Values)
+            {
+                if (charge - released <= budgetBytes)
+                {
+                    break;
+                }
+
+                released += entry.Reader.Release(kept);
+            }
+
+            return released;
+        }
+    }
+
+    /// <summary>What every cached reader holds now. Called under the gate.</summary>
+    private long Charge()
+    {
+        long charge = 0;
+        foreach (Entry entry in entries.Values)
+        {
+            charge += entry.Charge;
+        }
+
+        return charge;
     }
 
     private void Remove(Entry entry)
     {
         _ = entries.Remove(entry.Segment.Name);
-        admittedPayloadBytes -= entry.AdmittedPayloadBytes;
     }
 
     private sealed record Entry(
         StoreDependency Segment,
         IReadOnlyList<StoreDependency> Dictionaries,
         SegmentReaderV1 Reader,
-        long AdmittedPayloadBytes)
+        long DictionaryBytes)
     {
+        /// <summary>What the entry holds now: the reader's resident columns and chunk, and its decoded dictionaries.</summary>
+        public long Charge => Reader.ResidentBytes + DictionaryBytes;
+
         public bool SameDependencies(Entry other) =>
             Segment == other.Segment && Dictionaries.SequenceEqual(other.Dictionaries);
 

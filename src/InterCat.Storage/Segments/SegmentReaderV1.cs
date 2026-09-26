@@ -1078,6 +1078,47 @@ public sealed class SegmentReaderV1
     }
 
     /// <summary>
+    /// Gives back every column this reader holds except <paramref name="kept"/>, and the variable chunk unless a kept
+    /// column reads from it, and returns how many bytes that released. A query already holding a column's bytes keeps
+    /// them; the next read of a released column reads it and checks it again, against the same checksum it passed
+    /// before. A reader of a whole file holds all of it, and releases nothing.
+    /// </summary>
+    internal long Release(IReadOnlySet<SegmentColumnId> kept)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        if (source.Whole is not null)
+        {
+            return 0;
+        }
+
+        long released = 0;
+        bool chunkKept = false;
+        for (int code = 0; code < loaded.Length; code++)
+        {
+            var id = (SegmentColumnId)code;
+            if (kept.Contains(id))
+            {
+                chunkKept |= columns.TryGetValue(id, out SegmentColumnDescriptor? descriptor)
+                    && descriptor.Encoding == SegmentColumnEncoding.VariableReference;
+                continue;
+            }
+
+            if (Interlocked.Exchange(ref loaded[code], null) is { } bytes)
+            {
+                released += bytes.Values.Length + bytes.Nulls.Length;
+            }
+        }
+
+        if (!chunkKept && Interlocked.Exchange(ref chunk, null) is { } heldChunk)
+        {
+            released += heldChunk.Bytes.Length;
+        }
+
+        _ = Interlocked.Add(ref residentBytes, -released);
+        return released;
+    }
+
+    /// <summary>
     /// One column's bytes, read from the source and checked the first time any caller asks for them. Two threads can
     /// both read and check a column; the first to publish its copy is the one every later caller gets.
     /// </summary>

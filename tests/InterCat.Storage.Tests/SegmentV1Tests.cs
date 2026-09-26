@@ -877,14 +877,14 @@ public sealed class SegmentV1Tests
         Assert.InRange(afterCarry.AdmittedPayloadBytes, 1, SessionStore.DefaultSegmentReaderCacheBytes);
     }
 
-    [Fact(DisplayName = "Concurrent opens of one segment share a single cached reader and admit its payload once")]
+    [Fact(DisplayName = "Concurrent opens of one segment share a single cached reader and charge what it holds once")]
     public async Task ConcurrentOpensShareOneCachedReader()
     {
         using var session = new TemporarySession();
         DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1), Row(200, bytes: 2)]);
         PublishedSegmentSummary published = Assert.Single(result.Segments);
-        long payload = result.Manifest.Dependencies
-            .Where(dependency => dependency.Name == published.Name || published.DictionaryNames.Contains(dependency.Name))
+        long dictionaries = result.Manifest.Dependencies
+            .Where(dependency => published.DictionaryNames.Contains(dependency.Name))
             .Sum(dependency => dependency.LengthBytes);
         int threads = Math.Clamp(Environment.ProcessorCount, 2, 8);
         using var start = new Barrier(threads);
@@ -903,7 +903,7 @@ public sealed class SegmentV1Tests
         Assert.All(opened, reader => Assert.Same(opened[0], reader));
         SegmentReaderCacheSnapshot cache = session.Store.SegmentReaderCache;
         Assert.Equal(1, cache.Entries);
-        Assert.Equal(payload, cache.AdmittedPayloadBytes);
+        Assert.Equal(opened[0].ResidentBytes + dictionaries, cache.AdmittedPayloadBytes);
         Assert.Equal(threads, cache.Hits + cache.Misses);
         Assert.Equal([100L, 200L], [.. Enumerable.Range(0, opened[0].RowCount).Select(row => opened[0].Row(row).NativeTicks)]);
     }
@@ -918,12 +918,13 @@ public sealed class SegmentV1Tests
         string[] names = [.. SessionSegments.Names(last.Manifest)];
         Assert.Equal(3, names.Length);
 
-        // Room for the first two segments a scan reads, and not the third.
-        long Payload(string segment) => last.Manifest.Dependencies
-            .Where(dependency => dependency.Name == segment
-                || (dependency.Kind == StoreDependencyKind.Dictionary
-                    && dependency.Name.StartsWith("dict-" + segment[4..15], StringComparison.Ordinal)))
-            .Sum(dependency => dependency.LengthBytes);
+        // Room for what the first two segments' readers hold once opened, and not the third's. A reader is charged what
+        // it holds: its read columns and its decoded dictionaries.
+        long Payload(string segment) => SessionSegments.Open(session.Store.Root, last.Manifest, segment).ResidentBytes
+            + last.Manifest.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Dictionary
+                    && dependency.Name.StartsWith("dict-" + segment[4..15], StringComparison.Ordinal))
+                .Sum(dependency => dependency.LengthBytes);
         session.Store.UseSegmentReaderBudget(Payload(names[0]) + Payload(names[1]));
 
         SegmentReaderV1[] Scan() => [.. names.Select(name => SessionSegments.Open(session.Store, last.Manifest, name))];
@@ -940,6 +941,52 @@ public sealed class SegmentV1Tests
         Assert.Same(first[1], second[1]);
         Assert.NotSame(first[2], second[2]);
         Assert.Equal(Payload(names[0]) + Payload(names[1]), afterSecond.AdmittedPayloadBytes);
+    }
+
+    [Fact(DisplayName = "When a query ends, cached readers give back every column but session time and mechanism, and stay cached")]
+    public void AnEndedQueryTrimsWhatCachedReadersHold()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, [Row(100, bytes: 1), Row(110, bytes: 4)]);
+        _ = Publish(session.Store, [Row(200, bytes: 2), Row(210, bytes: 5)]);
+        DerivedGenerationResult last = Publish(session.Store, [Row(300, bytes: 3), Row(310, bytes: 6)]);
+        string[] names = [.. SessionSegments.Names(last.Manifest)];
+
+        // A budget every reader fits in once opened - its time column and its decoded dictionaries - but not once a query
+        // has read every one of its columns.
+        long dictionaries = last.Manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Dictionary)
+            .Sum(dependency => dependency.LengthBytes);
+        long budget = 2 * (dictionaries
+            + names.Sum(name => SessionSegments.Open(session.Store.Root, last.Manifest, name).ResidentBytes));
+        session.Store.UseSegmentReaderBudget(budget);
+        ObservationRowV1[] before;
+        SegmentReaderV1[] readers;
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            readers = [.. names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name))];
+            Assert.Equal(3, session.Store.SegmentReaderCache.Entries);
+            before = [.. readers.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row))];
+            Assert.True(session.Store.SegmentReaderCache.AdmittedPayloadBytes > budget);
+        }
+
+        // The lease's end brought the charge back within the budget without dropping a reader. Readers were trimmed only
+        // until it fit: a trimmed one kept exactly the two columns every projection reads, and none kept less.
+        SegmentReaderCacheSnapshot trimmed = session.Store.SegmentReaderCache;
+        Assert.Equal(3, trimmed.Entries);
+        Assert.True(trimmed.AdmittedPayloadBytes <= budget, $"{trimmed.AdmittedPayloadBytes} held against {budget}.");
+        static long Kept(SegmentReaderV1 reader) => reader.Columns
+            .Where(column => column.Id is SegmentColumnId.SessionRelativeTicks or SegmentColumnId.Mechanism)
+            .Sum(column => (long)column.ValueLength + column.NullBitmapLength);
+        Assert.Contains(readers, reader => reader.ResidentBytes == Kept(reader));
+        Assert.All(readers, reader => Assert.True(reader.ResidentBytes >= Kept(reader)));
+
+        // A released column is read and checked again when asked for, and says the same.
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            SegmentReaderV1[] again = [.. names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name))];
+            Assert.All(again.Zip(readers), pair => Assert.Same(pair.Second, pair.First));
+            Assert.Equal(before, again.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row)));
+        }
     }
 
     [Fact(DisplayName = "A reopened store starts with an empty segment reader cache")]
