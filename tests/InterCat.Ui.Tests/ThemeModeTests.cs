@@ -45,7 +45,7 @@ public sealed class ThemeModeTests
 
         try
         {
-            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.Dark })
+            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.HighContrastDark, ThemeMode.HighContrastLight, ThemeMode.Dark })
             {
                 ThemeResources.Apply(Avalonia.Application.Current!, mode);
                 Dispatch();

@@ -14,7 +14,7 @@
   <Grid ColumnDefinitions="250,*,286" RowDefinitions="Auto,Auto,*,36">
 
     <!-- Left rail: ranked processes. Every canvas selection is reachable from this list (R15). -->
-    <Border Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
+    <Border x:Name="Rail" Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,1,0">
       <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
         <StackPanel Spacing="2">
@@ -111,7 +111,7 @@
           <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2).
                At the minimum window height the reason scrolls rather than being clipped. -->
           <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding ShowsEmptyReason}">
-            <Border Padding="12" CornerRadius="8" VerticalAlignment="Top"
+            <Border Classes="card" Padding="11" CornerRadius="8" VerticalAlignment="Top"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="6">
                 <TextBlock Text="NOTHING AT THIS LEVEL" Classes="eyebrow" />
@@ -131,7 +131,7 @@
                   AutomationProperties.Name="Load the next page of source records" />
         </Grid>
 
-        <Border Grid.Row="3" Margin="0,12,0,0" Padding="10" CornerRadius="8"
+        <Border Grid.Row="3" Classes="card" Margin="0,12,0,0" Padding="9" CornerRadius="8"
                 Background="{DynamicResource Surface.Elevated}">
           <StackPanel Spacing="7">
             <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
@@ -375,7 +375,7 @@
               <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding SelectionSubtitle}" Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
-            <Border Margin="0,18,0,0" Padding="12" CornerRadius="8"
+            <Border Classes="card" Margin="0,18,0,0" Padding="11" CornerRadius="8"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -398,7 +398,7 @@
               <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
               <!-- A key to what the graph draws: evidence quality owns the dash pattern, never a hue or a mechanism's
                    glyph (§6.6), so each sample is the graph's own edge in body ink. -->
-              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}">
+              <Border Classes="card" Padding="9" CornerRadius="7" Background="{DynamicResource Surface.Elevated}">
                 <StackPanel x:Name="EvidenceQualityKey" Spacing="8">
                   <Grid ColumnDefinitions="36,*" ColumnSpacing="10"
                         AutomationProperties.Name="Solid line: direct, a source recorded the relationship">

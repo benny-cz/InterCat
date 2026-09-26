@@ -20,9 +20,8 @@ public sealed partial class App : Avalonia.Application
         AvaloniaXamlLoader.Load(this);
 
         // Tokens come from the verified palette, so no view carries a colour literal (section 6.6). The mode follows the
-        // operating system's light or dark setting (§26.2); there is no high-contrast token set yet, so a high-contrast
-        // setting keeps the light or dark one it is paired with.
-        ThemeResources.Apply(this, PinnedMode ?? PlatformMode());
+        // operating system's light or dark setting and its high-contrast setting (§26.2).
+        ThemeResources.Apply(this, PinnedMode ?? ModeFor(PlatformSettings?.GetColorValues()));
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -30,7 +29,7 @@ public sealed partial class App : Avalonia.Application
         if (PinnedMode is null && PlatformSettings is { } settings)
         {
             settings.ColorValuesChanged += (_, _) =>
-                Dispatcher.UIThread.Post(() => ThemeResources.Apply(this, PinnedMode ?? PlatformMode()));
+                Dispatcher.UIThread.Post(() => ThemeResources.Apply(this, PinnedMode ?? ModeFor(settings.GetColorValues())));
         }
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -41,6 +40,16 @@ public sealed partial class App : Avalonia.Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private ThemeMode PlatformMode() =>
-        PlatformSettings?.GetColorValues().ThemeVariant == PlatformThemeVariant.Light ? ThemeMode.Light : ThemeMode.Dark;
+    /// <summary>
+    /// The mode for what the platform reports: its high-contrast setting picks a high-contrast set, and its light or dark
+    /// scheme picks which. A platform that reports nothing is drawn dark.
+    /// </summary>
+    internal static ThemeMode ModeFor(PlatformColorValues? values) =>
+        (values?.ContrastPreference == ColorContrastPreference.High, values?.ThemeVariant == PlatformThemeVariant.Light) switch
+        {
+            (true, true) => ThemeMode.HighContrastLight,
+            (true, false) => ThemeMode.HighContrastDark,
+            (false, true) => ThemeMode.Light,
+            _ => ThemeMode.Dark,
+        };
 }

@@ -28,6 +28,12 @@
       <Setter Property="Background" Value="{DynamicResource Action.FillPressed}" />
       <Setter Property="Foreground" Value="{DynamicResource Action.Ink}" />
     </Style>
+    <!-- A card edges itself with the divider: the card's own tone in the dark and light modes, a line to be seen in high
+         contrast. Its padding is a pixel less than its content inset, so the edge moves nothing (§6.1). -->
+    <Style Selector="Border.card">
+      <Setter Property="BorderBrush" Value="{DynamicResource Line.Divider}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="{DynamicResource Ink.Muted}" />
     </Style>

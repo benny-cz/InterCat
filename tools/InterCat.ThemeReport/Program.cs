@@ -16,7 +16,7 @@ var tokens = new
 {
     themeVersion = ThemePalette.ThemeVersion,
     order = ThemePalette.Order,
-    modes = new[] { ThemeMode.Dark, ThemeMode.Light }.Select(mode => new
+    modes = ThemePalette.Modes.Select(mode => new
     {
         mode = mode.ToString(),
         surfaces = new
@@ -28,6 +28,7 @@ var tokens = new
             accent = ThemePalette.Surfaces(mode).Accent.ToHex(),
             ink = ThemePalette.Surfaces(mode).Ink.ToHex(),
             mutedInk = ThemePalette.Surfaces(mode).MutedInk.ToHex(),
+            divider = ThemePalette.Surfaces(mode).Divider.ToHex(),
         },
         status = new
         {

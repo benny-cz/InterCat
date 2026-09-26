@@ -49,7 +49,7 @@ public static class ThemeVerification
 {
     public static ThemeReport Verify(DateTimeOffset generatedUtc)
     {
-        List<ThemeModeReport> modes = [VerifyMode(ThemeMode.Dark), VerifyMode(ThemeMode.Light)];
+        List<ThemeModeReport> modes = [.. ThemePalette.Modes.Select(VerifyMode)];
 
         bool satisfied = true;
         foreach (ThemeModeReport mode in modes)
@@ -67,8 +67,10 @@ public static class ThemeVerification
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families in normal vision: at least {ThemePalette.MinimumAdjacentDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families under each simulated deficiency: at least {ThemePalette.MinimumSimulatedDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families in greyscale: at least {ThemePalette.MinimumGreyscaleLightness:F0} CIELAB lightness"),
+                string.Create(CultureInfo.InvariantCulture, $"Any two families in normal vision, neighbours or not: at least {ThemePalette.MinimumAnyPairDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Caution ink against every family's fill and ink in normal vision: at least {ThemePalette.MinimumStatusDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Action ink on the action fill in each state: at least {ThemePalette.MinimumInkContrast:F1} to 1; the fill against every surface: at least {ThemePalette.MinimumFillContrast:F1} to 1"),
+                string.Create(CultureInfo.InvariantCulture, $"In a high-contrast mode every ink, the action ink included, clears {ThemePalette.MinimumHighContrastInk:F1} to 1, every fill {ThemePalette.MinimumHighContrastFill:F1} to 1, and the divider {ThemePalette.MinimumHighContrastDivider:F1} to 1 against every surface"),
                 "Hatches and warning patterns are reserved for coverage and quality; no family may use one.",
                 "The unknown grey is never reused for a supported mechanism.",
             ],
@@ -81,6 +83,8 @@ public static class ThemeVerification
         IReadOnlyList<FamilyTokens> families = ThemePalette.Families(mode);
         string[] surfaceNames = ["canvas", "panel", "plot", "elevated"];
 
+        double inkRequired = ThemePalette.MinimumInkContrastIn(mode);
+        double fillRequired = ThemePalette.MinimumFillContrastIn(mode);
         var inkResults = new List<ContrastResult>();
         var fillResults = new List<ContrastResult>();
         foreach (FamilyTokens family in families)
@@ -95,8 +99,8 @@ public static class ThemeVerification
                     family.Ink.ToHex(),
                     surface.ToHex(),
                     Math.Round(ratio, 2),
-                    ThemePalette.MinimumInkContrast,
-                    ratio >= ThemePalette.MinimumInkContrast));
+                    inkRequired,
+                    ratio >= inkRequired));
             }
 
             double fillRatio = ColorMath.ContrastRatio(family.Fill, surfaces.Plot);
@@ -106,18 +110,18 @@ public static class ThemeVerification
                 family.Fill.ToHex(),
                 surfaces.Plot.ToHex(),
                 Math.Round(fillRatio, 2),
-                ThemePalette.MinimumFillContrast,
-                fillRatio >= ThemePalette.MinimumFillContrast));
+                fillRequired,
+                fillRatio >= fillRequired));
         }
 
-        AddSurfaceInk(inkResults, "body ink", surfaces.Ink, surfaces, surfaceNames);
-        AddSurfaceInk(inkResults, "muted ink", surfaces.MutedInk, surfaces, surfaceNames);
-        AddSurfaceInk(inkResults, "accent", surfaces.Accent, surfaces, surfaceNames);
+        MeasureAgainstSurfaces(inkResults, "body ink", surfaces.Ink, surfaces, surfaceNames, inkRequired);
+        MeasureAgainstSurfaces(inkResults, "muted ink", surfaces.MutedInk, surfaces, surfaceNames, inkRequired);
+        MeasureAgainstSurfaces(inkResults, "accent", surfaces.Accent, surfaces, surfaceNames, inkRequired);
 
         // The caution ink words warnings on any surface and strokes the hatch on the plot; the action ink is read on
         // the action fill in every state it can be drawn in, and that fill must stand out from the surface under it.
         StatusTokens status = ThemePalette.Status(mode);
-        AddSurfaceInk(inkResults, "caution", status.Caution, surfaces, surfaceNames);
+        MeasureAgainstSurfaces(inkResults, "caution", status.Caution, surfaces, surfaceNames, inkRequired);
         foreach ((string name, Srgb fill) in status.ActionStates)
         {
             double ratio = ColorMath.ContrastRatio(status.ActionInk, fill);
@@ -127,21 +131,18 @@ public static class ThemeVerification
                 status.ActionInk.ToHex(),
                 fill.ToHex(),
                 Math.Round(ratio, 2),
-                ThemePalette.MinimumInkContrast,
-                ratio >= ThemePalette.MinimumInkContrast));
+                inkRequired,
+                ratio >= inkRequired));
 
-            for (int index = 0; index < surfaces.All.Count; index++)
-            {
-                double against = ColorMath.ContrastRatio(fill, surfaces.All[index]);
-                fillResults.Add(new(
-                    name,
-                    surfaceNames[index],
-                    fill.ToHex(),
-                    surfaces.All[index].ToHex(),
-                    Math.Round(against, 2),
-                    ThemePalette.MinimumFillContrast,
-                    against >= ThemePalette.MinimumFillContrast));
-            }
+            MeasureAgainstSurfaces(fillResults, name, fill, surfaces, surfaceNames, fillRequired);
+        }
+
+        // A high-contrast mode edges panes, cards and controls with its divider, which must be seen on every surface; the
+        // dark and light dividers are the elevated tone, a quiet seam by design.
+        if (ThemePalette.IsHighContrast(mode))
+        {
+            MeasureAgainstSurfaces(fillResults, "divider", surfaces.Divider, surfaces, surfaceNames,
+                ThemePalette.MinimumHighContrastDivider);
         }
 
         var statusSeparations = new List<SeparationResult>();
@@ -204,6 +205,24 @@ public static class ThemeVerification
                 lightness >= ThemePalette.MinimumGreyscaleLightness));
         }
 
+        // Any two families, wherever they sit in palette order, are read side by side in the legend.
+        for (int first = 0; first < order.Count; first++)
+        {
+            for (int second = first + 2; second < order.Count; second++)
+            {
+                FamilyTokens one = ThemePalette.TokensFor(mode, order[first]);
+                FamilyTokens other = ThemePalette.TokensFor(mode, order[second]);
+                double distance = ColorMath.PerceptualDistance(one.Fill, other.Fill);
+                separations.Add(new(
+                    one.Family.ToString(),
+                    other.Family.ToString(),
+                    "AnyPair",
+                    Math.Round(distance, 2),
+                    ThemePalette.MinimumAnyPairDistance,
+                    distance >= ThemePalette.MinimumAnyPairDistance));
+            }
+        }
+
         bool satisfied = true;
         foreach (ContrastResult result in inkResults)
         {
@@ -228,12 +247,14 @@ public static class ThemeVerification
         return new(mode.ToString(), inkResults, fillResults, separations, statusSeparations, satisfied);
     }
 
-    private static void AddSurfaceInk(
+    /// <summary>Measures <paramref name="token"/> against every surface it can land on.</summary>
+    private static void MeasureAgainstSurfaces(
         List<ContrastResult> results,
         string name,
         Srgb token,
         SurfaceTokens surfaces,
-        string[] surfaceNames)
+        string[] surfaceNames,
+        double required)
     {
         for (int index = 0; index < surfaces.All.Count; index++)
         {
@@ -245,8 +266,8 @@ public static class ThemeVerification
                 token.ToHex(),
                 surface.ToHex(),
                 Math.Round(ratio, 2),
-                ThemePalette.MinimumInkContrast,
-                ratio >= ThemePalette.MinimumInkContrast));
+                required,
+                ratio >= required));
         }
     }
 }

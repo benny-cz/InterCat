@@ -32,7 +32,7 @@ public static class ThemeResources
         application.Resources["Ink.Body"] = Brush(surfaces.Ink);
         application.Resources["Ink.Muted"] = Brush(surfaces.MutedInk);
         application.Resources["Ink.Accent"] = Brush(surfaces.Accent);
-        application.Resources["Line.Divider"] = Brush(surfaces.Elevated);
+        application.Resources["Line.Divider"] = Brush(surfaces.Divider);
 
         foreach (FamilyTokens family in ThemePalette.Families(mode))
         {
@@ -48,12 +48,64 @@ public static class ThemeResources
         application.Resources["Action.FillPressed"] = Brush(status.ActionFillPressed);
         application.Resources["Action.Ink"] = Brush(status.ActionInk);
 
-        application.RequestedThemeVariant = mode == ThemeMode.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+        ApplyControlChrome(application, mode, surfaces);
+        application.RequestedThemeVariant = ThemePalette.IsDark(mode) ? ThemeVariant.Dark : ThemeVariant.Light;
         if (CurrentMode != mode)
         {
             CurrentMode = mode;
             ModeChanged?.Invoke(null, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// The control theme's own keys a high-contrast mode restates: a button's face, edge and label in every state, and a
+    /// text box's edge. The control theme draws them faint against the ground; in high contrast every interactive edge
+    /// must be seen, so they are taken from the verified tokens there and left to the control theme otherwise.
+    /// </summary>
+    internal static IReadOnlyList<string> ControlChromeKeys { get; } =
+    [
+        "ButtonBackground", "ButtonBackgroundPointerOver", "ButtonBackgroundPressed", "ButtonBackgroundDisabled",
+        "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ButtonForegroundDisabled",
+        "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
+        "TextControlBorderBrush", "TextControlBorderBrushPointerOver", "TextControlBorderBrushFocused",
+    ];
+
+    private static void ApplyControlChrome(Avalonia.Application application, ThemeMode mode, SurfaceTokens surfaces)
+    {
+        if (!ThemePalette.IsHighContrast(mode))
+        {
+            foreach (string key in ControlChromeKeys)
+            {
+                application.Resources.Remove(key);
+            }
+
+            return;
+        }
+
+        // A button rests as body ink on the elevated face inside a divider edge, takes the accent edge under the
+        // pointer, and is pressed as the action pair: the canvas on the accent, which the report measures. Disabled, it
+        // sits on the bare ground with its label in the divider's tone, plainly dimmer than any enabled label. A text
+        // box's edge is the divider, and the accent when pointed at or focused.
+        SolidColorBrush face = Brush(surfaces.Elevated);
+        SolidColorBrush edge = Brush(surfaces.Divider);
+        SolidColorBrush label = Brush(surfaces.Ink);
+        SolidColorBrush accent = Brush(surfaces.Accent);
+        SolidColorBrush ground = Brush(surfaces.Canvas);
+        application.Resources["ButtonBackground"] = face;
+        application.Resources["ButtonBackgroundPointerOver"] = face;
+        application.Resources["ButtonBackgroundPressed"] = accent;
+        application.Resources["ButtonBackgroundDisabled"] = ground;
+        application.Resources["ButtonForeground"] = label;
+        application.Resources["ButtonForegroundPointerOver"] = label;
+        application.Resources["ButtonForegroundPressed"] = ground;
+        application.Resources["ButtonForegroundDisabled"] = edge;
+        application.Resources["ButtonBorderBrush"] = edge;
+        application.Resources["ButtonBorderBrushPointerOver"] = accent;
+        application.Resources["ButtonBorderBrushPressed"] = accent;
+        application.Resources["ButtonBorderBrushDisabled"] = edge;
+        application.Resources["TextControlBorderBrush"] = edge;
+        application.Resources["TextControlBorderBrushPointerOver"] = accent;
+        application.Resources["TextControlBorderBrushFocused"] = accent;
     }
 
     /// <summary>The fill token of a mechanism, resolved through its family so no hue is invented.</summary>

@@ -15,7 +15,7 @@ public sealed class ThemeContractTests
     [Fact(DisplayName = "R14: every ink token clears 4.5 to 1 against every surface it can land on")]
     public void InkClearsContrastOnEverySurface()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             ThemeModeReport report = ThemeVerification.VerifyMode(mode);
             foreach (ContrastResult result in report.InkContrast)
@@ -31,7 +31,7 @@ public sealed class ThemeContractTests
     [Fact(DisplayName = "R14: every fill clears 3 to 1 against the ground it is drawn on")]
     public void FillClearsContrastOnItsGround()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             ThemeModeReport report = ThemeVerification.VerifyMode(mode);
             foreach (ContrastResult result in report.FillContrast)
@@ -43,10 +43,41 @@ public sealed class ThemeContractTests
         }
     }
 
-    [Fact(DisplayName = "R14: adjacent families stay separable under every simulated vision model")]
+    [Fact(DisplayName = "R14: a high-contrast mode holds every ink to 7 to 1, every fill to 4.5 to 1 and its divider to 3 to 1 on every surface")]
+    public void HighContrastHoldsTheEnhancedRatios()
+    {
+        foreach (ThemeMode mode in ThemePalette.Modes.Where(ThemePalette.IsHighContrast))
+        {
+            ThemeModeReport report = ThemeVerification.VerifyMode(mode);
+
+            // The stricter ratios are what the report measured against, not a label on the ordinary ones.
+            Assert.All(report.InkContrast, result => Assert.Equal(ThemePalette.MinimumHighContrastInk, result.Required));
+            Assert.All(report.InkContrast, result => Assert.True(result.Satisfied,
+                $"{mode}: {result.Token} on {result.Surface} measured {result.Ratio:F2} to 1"));
+            ContrastResult[] fills = [.. report.FillContrast.Where(result => result.Token != "divider")];
+            Assert.All(fills, result => Assert.Equal(ThemePalette.MinimumHighContrastFill, result.Required));
+            Assert.All(fills, result => Assert.True(result.Satisfied,
+                $"{mode}: {result.Token} on {result.Surface} measured {result.Ratio:F2} to 1"));
+
+            // Its divider edges panes, cards and controls, so it must be seen on every surface it can separate.
+            ContrastResult[] divider = [.. report.FillContrast.Where(result => result.Token == "divider")];
+            Assert.Equal(4, divider.Length);
+            Assert.All(divider, result => Assert.True(result.Satisfied,
+                $"{mode}: the divider on {result.Surface} measured {result.Ratio:F2} to 1"));
+        }
+
+        // The ordinary modes keep their quiet seam, which is the elevated tone and not a line to be read.
+        foreach (ThemeMode mode in ThemePalette.Modes.Where(mode => !ThemePalette.IsHighContrast(mode)))
+        {
+            Assert.Equal(ThemePalette.Surfaces(mode).Elevated, ThemePalette.Surfaces(mode).Divider);
+            Assert.DoesNotContain(ThemeVerification.VerifyMode(mode).FillContrast, result => result.Token == "divider");
+        }
+    }
+
+    [Fact(DisplayName = "R14: adjacent families stay separable under every simulated vision model, and any two in normal vision")]
     public void AdjacentFamiliesStaySeparable()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             ThemeModeReport report = ThemeVerification.VerifyMode(mode);
             foreach (SeparationResult result in report.Separations)
@@ -62,7 +93,7 @@ public sealed class ThemeContractTests
     [Fact(DisplayName = "P24: the unknown grey is never reused for a supported mechanism")]
     public void UnknownGreyIsReserved()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             FamilyTokens unknown = ThemePalette.TokensFor(mode, MechanismFamily.UnknownMechanism);
             foreach (FamilyTokens family in ThemePalette.Families(mode))
@@ -81,7 +112,7 @@ public sealed class ThemeContractTests
     [Fact(DisplayName = "P24: the caution ink that strokes the coverage hatch and words a warning keeps its distance from every family's fill and ink")]
     public void CautionIsNoFamilysHue()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             ThemeModeReport report = ThemeVerification.VerifyMode(mode);
 
@@ -102,7 +133,7 @@ public sealed class ThemeContractTests
     [Fact(DisplayName = "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's")]
     public void PrimaryActionIsLegibleInEveryState()
     {
-        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        foreach (ThemeMode mode in ThemePalette.Modes)
         {
             ThemeModeReport report = ThemeVerification.VerifyMode(mode);
             foreach ((string name, Srgb fill) in ThemePalette.Status(mode).ActionStates)
@@ -136,8 +167,14 @@ public sealed class ThemeContractTests
             Assert.False(string.IsNullOrWhiteSpace(tokens.Label));
         }
 
-        Assert.Equal(ThemePalette.Order.Count, ThemePalette.Families(ThemeMode.Dark).Count);
-        Assert.Equal(ThemePalette.Order.Count, ThemePalette.Families(ThemeMode.Light).Count);
+        foreach (ThemeMode mode in ThemePalette.Modes)
+        {
+            // Every mode keys the same families with the same glyphs and names; only the colours differ.
+            Assert.Equal(ThemePalette.Order, ThemePalette.Families(mode).Select(family => family.Family));
+            Assert.Equal(
+                ThemePalette.Families(ThemeMode.Dark).Select(family => (family.Glyph, family.Label)),
+                ThemePalette.Families(mode).Select(family => (family.Glyph, family.Label)));
+        }
     }
 
     [Fact(DisplayName = "R20: the committed theme report matches what the palette computes today")]

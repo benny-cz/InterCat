@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 139 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 140 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 140 — a verified high-contrast set, dark and light, following the operating system (§6.1, §6.6, §26.2):**
+  - **Modes:** the platform's high-contrast preference selects a high-contrast set, dark or light as its scheme
+    reports. Tests pin dark as before.
+  - **Tokens (theme 1.2.0):** each high-contrast form has its own surfaces, families and status tokens, measured to
+    7:1 for ink and 4.5:1 for fills. The families were searched within a window around each role colour, and every
+    pair of them keeps apart (at least 20.8 CIE76, where dark and light reach 17.1). The report now enforces 15 for
+    any pair in every mode, since the legend sets all families side by side.
+  - **Edges:**
+    - A divider token of its own: the elevated tone in dark and light, as before, and a visible line of at least 3:1
+      in high contrast.
+    - Cards take it as an edge, giving up a pixel of padding, so the ordinary modes move nothing.
+    - In high contrast, the control theme's button and text-box keys are restated from the tokens: divider edges, the
+      accent under the pointer, the measured action pair when pressed, and a divider-toned label when disabled. An
+      ordinary mode hands those keys back.
+  - **Checked:** each test failed against a mutation: a contrast-blind platform mapping, a 6.2:1 ink, a 1.54:1
+    divider, no card edge, the old divider token, and no restated chrome, which left a button's edge the theme's
+    faint #303030.
+  - **Tests:** one contract test and two UI tests (+3). The theme-mode and status-token tests now run in all four modes.
 - **Revision 139 — conditions and actions have tokens of their own (§6.6, R14, P24):**
   - **Found:** the coverage hatch and the words of a warning were RPC's amber, and the summary was amber even when
     coverage was complete. The live dot was ALPC's mint, and a paused one RPC's amber. The evidence-quality key
@@ -617,14 +635,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      because a hit takes the whole column's time. Widening must stay cosmetic (R13).
    - R11: the drawn panes allocate and use LINQ every frame. Measure a frame budget and add an allocation test before
      removing it.
-   - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138.
-     - Define and verify a high-contrast token set, and follow the platform's high-contrast setting with it.
+   - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
+     high-contrast setting since revision 140.
+     - In high contrast, list selection, scroll bars and tool tips keep the control theme's look; restate them from
+       the tokens as buttons and text boxes are.
+     - On Windows, check each of the system's high-contrast themes, and whether Avalonia reports light or dark for
+       each as expected.
      - Store the mode as an application setting once §26.3's per-user configuration exists.
    - §6.6's unmeasured encoding (an open cross-hatch outline) is drawn nowhere, because no pane plots a value that can
      be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells).
 
 ## Verification and cautions
 
+- Revision 140 was built and tested in the same Linux container: Debug and Release both ran **1,013 tests: 925 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 139 was built and tested in the same Linux container: Debug and Release both ran **1,010 tests: 922 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 138 was built and tested in the same Linux container: Debug and Release both ran **1,005 tests: 917 passed, 2 skipped, 86 failed**, and the

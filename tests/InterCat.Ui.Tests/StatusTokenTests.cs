@@ -20,11 +20,11 @@ namespace InterCat.Ui.Tests;
 /// <summary>
 /// §6.6: a condition or an action is drawn in tokens of its own, never in a mechanism's hue. The coverage hatch and a
 /// warning's words take the caution ink, the followed live view the accent, the primary action its measured fill and
-/// ink, and the evidence-quality key the graph's own dash patterns in body ink - in either theme mode.
+/// ink, and the evidence-quality key the graph's own dash patterns in body ink - in every theme mode.
 /// </summary>
 public sealed class StatusTokenTests
 {
-    [AvaloniaFact(DisplayName = "P24: the coverage hatch and a warning's words draw in the caution ink, which no mechanism uses, in either mode")]
+    [AvaloniaFact(DisplayName = "P24: the coverage hatch and a warning's words draw in the caution ink, which no mechanism uses, in every mode")]
     public async Task TheHatchAndWarningsTakeTheCautionInk()
     {
         var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
@@ -39,7 +39,7 @@ public sealed class StatusTokenTests
 
         try
         {
-            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.Dark })
+            foreach (ThemeMode mode in EveryMode)
             {
                 ThemeResources.Apply(Avalonia.Application.Current!, mode);
                 WriteableBitmap frame = Settle(window);
@@ -55,7 +55,7 @@ public sealed class StatusTokenTests
             }
 
             // A capture's states come second: a recording replaces the synthetic session with its own live one.
-            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.Dark })
+            foreach (ThemeMode mode in EveryMode)
             {
                 ThemeResources.Apply(Avalonia.Application.Current!, mode);
                 Dispatch();
@@ -98,7 +98,7 @@ public sealed class StatusTokenTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R14: the primary action draws in its own measured fill and ink at rest, under the pointer and pressed, in either mode")]
+    [AvaloniaFact(DisplayName = "R14: the primary action draws in its own measured fill and ink at rest, under the pointer and pressed, in every mode")]
     public void ThePrimaryActionKeepsItsTokens()
     {
         var window = new MainWindow { Width = 1080, Height = 700 };
@@ -108,7 +108,7 @@ public sealed class StatusTokenTests
 
         try
         {
-            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.Dark })
+            foreach (ThemeMode mode in EveryMode)
             {
                 ThemeResources.Apply(Avalonia.Application.Current!, mode);
                 window.MouseMove(away);
@@ -147,7 +147,7 @@ public sealed class StatusTokenTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "§6.6: the evidence-quality key draws the graph's own solid, dashed and dotted edges in body ink, in either mode")]
+    [AvaloniaFact(DisplayName = "§6.6: the evidence-quality key draws the graph's own solid, dashed and dotted edges in body ink, in every mode")]
     public async Task TheEvidenceKeyDrawsTheGraphsPatterns()
     {
         var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
@@ -171,7 +171,7 @@ public sealed class StatusTokenTests
 
         try
         {
-            foreach (ThemeMode mode in new[] { ThemeMode.Light, ThemeMode.Dark })
+            foreach (ThemeMode mode in EveryMode)
             {
                 ThemeResources.Apply(Avalonia.Application.Current!, mode);
                 WriteableBitmap frame = Settle(window);
@@ -206,6 +206,10 @@ public sealed class StatusTokenTests
             window.Close();
         }
     }
+
+    /// <summary>Every theme mode, ending in the dark one the other tests expect to find.</summary>
+    private static readonly ThemeMode[] EveryMode =
+        [ThemeMode.Light, ThemeMode.HighContrastDark, ThemeMode.HighContrastLight, ThemeMode.Dark];
 
     private static bool Near(Color seen, Color expected) =>
         Math.Abs(seen.R - expected.R) <= 12 && Math.Abs(seen.G - expected.G) <= 12 && Math.Abs(seen.B - expected.B) <= 12;
