@@ -387,7 +387,10 @@ public sealed class RedactedSessionPackageTests
         Assert.ThrowsAny<OperationCanceledException>(() => RedactedSessionPackage.Create(source.Store, package.Path,
             Committed, progress, cancellation.Token));
         Assert.False(Directory.Exists(package.Path));
-        Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(package.Path)!, "*.partial-*"));
+
+        // Only this package's own stage counts: the folder is shared, and an interrupted run of any test can leave one.
+        Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(package.Path)!,
+            Path.GetFileName(package.Path) + ".partial-*"));
     }
 
     [Fact(DisplayName = "I22: a preview measures the package without writing it")]

@@ -1036,6 +1036,7 @@
         "R3: unknown and observed zero remain distinct"
       ],
       "R5": [
+        "R5: a channel row names its mechanism and direction in words, never an enumeration name",
         "R5: initial normative wire codes stay stable",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields"
       ],

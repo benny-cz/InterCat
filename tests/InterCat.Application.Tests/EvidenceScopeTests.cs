@@ -55,6 +55,24 @@ public sealed class EvidenceScopeTests
         Assert.StartsWith("Every admitted record", whole.Description, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R5: a channel row names its mechanism and direction in words, never an enumeration name")]
+    public void AChannelRowNamesItsMechanismInWords()
+    {
+        var ladder = new DetailLadder(SyntheticWorkspace.Root(Snapshot));
+        foreach (string key in new[] { "executable:C:\\APP.EXE", Client.ToString() })
+        {
+            LadderRow row = LadderProjection.Project(Snapshot, ladder.Current).Rows.Single(candidate => candidate.Key == key);
+            Assert.True(ladder.TryDescend(LadderProjection.DescentFor(row, ladder.Current, Snapshot.Extent), out _));
+        }
+
+        // The legend, the lanes and the tables call it TCP; the ranked row read "Tcp", the enumeration's own name.
+        LadderRow channel = Assert.Single(LadderProjection.Project(Snapshot, ladder.Current).Rows);
+        Assert.Equal("TCP · paired endpoints; direction varies by observation", channel.Detail);
+
+        WorkspaceSnapshot outbound = Snapshot with { Channels = [Snapshot.Channels[0] with { Direction = Direction.Outbound }] };
+        Assert.Equal("TCP · outbound", Assert.Single(LadderProjection.Project(outbound, ladder.Current).Rows).Detail);
+    }
+
     [Fact(DisplayName = "§6.5: a process whose executable was not witnessed is named by its PID once")]
     public void AnUnwitnessedProcessIsNamedByItsPidOnce()
     {

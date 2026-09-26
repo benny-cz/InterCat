@@ -108,6 +108,15 @@ public static class LadderProjection
     /// The descent a row implies, one rung down. The caller supplies the viewport it wants preserved,
     /// because the ladder restores a viewport rather than recomputing one.
     /// </summary>
+    /// <summary>A channel's one data direction in words, as its row states it.</summary>
+    private static string DirectionWords(Direction direction) => direction switch
+    {
+        Direction.Outbound => "outbound",
+        Direction.Inbound => "inbound",
+        Direction.Bidirectional => "both directions",
+        _ => "no data direction",
+    };
+
     public static LadderDescent DescentFor(LadderRow row, NavigationState from, TimeRange viewport)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -260,10 +269,10 @@ public static class LadderProjection
             rows.Add(new(
                 channel.Key,
                 channel.Name,
+                // Words, not enumeration names: the one display mapping names the mechanism here as everywhere else (R5).
                 channel.Direction == Direction.UnknownDirection
-                    ? string.Create(CultureInfo.InvariantCulture,
-                        $"{channel.Mechanism} · paired endpoints; direction varies by observation")
-                    : string.Create(CultureInfo.InvariantCulture, $"{channel.Mechanism} · {channel.Direction}"),
+                    ? $"{EvidenceRowText.MechanismName(channel.Mechanism)} · paired endpoints; direction varies by observation"
+                    : $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {DirectionWords(channel.Direction)}",
                 channel.ObservationCount,
                 channel.KnownBytes,
                 channel.Mechanism,

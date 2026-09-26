@@ -1144,7 +1144,7 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
-    [AvaloniaTheory(DisplayName = "§6.8: at every supported size a ranked row keeps its name legible, and Forward leaves the header its title")]
+    [AvaloniaTheory(DisplayName = "§6.8: at every supported size rows, the header and every filter stay legible, and a running capture's card gives the list room")]
     [MemberData(nameof(Sizes))]
     public async Task RowsAndHeaderStayLegible(int width, int height)
     {
@@ -1173,6 +1173,38 @@ public sealed class EvidenceRungWindowTests
         Assert.True(window.GetControl<Button>("ForwardButton").IsVisible);
         TextBlock title = window.GetControl<TextBlock>("HeaderTitle");
         Assert.True(title.Bounds.Width >= 150, $"The header's title has only {title.Bounds.Width:F0} px.");
+
+        // While the capture runs, its card holds only what can be done now; starting another and opening a saved
+        // session wait for it to end, and their room goes to the ranked list.
+        Assert.False(window.GetControl<Button>("StartExploringButton").IsVisible);
+        Assert.False(window.GetControl<Button>("OpenSavedSessionButton").IsVisible);
+        Assert.False(window.GetControl<TextBlock>("CaptureIntro").IsVisible);
+        Assert.True(window.GetControl<Button>("StopCaptureButton").IsVisible);
+
+        // At the evidence rung of a channel four filters apply; each chip names what it narrows, and all of them lie
+        // inside the window, wrapping rather than running off its edge.
+        Channel channel = workspace.Snapshot.Channels.Single();
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString(), channel.Key })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(candidate => candidate.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        ListBox filters = window.GetControl<ListBox>("FilterList");
+        Assert.Equal(["Group", "Process", "Channel", "Records of"],
+            workspace.Filters.Select(filter => filter.Chip[..filter.Chip.IndexOf(':', StringComparison.Ordinal)]));
+        for (int index = 0; index < workspace.Filters.Count; index++)
+        {
+            Control chip = Assert.IsAssignableFrom<Control>(filters.ContainerFromIndex(index));
+            Point right = chip.TranslatePoint(new(chip.Bounds.Width, 0), window)!.Value;
+            Assert.True(right.X <= window.Bounds.Width, $"Filter {index} ends at {right.X:F0} of {window.Bounds.Width:F0} px.");
+        }
+
         window.Close();
     }
 

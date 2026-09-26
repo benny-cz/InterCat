@@ -826,6 +826,12 @@ public sealed partial class MainWindow : Window, IDisposable
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StartExploringButton.IsEnabled = !busy;
         OpenSavedSessionButton.IsEnabled = !busy;
+
+        // While a capture runs the card holds only what can be done now - stop it, pause the view - and its state. The
+        // actions that wait for it to end, and the words about starting one, give the ranked list the rail's height.
+        StartExploringButton.IsVisible = !busy;
+        OpenSavedSessionButton.IsVisible = !busy;
+        CaptureIntro.IsVisible = !busy;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
             && captureStop?.IsCancellationRequested != true;

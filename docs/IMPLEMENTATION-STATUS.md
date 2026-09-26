@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 134 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 135 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 135 — the minimum window during a capture (§6.8, §3.2):** found by looking at the evidence rung while
+  recording at 1080×700.
+  - **Card:** it kept its two idle actions, disabled, and its introduction, so the ranked list had room for about one
+    record. While a capture starts, records or finishes, the card now holds only its state, stop and pause. The list
+    shows three records at that size.
+  - **Chips:** a chip showed only its value, so a channel's filter and the evidence scope of the same channel read as
+    one filter shown twice. Each chip now names what it narrows, as a crumb does: "Group:", "Process:", "Channel:",
+    "Records of:".
+  - **Wrapping:** the chips could not wrap, and the fourth, longer now, ended at 1,239 px of a 1,080 px window. They
+    wrap within the bar.
+  - **Words (R5):** a channel's ranked row read "Tcp · paired endpoints", the enumeration's own name, where the
+    legend, lanes and tables say TCP. It now uses the one display mapping, and a known direction reads as a word.
+  - **Cut text:** a ranked row's name and detail, a crumb, and a filter chip each show their whole text in a tooltip.
+  - **Tests:**
+    - Revision 134's legibility theory now also checks the card and every chip at both sizes. With the old chip
+      panel it fails at "1239 of 1080 px".
+    - An Application test for the channel row's words, in the ledger under R5.
+    - "I22: a cancelled package leaves neither the package nor its stage behind" looked for any stage in the shared
+      temporary folder, so an interrupted run of another packaging test failed it. It now looks for its own.
 - **Revision 134 — the visible range is the default scope, with a scope lock (§6.4):**
   - **Gap:** §6.4 makes the viewport the graph and ranking scope when nothing is brushed, with a scope lock and the
     effective range always shown. Revision 98 left all three open, and this list had dropped them.
@@ -533,6 +552,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 135 was built and tested in the same Linux container: Debug and Release both ran **999 tests: 911 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 134 was built and tested in the same Linux container: Debug and Release both ran **998 tests: 910 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 133 was built and tested in the same Linux container: Debug and Release both ran **994 tests: 906 passed, 2 skipped, 86 failed**, and the

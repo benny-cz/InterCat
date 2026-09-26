@@ -97,11 +97,12 @@
                       VerticalAlignment="Center">
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Margin="6,0,6,0" Text="{Binding Label}" FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
                   <TextBlock Grid.Column="2" Text="{Binding Observations}" FontSize="11" TextAlignment="Right"
                              VerticalAlignment="Center" />
                   <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="6,0,0,0"
-                             Text="{Binding DetailLine}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                             Text="{Binding DetailLine}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding DetailLine}" />
                 </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -134,7 +135,8 @@
                 Background="{DynamicResource Surface.Elevated}">
           <StackPanel Spacing="7">
             <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
-            <TextBlock Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
+            <TextBlock x:Name="CaptureIntro"
+                       Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
             <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13"
@@ -190,7 +192,7 @@
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:CrumbRow">
                 <TextBlock Text="{Binding Label}" FontSize="11" Padding="4,1"
-                           TextTrimming="CharacterEllipsis" MaxWidth="220" />
+                           TextTrimming="CharacterEllipsis" MaxWidth="220" ToolTip.Tip="{Binding Label}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -249,27 +251,29 @@
         <TextBlock x:Name="CoverageLegendText"
                    Text="Hatching = coverage gap or unknown · outline = unmeasured"
                    Classes="muted" FontSize="11" VerticalAlignment="Center" />
-        <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). -->
-        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasFilters}">
-          <TextBlock Text="FILTERS" Classes="eyebrow" VerticalAlignment="Center" />
+        <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). The chips
+             wrap within the bar, so a deep rung's last filter is never cut off at the window's edge. -->
+        <DockPanel IsVisible="{Binding HasFilters}">
+          <TextBlock DockPanel.Dock="Left" Margin="0,0,8,0" Text="FILTERS" Classes="eyebrow" VerticalAlignment="Center" />
           <ListBox x:Name="FilterList"
                    ItemsSource="{Binding Filters}"
                    SelectedItem="{Binding SelectedFilter, Mode=TwoWay}"
                    Background="Transparent" BorderThickness="0" Padding="0"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    AutomationProperties.Name="Filters this descent implied. Select one and press Delete to remove it.">
             <ListBox.ItemsPanel>
               <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="4" />
+                <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="2" />
               </ItemsPanelTemplate>
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:FilterRow">
-                <TextBlock FontSize="11" Padding="4,1" MaxWidth="220" TextTrimming="CharacterEllipsis"
-                           Text="{Binding Label}" ToolTip.Tip="{Binding Reason}" />
+                <TextBlock FontSize="11" Padding="4,1" MaxWidth="260" TextTrimming="CharacterEllipsis"
+                           Text="{Binding Chip}" ToolTip.Tip="{Binding Tip}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-        </StackPanel>
+        </DockPanel>
       </WrapPanel>
     </Border>
 

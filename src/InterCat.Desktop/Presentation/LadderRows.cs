@@ -49,6 +49,23 @@ public sealed record CrumbRow(int Depth, string Label, bool IsCurrent) : IAccess
 public sealed record FilterRow(string Field, string Label, string Reason) : IAccessibleRow
 {
     public string AccessibleName => $"Filter {Field} is {Label}. {Reason} Press Enter to remove it.";
+
+    /// <summary>
+    /// The chip's words: what the filter narrows, then to what, as a crumb reads. A channel's filter and the evidence
+    /// scope of the same channel otherwise showed the same endpoint pair twice, as if one filter were repeated.
+    /// </summary>
+    public string Chip => $"{Field switch
+    {
+        "group" => "Group",
+        "process" => "Process",
+        "channel" => "Channel",
+        "operation" => "Operation",
+        "scope" => "Records of",
+        _ => Field,
+    }}: {Label}";
+
+    /// <summary>The chip's tooltip: its whole text, which a long endpoint pair can cut short, and why it applies.</summary>
+    public string Tip => $"{Chip}\n{Reason}";
 }
 
 /// <summary>Builds the ladder's presentation rows from a projection, using the projection's own values.</summary>
