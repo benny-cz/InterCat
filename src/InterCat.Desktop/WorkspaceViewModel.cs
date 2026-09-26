@@ -1356,7 +1356,28 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         ? wholeSnapshot.Groups.FirstOrDefault(group => group.Key == key)
         : null;
 
+    /// <summary>
+    /// The drawn nodes the selection covers wholly and in part. The graph reads them on every repaint, so they are worked
+    /// out once for each drawing, snapshot and selection and then reused (R11).
+    /// </summary>
     private (IReadOnlySet<string> Whole, IReadOnlySet<string> Part) GraphSelection()
+    {
+        if (graphSelection is { } known && ReferenceEquals(known.Display, graphDisplay)
+            && ReferenceEquals(known.Snapshot, wholeSnapshot) && known.Cluster == selectedClusterKey
+            && known.Group == selectedGroupKey && ReferenceEquals(known.Process, selectedProcess))
+        {
+            return (known.Whole, known.Part);
+        }
+
+        (IReadOnlySet<string> Whole, IReadOnlySet<string> Part) found = ComputeGraphSelection();
+        graphSelection = (graphDisplay, wholeSnapshot, selectedClusterKey, selectedGroupKey, selectedProcess, found.Whole, found.Part);
+        return found;
+    }
+
+    private (GraphDisplay Display, WorkspaceSnapshot Snapshot, string? Cluster, string? Group, ProcessNode? Process,
+        IReadOnlySet<string> Whole, IReadOnlySet<string> Part)? graphSelection;
+
+    private (IReadOnlySet<string> Whole, IReadOnlySet<string> Part) ComputeGraphSelection()
     {
         var whole = new HashSet<string>(StringComparer.Ordinal);
         var part = new HashSet<string>(StringComparer.Ordinal);
@@ -3155,7 +3176,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         {
             if (IsEvidenceRung) return evidence?.Scope.ContributingEdgeKey;
             if (ladder.Current.Level != DetailLevel.Channel || ladder.Current.Focus is not { } focus) return null;
-            return Snapshot.Channels.FirstOrDefault(channel => channel.Key == focus.Key)?.EdgeKey;
+
+            // The graph reads this on every repaint of a channel rung, so it is a plain scan rather than a query (R11).
+            IReadOnlyList<Channel> channels = Snapshot.Channels;
+            for (int index = 0; index < channels.Count; index++)
+            {
+                if (channels[index].Key == focus.Key)
+                {
+                    return channels[index].EdgeKey;
+                }
+            }
+
+            return null;
         }
     }
 

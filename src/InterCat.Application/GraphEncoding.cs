@@ -17,9 +17,11 @@ public static class GraphEncoding
     public static long NodeScale(GraphDisplay display)
     {
         ArgumentNullException.ThrowIfNull(display);
+        // Read on every repaint of the graph, so an index loop: a foreach over the interface would allocate (R11).
         long scale = 0;
-        foreach (GraphDisplayNode node in display.Nodes)
+        for (int index = 0; index < display.Nodes.Count; index++)
         {
+            GraphDisplayNode node = display.Nodes[index];
             if (node.Kind != GraphNodeKind.Context && node.Observations > scale)
             {
                 scale = node.Observations;

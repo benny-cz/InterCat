@@ -4,6 +4,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Rendering;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
@@ -56,13 +57,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static Pen InternalRelationshipPen => Current.InternalRelationshipPen;
     private static Pen StackPen => Current.StackPen;
     private static Pen MutedPen => Current.MutedPen;
-    private static Pen RemainderPen => Current.RemainderPen;
-    private static Pen QuietPen => Current.QuietPen;
-    private static Pen PartialSelectionPen => Current.PartialSelectionPen;
+    private static Dashes RemainderDashes => Current.RemainderDashes;
+    private static Dashes QuietDashes => Current.QuietDashes;
+    private static Dashes PartialSelectionDashes => Current.PartialSelectionDashes;
     private static Pen HoverPen => Current.HoverPen;
     private static Pen HoverHaloPen => Current.HoverHaloPen;
     private static Pen PinHeadPen => Current.PinHeadPen;
-    private static Pen ContextPen => Current.ContextPen;
+    private static Dashes ContextDashes => Current.ContextDashes;
     private static Pen ContextRimPen => Current.ContextRimPen;
 
     /// <summary>A press moves this far before it is a drag that pins, so a slightly unsteady click still only selects.</summary>
@@ -83,8 +84,20 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private GraphDisplay? hoverCardDisplay;
     private bool hoverCardPinned;
 
-    // Label text carries its brush, so it is cached per theme mode as well as per text.
-    private readonly Dictionary<(string Text, double Width, double Size, bool Strong, ThemeMode Mode), FormattedText> labels = [];
+    // Label text carries its brush, so it is laid out per theme mode as well as per text, and drawn without allocating.
+    private readonly PaneText labels = new(512);
+
+    // What a repaint gathers: where each node is drawn and how large, the labels chosen and the boxes they took, each
+    // node's second label line, and the keyboard's order for the drawing it belongs to (R11).
+    private readonly Dictionary<string, Point> drawnPoints = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, double> drawnRadii = new(StringComparer.Ordinal);
+    private readonly List<GraphDisplayNode> labelCandidates = [];
+    private readonly List<Rect> placedLabels = [];
+    private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
+    private GraphDisplay? traversalFor;
+    private IReadOnlyList<GraphDisplayNode> traversal = [];
+    private string? problemFor;
+    private string? problemText;
     private int keyboardIndex;
 
     /// <summary>The graph's brushes and pens in one theme mode, from its verified tokens (§6.6).</summary>
@@ -106,13 +119,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             InternalRelationshipPen = new(SelectedBrush, 4);
             StackPen = new(border, 1);
             MutedPen = new(MutedTextBrush, 1.5);
-            RemainderPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([4, 3], 0) };
-            QuietPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([1, 3], 0) };
-            PartialSelectionPen = new(SelectedBrush, 2) { DashStyle = new DashStyle([3, 3], 0) };
+            RemainderDashes = new(MutedPen, 4, 3);
+            QuietDashes = new(MutedPen, 1, 3);
+            PartialSelectionDashes = new(new Pen(SelectedBrush, 2), 3, 3);
             HoverPen = new(TextBrush, 1.5);
             HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
             PinHeadPen = new(PlotBrush, 1.5);
-            ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
+            ContextDashes = new(MutedPen, 7, 4);
             ContextRimPen = new(MutedTextBrush, 1);
             SampleRingPen = new(TextBrush, 2);
         }
@@ -129,26 +142,142 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         public Pen InternalRelationshipPen { get; }
         public Pen StackPen { get; }
         public Pen MutedPen { get; }
-        public Pen RemainderPen { get; }
-        public Pen QuietPen { get; }
-        public Pen PartialSelectionPen { get; }
+        public Dashes RemainderDashes { get; }
+        public Dashes QuietDashes { get; }
+        public Dashes PartialSelectionDashes { get; }
         public Pen HoverPen { get; }
         public Pen HoverHaloPen { get; }
         public Pen PinHeadPen { get; }
-        public Pen ContextPen { get; }
+        public Dashes ContextDashes { get; }
         public Pen ContextRimPen { get; }
 
         /// <summary>Mechanism fills and edge pens, cached per semantic key within this mode.</summary>
         public Dictionary<Mechanism, SolidColorBrush> MechanismBrushes { get; } = [];
 
-        public Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens { get; } = [];
+        public Dictionary<(Mechanism, int), Pen> EdgePens { get; } = [];
 
-        /// <summary>The evidence key's pens: body ink in each strength's pattern, and the ring a weak relation carries.</summary>
-        public Dictionary<RelationStrength, Pen> SamplePens { get; } = [];
+        /// <summary>The open ring a weak relation carries at its middle, in its mechanism's hue.</summary>
+        public Dictionary<Mechanism, Pen> RingPens { get; } = [];
+
+        /// <summary>The evidence key's stroke: body ink, in each strength's pattern.</summary>
+        public Pen SamplePen => samplePen ??= new(TextBrush, 2);
+
+        private Pen? samplePen;
 
         public Pen SampleRingPen { get; }
 
         private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
+    }
+
+    /// <summary>
+    /// A dashed stroke: a solid pen and its pattern in multiples of the pen's thickness. The pattern is drawn as cached
+    /// geometry under that pen, because a dashed pen makes the drawing layer allocate a dash effect for every stroke of
+    /// every frame (R11). The dashes start where the stroke starts, as the layer's own would.
+    /// </summary>
+    internal readonly record struct Dashes(Pen Stroke, double On, double Off);
+
+    // Dash geometry is built once per shape and reused: a ring per (radius, pattern) placed by a translation, an edge's
+    // strip per (length, pattern) placed by a rotation and a translation. Both are bounded, so a long session of
+    // relayouts cannot grow them without end.
+    private static readonly Dictionary<(double Radius, double On, double Off), StreamGeometry> RingDashes = [];
+    private static readonly Dictionary<string, (double Length, double On, double Off, StreamGeometry Geometry)> EdgeDashes =
+        new(StringComparer.Ordinal);
+
+    /// <summary>A dashed circle of <paramref name="radius"/> around <paramref name="center"/>, filled first when asked.</summary>
+    private static void DrawDashedCircle(DrawingContext context, IBrush? fill, Dashes dashes, Point center, double radius)
+    {
+        if (fill is not null)
+        {
+            context.DrawEllipse(fill, null, center, radius, radius);
+        }
+
+        double on = dashes.On * dashes.Stroke.Thickness;
+        double off = dashes.Off * dashes.Stroke.Thickness;
+        double quantized = Math.Round(radius * 4) / 4;
+        if (!RingDashes.TryGetValue((quantized, on, off), out StreamGeometry? geometry))
+        {
+            if (RingDashes.Count > 256)
+            {
+                RingDashes.Clear();
+            }
+
+            geometry = RingGeometry(quantized, on, off);
+            RingDashes[(quantized, on, off)] = geometry;
+        }
+
+        using (context.PushTransform(Matrix.CreateTranslation(center.X, center.Y)))
+        {
+            context.DrawGeometry(null, dashes.Stroke, geometry);
+        }
+    }
+
+    /// <summary>Dashes of <paramref name="on"/> px every <paramref name="on"/> + <paramref name="off"/> px round a circle.</summary>
+    private static StreamGeometry RingGeometry(double radius, double on, double off)
+    {
+        var geometry = new StreamGeometry();
+        using StreamGeometryContext figures = geometry.Open();
+        double circumference = 2 * Math.PI * Math.Max(radius, 0.5);
+        for (double along = 0; along < circumference; along += on + off)
+        {
+            double from = along / radius;
+            double to = Math.Min(circumference, along + on) / radius;
+            figures.BeginFigure(new Point(radius * Math.Cos(from), radius * Math.Sin(from)), isFilled: false);
+            figures.ArcTo(new Point(radius * Math.Cos(to), radius * Math.Sin(to)), new Size(radius, radius), 0,
+                isLargeArc: false, SweepDirection.Clockwise);
+            figures.EndFigure(isClosed: false);
+        }
+
+        return geometry;
+    }
+
+    /// <summary>
+    /// A stroke from <paramref name="source"/> to <paramref name="target"/>: solid, or in <paramref name="pattern"/>'s
+    /// dashes from a strip cached under <paramref name="key"/> and rebuilt only when its length or pattern changes.
+    /// </summary>
+    private static void DrawStroke(DrawingContext context, Pen pen, Point source, Point target, (double On, double Off)? pattern,
+        string key)
+    {
+        if (pattern is not { } dashes)
+        {
+            context.DrawLine(pen, source, target);
+            return;
+        }
+
+        double on = dashes.On * pen.Thickness;
+        double off = dashes.Off * pen.Thickness;
+        double length = Math.Round(Math.Sqrt(Math.Pow(target.X - source.X, 2) + Math.Pow(target.Y - source.Y, 2)) * 2) / 2;
+        if (!EdgeDashes.TryGetValue(key, out var strip) || strip.Length != length || strip.On != on || strip.Off != off)
+        {
+            if (EdgeDashes.Count > 2048)
+            {
+                EdgeDashes.Clear();
+            }
+
+            strip = (length, on, off, StripGeometry(length, on, off));
+            EdgeDashes[key] = strip;
+        }
+
+        Matrix placement = Matrix.CreateRotation(Math.Atan2(target.Y - source.Y, target.X - source.X))
+            * Matrix.CreateTranslation(source.X, source.Y);
+        using (context.PushTransform(placement))
+        {
+            context.DrawGeometry(null, pen, strip.Geometry);
+        }
+    }
+
+    /// <summary>Dashes of <paramref name="on"/> px every <paramref name="on"/> + <paramref name="off"/> px along +x.</summary>
+    private static StreamGeometry StripGeometry(double length, double on, double off)
+    {
+        var geometry = new StreamGeometry();
+        using StreamGeometryContext figures = geometry.Open();
+        for (double along = 0; along < length; along += on + off)
+        {
+            figures.BeginFigure(new Point(along, 0), isFilled: false);
+            figures.LineTo(new Point(Math.Min(length, along + on), 0));
+            figures.EndFigure(isClosed: false);
+        }
+
+        return geometry;
     }
 
     /// <summary>Mechanism owns hue; evidence quality owns the dash pattern, never a hue (section 6.6).</summary>
@@ -163,29 +292,44 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return brush;
     }
 
-    private static Pen EdgePen(Mechanism mechanism, RelationStrength strength, double thickness)
+    private static Pen EdgePen(Mechanism mechanism, double thickness)
     {
         // Thickness is kept to a quarter pixel, which no eye resolves, so the cache stays small.
         int quarter = (int)Math.Round(thickness * 4);
-        if (!Current.EdgePens.TryGetValue((mechanism, strength, quarter), out Pen? pen))
+        if (!Current.EdgePens.TryGetValue((mechanism, quarter), out Pen? pen))
         {
-            pen = new Pen(MechanismBrush(mechanism), quarter / 4d) { DashStyle = EvidenceDash(strength) };
-            Current.EdgePens[(mechanism, strength, quarter)] = pen;
+            pen = new Pen(MechanismBrush(mechanism), quarter / 4d);
+            Current.EdgePens[(mechanism, quarter)] = pen;
+        }
+
+        return pen;
+    }
+
+    /// <summary>The open ring a candidate or unresolved relation carries, in its mechanism's hue.</summary>
+    private static Pen RingPen(Mechanism mechanism)
+    {
+        if (!Current.RingPens.TryGetValue(mechanism, out Pen? pen))
+        {
+            pen = new Pen(MechanismBrush(mechanism), 2);
+            Current.RingPens[mechanism] = pen;
         }
 
         return pen;
     }
 
     /// <summary>
-    /// Evidence quality's dash pattern (§6.6), in multiples of the pen's thickness: solid for a direct relation, dashed
-    /// for a correlated one, dotted for anything weaker. The inspector's key draws with this same pattern.
+    /// Evidence quality's dash pattern (§6.6), in multiples of the pen's thickness: solid (none) for a direct relation,
+    /// dashed for a correlated one, dotted for anything weaker. The inspector's key draws with this same pattern.
     /// </summary>
-    internal static DashStyle? EvidenceDash(RelationStrength strength) => strength switch
+    internal static (double On, double Off)? EvidencePattern(RelationStrength strength) => strength switch
     {
         RelationStrength.Direct => null,
-        RelationStrength.Correlated => new DashStyle([6, 3], 0),
-        _ => new DashStyle([2, 3], 0),
+        RelationStrength.Correlated => (6, 3),
+        _ => (2, 3),
     };
+
+    /// <summary>The evidence key's strips are cached under keys no relationship uses.</summary>
+    private static readonly string[] SampleKeys = [.. Enumerable.Range(0, 8).Select(strength => $"\u0000sample{strength}")];
 
     /// <summary>A candidate or unresolved relation also carries an open ring at its middle, so it is never read as asserted.</summary>
     internal static bool RingsMiddle(RelationStrength strength) =>
@@ -197,15 +341,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// </summary>
     internal static void DrawEdgeSample(DrawingContext context, RelationStrength strength, Rect bounds)
     {
-        if (!Current.SamplePens.TryGetValue(strength, out Pen? pen))
-        {
-            pen = new Pen(Current.TextBrush, 2) { DashStyle = EvidenceDash(strength) };
-            Current.SamplePens[strength] = pen;
-        }
-
         Point start = new(bounds.Left + 1, bounds.Center.Y);
         Point end = new(bounds.Right - 1, bounds.Center.Y);
-        context.DrawLine(pen, start, end);
+        DrawStroke(context, Current.SamplePen, start, end, EvidencePattern(strength), SampleKeys[(int)strength]);
         if (RingsMiddle(strength))
         {
             context.DrawEllipse(Brushes.Transparent, Current.SampleRingPen, bounds.Center, 5, 5);
@@ -233,21 +371,27 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             return;
         }
 
+        // Everything a repaint gathers lives in maps and buffers this view keeps, so a frame allocates nothing (R11).
         GraphDisplay display = viewModel.GraphDisplay;
         long nodeScale = GraphEncoding.NodeScale(display);
-        long edgeScale = display.Edges.Count == 0 ? 0 : display.Edges.Max(edge => edge.ObservationCount);
-        var points = new Dictionary<string, Point>(display.Nodes.Count, StringComparer.Ordinal);
-        foreach (GraphDisplayNode node in display.Nodes)
+        long edgeScale = 0;
+        for (int index = 0; index < display.Edges.Count; index++)
         {
-            if (Position(node.Key, viewModel) is { } point) points[node.Key] = point;
+            edgeScale = Math.Max(edgeScale, display.Edges[index].ObservationCount);
+        }
+
+        Dictionary<string, Point> points = drawnPoints;
+        points.Clear();
+        for (int index = 0; index < display.Nodes.Count; index++)
+        {
+            string key = display.Nodes[index].Key;
+            if (Position(key, viewModel) is { } point) points[key] = point;
         }
 
         if (dragging && dragKey is { } moving && points.ContainsKey(moving))
         {
             points[moving] = dragAt;
         }
-
-        IReadOnlySet<string> pinned = viewModel.PinnedGraphNodeKeys;
 
         string? highlightedRelationship = viewModel.HighlightedEdgeKey;
         string? highlighted = highlightedRelationship is { } relationship
@@ -256,8 +400,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         string? highlightedNode = highlightedRelationship is { } internalRelationship
             ? display.NodeOfRelationship(internalRelationship)?.Key
             : null;
-        foreach (GraphDisplayEdge edge in display.Edges)
+        for (int edgeIndex = 0; edgeIndex < display.Edges.Count; edgeIndex++)
         {
+            GraphDisplayEdge edge = display.Edges[edgeIndex];
             if (!points.TryGetValue(edge.SourceKey, out Point source) || !points.TryGetValue(edge.TargetKey, out Point target))
             {
                 continue;
@@ -280,7 +425,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
             // Hue states the mechanism, thickness states magnitude and the dash pattern states evidence quality. No
             // channel carries two meanings, and none of them is colour alone (section 6.6, R14).
-            Pen pen = EdgePen(edge.Mechanism, edge.Strength, ThicknessOf(edge, edgeScale));
+            Pen pen = EdgePen(edge.Mechanism, ThicknessOf(edge, edgeScale));
+            (double On, double Off)? pattern = EvidencePattern(edge.Strength);
 
             // Under a brushed interval an edge with no records in it steps back rather than vanishing: the relationship
             // exists in the session, it is only quiet in the range being ranked (§3.4, §6.4). A relationship that leads
@@ -292,28 +438,30 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 using (context.PushOpacity(opacity))
                 {
-                    context.DrawLine(pen, source, target);
+                    DrawStroke(context, pen, source, target, pattern, edge.Key);
                 }
             }
             else
             {
-                context.DrawLine(pen, source, target);
+                DrawStroke(context, pen, source, target, pattern, edge.Key);
             }
 
             if (RingsMiddle(edge.Strength))
             {
                 Point middle = new((source.X + target.X) / 2, (source.Y + target.Y) / 2);
-                context.DrawEllipse(Brushes.Transparent, new Pen(MechanismBrush(edge.Mechanism), 2), middle, 5, 5);
+                context.DrawEllipse(Brushes.Transparent, RingPen(edge.Mechanism), middle, 5, 5);
             }
         }
 
         IReadOnlySet<string> selected = viewModel.SelectedGraphNodeKeys;
         IReadOnlySet<string> partlySelected = viewModel.PartlySelectedGraphNodeKeys;
-        IReadOnlyList<GraphDisplayNode> order = Traversal(display);
+        IReadOnlyList<GraphDisplayNode> order = TraversalOf(display);
         string? focused = IsFocused && order.Count > 0 ? order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key : null;
-        var radii = new Dictionary<string, double>(display.Nodes.Count, StringComparer.Ordinal);
-        foreach (GraphDisplayNode node in display.Nodes)
+        Dictionary<string, double> radii = drawnRadii;
+        radii.Clear();
+        for (int nodeIndex = 0; nodeIndex < display.Nodes.Count; nodeIndex++)
         {
+            GraphDisplayNode node = display.Nodes[nodeIndex];
             if (!points.TryGetValue(node.Key, out Point point)) continue;
             double radius = RadiusOf(node, nodeScale);
             radii[node.Key] = radius;
@@ -325,7 +473,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 // Part of the selection is inside this aggregate among other processes: a broken ring, never the solid
                 // one, so an aggregate is not mistaken for the selected process or group itself.
-                context.DrawEllipse(Brushes.Transparent, PartialSelectionPen, point, radius + 6, radius + 6);
+                DrawDashedCircle(context, null, PartialSelectionDashes, point, radius + 6);
             }
 
             if (node.Key == highlightedNode)
@@ -350,7 +498,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 // faded edges into it, so the rims read as a stack that says "several", never as tangled rings.
                 context.DrawEllipse(PlotBrush, ContextRimPen, new Point(point.X + 5, point.Y - 5), radius, radius);
                 context.DrawEllipse(PlotBrush, ContextRimPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
-                context.DrawEllipse(PlotBrush, node.Key == focused ? FocusPen : ContextPen, point, radius, radius);
+                if (node.Key == focused)
+                {
+                    context.DrawEllipse(PlotBrush, FocusPen, point, radius, radius);
+                }
+                else
+                {
+                    DrawDashedCircle(context, PlotBrush, ContextDashes, point, radius);
+                }
             }
             else
             {
@@ -359,16 +514,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 // remainder, or processes with no relationship at all.
                 context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 5, point.Y - 5), radius, radius);
                 context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
-                context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : node.Kind switch
+                if (node.Key == focused || node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers)
                 {
-                    GraphNodeKind.Group => NodePen,
-                    GraphNodeKind.OtherMembers => MutedPen,
-                    GraphNodeKind.Remainder => RemainderPen,
-                    _ => QuietPen,
-                }, point, radius, radius);
+                    context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen
+                        : node.Kind == GraphNodeKind.Group ? NodePen : MutedPen, point, radius, radius);
+                }
+                else
+                {
+                    DrawDashedCircle(context, NodeBrush, node.Kind == GraphNodeKind.Remainder ? RemainderDashes : QuietDashes,
+                        point, radius);
+                }
             }
 
-            if (pinned.Contains(node.Key) || (dragging && node.Key == dragKey))
+            if (viewModel.IsGraphNodePinned(node.Key) || (dragging && node.Key == dragKey))
             {
                 // A pin's head at the upper left, clear of an aggregate's rims: this node stays where it was placed.
                 context.DrawEllipse(SelectedBrush, PinHeadPen,
@@ -379,8 +537,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         DrawLabels(context, display, order, points, radii, selected, partlySelected, focused);
         if (viewModel.GraphLayoutProblem is { } problem)
         {
-            context.DrawText(Text($"Layout unavailable: {problem}", 10, strong: false, Math.Max(1, Bounds.Width - 24)),
-                new(12, Math.Max(0, Bounds.Height - 22)));
+            if (!string.Equals(problemFor, problem, StringComparison.Ordinal))
+            {
+                problemFor = problem;
+                problemText = $"Layout unavailable: {problem}";
+            }
+
+            Text(problemText!, 10, strong: false, Math.Max(1, Bounds.Width - 24)).Draw(context, new(12, Math.Max(0, Bounds.Height - 22)));
         }
 
     }
@@ -516,12 +679,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
     private string? EdgeHitTest(WorkspaceViewModel viewModel, Point pointer)
     {
+        // Run on every pointer move, so it scans by index and allocates nothing (R11).
         GraphDisplay display = viewModel.GraphDisplay;
-        long scale = display.Edges.Count == 0 ? 0 : display.Edges.Max(edge => edge.ObservationCount);
+        long scale = 0;
+        for (int index = 0; index < display.Edges.Count; index++)
+        {
+            scale = Math.Max(scale, display.Edges[index].ObservationCount);
+        }
+
         string? best = null;
         double bestDistance = double.MaxValue;
-        foreach (GraphDisplayEdge edge in display.Edges)
+        for (int index = 0; index < display.Edges.Count; index++)
         {
+            GraphDisplayEdge edge = display.Edges[index];
             if (Position(edge.SourceKey, viewModel) is not { } source || Position(edge.TargetKey, viewModel) is not { } target)
             {
                 continue;
@@ -566,31 +736,48 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         string? focused)
     {
         bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= LabelBudget;
-        GraphDisplayNode[] required = [.. order.Where(node => selected.Contains(node.Key) || node.Key == focused)];
-        // After the selection come aggregates, whose counts are the compaction's disclosure (§6.3), then the busiest.
-        GraphDisplayNode[] candidates = [.. required, .. order
-            .Where(node => !required.Contains(node))
-            .OrderBy(node => partlySelected.Contains(node.Key) ? 0 : node.Kind != GraphNodeKind.Process ? 1 : 2)
-            .Take(Math.Max(0, LabelBudget - required.Length))];
+
+        // The selection and the focus come first. After them come aggregates, whose counts are the compaction's disclosure
+        // (§6.3), then the busiest, up to the label budget: three passes over the keyboard's order, so ties keep it.
+        List<GraphDisplayNode> candidates = labelCandidates;
+        candidates.Clear();
+        for (int index = 0; index < order.Count; index++)
+        {
+            if (IsRequired(order[index], selected, focused)) candidates.Add(order[index]);
+        }
+
+        int required = candidates.Count;
+        int budget = Math.Max(0, LabelBudget - required);
+        for (int rank = 0; rank < 3 && budget > 0; rank++)
+        {
+            for (int index = 0; index < order.Count && budget > 0; index++)
+            {
+                GraphDisplayNode node = order[index];
+                if (IsRequired(node, selected, focused) || LabelRank(node, partlySelected) != rank) continue;
+                candidates.Add(node);
+                budget--;
+            }
+        }
 
         // The focused node, or a single selected one, is always named even beside another label. A selection of many
         // nodes, such as an opened group's members, is named first but never at the cost of overlapping text.
-        HashSet<string> forced = [.. required.Where(node => node.Key == focused || selected.Count == 1).Select(node => node.Key)];
-        var placed = new List<Rect>(candidates.Length);
-        foreach (GraphDisplayNode node in candidates)
+        List<Rect> placed = placedLabels;
+        placed.Clear();
+        for (int index = 0; index < candidates.Count; index++)
         {
+            GraphDisplayNode node = candidates[index];
             if (!points.TryGetValue(node.Key, out Point point)) continue;
             double radius = radii[node.Key];
-            FormattedText name = Text(node.Label, 12, strong: true, MaximumLabelWidth);
+            TextLayout name = Text(node.Label, 12, strong: true, MaximumLabelWidth);
 
             // A process's PID is optional detail; an aggregate's count is part of the compaction disclosure and is kept
             // whenever its name fits (§6.3).
-            FormattedText? detail = node.Kind != GraphNodeKind.Process || detailForProcesses
-                ? Text(Detail(node), 10, strong: false, MaximumLabelWidth)
+            TextLayout? detail = node.Kind != GraphNodeKind.Process || detailForProcesses
+                ? Text(DetailOf(node), 10, strong: false, MaximumLabelWidth)
                 : null;
             double width = Math.Max(name.Width, detail?.Width ?? 0);
             double height = name.Height + (detail?.Height ?? 0);
-            bool mustShow = forced.Contains(node.Key);
+            bool mustShow = index < required && (node.Key == focused || selected.Count == 1);
             Rect? where = Place(point, radius, width, height, node.Key, points, radii, placed, mustShow);
             if (where is null && detail is not null)
             {
@@ -605,12 +792,42 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
 
             placed.Add(box);
-            context.DrawText(name, new(box.X + ((box.Width - name.Width) / 2), box.Y));
-            if (detail is not null)
-            {
-                context.DrawText(detail, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
-            }
+            name.Draw(context, new(box.X + ((box.Width - name.Width) / 2), box.Y));
+            detail?.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
         }
+    }
+
+    /// <summary>Whether a node's label is required: it is selected, or it holds the keyboard's focus.</summary>
+    private static bool IsRequired(GraphDisplayNode node, IReadOnlySet<string> selected, string? focused) =>
+        selected.Contains(node.Key) || node.Key == focused;
+
+    /// <summary>A label's rank after the required ones: part of the selection, then an aggregate, then a process.</summary>
+    private static int LabelRank(GraphDisplayNode node, IReadOnlySet<string> partlySelected) =>
+        partlySelected.Contains(node.Key) ? 0 : node.Kind != GraphNodeKind.Process ? 1 : 2;
+
+    /// <summary>A node's second label line, formatted once per node of the drawing shown.</summary>
+    private string DetailOf(GraphDisplayNode node)
+    {
+        if (!details.TryGetValue(node, out string? detail))
+        {
+            detail = Detail(node);
+            details[node] = detail;
+        }
+
+        return detail;
+    }
+
+    /// <summary>The keyboard's order for the drawing shown, sorted once per drawing rather than on every repaint (R11).</summary>
+    private IReadOnlyList<GraphDisplayNode> TraversalOf(GraphDisplay display)
+    {
+        if (!ReferenceEquals(traversalFor, display))
+        {
+            traversalFor = display;
+            traversal = Traversal(display);
+            details.Clear();
+        }
+
+        return traversal;
     }
 
     /// <summary>
@@ -637,6 +854,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// Pure label-placement core, exposed internally so the crowded-hub fallback has a deterministic regression test.
     /// Candidates stay close to the node first, then search outward; this is label placement only and never moves a node.
     /// </summary>
+    /// <summary>
+    /// How far out each ring of label positions lies. A static array: a span of constants is built from a field handle
+    /// on every call where the JIT does not optimise, and this runs for every label of every repaint (R11).
+    /// </summary>
+    private static readonly double[] LabelRings = [0, 18, 42];
+
     internal static Rect? FindLabelBox(
         Rect pane,
         Point point,
@@ -644,14 +867,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         double width,
         double height,
         string key,
-        IReadOnlyDictionary<string, Point> points,
-        IReadOnlyDictionary<string, double> radii,
+        Dictionary<string, Point> points,
+        Dictionary<string, double> radii,
         IReadOnlyList<Rect> placed,
         bool mustShow)
     {
         const double Gap = 3;
         const double SideBias = 3;
-        ReadOnlySpan<double> rings = [0, 18, 42];
+        ReadOnlySpan<double> rings = LabelRings;
         Span<Rect> candidates = stackalloc Rect[rings.Length * 8];
         int candidateCount = 0;
         foreach (double ring in rings)
@@ -903,8 +1126,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         long scale = GraphEncoding.NodeScale(display);
         string? best = null;
         double bestDistance = double.MaxValue;
-        foreach (GraphDisplayNode node in display.Nodes)
+        for (int index = 0; index < display.Nodes.Count; index++)
         {
+            GraphDisplayNode node = display.Nodes[index];
             if (Position(node.Key, viewModel) is not { } point) continue;
             double distance = Math.Sqrt(Math.Pow(point.X - pointer.X, 2) + Math.Pow(point.Y - pointer.Y, 2));
             if (distance <= RadiusOf(node, scale) + HitSlop && distance < bestDistance)
@@ -931,21 +1155,6 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>One line of label text, trimmed with an ellipsis at <paramref name="width"/>; cached, as layout is costly.</summary>
-    private FormattedText Text(string text, double size, bool strong, double width)
-    {
-        if (!labels.TryGetValue((text, width, size, strong, Mode), out FormattedText? formatted))
-        {
-            if (labels.Count > 512) labels.Clear();
-            formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), size,
-                strong ? TextBrush : MutedTextBrush)
-            {
-                MaxTextWidth = width,
-                MaxLineCount = 1,
-                Trimming = TextTrimming.CharacterEllipsis,
-            };
-            labels[(text, width, size, strong, Mode)] = formatted;
-        }
-
-        return formatted;
-    }
+    private TextLayout Text(string text, double size, bool strong, double width) =>
+        labels.Get(text, size, strong ? TextBrush : MutedTextBrush, width, lines: 1, TextTrimming.CharacterEllipsis);
 }

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 140 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 141 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 141 — a repaint allocates nothing of its own (R11, §19.4):**
+  - **Measured first:** one repaint of each pane against an empty drawing context, on every rung of a real session.
+    Before: the timeline 58–125 KB, the graph 13–15 KB, the minimap 11 KB, and the hover layer 44–51 KB with a card
+    shown. After: none of them allocates anything of its own.
+  - **The drawing layer's costs:**
+    - a formatted text allocates about 2 KB per draw, while a cached text layout draws for free; every pane's labels
+      now use one cache of layouts;
+    - a dashed pen allocates a dash effect per stroke, on the render thread too; the graph's dashes are now cached
+      geometry under a solid pen, and they look the same.
+  - **Our own costs:**
+    - removed: a new brush per bar, pens and translucent brushes per frame, LINQ over buckets and edges, labels
+      formatted per frame, and the view model's selection and pin sets rebuilt on every read;
+    - two subtler ones: a lambda's captured locals are allocated where its method begins, even when a memo returns
+      first, and unoptimised code builds a span of constants from a field handle on every call.
+  - **Checked:** the test failed against a per-frame pen (1,200 B), a per-frame brush (592 B), a card memo that
+    always missed (1,472 B) and a per-frame dictionary (184 B). A LINQ maximum over a list allocates nothing on .NET 10,
+    so an allocation test does not see it. The graph's dashes and rings were compared with the layer's own dashing
+    in rendered frames.
+  - **Tests:** one UI test (+1). R11 moves to covered for the paint loops; admission and decode loops keep IC-019's
+    Windows measurements.
 - **Revision 140 — a verified high-contrast set, dark and light, following the operating system (§6.1, §6.6, §26.2):**
   - **Modes:** the platform's high-contrast preference selects a high-contrast set, dark or light as its scheme
     reports. Tests pin dark as before.
@@ -633,8 +653,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §6.2's minimum drawn width (5 px) and pointer snapping. At the minimum window the plot is 458 px, or 326–378 px
      beside lane labels, so the 64 overview columns are 5–7 px and their bars 3–5 px. They can still be pointed at,
      because a hit takes the whole column's time. Widening must stay cosmetic (R13).
-   - R11: the drawn panes allocate and use LINQ every frame. Measure a frame budget and add an allocation test before
-     removing it.
+   - R11 beyond paint: the aggregate, admission and decode loops have IC-019's Windows allocation measurements but no
+     test that runs here. A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140.
      - In high contrast, list selection, scroll bars and tool tips keep the control theme's look; restate them from
@@ -647,6 +667,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 141 was built and tested in the same Linux container: Debug and Release both ran **1,014 tests: 926 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 140 was built and tested in the same Linux container: Debug and Release both ran **1,013 tests: 925 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 139 was built and tested in the same Linux container: Debug and Release both ran **1,010 tests: 922 passed, 2 skipped, 86 failed**, and the

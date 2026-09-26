@@ -26,22 +26,49 @@ public sealed class MinimapView : Control
         "The whole session: arrows pan the timeline's view, plus and minus zoom, Home and End jump to its edges, and 0 "
         + "fits the whole session.", () => null);
 
-    // Brushes are built once per theme mode and reused every frame (R11).
-    private static readonly Dictionary<ThemeMode, (IBrush Ink, IBrush Selected, SolidColorBrush Grid, SolidColorBrush Dim)> Inks = [];
+    // Brushes and pens are built once per theme mode and reused every frame (R11).
+    private static readonly Dictionary<ThemeMode, Ink> Inks = [];
 
-    private static (IBrush Ink, IBrush Selected, SolidColorBrush Grid, SolidColorBrush Dim) Current =>
-        Inks.TryGetValue(Mode, out var ink) ? ink : Inks[Mode] = (
-            Token(ThemePalette.Surfaces(Mode).MutedInk),
-            Token(ThemePalette.Surfaces(Mode).Accent),
-            Token(ThemePalette.Surfaces(Mode).Elevated),
-            Token(ThemePalette.Surfaces(Mode).Plot));
+    private static Ink Current => Inks.TryGetValue(Mode, out Ink? ink) ? ink : Inks[Mode] = new Ink(Mode);
 
-    private static IBrush InkBrush => Current.Ink;
-    private static IBrush SelectedBrush => Current.Selected;
-    private static SolidColorBrush GridBrush => Current.Grid;
-    private static SolidColorBrush DimBrush => Current.Dim;
+    private static IBrush InkBrush => Current.InkBrush;
+    private static IBrush SelectedBrush => Current.SelectedBrush;
 
-    private static SolidColorBrush Token(Srgb value) => new SolidColorBrush(ThemeResources.ToColor(value));
+    /// <summary>The minimap's brushes in one theme mode, from its verified tokens (§6.6).</summary>
+    private sealed class Ink
+    {
+        public Ink(ThemeMode mode)
+        {
+            SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
+            InkBrush = Token(surfaces.MutedInk);
+            SelectedBrush = Token(surfaces.Accent);
+            TrackBrush = new(ThemeResources.ToColor(surfaces.Elevated), 0.35);
+            OutsideBrush = new(ThemeResources.ToColor(surfaces.Plot), 0.55);
+            BrushPen = new(SelectedBrush, 1.5);
+        }
+
+        public IBrush InkBrush { get; }
+        public IBrush SelectedBrush { get; }
+
+        /// <summary>The track the whole session's columns stand on.</summary>
+        public SolidColorBrush TrackBrush { get; }
+
+        /// <summary>What lies outside the timeline's viewport steps back under this.</summary>
+        public SolidColorBrush OutsideBrush { get; }
+
+        /// <summary>The outline of the brush that is the timeline's viewport.</summary>
+        public Pen BrushPen { get; }
+
+        private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
+    }
+
+    // The columns as drawn, their peak and their uncovered runs depend only on the snapshot and the plot's width, so they
+    // are gathered once for each and reused by every repaint between (R11).
+    private WorkspaceSnapshot? cellsFor;
+    private double cellsWidth;
+    private List<Cell> cells = [];
+    private readonly List<(double X1, double X2)> notCovered = [];
+    private double cellsPeak;
 
     /// <summary>The plot margins match the timeline's, so the two axes start and end at the same x.</summary>
     private const double PlotLeft = 38;
@@ -109,14 +136,28 @@ public sealed class MinimapView : Control
         double top = 3;
         double gapTop = Bounds.Height - GapRowHeight - 2;
         double densityBottom = gapTop - 2;
-        context.DrawRectangle(new SolidColorBrush(GridBrush.Color, 0.35), null,
-            new Rect(left, top, right - left, gapTop + GapRowHeight - top));
+        context.DrawRectangle(Current.TrackBrush, null, new Rect(left, top, right - left, gapTop + GapRowHeight - top));
 
-        IReadOnlyList<Cell> cells = Cells(viewModel.Snapshot);
-        double peak = cells.Select(cell => (double)cell.Count).DefaultIfEmpty(0).Max();
-        double height = Math.Max(1, densityBottom - top);
-        foreach (Cell cell in cells.Where(cell => cell.Count > 0))
+        if (!ReferenceEquals(cellsFor, viewModel.Snapshot) || cellsWidth != Bounds.Width)
         {
+            cellsFor = viewModel.Snapshot;
+            cellsWidth = Bounds.Width;
+            cells = Cells(viewModel.Snapshot);
+            cellsPeak = cells.Select(cell => (double)cell.Count).DefaultIfEmpty(0).Max();
+            notCovered.Clear();
+            notCovered.AddRange(NotCoveredRuns(cells));
+        }
+
+        double peak = cellsPeak;
+        double height = Math.Max(1, densityBottom - top);
+        for (int index = 0; index < cells.Count; index++)
+        {
+            Cell cell = cells[index];
+            if (cell.Count == 0)
+            {
+                continue;
+            }
+
             // §6.2 intensity: log2(1 + v) / log2(1 + vScale), above the occupied floor.
             double intensity = Math.Log2(1 + cell.Count) / Math.Log2(1 + peak);
             double drawn = height * (OccupiedFloor + ((1 - OccupiedFloor) * intensity));
@@ -124,8 +165,9 @@ public sealed class MinimapView : Control
         }
 
         // Where the capture itself was not covered, whatever was observed there, the gap row is hatched (§6.6).
-        foreach ((double x1, double x2) in NotCoveredRuns(cells))
+        for (int index = 0; index < notCovered.Count; index++)
         {
+            (double x1, double x2) = notCovered[index];
             TimelineView.DrawCoverageGap(context, new Rect(x1, gapTop, Math.Max(2, x2 - x1), GapRowHeight));
         }
 
@@ -137,10 +179,10 @@ public sealed class MinimapView : Control
         }
 
         (double bx1, double bx2) = Brush();
-        var dim = new SolidColorBrush(DimBrush.Color, 0.55);
+        IBrush dim = Current.OutsideBrush;
         context.DrawRectangle(dim, null, new Rect(left, top, Math.Max(0, bx1 - left), gapTop + GapRowHeight - top));
         context.DrawRectangle(dim, null, new Rect(bx2, top, Math.Max(0, right - bx2), gapTop + GapRowHeight - top));
-        context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1.5),
+        context.DrawRectangle(Brushes.Transparent, Current.BrushPen,
             new Rect(bx1, top - 1, bx2 - bx1, gapTop + GapRowHeight - top + 2));
     }
 

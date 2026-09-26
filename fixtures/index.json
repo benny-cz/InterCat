@@ -793,6 +793,9 @@
         "R10: the time under the pointer survives a zoom across generated viewports",
         "R10: zooming in and back out restores the viewport unless a clamp intervened"
       ],
+      "R11": [
+        "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung"
+      ],
       "R12": [
         "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",
         "R12: desktop graph reads stable layout coordinates instead of evidence-model positions",
@@ -1169,10 +1172,6 @@
       "P9": {
         "reason": "Cross-host ordering claims belong to M4.",
         "plannedBy": "M4"
-      },
-      "R11": {
-        "reason": "Paint loops exist since IC-017 and still allocate and use LINQ every frame (the timeline's visible-bucket arrays, the graph's point dictionary); removing that needs a measured frame budget and an allocation test first.",
-        "plannedBy": "IC-017"
       },
       "R4": {
         "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",

@@ -9,10 +9,34 @@ namespace InterCat.Desktop;
 /// <param name="Counts">Records by mechanism, most first; every count is positive.</param>
 public sealed record LiveEdgeBin(TimeRange Interval, IReadOnlyList<(Mechanism Mechanism, int Count)> Counts)
 {
-    public int Total => Counts.Sum(count => count.Count);
+    /// <summary>Every record in this bin. The live edge redraws it each frame, so it is summed without allocating (R11).</summary>
+    public int Total
+    {
+        get
+        {
+            int total = 0;
+            for (int index = 0; index < Counts.Count; index++)
+            {
+                total += Counts[index].Count;
+            }
+
+            return total;
+        }
+    }
 
     /// <summary>The records of one mechanism in this bin; zero when it has none.</summary>
-    public int CountOf(Mechanism mechanism) => Counts.FirstOrDefault(count => count.Mechanism == mechanism).Count;
+    public int CountOf(Mechanism mechanism)
+    {
+        for (int index = 0; index < Counts.Count; index++)
+        {
+            if (Counts[index].Mechanism == mechanism)
+            {
+                return Counts[index].Count;
+            }
+        }
+
+        return 0;
+    }
 }
 
 /// <summary>

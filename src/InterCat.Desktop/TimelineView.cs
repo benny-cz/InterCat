@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Automation.Peers;
@@ -31,6 +32,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     private static SolidColorBrush ContextBarBrush => Current.ContextBarBrush;
 
     private static Pen HoverPen => Current.HoverPen;
+    private static Pen GridPen => Current.GridPen;
+    private static Pen RulePen => Current.RulePen;
+    private static Pen SelectionPen => Current.SelectionPen;
+    private static Pen RowSelectionPen => Current.RowSelectionPen;
+    private static Pen MarkPen => Current.MarkPen;
+    private static Pen TextPen => Current.TextPen;
 
     /// <summary>The timeline's brushes in one theme mode, from its verified tokens (§6.6).</summary>
     private sealed class Ink
@@ -46,6 +53,31 @@ public sealed class TimelineView : Control, IHoverCardSource
             DimBrush = Token(surfaces.Plot);
             ContextBarBrush = new(ThemeResources.ToColor(surfaces.MutedInk), 0.4);
             HoverPen = new(Token(surfaces.Ink), 1.5);
+            GridPen = new(GridBrush, 1);
+            RulePen = new(GridBrush, 0.7);
+            SelectionPen = new(SelectedBrush, 2);
+            RowSelectionPen = new(SelectedBrush, 1);
+            MarkPen = new(TextBrush, 0.8);
+            TextPen = new(TextBrush, 1);
+            OutsideBrush = new(DimBrush.Color, 0.6);
+            LiveContextBrush = new(ContextBarBrush.Color, 0.25);
+            this.mode = mode;
+        }
+
+        private readonly ThemeMode mode;
+        private readonly Dictionary<Mechanism, SolidColorBrush> liveBrushes = [];
+        private readonly Dictionary<Mechanism, SolidColorBrush> fillBrushes = [];
+
+        /// <summary>A mechanism's fill, built once per mode and reused for every bar (R11).</summary>
+        public SolidColorBrush FillBrush(Mechanism mechanism)
+        {
+            if (!fillBrushes.TryGetValue(mechanism, out SolidColorBrush? brush))
+            {
+                brush = new SolidColorBrush(ThemeResources.FillOf(mechanism, mode));
+                fillBrushes[mechanism] = brush;
+            }
+
+            return brush;
         }
 
         public Pen GapPen { get; }
@@ -55,12 +87,55 @@ public sealed class TimelineView : Control, IHoverCardSource
         public SolidColorBrush DimBrush { get; }
         public SolidColorBrush ContextBarBrush { get; }
         public Pen HoverPen { get; }
+        public Pen GridPen { get; }
+        public Pen RulePen { get; }
+        public Pen SelectionPen { get; }
+        public Pen RowSelectionPen { get; }
+
+        /// <summary>The outline of an L3 record with no data direction, on the midline.</summary>
+        public Pen MarkPen { get; }
+
+        /// <summary>Muted ink at a pixel: evidence marks and the live edge's rule.</summary>
+        public Pen TextPen { get; }
+
+        /// <summary>What lies outside the analysis interval steps back under this.</summary>
+        public SolidColorBrush OutsideBrush { get; }
+
+        /// <summary>A live preview bar of the machine row, fainter than the published context grey.</summary>
+        public SolidColorBrush LiveContextBrush { get; }
+
+        /// <summary>A live preview bar of one mechanism: its fill at half strength, so it never reads as published.</summary>
+        public SolidColorBrush LiveBrush(Mechanism mechanism)
+        {
+            if (!liveBrushes.TryGetValue(mechanism, out SolidColorBrush? brush))
+            {
+                brush = new SolidColorBrush(ThemeResources.FillOf(mechanism, mode), 0.5);
+                liveBrushes[mechanism] = brush;
+            }
+
+            return brush;
+        }
 
         private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
     }
 
     /// <summary>A press that moves at least this far brushes a range; a shorter one selects the bucket under it.</summary>
     private const double BrushThreshold = 4;
+
+    // What one repaint gathers and formats, kept between repaints so a frame that draws the same thing allocates nothing
+    // (R11, §19.4). A label is formatted again only when the value it states changes.
+    private readonly List<TimelineBucket> coarseBuckets = [];
+    private readonly List<TimelineBucket> fineBuckets = [];
+    private readonly Memo<long> generationNote = new();
+    private readonly Memo<(long, long)> startLabel = new();
+    private readonly Memo<(long, long)> endLabel = new();
+    private readonly Memo<double> rateLabel = new();
+    private readonly Memo<(LiveEdge, IReadOnlyList<MechanismTimelineLane>)> liveLabel = new();
+
+    /// <summary>A row's labels by the row they name; rows are immutable, so a label is formatted once per row.</summary>
+    private static readonly Dictionary<(object Row, int Part), string> RowLabels = new(RowKeyComparer.Instance);
+
+    private static readonly Dictionary<(Direction Direction, bool None), string> DirectionLabels = [];
 
     /// <summary>The plot's margins: the axis label gutter on the left and a little air on the right.</summary>
     private const double AggregatePlotLeft = 38;
@@ -189,25 +264,55 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         get
         {
+            // Read many times a frame (the plot's left edge, the lane count, hit tests), and rebuilt only when the rung's
+            // rows, the detail, the overview or the viewport it is checked against change (R11).
             if (DataContext is not WorkspaceViewModel viewModel) return null;
-            (FocusRowKind Kind, IReadOnlyList<TimelineBucket>[] Rows)? found =
-                viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
-                : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
-                : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
+            object? lanes = viewModel.ShowsProcessLanes ? viewModel.ProcessLaneDisplay
+                : viewModel.ShowsDirectionLanes ? viewModel.TimelineDirectionLanes
+                : viewModel.ShowsChannelEndLanes ? viewModel.TimelineChannelEndLanes
                 : null;
-            TimeRange visible = Viewport;
-            if (found is not { Rows.Length: > 0 } rows || !rows.Rows.All(buckets => buckets.Count > 0
-                && buckets[0].Interval.StartTicks <= visible.StartTicks && buckets[^1].Interval.EndTicks >= visible.EndTicks))
+            var key = new FocusRowsKey(viewModel, lanes, viewModel.TimelineDetail, viewModel.Snapshot.Timeline, Viewport);
+            if (focusRowsKey != key)
             {
-                return null;
+                focusRowsKey = key;
+                focusRows = lanes is null ? null : ComputeFocusRows(viewModel);
             }
 
-            IReadOnlyList<TimelineBucket> first = rows.Rows[0];
-            IReadOnlyList<TimelineBucket>? context = viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets)
-                ? detail.Buckets
-                : MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
-            return context is null ? null : new(rows.Kind, context, rows.Rows);
+            return focusRows;
         }
+    }
+
+    private FocusRowsKey? focusRowsKey;
+    private FocusRowSet? focusRows;
+
+    /// <summary>What <see cref="FocusRows"/> depends on, by identity: each is replaced, never changed in place.</summary>
+    private readonly record struct FocusRowsKey(object ViewModel, object? Lanes, object? Detail, object Timeline, TimeRange Visible)
+    {
+        public bool Equals(FocusRowsKey other) => ReferenceEquals(ViewModel, other.ViewModel) && ReferenceEquals(Lanes, other.Lanes)
+            && ReferenceEquals(Detail, other.Detail) && ReferenceEquals(Timeline, other.Timeline) && Visible == other.Visible;
+
+        public override int GetHashCode() => HashCode.Combine(Visible);
+    }
+
+    private FocusRowSet? ComputeFocusRows(WorkspaceViewModel viewModel)
+    {
+        (FocusRowKind Kind, IReadOnlyList<TimelineBucket>[] Rows)? found =
+            viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
+            : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
+            : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
+            : null;
+        TimeRange visible = Viewport;
+        if (found is not { Rows.Length: > 0 } rows || !rows.Rows.All(buckets => buckets.Count > 0
+            && buckets[0].Interval.StartTicks <= visible.StartTicks && buckets[^1].Interval.EndTicks >= visible.EndTicks))
+        {
+            return null;
+        }
+
+        IReadOnlyList<TimelineBucket> first = rows.Rows[0];
+        IReadOnlyList<TimelineBucket>? context = viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets)
+            ? detail.Buckets
+            : MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
+        return context is null ? null : new(rows.Kind, context, rows.Rows);
     }
 
     private bool ShowingLanes => ShowingMechanismLanes || FocusRows is not null;
@@ -328,6 +433,18 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+        if (observed is not null)
+        {
+            observed.PropertyChanged -= OnViewModelChanged;
+        }
+
+        observed = DataContext as WorkspaceViewModel;
+        if (observed is not null)
+        {
+            observed.PropertyChanged += OnViewModelChanged;
+        }
+
+        cardKey = null;
 
         // A newer generation replaces the view model: the zoomed range stays, and its detail is asked for again.
         RefreshLaneLayout();
@@ -397,11 +514,11 @@ public sealed class TimelineView : Control, IHoverCardSource
         double bottom = Math.Max(top + 1, Bounds.Height - PlotBottomMargin);
         double plotWidth = right - left;
         double plotHeight = bottom - top;
-        context.DrawLine(new Pen(GridBrush, 1), new(left, bottom), new(right, bottom));
+        context.DrawLine(GridPen, new(left, bottom), new(right, bottom));
         for (int line = 1; !ShowingLanes && line <= 3; line++)
         {
             double y = top + (plotHeight * line / 4);
-            context.DrawLine(new Pen(GridBrush, 0.7), new(left, y), new(right, y));
+            context.DrawLine(RulePen, new(left, y), new(right, y));
         }
 
         // The overview's coarse buckets stand wherever the viewport's own count has not arrived; the detail replaces
@@ -409,32 +526,44 @@ public sealed class TimelineView : Control, IHoverCardSource
         // side by side are drawn on one honest scale rather than by counts over unequal widths (§6.2).
         SessionTimelineDetail? detail = viewModel.TimelineDetail is { } answered && Intersects(answered.Interval, visible)
             ? answered : null;
-        if (ShowingMechanismLanes && detail is not null
-            && (detail.MechanismLanes.Count != viewModel.Snapshot.MechanismLanes.Count
-                || viewModel.Snapshot.MechanismLanes.Any(lane =>
-                    !detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane.Mechanism))))
+        if (ShowingMechanismLanes && detail is not null && !CoversEveryLane(detail, viewModel.Snapshot.MechanismLanes))
         {
             // A carried or older detail with only some lanes cannot replace an interval for every row or share an
             // honest peak scale with the remaining coarse rows. Keep the complete overview until detail catches up.
             detail = null;
         }
-        TimelineBucket[] coarse = [.. viewModel.Snapshot.Timeline
-            .Where(bucket => Intersects(bucket.Interval, visible)
-                && (detail is null || !Inside(bucket.Interval, detail.Interval)))];
-        TimelineBucket[] fine = detail is null ? [] : [.. detail.Buckets.Where(bucket => Intersects(bucket.Interval, visible))];
+        // The buckets drawn are gathered into buffers this view keeps, so a repaint allocates nothing (R11).
+        List<TimelineBucket> coarse = coarseBuckets;
+        List<TimelineBucket> fine = fineBuckets;
+        coarse.Clear();
+        fine.Clear();
+        IReadOnlyList<TimelineBucket> overview = viewModel.Snapshot.Timeline;
+        for (int index = 0; index < overview.Count; index++)
+        {
+            TimelineBucket bucket = overview[index];
+            if (Intersects(bucket.Interval, visible) && (detail is null || !Inside(bucket.Interval, detail.Interval)))
+            {
+                coarse.Add(bucket);
+            }
+        }
+
+        if (detail is not null)
+        {
+            for (int index = 0; index < detail.Buckets.Count; index++)
+            {
+                if (Intersects(detail.Buckets[index].Interval, visible))
+                {
+                    fine.Add(detail.Buckets[index]);
+                }
+            }
+        }
+
         FocusRowSet? rows = FocusRows;
         double maximumRate = ShowingMechanismLanes
-            ? viewModel.Snapshot.MechanismLanes.SelectMany(lane => lane.Buckets)
-                .Where(bucket => Intersects(bucket.Interval, visible)
-                    && (detail is null || !Inside(bucket.Interval, detail.Interval)))
-                .Concat(detail?.MechanismLanes.SelectMany(lane => lane.Buckets)
-                    .Where(bucket => Intersects(bucket.Interval, visible)) ?? [])
-                .Select(Rate).DefaultIfEmpty(0).Max()
+            ? MechanismLanePeak(viewModel.Snapshot.MechanismLanes, detail, visible)
             : rows is not null
-                ? rows.Context.Concat(DrawnRowBuckets(viewModel, rows))
-                    .Where(bucket => Intersects(bucket.Interval, visible))
-                    .Select(Rate).DefaultIfEmpty(0).Max()
-            : coarse.Concat(fine).Select(Rate).DefaultIfEmpty(0).Max();
+                ? FocusRowPeak(viewModel, rows, visible)
+                : Math.Max(PeakRate(coarse, visible), PeakRate(fine, visible));
         peakRate = maximumRate;
 
         // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
@@ -461,7 +590,8 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
             {
-                string note = $"zoomed detail from generation {detail.Generation:N0}";
+                string note = generationNote.Get(detail.Generation, static generation =>
+                    string.Create(CultureInfo.CurrentCulture, $"zoomed detail from generation {generation:N0}"));
                 DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
             }
         }
@@ -491,14 +621,15 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (detail.Generation != viewModel.DisplayedGeneration)
             {
                 // A paused or held view keeps its generation; a zoomed count reads the newest one and says so.
-                string note = $"zoomed detail from generation {detail.Generation:N0}";
+                string note = generationNote.Get(detail.Generation, static generation =>
+                    string.Create(CultureInfo.CurrentCulture, $"zoomed detail from generation {generation:N0}"));
                 DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
             }
         }
 
         if (rows is null && focused && viewModel.TimelineFocusBuckets is { } focus)
         {
-            DrawFocus(context, focus.Where(bucket => Intersects(bucket.Interval, visible)), scale);
+            DrawFocus(context, focus, scale);
         }
 
         if (LiveEdgePlacement is { } live)
@@ -515,10 +646,14 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
         else
         {
-            DrawText(context, WorkspaceTime.FormatInstant(visible.StartTicks, visible.SpanTicks, CultureInfo.CurrentCulture), new(left, bottom + 7));
-            string end = WorkspaceTime.FormatInstant(visible.EndTicks, visible.SpanTicks, CultureInfo.CurrentCulture);
+            // Only the drawn ticks are formatted, and only when their instant or the span changes (§19.4).
+            DrawText(context, startLabel.Get((visible.StartTicks, visible.SpanTicks), static instant =>
+                WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture)), new(left, bottom + 7));
+            string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
+                WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-            DrawText(context, RateText(maximumRate * WorkspaceTime.TicksPerSecond), new(4, top - 4));
+            DrawText(context, rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate)),
+                new(4, top - 4));
         }
 
         if (HoveredBucket is { } hovered)
@@ -566,19 +701,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             if (FocusRows is { } rows)
             {
-                IReadOnlyList<TimelineBucket> buckets = index == 0 ? rows.Context : rows.Rows[index - 1];
-                return buckets.FirstOrDefault(bucket => bucket.Interval.Contains(tick));
+                return BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
             }
 
             Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
             IReadOnlyList<MechanismTimelineLane> lanes = viewModel.TimelineDetail is { } detail
                 && detail.Interval.Contains(tick)
-                && detail.MechanismLanes.Count == viewModel.Snapshot.MechanismLanes.Count
-                && viewModel.Snapshot.MechanismLanes.All(lane =>
-                    detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane.Mechanism))
+                && CoversEveryLane(detail, viewModel.Snapshot.MechanismLanes)
                     ? detail.MechanismLanes : viewModel.Snapshot.MechanismLanes;
-            return lanes.FirstOrDefault(lane => lane.Mechanism == mechanism)?.Buckets
-                .FirstOrDefault(bucket => bucket.Interval.Contains(tick));
+            return BucketContaining(LaneOf(lanes, mechanism)?.Buckets, tick);
         }
     }
 
@@ -619,10 +750,20 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         get
         {
+            // A card is described once for what lies under the pointer and redrawn as the pointer moves over it (R11).
+            // Any change of the view model's state may change its words, so that forgets it.
             if (HoveredLiveBin is { } liveBin && DataContext is WorkspaceViewModel live)
             {
-                return live.DescribeLiveEdgeHover(liveBin, ShowingMechanismLanes && LaneIndexAt(HoverPoint.Y) is { } lane
-                    ? live.Snapshot.MechanismLanes[lane].Mechanism : null);
+                Mechanism? laneMechanism = ShowingMechanismLanes && LaneIndexAt(HoverPoint.Y) is { } lane
+                    ? live.Snapshot.MechanismLanes[lane].Mechanism : null;
+                var liveKey = new CardKey(live, liveBin, laneMechanism, -1, 0, ThemeResources.CurrentMode);
+                if (cardKey != liveKey)
+                {
+                    cardKey = liveKey;
+                    card = live.DescribeLiveEdgeHover(liveBin, laneMechanism);
+                }
+
+                return card;
             }
 
             if (HoveredBucket is not { } bucket || DataContext is not WorkspaceViewModel viewModel)
@@ -631,18 +772,48 @@ public sealed class TimelineView : Control, IHoverCardSource
             FocusRowKind? kind = FocusRows?.Kind;
             Mechanism? mechanism = ShowingMechanismLanes && index is { } mechanismIndex
                 ? viewModel.Snapshot.MechanismLanes[mechanismIndex].Mechanism : null;
-            ProcessNode? owner = kind == FocusRowKind.Owners && index is > 0
-                ? viewModel.Snapshot.Processes.FirstOrDefault(process =>
-                    process.Id == viewModel.ProcessLaneDisplay[index.Value - 1].ProcessId)
-                : null;
+            var key = new CardKey(viewModel, bucket, mechanism, index ?? -1, peakRate, ThemeResources.CurrentMode);
+            if (cardKey == key)
+            {
+                return card;
+            }
+
+            ProcessNode? owner = kind == FocusRowKind.Owners && index is > 0 ? OwnerOf(viewModel, index.Value - 1) : null;
             Direction? direction = kind == FocusRowKind.Directions && index is > 0
                 ? viewModel.TimelineDirectionLanes![index.Value - 1].Direction : null;
             ChannelEndTimelineLane? end = kind == FocusRowKind.ChannelEnds && index is > 0
                 ? viewModel.TimelineChannelEndLanes![index.Value - 1] : null;
-            return viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
+            cardKey = key;
+            card = viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
                 mechanism, owner, direction, end);
+            return card;
         }
     }
+
+    /// <summary>
+    /// The process an owner row stands for. Kept out of <see cref="HoverCard"/>, whose repeated reads must not allocate:
+    /// a lambda's captured locals are allocated where the method begins, whether or not the lambda runs.
+    /// </summary>
+    private static ProcessNode? OwnerOf(WorkspaceViewModel viewModel, int row)
+    {
+        ProcessInstanceId id = viewModel.ProcessLaneDisplay[row].ProcessId;
+        return viewModel.Snapshot.Processes.FirstOrDefault(process => process.Id == id);
+    }
+
+    private CardKey? cardKey;
+    private HoverCard? card;
+    private WorkspaceViewModel? observed;
+
+    /// <summary>What a card describes: the mark, its row and the scale it was read against, the mark compared by identity.</summary>
+    private readonly record struct CardKey(object ViewModel, object Target, Mechanism? Mechanism, int Row, double Peak, ThemeMode Mode)
+    {
+        public bool Equals(CardKey other) => ReferenceEquals(ViewModel, other.ViewModel) && ReferenceEquals(Target, other.Target)
+            && Mechanism == other.Mechanism && Row == other.Row && Peak.Equals(other.Peak) && Mode == other.Mode;
+
+        public override int GetHashCode() => HashCode.Combine(Row, Peak);
+    }
+
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e) => cardKey = null;
 
     /// <inheritdoc />
     /// <remarks>The resting pointer in this control's coordinates as it lies now, however the control moved under it.</remarks>
@@ -746,23 +917,26 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>A focused rung's own records, each in its bucket's dominant mechanism's hue over the grey of all records.</summary>
-    private static void DrawFocus(DrawingContext context, IEnumerable<TimelineBucket> buckets, BarScale scale)
+    private static void DrawFocus(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale)
     {
-        foreach (TimelineBucket bucket in buckets)
+        for (int index = 0; index < buckets.Count; index++)
         {
-            if (bucket.ObservationCount > 0)
+            TimelineBucket bucket = buckets[index];
+            if (bucket.ObservationCount > 0 && Intersects(bucket.Interval, scale.Visible))
             {
                 context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, scale.Bar(bucket));
             }
         }
     }
 
+    /// <summary>The overview's bars from the buffers <see cref="Render"/> gathered, already limited to the viewport.</summary>
     private static void DrawBuckets(
-        DrawingContext context, WorkspaceViewModel viewModel, IEnumerable<TimelineBucket> buckets, BarScale scale)
+        DrawingContext context, WorkspaceViewModel viewModel, List<TimelineBucket> buckets, BarScale scale)
     {
         double plotHeight = scale.Bottom - scale.Top;
-        foreach (TimelineBucket bucket in buckets)
+        for (int index = 0; index < buckets.Count; index++)
         {
+            TimelineBucket bucket = buckets[index];
             double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
             double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
             double width = Math.Max(1, x2 - x1 - 2);
@@ -774,7 +948,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 context.DrawRectangle(scale.Focused ? ContextBarBrush : BrushFor(bucket.DominantMechanism), null, rectangle);
                 if (viewModel.SelectedInterval == bucket.Interval)
                 {
-                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), rectangle.Inflate(2));
+                    context.DrawRectangle(Brushes.Transparent, SelectionPen, rectangle.Inflate(2));
                 }
             }
 
@@ -801,11 +975,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             MechanismTimelineLane lane = lanes[index];
             Rect row = LaneRow(index, lanes.Count, scale.Top, scale.Bottom);
             double baseline = row.Bottom - 5;
-            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+            context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             if (viewModel.SelectedTimelineMechanism == lane.Mechanism)
             {
-                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                context.DrawRectangle(Brushes.Transparent, RowSelectionPen,
                     new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
             }
             context.DrawRectangle(BrushFor(lane.Mechanism), null, new Rect(8, row.Center.Y - 3, 6, 6));
@@ -813,9 +987,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
                 row.Top + 3, baseline, scale.MaximumRate, Focused: false);
 
-            TimelineBucket[] coarse = [.. lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible))];
-            MechanismTimelineLane? detailLane = detail?.MechanismLanes
-                .FirstOrDefault(candidate => candidate.Mechanism == lane.Mechanism);
+            IReadOnlyList<TimelineBucket> coarse = lane.Buckets;
+            MechanismTimelineLane? detailLane = LaneOf(detail?.MechanismLanes, lane.Mechanism);
             if (detail is null || detailLane is null)
             {
                 DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
@@ -836,8 +1009,7 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             using (context.PushClip(new Rect(x1, row.Top, Math.Max(0, x2 - x1), row.Height)))
             {
-                DrawLaneSeries(context, viewModel, lane.Mechanism,
-                    detailLane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible)), laneScale, row);
+                DrawLaneSeries(context, viewModel, lane.Mechanism, detailLane.Buckets, laneScale, row);
             }
         }
     }
@@ -850,7 +1022,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         for (int index = 0; index < count; index++)
         {
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
-            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+            context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
                 row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
@@ -858,26 +1030,20 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
                 DrawLaneSeries(context, viewModel, null,
-                    machine.Where(bucket => Intersects(bucket.Interval, scale.Visible)), rowScale, row, contextRow: true);
+                    machine, rowScale, row, contextRow: true);
                 continue;
             }
 
             ProcessTimelineLane lane = lanes[index - 1];
-            ProcessNode? process = viewModel.Snapshot.Processes.FirstOrDefault(node => node.Id == lane.ProcessId);
-            string name = process?.Name ?? "Process";
-            string shortName = name.Length > 14 ? name[..13] + "…" : name;
-            string label = process is null ? $"{shortName} · {lane.ProcessId.Value.ToString("N")[..6]}"
-                : name == ProcessNode.PidName(process.ProcessId) ? name
-                : $"{shortName} · PID {process.ProcessId}";
+            string label = RowLabel(lane, 0, viewModel, static (row, _, model) => OwnerLabel((ProcessTimelineLane)row, model));
             if (viewModel.SelectedProcess?.Id == lane.ProcessId)
             {
-                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                context.DrawRectangle(Brushes.Transparent, RowSelectionPen,
                     new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
             }
 
             DrawText(context, label, new(9, row.Center.Y - 7));
-            DrawLaneSeries(context, viewModel, null,
-                lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible)), rowScale, row);
+            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row);
         }
     }
 
@@ -889,7 +1055,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         for (int index = 0; index < count; index++)
         {
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
-            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+            context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
                 row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
@@ -897,25 +1063,25 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
                 DrawLaneSeries(context, viewModel, null,
-                    machine.Where(bucket => Intersects(bucket.Interval, scale.Visible)), rowScale, row, contextRow: true);
+                    machine, rowScale, row, contextRow: true);
                 continue;
             }
 
             DirectionTimelineLane lane = lanes[index - 1];
-            TimelineBucket[] drawn = [.. lane.Buckets.Where(bucket => Intersects(bucket.Interval, scale.Visible))];
 
             // A row with nothing drawn still carries its coverage strip; naming it empty keeps that strip from being
             // read as records, and says the source reported no record of this direction here.
-            string label = WorkspaceViewModel.DirectionLabel(lane.Direction)
-                + (drawn.Any(bucket => bucket.ObservationCount > 0) ? string.Empty : " · none");
+            bool none = !AnyObserved(lane.Buckets, scale.Visible);
+            string label = DirectionLabels.TryGetValue((lane.Direction, none), out string? known) ? known
+                : DirectionLabels[(lane.Direction, none)] = WorkspaceViewModel.DirectionLabel(lane.Direction) + (none ? " · none" : string.Empty);
             if (viewModel.SelectedTimelineDirection == lane.Direction)
             {
-                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                context.DrawRectangle(Brushes.Transparent, RowSelectionPen,
                     new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
             }
 
             DrawText(context, label, new(9, row.Center.Y - 7));
-            DrawLaneSeries(context, viewModel, null, drawn, rowScale, row);
+            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row);
         }
     }
 
@@ -929,52 +1095,91 @@ public sealed class TimelineView : Control, IHoverCardSource
     private void DrawLiveEdge(DrawingContext context, WorkspaceViewModel viewModel, LiveEdgeArea live,
         FocusRowSet? rows, double top, double bottom, double maximumRate)
     {
-        double scaleRate = maximumRate > 0
-            ? maximumRate
-            : live.Edge.Bins.Select(bin => (double)bin.Total / Math.Max(1, bin.Interval.SpanTicks)).DefaultIfEmpty(0).Max();
+        double scaleRate = maximumRate > 0 ? maximumRate : LivePeak(live.Edge.Bins);
         double ruleX = live.Left - (LiveEdgeGap / 2);
-        context.DrawLine(new Pen(TextBrush, 1, new DashStyle([3, 3], 0)), new(ruleX, top), new(ruleX, bottom));
+        DrawDashedRule(context, TextPen, ruleX, top, bottom);
         if (ShowingMechanismLanes)
         {
             // A mechanism first seen after the last publication has no lane until it publishes; the label names it, and
             // hovering the edge on any lane lists it, so no previewed record is silently undrawn.
             IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
-            Mechanism[] unlaned = [.. live.Edge.Bins.SelectMany(bin => bin.Counts.Select(count => count.Mechanism)).Distinct()
-                .Where(mechanism => lanes.All(lane => lane.Mechanism != mechanism)).Order()];
-            DrawText(context, unlaned.Length switch
-            {
-                0 => "live",
-                1 => $"live · +{EvidenceRowText.MechanismName(unlaned[0])}",
-                _ => $"live · +{unlaned.Length} mechanisms",
-            }, new(live.Left, top - 16));
+            DrawText(context, liveLabel.Get((live.Edge, lanes), static key => LiveLabel(key.Item1, key.Item2)),
+                new(live.Left, top - 16));
             for (int index = 0; index < lanes.Count; index++)
             {
                 Rect row = LaneRow(index, lanes.Count, top, bottom);
-                Mechanism mechanism = lanes[index].Mechanism;
-                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, 0.42, bin => (bin.CountOf(mechanism), mechanism));
+                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, 0.42, LiveBars.Lane, lanes[index].Mechanism);
             }
         }
         else if (rows is not null)
         {
             DrawText(context, "live", new(live.Left, top - 16));
             Rect machine = LaneRow(0, rows.Rows.Count + 1, top, bottom);
-            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, 0.42, bin => (bin.Total, null));
+            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, 0.42, LiveBars.Machine, default);
         }
         else
         {
             DrawText(context, "live", new(live.Left, top - 16));
-            DrawLiveBars(context, live, top, bottom, scaleRate, 0, bin => (bin.Total, bin.Counts[0].Mechanism));
+            DrawLiveBars(context, live, top, bottom, scaleRate, 0, LiveBars.Dominant, default);
         }
     }
 
-    /// <summary>One row of preview bars; a null hue draws them as the machine row's context grey.</summary>
+    /// <summary>
+    /// The live edge's label at L0: it names a mechanism first seen after the last publication, which has no lane until it
+    /// publishes, so no previewed record is silently undrawn. Formatted only when the preview or the lanes change.
+    /// </summary>
+    private static string LiveLabel(LiveEdge edge, IReadOnlyList<MechanismTimelineLane> lanes)
+    {
+        Mechanism[] unlaned = [.. edge.Bins.SelectMany(bin => bin.Counts.Select(count => count.Mechanism)).Distinct()
+            .Where(mechanism => lanes.All(lane => lane.Mechanism != mechanism)).Order()];
+        return unlaned.Length switch
+        {
+            0 => "live",
+            1 => $"live · +{EvidenceRowText.MechanismName(unlaned[0])}",
+            _ => $"live · +{unlaned.Length} mechanisms",
+        };
+    }
+
+    /// <summary>The preview's own peak rate, the scale it is drawn on while nothing published is visible.</summary>
+    private static double LivePeak(IReadOnlyList<LiveEdgeBin> bins)
+    {
+        double peak = 0;
+        for (int index = 0; index < bins.Count; index++)
+        {
+            peak = Math.Max(peak, (double)bins[index].Total / Math.Max(1, bins[index].Interval.SpanTicks));
+        }
+
+        return peak;
+    }
+
+    /// <summary>What a row of preview bars counts and in which hue.</summary>
+    private enum LiveBars
+    {
+        /// <summary>An L0 lane: its own mechanism's records, in its hue.</summary>
+        Lane,
+
+        /// <summary>A focused rung's machine row: every record, in the context grey.</summary>
+        Machine,
+
+        /// <summary>The aggregate plot: every record, in the bin's first mechanism's hue.</summary>
+        Dominant,
+    }
+
+    /// <summary>One row of preview bars.</summary>
     private static void DrawLiveBars(DrawingContext context, LiveEdgeArea live, double top, double bottom, double scaleRate,
-        double floor, Func<LiveEdgeBin, (int Count, Mechanism? Hue)> read)
+        double floor, LiveBars bars, Mechanism lane)
     {
         double height = Math.Max(1, bottom - top);
-        foreach (LiveEdgeBin bin in live.Edge.Bins)
+        IReadOnlyList<LiveEdgeBin> bins = live.Edge.Bins;
+        for (int index = 0; index < bins.Count; index++)
         {
-            (int count, Mechanism? hue) = read(bin);
+            LiveEdgeBin bin = bins[index];
+            (int count, Mechanism? hue) = bars switch
+            {
+                LiveBars.Lane => (bin.CountOf(lane), lane),
+                LiveBars.Machine => (bin.Total, (Mechanism?)null),
+                _ => (bin.Total, bin.Counts[0].Mechanism),
+            };
             if (count == 0)
             {
                 continue;
@@ -983,9 +1188,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             (double x1, double x2) = live.Columns(bin);
             double rate = (double)count / Math.Max(1, bin.Interval.SpanTicks);
             double bar = Math.Clamp(height * rate / Math.Max(double.Epsilon, scaleRate), Math.Min(height, Math.Max(3, height * floor)), height);
-            IBrush fill = hue is { } mechanism
-                ? new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode), 0.5)
-                : new SolidColorBrush(ContextBarBrush.Color, 0.25);
+            IBrush fill = hue is { } mechanism ? Current.LiveBrush(mechanism) : Current.LiveContextBrush;
             context.DrawRectangle(fill, null, new Rect(x1, bottom - bar, Math.Max(1, x2 - x1 - 1), bar));
         }
     }
@@ -996,12 +1199,6 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private static double BandHeight(TimelineBucket bucket, double half, double maximumRate) =>
         Math.Min(half, Math.Max(half * 0.42, half * Rate(bucket) / Math.Max(double.Epsilon, maximumRate)));
-
-    /// <summary>The buckets a focused rung draws as bars: each row's, or at L3 each end's two direction bands.</summary>
-    private static IEnumerable<TimelineBucket> DrawnRowBuckets(WorkspaceViewModel viewModel, FocusRowSet rows) =>
-        rows.Kind == FocusRowKind.ChannelEnds
-            ? viewModel.TimelineChannelEndLanes!.SelectMany(end => end.Outbound.Concat(end.Inbound))
-            : rows.Rows.SelectMany(buckets => buckets);
 
     /// <summary>
     /// L3's two ends under the machine row (§3.2): outbound records rise above each end's midline and inbound records fall
@@ -1015,13 +1212,13 @@ public sealed class TimelineView : Control, IHoverCardSource
         for (int index = 0; index < count; index++)
         {
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
-            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, row.Bottom),
+            context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             if (index == 0)
             {
                 DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
                 DrawLaneSeries(context, viewModel, null,
-                    machine.Where(bucket => Intersects(bucket.Interval, scale.Visible)),
+                    machine,
                     new BarScale(scale.Visible, scale.Left, scale.PlotWidth, row.Top + 3, row.Bottom - 5,
                         scale.MaximumRate, Focused: false),
                     row, contextRow: true);
@@ -1031,20 +1228,21 @@ public sealed class TimelineView : Control, IHoverCardSource
             ChannelEndTimelineLane end = ends[index - 1];
             if (viewModel.SelectedChannelEnd == end.End)
             {
-                context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 1),
+                context.DrawRectangle(Brushes.Transparent, RowSelectionPen,
                     new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
             }
 
             // Two lines: who holds the end, then the end's own endpoint, which tells a looped process's ends apart.
-            string holder = viewModel.ChannelEndHolder(end);
-            DrawText(context, holder.Length > 24 ? holder[..23] + "…" : holder, new(9, row.Center.Y - 14));
-            DrawText(context, end.Endpoint.Length > 24 ? end.Endpoint[..23] + "…" : end.Endpoint, new(9, row.Center.Y + 1));
+            DrawText(context, RowLabel(end, 0, viewModel, static (row, _, model) =>
+                Shortened(model.ChannelEndHolder((ChannelEndTimelineLane)row), 24)), new(9, row.Center.Y - 14));
+            DrawText(context, RowLabel(end, 1, viewModel, static (row, _, _) =>
+                Shortened(((ChannelEndTimelineLane)row).Endpoint, 24)), new(9, row.Center.Y + 1));
 
             // The bands keep clear of the coverage strip along the row's foot; the arrows name their sides in place.
             double bandTop = row.Top + 3;
             double middle = (bandTop + row.Bottom - 6) / 2;
             double half = Math.Max(1, middle - bandTop - 1);
-            context.DrawLine(new Pen(GridBrush, 0.7), new(scale.Left, middle), new(scale.Left + scale.PlotWidth, middle));
+            context.DrawLine(RulePen, new(scale.Left, middle), new(scale.Left + scale.PlotWidth, middle));
             DrawText(context, "↑", new(scale.Left - 12, middle - 13));
             DrawText(context, "↓", new(scale.Left - 12, middle - 1));
             for (int bucketIndex = 0; bucketIndex < end.Buckets.Count; bucketIndex++)
@@ -1074,13 +1272,13 @@ public sealed class TimelineView : Control, IHoverCardSource
                     - end.Inbound[bucketIndex].ObservationCount > 0)
                 {
                     Rect mark = new(x1, middle - 2.5, width, 5);
-                    context.DrawRectangle(ContextBarBrush, new Pen(TextBrush, 0.8), mark);
+                    context.DrawRectangle(ContextBarBrush, MarkPen, mark);
                     drawn = drawn is { } union ? union.Union(mark) : mark;
                 }
 
                 if (drawn is { } selectedBar && viewModel.SelectedInterval == total.Interval)
                 {
-                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), selectedBar.Inflate(1));
+                    context.DrawRectangle(Brushes.Transparent, SelectionPen, selectedBar.Inflate(1));
                 }
 
                 if (total.Coverage != CoverageState.Covered)
@@ -1093,12 +1291,19 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
+    /// <summary>One row's bars and coverage for the buckets of <paramref name="buckets"/> that the viewport shows.</summary>
     private static void DrawLaneSeries(DrawingContext context, WorkspaceViewModel viewModel,
-        Mechanism? mechanism, IEnumerable<TimelineBucket> buckets, BarScale scale, Rect row,
+        Mechanism? mechanism, IReadOnlyList<TimelineBucket> buckets, BarScale scale, Rect row,
         bool contextRow = false)
     {
-        foreach (TimelineBucket bucket in buckets)
+        for (int index = 0; index < buckets.Count; index++)
         {
+            TimelineBucket bucket = buckets[index];
+            if (!Intersects(bucket.Interval, scale.Visible))
+            {
+                continue;
+            }
+
             double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
             double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
             double width = Math.Max(1, x2 - x1 - 2);
@@ -1111,7 +1316,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                     null, bar);
                 if (viewModel.SelectedInterval == bucket.Interval)
                 {
-                    context.DrawRectangle(Brushes.Transparent, new Pen(SelectedBrush, 2), bar.Inflate(1));
+                    context.DrawRectangle(Brushes.Transparent, SelectionPen, bar.Inflate(1));
                 }
             }
 
@@ -1147,10 +1352,10 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         // Everything outside the range is dimmed rather than the range tinted, so the counted records keep their true
         // mechanism hue (§6.6) while the rest steps back.
-        var dim = new SolidColorBrush(DimBrush.Color, 0.6);
+        IBrush dim = Current.OutsideBrush;
         context.DrawRectangle(dim, null, new Rect(left, top, Math.Max(0, x1 - left), bottom - top));
         context.DrawRectangle(dim, null, new Rect(x2, top, Math.Max(0, left + plotWidth - x2), bottom - top));
-        var edge = new Pen(SelectedBrush, 2);
+        Pen edge = SelectionPen;
         context.DrawLine(edge, new(x1, top), new(x1, bottom));
         context.DrawLine(edge, new(x2, top), new(x2, bottom));
         context.DrawRectangle(SelectedBrush, null, new Rect(x1, top - 6, x2 - x1, 3));
@@ -1170,7 +1375,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
 
-        var pen = new Pen(TextBrush, 1);
+        Pen pen = TextPen;
         double markTop = bottom - 10;
         double lastX = double.NaN;
         foreach (long tick in marks)
@@ -1193,7 +1398,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (viewModel.SelectedEvidenceTick is { } selected && visible.Contains(selected))
         {
             double x = left + ViewportMath.PixelAtTick(visible, selected, plotWidth);
-            context.DrawLine(new Pen(SelectedBrush, 2), new(x, top), new(x, bottom));
+            context.DrawLine(SelectionPen, new(x, top), new(x, bottom));
         }
     }
 
@@ -1423,9 +1628,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>The finest bucket drawn at a tick: the zoomed detail where it has arrived, else the overview's.</summary>
     private static TimelineBucket? BucketAt(WorkspaceViewModel viewModel, long tick) =>
-        (viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
+        BucketContaining(viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
             ? detail.Buckets
-            : viewModel.Snapshot.Timeline).FirstOrDefault(candidate => candidate.Interval.Contains(tick));
+            : viewModel.Snapshot.Timeline, tick);
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
@@ -1458,8 +1663,10 @@ public sealed class TimelineView : Control, IHoverCardSource
             LiveEdgeBin? nearest = null;
             double best = 6;
             double x = HoverPoint.X;
-            foreach (LiveEdgeBin bin in live.Edge.Bins)
+            IReadOnlyList<LiveEdgeBin> bins = live.Edge.Bins;
+            for (int index = 0; index < bins.Count; index++)
             {
+                LiveEdgeBin bin = bins[index];
                 (double x1, double x2) = live.Columns(bin);
                 double distance = x < x1 ? x1 - x : x > x2 ? x - x2 : 0;
                 if (distance < best)
@@ -1708,13 +1915,203 @@ public sealed class TimelineView : Control, IHoverCardSource
     private static bool Inside(TimeRange inner, TimeRange outer) =>
         inner.StartTicks >= outer.StartTicks && inner.EndTicks <= outer.EndTicks;
 
-    /// <summary>Hue comes from the mechanism's family token; nothing else may assign it (section 6.6, R5).</summary>
-    private static SolidColorBrush BrushFor(Mechanism mechanism) =>
-        new SolidColorBrush(ThemeResources.FillOf(mechanism, Mode));
-
-    internal static void DrawText(DrawingContext context, string text, Point origin)
+    /// <summary>The last string formatted for a key: a repaint with the same key reuses it rather than formatting anew.</summary>
+    private sealed class Memo<TKey>
     {
-        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new("Segoe UI"), 10, TextBrush);
-        context.DrawText(formatted, origin);
+        private TKey? key;
+        private string? text;
+
+        public string Get(TKey value, Func<TKey, string> format)
+        {
+            if (text is null || !EqualityComparer<TKey>.Default.Equals(key, value))
+            {
+                key = value;
+                text = format(value);
+            }
+
+            return text;
+        }
+    }
+
+    /// <summary>Rows are compared by identity: two rows with equal values are still two rows with their own labels.</summary>
+    private sealed class RowKeyComparer : IEqualityComparer<(object Row, int Part)>
+    {
+        public static readonly RowKeyComparer Instance = new();
+
+        public bool Equals((object Row, int Part) x, (object Row, int Part) y) =>
+            ReferenceEquals(x.Row, y.Row) && x.Part == y.Part;
+
+        public int GetHashCode((object Row, int Part) obj) =>
+            HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.Row), obj.Part);
+    }
+
+    /// <summary>Part <paramref name="part"/> of a row's label, formatted the first time that row is drawn.</summary>
+    private static string RowLabel(object row, int part, WorkspaceViewModel viewModel,
+        Func<object, int, WorkspaceViewModel, string> format)
+    {
+        if (!RowLabels.TryGetValue((row, part), out string? label))
+        {
+            if (RowLabels.Count > 512)
+            {
+                RowLabels.Clear();
+            }
+
+            label = format(row, part, viewModel);
+            RowLabels[(row, part)] = label;
+        }
+
+        return label;
+    }
+
+    /// <summary>An owner row's name: its executable and PID, or its instance when the process left no name.</summary>
+    private static string OwnerLabel(ProcessTimelineLane lane, WorkspaceViewModel viewModel)
+    {
+        ProcessNode? process = viewModel.Snapshot.Processes.FirstOrDefault(node => node.Id == lane.ProcessId);
+        string name = process?.Name ?? "Process";
+        string shortName = Shortened(name, 14);
+        return process is null ? $"{shortName} · {lane.ProcessId.Value.ToString("N")[..6]}"
+            : name == ProcessNode.PidName(process.ProcessId) ? name
+            : $"{shortName} · PID {process.ProcessId}";
+    }
+
+    /// <summary><paramref name="text"/>, cut to <paramref name="length"/> characters with an ellipsis when longer.</summary>
+    private static string Shortened(string text, int length) => text.Length > length ? text[..(length - 1)] + "…" : text;
+
+    /// <summary>Whether a detail answers every overview lane, so it may replace their columns and share their scale.</summary>
+    private static bool CoversEveryLane(SessionTimelineDetail detail, IReadOnlyList<MechanismTimelineLane> lanes)
+    {
+        if (detail.MechanismLanes.Count != lanes.Count)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < lanes.Count; index++)
+        {
+            if (LaneOf(detail.MechanismLanes, lanes[index].Mechanism) is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static MechanismTimelineLane? LaneOf(IReadOnlyList<MechanismTimelineLane>? lanes, Mechanism mechanism)
+    {
+        for (int index = 0; lanes is not null && index < lanes.Count; index++)
+        {
+            if (lanes[index].Mechanism == mechanism)
+            {
+                return lanes[index];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The highest rate among the buckets the viewport shows, leaving out any inside <paramref name="except"/>.</summary>
+    private static double PeakRate(IReadOnlyList<TimelineBucket> buckets, TimeRange visible, TimeRange? except = null)
+    {
+        double peak = 0;
+        for (int index = 0; index < buckets.Count; index++)
+        {
+            TimelineBucket bucket = buckets[index];
+            if (Intersects(bucket.Interval, visible) && (except is not { } skipped || !Inside(bucket.Interval, skipped)))
+            {
+                peak = Math.Max(peak, Rate(bucket));
+            }
+        }
+
+        return peak;
+    }
+
+    /// <summary>L0's shared scale: every lane's overview columns outside the detail, and the detail's own columns.</summary>
+    private static double MechanismLanePeak(
+        IReadOnlyList<MechanismTimelineLane> lanes, SessionTimelineDetail? detail, TimeRange visible)
+    {
+        double peak = 0;
+        for (int index = 0; index < lanes.Count; index++)
+        {
+            peak = Math.Max(peak, PeakRate(lanes[index].Buckets, visible, detail?.Interval));
+        }
+
+        for (int index = 0; detail is not null && index < detail.MechanismLanes.Count; index++)
+        {
+            peak = Math.Max(peak, PeakRate(detail.MechanismLanes[index].Buckets, visible));
+        }
+
+        return peak;
+    }
+
+    /// <summary>A focused rung's shared scale: the machine context and the bars its rows draw, at L3 each end's two bands.</summary>
+    private static double FocusRowPeak(WorkspaceViewModel viewModel, FocusRowSet rows, TimeRange visible)
+    {
+        double peak = PeakRate(rows.Context, visible);
+        if (rows.Kind == FocusRowKind.ChannelEnds)
+        {
+            IReadOnlyList<ChannelEndTimelineLane> ends = viewModel.TimelineChannelEndLanes!;
+            for (int index = 0; index < ends.Count; index++)
+            {
+                peak = Math.Max(peak, Math.Max(PeakRate(ends[index].Outbound, visible), PeakRate(ends[index].Inbound, visible)));
+            }
+
+            return peak;
+        }
+
+        for (int index = 0; index < rows.Rows.Count; index++)
+        {
+            peak = Math.Max(peak, PeakRate(rows.Rows[index], visible));
+        }
+
+        return peak;
+    }
+
+    /// <summary>Whether any bucket the viewport shows holds a record.</summary>
+    private static bool AnyObserved(IReadOnlyList<TimelineBucket> buckets, TimeRange visible)
+    {
+        for (int index = 0; index < buckets.Count; index++)
+        {
+            if (buckets[index].ObservationCount > 0 && Intersects(buckets[index].Interval, visible))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The bucket whose half-open interval holds <paramref name="tick"/>, if any.</summary>
+    private static TimelineBucket? BucketContaining(IReadOnlyList<TimelineBucket>? buckets, long tick)
+    {
+        for (int index = 0; buckets is not null && index < buckets.Count; index++)
+        {
+            if (buckets[index].Interval.Contains(tick))
+            {
+                return buckets[index];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Hue comes from the mechanism's family token; nothing else may assign it (section 6.6, R5).</summary>
+    private static SolidColorBrush BrushFor(Mechanism mechanism) => Current.FillBrush(mechanism);
+
+    /// <summary>Labels are laid out once per text and theme and drawn without allocating (R11).</summary>
+    private static readonly PaneText Labels = new(256);
+
+    internal static void DrawText(DrawingContext context, string text, Point origin) =>
+        Labels.Get(text, 10, TextBrush).Draw(context, origin);
+
+    /// <summary>
+    /// A vertical rule dashed 3 px on and 3 px off, drawn as solid segments: a dashed pen makes the drawing layer allocate
+    /// a dash effect on every stroke (R11).
+    /// </summary>
+    private static void DrawDashedRule(DrawingContext context, Pen pen, double x, double top, double bottom)
+    {
+        for (double y = top; y < bottom; y += 6)
+        {
+            context.DrawLine(pen, new(x, y), new(x, Math.Min(bottom, y + 3)));
+        }
     }
 }
