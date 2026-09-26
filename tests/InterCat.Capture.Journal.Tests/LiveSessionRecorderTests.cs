@@ -279,12 +279,16 @@ public sealed class LiveSessionRecorderTests
         var host = new ScriptedHost();
         long now = Stopwatch.GetTimestamp();
 
-        // Three bursts apart: every pause lets a small publication go out, and two of them make a compaction due.
+        // Three bursts apart: each waits until the burst before it went out as a small publication of its own, and two of
+        // them make a compaction due. A fixed pause could let two bursts share a publication on a busy machine.
         for (int index = 0; index < 6; index++)
         {
             if (index is 2 or 4)
             {
-                host.Pause(TimeSpan.FromMilliseconds(400));
+                int published = index / 2;
+                host.PauseUntil(() => store.Current is { } current
+                    && current.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) >= published,
+                    TimeSpan.FromSeconds(30));
             }
 
             host.Admit(new AdmittedEvent

@@ -36,6 +36,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     private static Pen RulePen => Current.RulePen;
     private static Pen SelectionPen => Current.SelectionPen;
     private static Pen RowSelectionPen => Current.RowSelectionPen;
+    private static Pen HighlightPen => Current.HighlightPen;
     private static Pen MarkPen => Current.MarkPen;
     private static Pen TextPen => Current.TextPen;
 
@@ -57,6 +58,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             RulePen = new(GridBrush, 0.7);
             SelectionPen = new(SelectedBrush, 2);
             RowSelectionPen = new(SelectedBrush, 1);
+            HighlightPen = new(SelectedBrush, 2);
             MarkPen = new(TextBrush, 0.8);
             TextPen = new(TextBrush, 1);
             OutsideBrush = new(DimBrush.Color, 0.6);
@@ -91,6 +93,9 @@ public sealed class TimelineView : Control, IHoverCardSource
         public Pen RulePen { get; }
         public Pen SelectionPen { get; }
         public Pen RowSelectionPen { get; }
+
+        /// <summary>The outline around the selection's share of a bar (§6.4, §6.6).</summary>
+        public Pen HighlightPen { get; }
 
         /// <summary>The outline of an L3 record with no data direction, on the midline.</summary>
         public Pen MarkPen { get; }
@@ -632,6 +637,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             DrawFocus(context, focus, scale);
         }
 
+        if (rows is null && !ShowingMechanismLanes && viewModel.TimelineHighlightBuckets is { } highlighted)
+        {
+            DrawHighlight(context, highlighted, scale);
+        }
+
         if (LiveEdgePlacement is { } live)
         {
             DrawLiveEdge(context, viewModel, live, rows, top, bottom, maximumRate);
@@ -929,6 +939,25 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
+    /// <summary>
+    /// The selection's share of each bar (§6.4): a rounded outline in the accent token around the height its own records
+    /// would draw on the same scale, §6.6's encoding for selection. It sits just outside the bar's sides, so it reads
+    /// against the plot whatever the bar's hue, and its top crosses the bar where the selection's share ends. It adds no
+    /// fill, so it never reads as a mechanism's hue; it marks part of a bar, so it is not the selected interval's frame
+    /// around a whole one, nor the pointer's full-height outline.
+    /// </summary>
+    private static void DrawHighlight(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale)
+    {
+        for (int index = 0; index < buckets.Count; index++)
+        {
+            TimelineBucket bucket = buckets[index];
+            if (bucket.ObservationCount > 0 && Intersects(bucket.Interval, scale.Visible))
+            {
+                context.DrawRectangle(null, HighlightPen, scale.Bar(bucket).Inflate(1.5), 2, 2);
+            }
+        }
+    }
+
     /// <summary>The overview's bars from the buffers <see cref="Render"/> gathered, already limited to the viewport.</summary>
     private static void DrawBuckets(
         DrawingContext context, WorkspaceViewModel viewModel, List<TimelineBucket> buckets, BarScale scale)
@@ -992,6 +1021,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (detail is null || detailLane is null)
             {
                 DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+                DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
                 continue;
             }
 
@@ -1011,6 +1041,17 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 DrawLaneSeries(context, viewModel, lane.Mechanism, detailLane.Buckets, laneScale, row);
             }
+
+            DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+        }
+    }
+
+    /// <summary>A mechanism lane's share of the selection's highlight, when the selection holds records of that mechanism.</summary>
+    private static void DrawLaneHighlight(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism, BarScale scale)
+    {
+        if (LaneOf(viewModel.TimelineHighlightLanes, mechanism) is { } marked)
+        {
+            DrawHighlight(context, marked.Buckets, scale);
         }
     }
 

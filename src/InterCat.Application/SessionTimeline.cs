@@ -146,6 +146,12 @@ public sealed class TimelineFocus
 /// </summary>
 public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOnlyList<TimelineBucket> Focus)
 {
+    /// <summary>
+    /// Focus split by mechanism on the same columns, one lane per mechanism it holds, so a view drawn in mechanism lanes
+    /// can mark each lane's share of the focus.
+    /// </summary>
+    public IReadOnlyList<MechanismTimelineLane> FocusLanes { get; init; } = [];
+
     /// <summary>When a group fits the lane budget, these owner rows partition Focus on the same columns.</summary>
     public IReadOnlyList<ProcessTimelineLane> ProcessLanes { get; init; } = [];
 
@@ -326,6 +332,7 @@ public static class SessionTimelineQuery
         };
         return new(whole, focused is null ? [] : Array.AsReadOnly(focused.Buckets(coverage, clock)))
         {
+            FocusLanes = focused is null ? [] : Array.AsReadOnly(focused.MechanismLanes(coverage, clock)),
             ProcessLanes = processColumns is null ? [] : Array.AsReadOnly([.. focus!.OwnerProcesses.Select(owner =>
                 new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))]),
             DirectionLanes = directionColumns is null ? [] : Array.AsReadOnly([.. LaneDirections.Select(direction =>

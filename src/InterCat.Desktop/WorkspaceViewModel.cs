@@ -92,7 +92,10 @@ public sealed record TimelineCarry(
     IReadOnlyList<ProcessTimelineLane>? ProcessLanes = null,
     string? ProcessLaneProblem = null,
     IReadOnlyList<DirectionTimelineLane>? DirectionLanes = null,
-    IReadOnlyList<ChannelEndTimelineLane>? ChannelEndLanes = null);
+    IReadOnlyList<ChannelEndTimelineLane>? ChannelEndLanes = null,
+    string? HighlightKey = null,
+    IReadOnlyList<TimelineBucket>? Highlight = null,
+    IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null);
 
 public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -180,6 +183,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private string? processLaneProblem;
     private bool timelineFocusLoading;
     private string? timelineFocusProblem;
+
+    // The selection's highlight in the timeline (§6.4): the selected entity's records, counted on the columns the timeline
+    // draws and marked as a share of each bar. It is not a filter, and a selection that is the rung's own focus adds none.
+    private TimelineFocus? highlight;
+    private string? highlightName;
+
+    // A channel chosen among a process's rows; any other selection, and every navigation, lets it go.
+    private string? chosenChannelKey;
+    private CancellationTokenSource? highlightQuery;
+    private (TimeRange Viewport, int Columns, string Focus)? requestedHighlight;
+    private IReadOnlyList<TimelineBucket>? highlightBuckets;
+    private IReadOnlyList<MechanismTimelineLane>? highlightLanes;
     private IReadOnlyList<IntervalRow> intervals;
     private readonly ReadOnlyCollection<TimelineLaneOption> timelineLaneOptions;
     private TimelineLaneOption selectedTimelineLane = new(null, "All mechanisms");
@@ -406,6 +421,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         drawnTimeline = (viewport, columns);
+        RequestHighlight();
         TimeRange extent = wholeSnapshot.Extent;
         bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
         if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
@@ -597,6 +613,175 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
+    /// Follows the selection with its highlight (§6.4): a process's own records, a group's or an aggregate's members', or
+    /// the channel chosen among a process's rows, whenever that is not already what the rung draws in colour. Selecting
+    /// highlights; only a descent or Focus filters.
+    /// </summary>
+    private void UpdateHighlight()
+    {
+        (TimelineFocus? focus, string? name) = SelectionFocus();
+        if (focus is not null && focus.Key == timelineFocus?.Key)
+        {
+            (focus, name) = (null, null);
+        }
+
+        if (focus?.Key == highlight?.Key)
+        {
+            return;
+        }
+
+        highlight = focus;
+        highlightName = name;
+        requestedHighlight = null;
+
+        // The previous selection's counts describe other records.
+        SetHighlight(null, null);
+        OnPropertyChanged(nameof(TimelineHighlightName));
+        OnPropertyChanged(nameof(TimelineHighlightBuckets));
+        OnPropertyChanged(nameof(TimelineHighlightLanes));
+        OnPropertyChanged(nameof(TimelineCaption));
+        RequestHighlight();
+    }
+
+    /// <summary>
+    /// The selected entity's records as a timeline focus, and its name; none for an empty selection. A channel chosen
+    /// among a process's rows is the latest choice there, so it is highlighted rather than the process the rung shows.
+    /// </summary>
+    private (TimelineFocus? Focus, string? Name) SelectionFocus()
+    {
+        if (evidenceSource is null)
+        {
+            return (null, null);
+        }
+
+        if (chosenChannelKey is { } channelKey
+            && wholeSnapshot.Channels.FirstOrDefault(channel => string.Equals(channel.Key, channelKey, StringComparison.Ordinal))
+                is { } chosen)
+        {
+            return (new(chosen.Key, []), chosen.Name);
+        }
+
+        if (SelectedCluster is { } cluster)
+        {
+            return cluster.Members.Count == 0 ? (null, null) : (new(null, cluster.Members), cluster.Label);
+        }
+
+        if (SelectedGroup is { } group)
+        {
+            ProcessInstanceId[] members = [.. wholeSnapshot.Processes
+                .Where(process => string.Equals(process.GroupKey, group.Key, StringComparison.Ordinal))
+                .Select(process => process.Id)];
+            return members.Length == 0 ? (null, null) : (new(null, members), group.Name);
+        }
+
+        return selectedProcess is { } selected ? (new(null, [selected.Id]), selected.NameWithPid) : (null, null);
+    }
+
+    /// <summary>
+    /// Asks for the selection's records on the columns the timeline draws: the overview's at the whole extent, the zoomed
+    /// detail's otherwise, so each highlight stands inside the bar drawn for its interval. A newer selection or view
+    /// cancels an older count; a count that fails leaves nothing highlighted rather than a guess.
+    /// </summary>
+    private void RequestHighlight()
+    {
+        if (disposed || drawnTimeline is not { } drawn)
+        {
+            return;
+        }
+
+        if (highlight is null || evidenceSource is null)
+        {
+            CancelHighlight();
+            requestedHighlight = null;
+            SetHighlight(null, null);
+            HighlightReady = Task.CompletedTask;
+            return;
+        }
+
+        (TimeRange viewport, int columns) = drawn;
+        TimeRange extent = wholeSnapshot.Extent;
+        if (viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks && wholeSnapshot.Timeline.Count > 0)
+        {
+            viewport = extent;
+            columns = wholeSnapshot.Timeline.Count;
+        }
+
+        (TimeRange, int, string) request = (viewport, columns, highlight.Key);
+        if (requestedHighlight == request)
+        {
+            return;
+        }
+
+        requestedHighlight = request;
+        CancelHighlight();
+        var query = new CancellationTokenSource();
+        highlightQuery = query;
+        HighlightReady = LoadHighlightAsync(evidenceSource, viewport, columns, highlight, query);
+    }
+
+    private async Task LoadHighlightAsync(
+        SessionEvidenceSource source, TimeRange viewport, int columns, TimelineFocus focus, CancellationTokenSource query)
+    {
+        try
+        {
+            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token);
+            if (!disposed && ReferenceEquals(highlightQuery, query))
+            {
+                bool sameSession = counted.Whole.SessionId == source.SessionId;
+                SetHighlight(sameSession ? counted.Focus : null, sameSession ? counted.FocusLanes : null);
+            }
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            // A newer selection, viewport or rung superseded this count.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!disposed && ReferenceEquals(highlightQuery, query))
+            {
+                SetHighlight(null, null);
+            }
+        }
+    }
+
+    private void CancelHighlight()
+    {
+        highlightQuery?.Cancel();
+        highlightQuery?.Dispose();
+        highlightQuery = null;
+    }
+
+    private void SetHighlight(IReadOnlyList<TimelineBucket>? buckets, IReadOnlyList<MechanismTimelineLane>? lanes)
+    {
+        if (ReferenceEquals(highlightBuckets, buckets) && ReferenceEquals(highlightLanes, lanes))
+        {
+            return;
+        }
+
+        highlightBuckets = buckets;
+        highlightLanes = lanes;
+        OnPropertyChanged(nameof(TimelineHighlightBuckets));
+        OnPropertyChanged(nameof(TimelineHighlightLanes));
+        OnPropertyChanged(nameof(TimelineCaption));
+    }
+
+    /// <summary>
+    /// The selection's records, one per bucket drawn over the same interval, when the selection is not the rung's focus:
+    /// null without such a selection and until its count arrives.
+    /// </summary>
+    public IReadOnlyList<TimelineBucket>? TimelineHighlightBuckets => highlight is null ? null : highlightBuckets;
+
+    /// <summary>The same records split by mechanism, for the machine rung's mechanism lanes.</summary>
+    public IReadOnlyList<MechanismTimelineLane>? TimelineHighlightLanes => highlight is null ? null : highlightLanes;
+
+    /// <summary>What the highlight marks, as the hover card and caption name it; null without a highlight.</summary>
+    public string? TimelineHighlightName => highlight is null ? null : highlightName;
+
+    /// <summary>Completes when the latest highlight count has been applied or given up.</summary>
+    internal Task HighlightReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
     /// The records the rung's timeline draws in colour: what E reads from this rung (§3.2), so a group's timeline shows
     /// its members' records, an instance its own and a channel its two ends'. The machine rung, a rung whose filters were
     /// removed and a workspace with no published session have no focus, and draw every record in its mechanism's hue.
@@ -627,6 +812,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         SetTimelineDetail(timelineDetail, null);
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(TimelineShowsFocus));
+
+        // A selection that is now the rung's own focus is drawn in colour, not highlighted over it.
+        UpdateHighlight();
         if (drawnTimeline is { } drawn)
         {
             RequestTimelineDetail(drawn.Viewport, drawn.Columns);
@@ -655,7 +843,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
-        timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds);
+        timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
+        highlight?.Key, highlightBuckets, highlightLanes);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -670,6 +859,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         SetTimelineDetail(carry.Detail, focus, sameFocus ? carry.ProcessLanes : null,
             sameFocus ? carry.ProcessLaneProblem : null, sameFocus ? carry.DirectionLanes : null,
             sameFocus ? carry.ChannelEndLanes : null);
+
+        // The selection's highlight stands in the same way, for the same selection only, until its own count arrives.
+        if (carry.HighlightKey is not null && carry.HighlightKey == highlight?.Key && highlightBuckets is null)
+        {
+            SetHighlight(carry.Highlight, carry.HighlightLanes);
+        }
+
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -868,7 +1064,14 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public bool TimelineShowsFocus => timelineFocus is not null && timelineFocusProblem is null;
 
     /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
-    public string TimelineCaption => timelineFocusDescription is not { } focus
+    public string TimelineCaption => RungCaption + HighlightCaption;
+
+    /// <summary>What the selection's highlight adds to the caption: what it marks, or that it is still being counted.</summary>
+    private string HighlightCaption => highlight is null ? string.Empty
+        : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
+        : $" · selection highlighted: {highlightName}";
+
+    private string RungCaption => timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
             ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes"
                 + (SelectedTimelineMechanism is { } mechanism
@@ -1428,6 +1631,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         SelectedProcess = null;
         selectedGroupKey = null;
         selectedClusterKey = key;
+        chosenChannelKey = null;
         if (ladder.Current.Level == DetailLevel.Machine && selectedRung is not null)
         {
             // A machine-rung row is a group; an aggregate spans groups, so no row stands for it.
@@ -1444,6 +1648,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         SelectedProcess = null;
         selectedClusterKey = null;
         selectedGroupKey = groupKey;
+        chosenChannelKey = null;
         if (syncRow && ladder.Current.Level == DetailLevel.Machine
             && RungRows.FirstOrDefault(row => row.Key == groupKey) is { } row)
         {
@@ -1628,6 +1833,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(PinActionLabel));
         OnPropertyChanged(nameof(CanTogglePin));
+        UpdateHighlight();
     }
 
     private ReadOnlyDictionary<ProcessInstanceId, GraphPoint> ProcessPositions() =>
@@ -2019,6 +2225,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
+        CancelHighlight();
         graphLayout.Dispose();
     }
 
@@ -2218,6 +2425,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
+            chosenChannelKey = ladder.Current.Level == DetailLevel.ProcessInstance && value is not null
+                && wholeSnapshot.Channels.Any(channel => string.Equals(channel.Key, value.Key, StringComparison.Ordinal))
+                    ? value.Key : null;
             if (value is not null && TryResolveProcess(value.Key, out ProcessNode? process))
             {
                 SelectedProcess = process;
@@ -2228,6 +2438,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 // A machine-rung row is an executable group: the graph rings where its members are drawn.
                 SelectGroup(value.Key, syncRow: false);
             }
+
+            // A channel chosen among a process's rows is highlighted; the process and group paths above already update it.
+            UpdateHighlight();
         }
     }
 
@@ -2298,6 +2511,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             {
                 selectedClusterKey = null;
                 selectedGroupKey = null;
+                chosenChannelKey = null;
             }
 
             OnPropertyChanged();
@@ -2555,6 +2769,21 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                         + " in this interval across all directions"
                     : $"{focus}: " + Counted(focused.ObservationCount, "record", "records") + " of them"
                 : $"{focus}: being counted");
+        }
+
+        if (highlight is not null && highlightName is { } marked && ownerLane is null && directionLane is null)
+        {
+            // The selection's share of this bar (§6.4), from its own count on the drawn columns; a bar of another
+            // resolution is not given a number it was not counted at.
+            string share = highlightBuckets is null ? "being counted"
+                : highlightBuckets.FirstOrDefault(candidate => candidate.Interval == bucket.Interval) is not { } whole
+                    ? "counted at another resolution"
+                : lane is { } highlightedLane
+                    ? Counted(highlightLanes?.FirstOrDefault(candidate => candidate.Mechanism == highlightedLane)
+                        ?.Buckets.FirstOrDefault(candidate => candidate.Interval == bucket.Interval)?.ObservationCount ?? 0,
+                        "record", "records") + " of them"
+                    : Counted(whole.ObservationCount, "record", "records") + " of them";
+            lines.Add($"Selection, {marked}: {share}");
         }
 
         lines.Add(ownerLane is not null || directionLane is not null
@@ -2992,6 +3221,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         selectedClusterKey = null;
         selectedGroupKey = null;
+        chosenChannelKey = null;
         selection.Clear();
         RaiseGraphSelectionChanged();
     }
@@ -3011,8 +3241,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         // A group selected by its row is left with that row; a descent into it makes it the ladder's focus instead.
         selectedGroupKey = null;
+        chosenChannelKey = null;
         RefreshGraphDisplay();
         UpdateTimelineFocus();
+        UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
         SyncEvidence();
         OnPropertyChanged(nameof(RungRows));
@@ -3608,6 +3840,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             selectedProcess = Snapshot.Processes.FirstOrDefault(process => process.Id == changed.ProcessId);
             selectedClusterKey = null;
             selectedGroupKey = null;
+            chosenChannelKey = null;
         }
 
         OnPropertyChanged(nameof(SelectedProcess));
