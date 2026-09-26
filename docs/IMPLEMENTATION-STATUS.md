@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 153 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 154 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -23,9 +23,9 @@ finalized by its lease without a leaked trace, and the next launch offers to fin
 broker kept, including what the broker recorded after the crash. Projection still grows with the session, so large
 sessions wait on S4 and incremental derivation.
 L4 lanes wait on derived operations, and the operation view is open.
-M3–M5 are not complete. Two of §11.3's three sharing
-presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
-does not. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
+M3–M5 are not complete. All three of §11.3's sharing
+presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
+**original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
 collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
@@ -58,11 +58,42 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
-| §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
+| §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 154 — the original evidence package, §11.3's third preset:**
+  - **Gap:** only the metadata-only report and the redacted session existed. `icat package --original` said "not
+    implemented yet".
+  - **Package** ([`original-evidence-package-v1`](../contracts/original-evidence-package-v1.md)): an exact copy of
+    the current generation. It holds every file the generation names, byte for byte, with its manifest, a pointer and
+    the evidence lease guard, and reopens as the same session, generation and digest. It holds nothing else: no
+    earlier generation, no superseded manifest, no stray file, no ETL.
+  - **Made safely:**
+    - The source generation is leased while it is copied, and each file is hashed as it is copied. A file that
+      changed in place after the session was opened is refused before the rest is copied.
+    - The package is built beside its destination, reopened and hashed by a fresh store, and only then renamed into
+      place. A refusal or cancel leaves nothing behind.
+  - **Stated first:** the generation, records and every file; the unredacted contents; the host identity; whether the
+    session is itself a redacted package; the warning.
+    - `icat package --original [--check]` prints this.
+    - The Desktop's "Share original session…" asks first. Its confirmation sizes itself to what it states, starts on
+      Cancel, and names its action "Save unredacted copy…".
+    - One package is made at a time, and its own button cancels it.
+  - **Real data:** the killed real capture from revision 153 (27 journal chunks) was packaged as 34 files (1.9 MB).
+    `icat session` reopens it as generation 28.
+  - **Also:** the §6.2 note on minimum drawn width and snapping now says they wait for the density regime, and why.
+    Package dialogs state sizes as the saved-session list does ("3 KB", "4.2 MB").
+  - **Tests:** +5. Four are package tests:
+    - a byte-for-byte reopen holding nothing else, with a lease and an overview;
+    - a file changed in place is refused at copy;
+    - unsafe destinations are refused, and a cancel leaves nothing;
+    - a preview that writes nothing.
+
+    The fifth is a window test covering the button's states, the disclosure, and a rendered prompt with both actions
+    whole and Cancel focused. It also saves and reopens a copy. A digest check skipped at copy, and a missing guard,
+    each failed a test.
 - **Revision 153 — a crashed `icat capture` can be finished by naming its session (§3.1 step 6, live-follow-v1 §5):**
   - **Gap:** only the Desktop's runner wrote a follow ticket. A command-line capture that ended early left no note of
     its evidence, and `icat capture` prints the evidence directory only when it finishes, so a user could not even
@@ -958,17 +989,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-4. §11.3's third preset, the explicitly unredacted original evidence package, and redacted packages above 1,000,000
-   rows.
+4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
+   three presets exist since revision 154.
 5. Interaction follow-ups with no dependents:
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
-   - §6.7's remaining row: `Ctrl`+click multi-selection as an explicit predicate. Indexed/progressive search belongs
-     to the later M4 scale gate.
-   - §6.2's minimum drawn width (5 px) and pointer snapping. At the minimum window the plot is 458 px, or 326–378 px
-     beside lane labels, so the 64 overview columns are 5–7 px and their bars 3–5 px. They can still be pointed at,
-     because a hit takes the whole column's time. Widening must stay cosmetic (R13).
+   - §6.7's remaining row: `Ctrl`+click multi-selection as an explicit predicate. It rests on §6.4's rule that
+     selecting an entity highlights it in the timeline, which is not built even for one entity: the timeline's colour
+     follows the rung, and a selection changes nothing there. Build that highlight first, then let a set extend it and
+     `Enter` turn the set into a filter. Indexed/progressive search belongs to the later M4 scale gate.
+   - §6.2's minimum drawn width (5 px) and pointer snapping belong with the density regime, where a column is one
+     device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
+     target, and snapping would take an empty neighbouring interval away from the pointer.
    - R11 beyond paint: the aggregate, admission and decode loops have IC-019's Windows allocation measurements but no
      test that runs here. A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
@@ -981,6 +1014,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 154 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,085 tests: 1,083
+  passed, 2 skipped**, zero failures.
 - Revision 153 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,080 tests: 1,078
   passed, 2 skipped**, zero failures. A crashed `icat capture` was finished on real ETW, leaving no ETW session.
 - Revision 152 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,079 tests: 1,077
@@ -1038,8 +1073,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 153, **1,078 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 152: 1,077 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 154, **1,083 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 153: 1,078 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

@@ -497,6 +497,9 @@
               <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
               <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
                       AutomationProperties.Name="Save a reopenable, pseudonymized copy of this session to share" />
+              <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
+              <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
+                      AutomationProperties.Name="Save an exact, unredacted copy of this session's evidence to share" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

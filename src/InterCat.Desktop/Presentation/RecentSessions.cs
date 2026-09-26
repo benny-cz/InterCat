@@ -120,7 +120,7 @@ internal static class RecentSessions
     }
 
     /// <summary>A size on disk as a person reads it: "812 KB", "4.2 MB", "37 MB", "1.3 GB".</summary>
-    private static string Size(long bytes, CultureInfo culture) => bytes switch
+    internal static string Size(long bytes, CultureInfo culture) => bytes switch
     {
         < 1_000_000 => string.Create(culture, $"{Math.Max(1, bytes / 1_000):N0} KB"),
         < 10_000_000 => string.Create(culture, $"{bytes / 1_000_000d:N1} MB"),

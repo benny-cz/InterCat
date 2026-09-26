@@ -575,6 +575,8 @@
         "I15: an empty session is empty, not a refusal",
         "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an incomplete staged file is never published",
+        "I15: an original package refuses a file that changed after its generation recorded it, and leaves nothing",
+        "I15: an original package reopens as the same session and generation, byte for byte, holding nothing else",
         "I15: an orphan is reported on open and removed only when that is asked for",
         "I15: an orphan with a generation's final name is never overwritten",
         "I15: compaction coalesces only runs of small units, and a live budget takes the oldest run in steps",

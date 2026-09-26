@@ -32,8 +32,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool openingRecord;
     private bool exporting;
 
-    /// <summary>The package being made, while one is; its cancellation is the share button's second meaning.</summary>
+    /// <summary>The package being made, while one is; its cancellation is its share button's second meaning.</summary>
     private CancellationTokenSource? packaging;
+
+    /// <summary>Whether the package being made is the original, unredacted copy rather than a redacted session.</summary>
+    private bool packagingOriginal;
 
     /// <summary>A session folder picker is open, so a second one is not started behind it.</summary>
     private bool choosingSession;
@@ -975,10 +978,236 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    /// <summary>A new folder name under the chosen one: dated, and numbered rather than reusing an existing name.</summary>
-    internal static string NewPackageDirectory(string parent, DateTimeOffset now)
+    /// <summary>
+    /// Shares the open session as an original evidence package (§11.3): an exact, unredacted copy that reopens as the same
+    /// session. What it holds is stated first, from the files themselves; the user chooses where the new folder goes; and
+    /// the finished package, verified before it appears, can be opened here. While it is made, the same button cancels it.
+    /// </summary>
+    private async void ShareOriginal(object? sender, RoutedEventArgs eventArgs)
     {
-        string stem = Path.Combine(parent, $"intercat-redacted-session-{now:yyyyMMdd-HHmmss}");
+        if (packaging is { } running)
+        {
+            running.Cancel();
+            return;
+        }
+
+        if (currentSessionPath is not { } source || displayedOverview is null || IsLive || exporting)
+        {
+            return;
+        }
+
+        OriginalEvidencePackagePreview preview;
+        try
+        {
+            preview = await Task.Run(() => OriginalEvidencePackage.Preview(SharedSessionStores.Open(source)));
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            CaptureDetail.Text = "Could not read the session to package it: " + exception.Message;
+            return;
+        }
+
+        if (closed || !await ConfirmOriginalPackageAsync(preview)) return;
+        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        {
+            Title = "Choose where to save the original, unredacted session",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 0 || closed) return;
+        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now, "intercat-original-session");
+        OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, destination);
+        if (result is not null && !closed && await ShowOriginalResultAsync(result))
+        {
+            _ = await OpenSessionAsync(result.Directory);
+        }
+    }
+
+    /// <summary>
+    /// Makes the original package off the UI thread, stating its progress on the capture card, and returns null when it
+    /// was cancelled or refused - the card then says which, and the source session is unchanged either way.
+    /// </summary>
+    internal async Task<OriginalEvidencePackageResult?> WriteOriginalPackageAsync(string source, string destination)
+    {
+        if (packaging is not null) return null;
+        using var cancellation = new CancellationTokenSource();
+        packaging = cancellation;
+        packagingOriginal = true;
+        UpdateEvidenceAction();
+        string headline = CaptureStatus.Text ?? string.Empty;
+        CaptureStatus.Text = "Saving the original session";
+        CaptureDetail.Text = "Copying and checking the session's files…";
+        var progress = new Progress<OriginalPackageProgress>(update =>
+        {
+            if (closed || packaging != cancellation) return;
+            string stage = update.Stage == OriginalPackageStage.Copying
+                ? "Copying and checking the session's files"
+                : "Reopening and verifying the package";
+            CaptureDetail.Text = update.Total > 0 ? $"{stage}… {update.Done * 100 / update.Total}%" : stage + "…";
+        });
+        try
+        {
+            // Each file is hashed as it is copied, so the session's shared store, which listed its files, is enough.
+            OriginalEvidencePackageResult result = await Task.Run(() => OriginalEvidencePackage.Create(
+                SharedSessionStores.Open(source), destination, progress, cancellation.Token), cancellation.Token);
+            if (!closed)
+            {
+                CaptureStatus.Text = "Original session saved";
+                CaptureDetail.Text = $"Saved an exact copy of generation {result.Source.Generation:N0} to {result.Directory}. "
+                    + "It was reopened and checked before it was published. It is unredacted.";
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!closed)
+            {
+                CaptureStatus.Text = headline;
+                CaptureDetail.Text = "Copying cancelled. Nothing was saved, and the session is unchanged.";
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed)
+            {
+                CaptureStatus.Text = headline;
+                CaptureDetail.Text = "Could not save the original session: " + exception.Message;
+            }
+
+            return null;
+        }
+        finally
+        {
+            packaging = null;
+            packagingOriginal = false;
+            if (!closed) UpdateEvidenceAction();
+        }
+    }
+
+    private async Task<bool> ConfirmOriginalPackageAsync(OriginalEvidencePackagePreview preview) =>
+        await OriginalPackagePrompt(preview).ShowDialog<bool>(this);
+
+    /// <summary>
+    /// The confirmation an original package needs: what it holds, stated whole. It is as tall as what it states, so its
+    /// actions are never cut off, and it starts on Cancel, so a reflexive Enter saves nothing.
+    /// </summary>
+    internal static Window OriginalPackagePrompt(OriginalEvidencePackagePreview preview)
+    {
+        var prompt = new Window
+        {
+            Title = "Share the original, unredacted session?", Width = 600,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Name = "CancelOriginalPackage", Content = "Cancel" };
+        var proceed = new Button { Name = "SaveOriginalPackage", Content = "Save unredacted copy…" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        var content = new StackPanel { Margin = new Avalonia.Thickness(20), Spacing = 12 };
+        foreach (string text in OriginalPackageDisclosure(preview))
+        {
+            TextBlock paragraph = Paragraph(text);
+            if (text == OriginalEvidencePackage.Warning)
+            {
+                paragraph.FontWeight = Avalonia.Media.FontWeight.SemiBold;
+            }
+
+            content.Children.Add(paragraph);
+        }
+
+        content.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed },
+        });
+        prompt.Content = content;
+        return prompt;
+    }
+
+    /// <summary>What the confirmation states before an original package is saved: what it is, holds, and exposes (§11.3).</summary>
+    internal static IReadOnlyList<string> OriginalPackageDisclosure(OriginalEvidencePackagePreview preview)
+    {
+        int journals = preview.Journals.Count;
+        var paragraphs = new List<string>
+        {
+            "This saves an exact copy of this session's evidence in a new folder, which opens in InterCat as the same "
+                + "session. The session you have open is not changed.",
+            string.Create(CultureInfo.CurrentCulture,
+                $"It holds generation {preview.Generation:N0}: {preview.Rows:N0} records, {journals:N0} raw journal "
+                + $"{(journals == 1 ? "file" : "files")} of admitted records, and {preview.Files.Count:N0} files in all "
+                + $"({RecentSessions.Size(preview.Bytes, CultureInfo.CurrentCulture)})."),
+            "Unredacted: " + OriginalEvidencePackage.Contents,
+            preview.HostId is { } host
+                ? $"Hosts: one, the capture's own, identified as {host:N}."
+                : "Hosts: no journal names the capture's host.",
+        };
+        if (preview.Redacted)
+        {
+            paragraphs.Add("This session is itself a redacted package, so its copy holds pseudonyms, not the original values.");
+        }
+
+        paragraphs.Add(OriginalEvidencePackage.Warning);
+        return paragraphs;
+    }
+
+    /// <summary>Says where the copy is and what verified it; true when the user wants to open it here.</summary>
+    private async Task<bool> ShowOriginalResultAsync(OriginalEvidencePackageResult result)
+    {
+        var prompt = new Window
+        {
+            Title = "Original session saved", Width = 580, Height = 300,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var done = new Button { Content = "Done" };
+        var open = new Button { Content = "Open it here" };
+        done.Click += (_, _) => prompt.Close(false);
+        open.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => done.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                Paragraph(string.Create(CultureInfo.CurrentCulture,
+                    $"Saved an exact copy of generation {result.Source.Generation:N0} ({result.Source.Files.Count:N0} files, "
+                    + $"{RecentSessions.Size(result.Source.Bytes, CultureInfo.CurrentCulture)}) to {result.Directory}.")),
+                Paragraph("Each file was checked against the digest its generation recorded as it was copied, and the "
+                    + "package was reopened and hashed as a recipient would open it before it was saved."),
+                Paragraph(OriginalEvidencePackage.Warning),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
+            },
+        };
+        return await prompt.ShowDialog<bool>(this);
+    }
+
+    /// <summary>A new folder name under the chosen one: dated, and numbered rather than reusing an existing name.</summary>
+    internal static string NewPackageDirectory(string parent, DateTimeOffset now, string name = "intercat-redacted-session")
+    {
+        string stem = Path.Combine(parent, $"{name}-{now:yyyyMMdd-HHmmss}");
         string candidate = stem;
         for (int attempt = 2; Directory.Exists(candidate) || File.Exists(candidate); attempt++)
         {
@@ -1133,7 +1362,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     + $"was checked against the pseudonyms it issued, and {result.FilesVerified:N0} files were searched "
                     + "for this session's identities and names. None was found."),
                 Paragraph($"Left behind: {result.Source.SourceJournals:N0} original {journals} "
-                    + $"({result.Source.SourceJournalBytes / 1024.0 / 1024.0:N1} MB). Opening the package here shows "
+                    + $"({RecentSessions.Size(result.Source.SourceJournalBytes, CultureInfo.CurrentCulture)}). Opening the package here shows "
                     + "what a recipient will see."),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
@@ -1605,17 +1834,34 @@ public sealed partial class MainWindow : Window, IDisposable
                 + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
             : "Open a session, or return to Machine or Process to browse paired channels.");
 
-        // Packaging reads a whole published generation, so it waits until a live capture has stopped.
-        SharePackageButton.Content = packaging is null ? "Share redacted session…" : "Cancel packaging";
-        SharePackageButton.IsEnabled = packaging is not null || (session && !IsLive && !openingSession);
-        ToolTip.SetTip(SharePackageButton, packaging is not null
+        // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
+        // at a time: its own button cancels it, and the other waits.
+        bool packagingRedacted = packaging is not null && !packagingOriginal;
+        bool packagingCopy = packaging is not null && packagingOriginal;
+        bool canPackage = packaging is null && session && !IsLive && !openingSession;
+        SharePackageButton.Content = packagingRedacted ? "Cancel packaging" : "Share redacted session…";
+        SharePackageButton.IsEnabled = packagingRedacted || canPackage;
+        ToolTip.SetTip(SharePackageButton, packagingRedacted
             ? "Stop making the package. Nothing is saved, and the session is unchanged."
-            : SharePackageButton.IsEnabled
+            : canPackage
                 ? "Save a new session folder with pseudonymous names, IDs and addresses and no original journal, "
                     + "that opens in InterCat. What it keeps and leaves out is shown first."
-                : IsLive ? "Stop the capture first; a package holds a finished session."
-                : "Open or record a session first.");
+                : PackageUnavailable(session));
+        ShareOriginalButton.Content = packagingCopy ? "Cancel packaging" : "Share original session…";
+        ShareOriginalButton.IsEnabled = packagingCopy || canPackage;
+        ToolTip.SetTip(ShareOriginalButton, packagingCopy
+            ? "Stop copying. Nothing is saved, and the session is unchanged."
+            : canPackage
+                ? "Save an exact, unredacted copy of this session's evidence that opens in InterCat as the same "
+                    + "session. What it holds is shown first."
+                : PackageUnavailable(session));
     }
+
+    private string PackageUnavailable(bool session) =>
+        packaging is not null ? "Another package is being made. Wait for it, or cancel it with its own button."
+        : IsLive ? "Stop the capture first; a package holds a finished session."
+        : session ? "Wait for the session to finish opening."
+        : "Open or record a session first.";
 
     private static (bool Available, ProcessInstanceId? ProcessScope) ChannelDiscoveryScope(
         WorkspaceNavigationMemento navigation)

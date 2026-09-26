@@ -30,6 +30,43 @@ internal sealed record PackageDocument
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
+/// <summary>What an original evidence package holds, or would: every file of the generation it copies, and what verified it.</summary>
+internal sealed record OriginalPackageDocument
+{
+    public required string Contract { get; init; }
+    public required string Kind { get; init; }
+    public required bool Performed { get; init; }
+    public required string Source { get; init; }
+    public required string SessionId { get; init; }
+    public required long Generation { get; init; }
+    public required DateTimeOffset CommittedUtc { get; init; }
+    public required string? Directory { get; init; }
+    public required string PackageContract { get; init; }
+    public required string? Host { get; init; }
+    public required long Rows { get; init; }
+    public required long SourceFieldRows { get; init; }
+    public required IReadOnlyList<OriginalPackageFileDocument> Files { get; init; }
+    public required long Bytes { get; init; }
+    public required string Contents { get; init; }
+    public required OriginalPackageVerificationDocument? Verification { get; init; }
+    public required string Warning { get; init; }
+    public required IReadOnlyList<string> Notes { get; init; }
+}
+
+internal sealed record OriginalPackageFileDocument
+{
+    public required string Name { get; init; }
+    public required string Kind { get; init; }
+    public required long Bytes { get; init; }
+}
+
+internal sealed record OriginalPackageVerificationDocument
+{
+    public required int FilesVerified { get; init; }
+    public required long BytesVerified { get; init; }
+    public required string Description { get; init; }
+}
+
 internal sealed record PackageLeftOutDocument
 {
     public required int SourceJournals { get; init; }
@@ -71,8 +108,10 @@ internal static class PackageCommand
         bool json = command.TryTakeFlag("--json");
         string? problem = command.TryReportUnknown(out string? unknown) ? $"Unknown or incomplete option: {unknown}"
             : sessionOption is null ? "A session directory is required: icat package <directory> --redacted --output <new-directory>."
-            : original ? "The original evidence package is not implemented yet. --redacted writes a reopenable redacted session."
-            : !redacted ? "Choose what to package: --redacted writes a reopenable redacted session with pseudonymized values."
+            : original && redacted ? "Choose one package: --redacted or --original."
+            : !redacted && !original
+                ? "Choose what to package: --redacted writes a reopenable session with pseudonymized values; --original "
+                    + "copies the session's evidence exactly, unredacted."
             : !check && outputOption is null
                 ? "--output <new-directory> is required; a package is written only where it is asked to be."
             : null;
@@ -110,6 +149,12 @@ internal static class PackageCommand
         {
             ConsoleUi.Failure("This session has published no generation, so there is nothing to package.");
             return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (original)
+        {
+            return await OriginalAsync(store, session, destination, check, json, report, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var progress = new ConsoleProgress();
@@ -265,8 +310,140 @@ internal static class PackageCommand
         if (document.Directory is { } written) ConsoleUi.Note($"icat session \"{written}\"");
     }
 
+    /// <summary>
+    /// `icat package --original`: §11.3's explicitly unredacted preset. It copies the session's current generation byte for
+    /// byte into a new directory, where it reopens as the same session, and publishes it only after it verified.
+    /// </summary>
+    private static async Task<InterCatExitCode> OriginalAsync(
+        SessionStore store,
+        string session,
+        string? destination,
+        bool check,
+        bool json,
+        string? report,
+        CancellationToken cancellationToken)
+    {
+        OriginalPackageDocument document;
+        try
+        {
+            if (check)
+            {
+                document = DescribeOriginal(session, OriginalEvidencePackage.Preview(store), result: null);
+            }
+            else
+            {
+                OriginalEvidencePackageResult result = OriginalEvidencePackage.Create(
+                    store, destination!, new OriginalProgress(), cancellationToken);
+                document = DescribeOriginal(session, result.Source, result);
+            }
+        }
+        catch (ArgumentException exception)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
+        if (json)
+        {
+            Console.Out.WriteLine(payload);
+        }
+        else
+        {
+            RenderOriginal(document);
+        }
+
+        if (report is not null)
+        {
+            System.IO.Directory.CreateDirectory(Path.GetDirectoryName(report)!);
+            await File.WriteAllTextAsync(report, payload, cancellationToken).ConfigureAwait(false);
+            ConsoleUi.Success($"Package report written to {report}.");
+        }
+
+        return InterCatExitCode.Success;
+    }
+
+    private static OriginalPackageDocument DescribeOriginal(
+        string session, OriginalEvidencePackagePreview source, OriginalEvidencePackageResult? result)
+    {
+        var notes = new List<string>
+        {
+            result is null
+                ? "This was a measurement; nothing was written. Run without --check, with --output, to write the package."
+                : "The package is the same session: icat session, overview and evidence open it, as does the Desktop's "
+                    + "Open saved session. It holds this generation only, with no earlier one to fall back to.",
+        };
+        if (source.Redacted)
+        {
+            notes.Add("This session is itself a redacted package, so its copy holds pseudonyms, not the original values.");
+        }
+
+        if (!source.CoverageLedger)
+        {
+            notes.Add("The session published no coverage ledger, so the package's coverage and loss are unknown, as its are.");
+        }
+
+        return new()
+        {
+            Contract = "package-v1",
+            Kind = "original-evidence",
+            Performed = result is not null,
+            Source = session,
+            SessionId = source.SessionId.ToString("N"),
+            Generation = source.Generation,
+            CommittedUtc = source.CommittedUtc,
+            Directory = result?.Directory,
+            PackageContract = OriginalEvidencePackage.Contract,
+            Host = source.HostId?.ToString("N"),
+            Rows = source.Rows,
+            SourceFieldRows = source.SourceFieldRows,
+            Files = [.. source.Files.Select(file => new OriginalPackageFileDocument
+            {
+                Name = file.Name,
+                Kind = file.Kind.ToString(),
+                Bytes = file.LengthBytes,
+            })],
+            Bytes = source.Bytes,
+            Contents = OriginalEvidencePackage.Contents,
+            Verification = result is null ? null : new()
+            {
+                FilesVerified = result.FilesVerified,
+                BytesVerified = result.BytesVerified,
+                Description = string.Create(CultureInfo.InvariantCulture,
+                    $"Each file checked against its generation's digest as it was copied, then {result.FilesVerified:N0} "
+                    + $"files reopened and hashed as a recipient would."),
+            },
+            Warning = OriginalEvidencePackage.Warning,
+            Notes = notes,
+        };
+    }
+
+    private static void RenderOriginal(OriginalPackageDocument document)
+    {
+        ConsoleUi.Heading(document.Performed ? "Original evidence package, unredacted" : "Original evidence package, measured only");
+        ConsoleUi.Field("Source", $"{document.Source} · generation {ConsoleUi.Count(document.Generation)}");
+        if (document.Directory is { } directory) ConsoleUi.Field("Written to", directory);
+        ConsoleUi.Field("Rows", ConsoleUi.Count(document.Rows)
+            + (document.SourceFieldRows == 0 ? string.Empty : $" · {ConsoleUi.Count(document.SourceFieldRows)} source fields"));
+        int journals = document.Files.Count(file => file.Kind == nameof(StoreDependencyKind.Journal));
+        ConsoleUi.Field("Files", string.Create(CultureInfo.CurrentCulture,
+            $"{ConsoleUi.Count(document.Files.Count)} files, {ConsoleUi.Bytes(document.Bytes)}; "
+            + $"{ConsoleUi.Count(journals)} raw journal {(journals == 1 ? "file" : "files")} of admitted records"));
+        ConsoleUi.Field("Host", document.Host is { } host ? $"one, identified as {host}" : "not named by a journal");
+        ConsoleUi.Field("Holds", document.Contents);
+        if (document.Verification is { } verification) ConsoleUi.Field("Verified", verification.Description);
+        ConsoleUi.Warn(document.Warning);
+        foreach (string note in document.Notes) ConsoleUi.Note(note);
+        if (document.Directory is { } written) ConsoleUi.Note($"icat session \"{written}\"");
+    }
+
     private static void PrintHelp()
     {
+        ConsoleUi.Line("icat package <session-directory> --original --output <new-directory> [--check] [--json]");
+        ConsoleUi.Line("             [--report <path>] [--overwrite]");
+        ConsoleUi.Line("  Copies the session's current generation byte for byte into a new directory, where it reopens");
+        ConsoleUi.Line("  as the same session. It is unredacted: names, IDs, addresses, times and every admitted record");
+        ConsoleUi.Line("  as captured. Each file is checked as it is copied and the package reopened before it appears.");
         ConsoleUi.Line("icat package <session-directory> --redacted --output <new-directory> [--check] [--json]");
         ConsoleUi.Line("             [--report <path>] [--overwrite]");
         ConsoleUi.Line("  Writes a reopenable redacted session: a new session directory with fresh identities, whose");
@@ -275,6 +452,25 @@ internal static class PackageCommand
         ConsoleUi.Line("  data, locators and absolute clock readings, and is verified before it is published.");
         ConsoleUi.Line("  --check measures what the package would hold and writes nothing. --report also writes the");
         ConsoleUi.Line("  JSON report to a file. Pseudonymized is not anonymous: review a package before sharing it.");
+    }
+
+    /// <summary>Reports each stage of an original package and every tenth of its bytes to stderr.</summary>
+    private sealed class OriginalProgress : IProgress<OriginalPackageProgress>
+    {
+        private OriginalPackageStage? stage;
+        private long tenth = -1;
+
+        public void Report(OriginalPackageProgress value)
+        {
+            long now = value.Total <= 0 ? 10 : value.Done * 10 / value.Total;
+            if (value.Stage == stage && now == tenth) return;
+            stage = value.Stage;
+            tenth = now;
+            string what = value.Stage == OriginalPackageStage.Copying
+                ? "Copying and checking the session's files"
+                : "Reopening and verifying the package";
+            ConsoleUi.Progress(string.Create(CultureInfo.CurrentCulture, $"{what}: {now * 10}%"));
+        }
     }
 
     /// <summary>Reports each stage and every tenth of it to stderr, so a long package shows it is moving.</summary>
