@@ -12,6 +12,7 @@ using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.CaptureBroker;
 using InterCat.Desktop.Presentation;
+using InterCat.Desktop.Settings;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -70,6 +71,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private InterruptedCaptureOffer? offer;
     private CancellationTokenSource? finishingCapture;
     private readonly DispatcherTimer offerRecheck = new() { Interval = TimeSpan.FromSeconds(5) };
+
+    // The application's settings (§26.3): where they are kept, when a file is in use, and what reading it found.
+    private ApplicationSettingsStore? settingsStore;
+    private ApplicationSettings settings = ApplicationSettings.Default;
+    private string? settingsProblem;
     private string? appliedDetail;
     private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -113,6 +119,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         Opened += (_, _) => StartExploringButton.Focus();
+        UpdateThemeMenu();
 
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
         // legend's hues are redrawn from the new mode's tokens here.
@@ -570,6 +577,82 @@ public sealed partial class MainWindow : Window, IDisposable
                 OpenSavedSessionButton.IsEnabled = true;
                 UpdateEvidenceAction();
             }
+        }
+    }
+
+    /// <summary>The themes the menu offers, "follow the system" first (§26.2).</summary>
+    private static readonly (ThemeMode? Mode, string Label)[] ThemeChoices =
+    [
+        (null, "Follow the system"),
+        (ThemeMode.Dark, "Dark"),
+        (ThemeMode.Light, "Light"),
+        (ThemeMode.HighContrastDark, "High contrast, dark"),
+        (ThemeMode.HighContrastLight, "High contrast, light"),
+    ];
+
+    /// <summary>
+    /// Takes the application's settings (§26.3): the theme the user chose, where it is kept, and what reading the file
+    /// found. Without a store a choice lasts until InterCat closes, and the menu says so.
+    /// </summary>
+    internal void UseSettings(ApplicationSettingsStore? store, ApplicationSettings loaded)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        settingsStore = store;
+        settings = loaded;
+        settingsProblem = null;
+        UpdateThemeMenu();
+    }
+
+    /// <summary>
+    /// Applies a theme, or the system's when null, and keeps the choice in the settings file. A file that cannot be
+    /// written leaves the theme applied for this run, and the menu says why.
+    /// </summary>
+    internal void ChooseTheme(ThemeMode? choice)
+    {
+        (Avalonia.Application.Current as App)?.ChooseTheme(choice);
+        settingsProblem = null;
+        settings = settings with { Theme = choice };
+        if (settingsStore is { } store)
+        {
+            try
+            {
+                settings = store.SaveTheme(choice);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                or InvalidOperationException)
+            {
+                settingsProblem = "This choice lasts until InterCat closes: " + exception.Message;
+            }
+        }
+
+        UpdateThemeMenu();
+    }
+
+    private void UpdateThemeMenu()
+    {
+        if (ThemeButton.Flyout is not MenuFlyout menu) return;
+        menu.Items.Clear();
+        foreach ((ThemeMode? mode, string label) in ThemeChoices)
+        {
+            var item = new MenuItem
+            {
+                Header = label,
+                ToggleType = MenuItemToggleType.Radio,
+                GroupName = "theme",
+                IsChecked = settings.Theme == mode,
+            };
+            item.Click += (_, _) => ChooseTheme(mode);
+            Avalonia.Automation.AutomationProperties.SetName(item, "Theme: " + label);
+            _ = menu.Items.Add(item);
+        }
+
+        _ = menu.Items.Add(new Separator());
+        string kept = settingsStore is { } store
+            ? "Kept in " + store.FilePath
+            : "No settings file is in use: a choice lasts until InterCat closes.";
+        foreach (string line in settings.Notices.Prepend(kept).Append(settingsProblem).OfType<string>())
+        {
+            _ = menu.Items.Add(new MenuItem { Header = line, IsEnabled = false });
         }
     }
 

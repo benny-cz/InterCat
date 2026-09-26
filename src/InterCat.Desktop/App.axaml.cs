@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using InterCat.Desktop.Settings;
 using InterCat.Desktop.Theme;
 
 namespace InterCat.Desktop;
@@ -15,30 +16,47 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     internal static ThemeMode? PinnedMode { get; set; }
 
+    /// <summary>The theme the user chose in the application's settings, or null to follow the operating system.</summary>
+    internal static ThemeMode? ChosenMode { get; private set; }
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
 
         // Tokens come from the verified palette, so no view carries a colour literal (section 6.6). The mode follows the
-        // operating system's light or dark setting and its high-contrast setting (§26.2).
-        ThemeResources.Apply(this, PinnedMode ?? ModeFor(PlatformSettings?.GetColorValues()));
+        // operating system's light or dark setting and its high-contrast setting (§26.2), unless the user chose one.
+        ApplyTheme();
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (PinnedMode is null && PlatformSettings is { } settings)
         {
-            settings.ColorValuesChanged += (_, _) =>
-                Dispatcher.UIThread.Post(() => ThemeResources.Apply(this, PinnedMode ?? ModeFor(settings.GetColorValues())));
+            settings.ColorValuesChanged += (_, _) => Dispatcher.UIThread.Post(ApplyTheme);
         }
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Only the application reads the user's own settings and session folder, never a test (§26.3).
+            ApplicationSettingsStore? store = null;
+            ApplicationSettings loaded = ApplicationSettings.Default;
+            try
+            {
+                store = new ApplicationSettingsStore(ApplicationSettingsStore.DefaultPath());
+                loaded = store.Load();
+                ChooseTheme(loaded.Theme);
+            }
+            catch (InvalidOperationException)
+            {
+                // Windows gave no per-user settings folder: the defaults stand, and a choice lasts until InterCat closes.
+            }
+
             var window = new MainWindow();
+            window.UseSettings(store, loaded);
             desktop.MainWindow = window;
 
             // A viewer that crashed while recording loses no evidence; this launch offers to finish its session (§3.1
-            // step 6). Only the application looks in the user's own session folder, never a test.
+            // step 6), and lists the sessions saved before.
             try
             {
                 _ = window.UseSessionRootAsync(DesktopCaptureRunner.DefaultSessionRoot());
@@ -50,6 +68,13 @@ public sealed partial class App : Avalonia.Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Applies a theme the user chose, or the operating system's when null (§26.2, §26.3).</summary>
+    internal void ChooseTheme(ThemeMode? choice)
+    {
+        ChosenMode = choice;
+        ApplyTheme();
     }
 
     /// <summary>
@@ -64,4 +89,7 @@ public sealed partial class App : Avalonia.Application
             (false, true) => ThemeMode.Light,
             _ => ThemeMode.Dark,
         };
+
+    private void ApplyTheme() =>
+        ThemeResources.Apply(this, PinnedMode ?? ChosenMode ?? ModeFor(PlatformSettings?.GetColorValues()));
 }

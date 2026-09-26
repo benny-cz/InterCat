@@ -214,7 +214,7 @@
     <Border Grid.Column="1" Grid.ColumnSpan="2" Padding="20,11"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1"
             Background="{DynamicResource Surface.Panel}">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
         <StackPanel Spacing="2" ClipToBounds="True">
           <TextBlock x:Name="HeaderTitle" Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" />
@@ -263,6 +263,13 @@
               <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             </Style>
           </Button.Styles>
+        </Button>
+        <!-- The application's settings (section 26.3): the theme, and where the settings are kept. -->
+        <Button x:Name="ThemeButton" Grid.Column="5" Margin="8,0,0,0" Content="Theme"
+                AutomationProperties.Name="Theme: choose light, dark or high contrast, or follow the system">
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight" />
+          </Button.Flyout>
         </Button>
       </Grid>
     </Border>
