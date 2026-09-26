@@ -73,9 +73,9 @@ public static class SessionOverviewProjector
                 "This generation names no source clock. Process lifetimes and the overview time axis cannot be "
                 + "derived from an assumed clock.");
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
         SessionRedaction? redaction = SessionRedaction.Read(store.Root, manifest);
         SessionDerivation derivation = SessionDerivationCache.For(manifest);

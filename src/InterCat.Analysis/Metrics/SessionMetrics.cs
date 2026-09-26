@@ -763,7 +763,7 @@ public static partial class SessionMetrics
         foreach (string name in names)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            segments.Add((name, SessionSegments.Open(store.Root, manifest, name)));
+            segments.Add((name, SessionSegments.Open(store, manifest, name)));
         }
 
         return segments;
@@ -793,7 +793,7 @@ public static partial class SessionMetrics
             {
                 FieldSegments =
                 [
-                    .. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name)),
+                    .. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name)),
                 ],
             };
         }

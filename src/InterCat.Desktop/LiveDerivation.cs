@@ -24,7 +24,15 @@ internal sealed record LiveDerivationStep(
 /// (ADR-027). It holds the follower and the derived store for the capture's life. Steps run one at a time on the thread
 /// pool, off the loop that reads status and renews the owner lease, and a step's state is read only once it finished.
 /// </summary>
-internal sealed class LiveDerivation(string evidencePath, string sessionPath, Stopwatch elapsed) : IDisposable
+/// <param name="stores">
+/// Where the derived store becomes the session's shared store, so the window's queries read through the store that
+/// publishes; the process-wide registry unless a test gives its own.
+/// </param>
+internal sealed class LiveDerivation(
+    string evidencePath,
+    string sessionPath,
+    Stopwatch elapsed,
+    SessionStoreRegistry? stores = null) : IDisposable
 {
     private readonly CancellationTokenSource halt = new();
     private LiveSessionFollower? follower;
@@ -36,6 +44,9 @@ internal sealed class LiveDerivation(string evidencePath, string sessionPath, St
 
     /// <summary>Whether the user's session holds a derived generation.</summary>
     public bool HasSession => derived?.Current is not null;
+
+    /// <summary>The store the capture's session is derived into, once the evidence has published something.</summary>
+    internal SessionStore? Store => derived;
 
     /// <summary>One step on the thread pool, cancelled by <paramref name="cancellationToken"/> or by <see cref="HaltAsync"/>.</summary>
     public Task<LiveDerivationStep> StepAsync(CancellationToken cancellationToken) => Task.Run(() =>
@@ -79,6 +90,10 @@ internal sealed class LiveDerivation(string evidencePath, string sessionPath, St
 
             Directory.CreateDirectory(sessionPath);
             derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
+
+            // One store per session in this process: the window's queries read through the store that publishes, so
+            // the session's readers are cached, and each new file hashed, once rather than once per store.
+            (stores ?? SharedSessionStores.Registry).Adopt(sessionPath, derived);
             follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: cancellationToken);
         }
 

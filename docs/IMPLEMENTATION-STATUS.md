@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 141 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 142 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -18,8 +18,9 @@ direction. While recording, a labelled **live edge** previews records not yet pu
 event-to-visible to p95 0.72–0.77 s and meets §12's steady-state budget. Exact results still arrive about 2.6 s after
 an event (p95). The default 10-minute Explore capture runs to its bound on real ETW and saves whole, and a crashed
 viewer's capture is stopped and finalized by its lease without a leaked trace. That capture meets every §12 budget
-to its end: projection p95 85 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and 76 MiB of viewer memory at the
-end. Projection still grows with the session, so large sessions wait on S4 and incremental derivation.
+to its end: at 105,944 records, projection p95 81 ms, event-to-visible p95 0.85 s, exact p95 2.7 s, and 118 MiB of
+viewer memory at the end, 22.5 MiB of it cached segments. Projection still grows with the session, so large sessions
+wait on S4 and incremental derivation.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. Two of §11.3's three sharing
 presets exist: a metadata-only **report** and a reopenable redacted **session package**. The original evidence package
@@ -52,7 +53,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows | Rolling retention policy and cross-process pin quota. A live session's superseded manifests are kept until explicitly removed (16 MB after 10 minutes). |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), and a designed waiting state before a capture's first publication | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
@@ -61,6 +62,60 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 142 — verified segment readers reused across queries and generations (§20.1, §12; S2 support, not S4):**
+  - **Found:** `SessionStore` already memoized dependency hashes, but each projection still reopened every immutable
+    segment, reread its bytes and dictionaries, and reran their integrity checks.
+  - **Cache:** each open store admits at most 64 MiB of published segment and dictionary payload of verified readers. A
+    hit needs the manifest to name the exact segment and every exact dictionary, so a carried segment survives live
+    generations without being reopened. The figure bounds payload, not CLR memory; §12 still owns the 512 MiB
+    analysis/cache budget.
+  - **Retention:** selecting a generation prunes readers it no longer reaches, so released evidence is not kept resident.
+    A query already holding a reader keeps it. An older lease finishing its open after a prune is not admitted. Compaction
+    and journal re-derivation stay uncached, so they do not evict the interactive working set.
+  - **Consumers:** overview, timeline, interval, channel, evidence and raw queries, metrics, `icat session` and redacted
+    package verification. The last two took `Current` and opened files without a lease; both now lease the generation.
+  - **Written without an SDK:** the slice arrived uncompiled. It built cleanly on the pinned SDK and its four tests passed.
+    Review found four defects the tests could not see:
+    - **Shared readers were not thread-safe.** A reader checks each column's checksum on first read, and it recorded
+      that in a `HashSet` *before* checking. Each query used to own its readers; now the runner's projection and the
+      window's queries share them. Concurrent marks could corrupt the set, and a second thread could read a column the
+      first was still checking. With a damaged column, 278 of 320 concurrent reads were served its bytes. A lock-free
+      flag now marks a column only after it passes; a lost race repeats the check and never skips it.
+    - **Kept sessions kept their readers.** The Desktop keeps four sessions' stores, so returning to one hashes nothing
+      again, and each could hold 64 MiB of readers: 256 MiB of §12's 512 after viewing four large sessions. Only the
+      session opened last now keeps readers; the others keep only what they verified. `SharedSessionStores` became a
+      facade over a testable `SessionStoreRegistry`.
+    - **A capture was cached twice.** The runner derives into a writer store while the window read the same session
+      through a reader store, so both cached the working set and both hashed every new file. The writer store is now
+      the session's shared store.
+    - **LRU fails the scans it serves.** Until S4 every projection and query reads every segment in the same order.
+      Once a session's payload passed 64 MiB, a recency policy would evict each reader just before the next scan read
+      it: no hits, full churn. The cache now admits what fits and bypasses the rest; pruning frees room.
+  - **Measured on the saved 10-minute session** (Release, medians):
+
+    | Measure | Uncached | Cached |
+    |---|---|---|
+    | Open every segment | 16.9 ms, 16.4 MiB allocated | 0.04 ms, none |
+    | Whole projection, no derivation cached | 106 ms, 34.9 MiB | 56 ms, 18.5 MiB |
+
+    The overview and every derivation are digest-identical either way. The 16 MiB now stays resident instead.
+  - **Real ETW** (`bench/results/first-feedback-20260926T153533Z-10min-bounded`): the bounded 10-minute capture met every
+    budget with 44% more records than revision 129's run.
+
+    | Measure | Revision 129 | Revision 142 |
+    |---|---|---|
+    | Records | 73,660 | 105,944 |
+    | Projection p50 / p95 | 53 / 85 ms | 44 / 81 ms |
+    | Event-to-visible p95 | 849 ms | 846 ms |
+    | Event-to-exact p95 | 2.69 s | 2.69 s |
+    | Viewer private memory at the end | 76 MiB | 118 MiB |
+
+    The session held 22.5 MiB of segment payload, which the cache now keeps resident; the rest of the growth is the
+    larger session. The run predates the admission change, which acts only above 64 MiB.
+  - **Tests:** the four cache tests, an I15 concurrency test, concurrent opens, a scan larger than the cache, the
+    registry, and the capture's store as the shared one (+9). Each new test failed against its mutation: the I15 test in
+    every run against the mark-first order, the scan test against eviction, the registry and capture tests without the
+    release, and the capture test without the adoption.
 - **Revision 141 — a repaint allocates nothing of its own (R11, §19.4):**
   - **Measured first:** one repaint of each pane against an empty drawing context, on every rung of a real session.
     Before: the timeline 58–125 KB, the graph 13–15 KB, the minimap 11 KB, and the hover layer 44–51 KB with a card
@@ -629,11 +684,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - S4's persisted overview pyramid (P25).
    - IC-015's incremental process and relation derivation, so exact live results keep a sub-second cadence and viewer
      memory stops growing with the session (S2).
-   - A bounded cache of verified segment readers, so a projection stops re-reading and re-hashing every segment (21 MB,
-     17 ms at the end of the 10-minute capture).
    - Remove a live session's superseded manifests once nothing can read them. `store-v1` keeps them until asked, and
      they reached 16 MB after 10 minutes.
-   Re-run the bounded 10-minute first-feedback and revision 127's latency benchmark at 1M and 10M rows as each lands.
+   Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
+   re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
+   S4 and incremental derivation land.
 2. Finish a crashed viewer's session (§3.1 step 6): record where a live session's evidence is, outside the session
    directory, and on the next launch offer to derive the chunks the broker published after the crash.
 3. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
@@ -667,6 +722,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 142 was written without an SDK and then built and tested on Windows with the pinned SDK 10.0.401: Debug and
+  Release both ran **1,023 tests: 1,021 passed, 2 skipped**, zero failures. This is the first full clean run on Windows
+  since revision 129, so the 86 CaptureBroker tests the Linux container could not run pass again.
 - Revision 141 was built and tested in the same Linux container: Debug and Release both ran **1,014 tests: 926 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 140 was built and tested in the same Linux container: Debug and Release both ran **1,013 tests: 925 passed, 2 skipped, 86 failed**, and the
@@ -698,8 +756,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline (revision 129): **959 passed, 2 skipped, in Debug and Release**, zero failures.
-  Revision 129 adds two store, two Desktop and two broker tests (+6). Its real-ETW measurements are
+- Last executed clean baseline on Windows: revision 142, **1,021 passed, 2 skipped, in Debug and Release**. Before it,
+  revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
   - Run nothing else while a first-feedback run records: a concurrent build or suite would be measured as projection

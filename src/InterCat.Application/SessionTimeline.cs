@@ -190,7 +190,7 @@ public static class SessionTimelineQuery
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its timeline cannot be placed.");
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         TimelineColumns? focused = rows is null ? null : new TimelineColumns(interval, columns, tallyMechanisms: true);
@@ -358,7 +358,7 @@ internal sealed class FocusRows
         CancellationToken cancellationToken)
     {
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
         ProcessInstanceIndex? processes = null;
         HashSet<int> owners = [];

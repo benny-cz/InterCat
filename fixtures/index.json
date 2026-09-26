@@ -583,6 +583,7 @@
         "I15: staging cleanup leaves unmarked legacy files for manual review",
         "I15: staging cleanup refuses a preview whose candidate set changed",
         "I15: taking a fresh reader lease does not authorize a stale writer",
+        "I15: threads sharing one reader never read a column before it passes its checksum",
         "I15: time blocks cover every row and state the interval their rows actually hold"
       ],
       "I16": [

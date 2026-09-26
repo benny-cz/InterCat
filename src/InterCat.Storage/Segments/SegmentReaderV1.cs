@@ -88,9 +88,18 @@ public readonly ref struct SegmentColumnSlice
 /// </remarks>
 public sealed class SegmentReaderV1
 {
+    /// <summary>One flag per defined column code; a column's code is refused at open unless §20.1 defines it.</summary>
+    private static readonly int ColumnCodeSlots = Enum.GetValues<SegmentColumnId>().Max(id => (int)id) + 1;
+
     private readonly ReadOnlyMemory<byte> file;
     private readonly Dictionary<SegmentColumnId, SegmentColumnDescriptor> columns;
-    private readonly HashSet<SegmentColumnId> verified = [];
+
+    /// <summary>
+    /// Which columns have passed every check, by column code. A store shares one reader between concurrent queries
+    /// (§20.1), so a column is marked only after its checks pass: another thread either sees the mark or checks the
+    /// immutable bytes again itself, and no thread reads a column it has not seen pass.
+    /// </summary>
+    private readonly bool[] verified = new bool[ColumnCodeSlots];
     private readonly Dictionary<ushort, SegmentDictionaryV1> dictionaries;
 
     private SegmentReaderV1(
@@ -951,14 +960,22 @@ public sealed class SegmentReaderV1
 
     private void Verify(SegmentColumnDescriptor column)
     {
-        if (!verified.Add(column.Id))
+        ref bool passed = ref verified[(int)column.Id];
+        if (Volatile.Read(ref passed))
         {
             return;
         }
 
+        VerifyBytes(column);
+
+        // Published only now, with release semantics: a thread that reads the mark reads a column that passed.
+        Volatile.Write(ref passed, true);
+    }
+
+    private void VerifyBytes(SegmentColumnDescriptor column)
+    {
         if (Crc32C.Compute(file.Span.Slice(column.ValueOffset, column.ValueLength)) != column.ValueCrc32C)
         {
-            _ = verified.Remove(column.Id);
             throw new InvalidDataException($"Column {column.Id} fails its checksum.");
         }
 
@@ -966,7 +983,6 @@ public sealed class SegmentReaderV1
             && Crc32C.Compute(file.Span.Slice(column.NullBitmapOffset, column.NullBitmapLength))
                 != column.NullBitmapCrc32C)
         {
-            _ = verified.Remove(column.Id);
             throw new InvalidDataException($"Column {column.Id}'s null bitmap fails its checksum.");
         }
 
@@ -987,7 +1003,6 @@ public sealed class SegmentReaderV1
 
         if (known != column.KnownCount)
         {
-            _ = verified.Remove(column.Id);
             throw new InvalidDataException(
                 $"Column {column.Id} reports {column.KnownCount} known values and its bitmap sets {known}. An "
                 + "availability counter that disagrees with the data would make a denominator a guess.");
@@ -999,7 +1014,6 @@ public sealed class SegmentReaderV1
         {
             if ((bitmap[bit >> 3] & (1 << (bit & 7))) != 0)
             {
-                _ = verified.Remove(column.Id);
                 throw new InvalidDataException(
                     $"Column {column.Id}'s null bitmap sets bit {bit} past its {RowCount} rows.");
             }

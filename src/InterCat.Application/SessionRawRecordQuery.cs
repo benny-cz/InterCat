@@ -67,7 +67,7 @@ public static class SessionRawRecordQuery
             if (manifest.SessionId != expectedSessionId || manifest.Generation != expectedGeneration)
                 throw new InvalidOperationException("This raw-record locator names another session or generation. "
                     + "Restart from icat evidence; no row was silently shifted.");
-            SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, segmentName);
+            SegmentReaderV1 segment = SessionSegments.Open(store, manifest, segmentName);
             if (segmentRow >= segment.RowCount)
                 throw new ArgumentException("The row coordinate is outside its published segment.", nameof(segmentRow));
             ObservationRowV1 row = segment.Row(segmentRow);
@@ -99,7 +99,7 @@ public static class SessionRawRecordQuery
             throw new InvalidOperationException("The session has published another generation. Reopen source rows "
                 + "from the current workspace before viewing an original record.");
 
-        SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, selected.SegmentName);
+        SegmentReaderV1 segment = SessionSegments.Open(store, manifest, selected.SegmentName);
         if (selected.SegmentRow < 0 || selected.SegmentRow >= segment.RowCount)
             throw new InvalidDataException("The selected row is outside its published segment.");
         ObservationRowV1 published = segment.Row(selected.SegmentRow);

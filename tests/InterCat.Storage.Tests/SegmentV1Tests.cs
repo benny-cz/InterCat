@@ -419,6 +419,55 @@ public sealed class SegmentV1Tests
         Assert.Contains("fails its checksum", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: threads sharing one reader never read a column before it passes its checksum")]
+    public async Task ThreadsSharingOneReaderNeverReadAnUncheckedColumn()
+    {
+        // A store's cache hands one reader to concurrent queries. The damaged column is long enough that checking it
+        // takes a while, so the other threads arrive while the first is still checking.
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries(
+            Enumerable.Range(0, 50_000).Select(row => Row(100 + row, bytes: row)));
+        SegmentColumnDescriptor column = SegmentReaderV1.Open(bytes, dictionaries).Column(SegmentColumnId.ByteValue)!;
+        bytes[column.ValueOffset] ^= 0xFF;
+        System.Security.Cryptography.SHA256.HashData(
+            bytes.AsSpan(0, bytes.Length - SegmentFormatV1.TrailerLength),
+            bytes.AsSpan(bytes.Length - SegmentFormatV1.TrailerLength));
+        const int Attempts = 40;
+        int threads = Math.Clamp(Environment.ProcessorCount, 2, 8);
+        int served = 0;
+        int refused = 0;
+
+        for (int attempt = 0; attempt < Attempts; attempt++)
+        {
+            SegmentReaderV1 shared = SegmentReaderV1.Open(bytes, dictionaries);
+            using var start = new Barrier(threads);
+            Task[] readers =
+            [
+                .. Enumerable.Range(0, threads).Select(_ => Task.Factory.StartNew(
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        try
+                        {
+                            _ = shared.ValueBytes(SegmentColumnId.ByteValue).Length;
+                            _ = Interlocked.Increment(ref served);
+                        }
+                        catch (InvalidDataException refusal)
+                            when (refusal.Message.Contains("fails its checksum", StringComparison.Ordinal))
+                        {
+                            _ = Interlocked.Increment(ref refused);
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default)),
+            ];
+            await Task.WhenAll(readers);
+        }
+
+        Assert.Equal(0, served);
+        Assert.Equal(Attempts * threads, refused);
+    }
+
     [Fact(DisplayName = "I15: an empty segment is never published, because absence is not data")]
     public void AnEmptySegmentIsNeverPublished()
     {
@@ -532,6 +581,165 @@ public sealed class SegmentV1Tests
 
         Assert.ThrowsAny<IOException>(() =>
             SessionSegments.Open(session.Store.Root, result.Manifest, result.Segments[0].Name));
+    }
+
+    [Fact(DisplayName = "A store reuses one verified immutable segment reader across live generations")]
+    public void AStoreReusesOneVerifiedReaderAcrossGenerations()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, [Row(100, bytes: 1), Row(200, bytes: 2)]);
+        string segment = Assert.Single(first.Segments).Name;
+
+        SegmentReaderV1 firstOpen = SessionSegments.Open(session.Store, first.Manifest, segment);
+        SegmentReaderCacheSnapshot afterMiss = session.Store.SegmentReaderCache;
+        Assert.Equal(1, afterMiss.Misses);
+        Assert.Equal(0, afterMiss.Hits);
+        Assert.Equal(1, afterMiss.Entries);
+        Assert.InRange(afterMiss.AdmittedPayloadBytes, 1, afterMiss.BudgetBytes);
+
+        SegmentReaderV1 secondOpen = SessionSegments.Open(session.Store, first.Manifest, segment);
+        Assert.Same(firstOpen, secondOpen);
+        Assert.Equal(1, session.Store.SegmentReaderCache.Hits);
+
+        DerivedGenerationResult second = Publish(session.Store, [Row(300, bytes: 3)]);
+        Assert.Contains(segment, SessionSegments.Names(second.Manifest));
+        SegmentReaderV1 carriedOpen = SessionSegments.Open(session.Store, second.Manifest, segment);
+
+        Assert.Same(firstOpen, carriedOpen);
+        SegmentReaderCacheSnapshot afterCarry = session.Store.SegmentReaderCache;
+        Assert.Equal(2, afterCarry.Hits);
+        Assert.Equal(1, afterCarry.Misses);
+        Assert.Equal(1, afterCarry.Entries);
+        Assert.InRange(afterCarry.AdmittedPayloadBytes, 1, SessionStore.DefaultSegmentReaderCacheBytes);
+    }
+
+    [Fact(DisplayName = "Concurrent opens of one segment share a single cached reader and admit its payload once")]
+    public async Task ConcurrentOpensShareOneCachedReader()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1), Row(200, bytes: 2)]);
+        PublishedSegmentSummary published = Assert.Single(result.Segments);
+        long payload = result.Manifest.Dependencies
+            .Where(dependency => dependency.Name == published.Name || published.DictionaryNames.Contains(dependency.Name))
+            .Sum(dependency => dependency.LengthBytes);
+        int threads = Math.Clamp(Environment.ProcessorCount, 2, 8);
+        using var start = new Barrier(threads);
+
+        SegmentReaderV1[] opened = await Task.WhenAll(Enumerable.Range(0, threads).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                start.SignalAndWait();
+                return SessionSegments.Open(session.Store, result.Manifest, published.Name);
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)));
+
+        // Every thread that missed opened its own copy, and all but the first gave theirs up for the cached one.
+        Assert.All(opened, reader => Assert.Same(opened[0], reader));
+        SegmentReaderCacheSnapshot cache = session.Store.SegmentReaderCache;
+        Assert.Equal(1, cache.Entries);
+        Assert.Equal(payload, cache.AdmittedPayloadBytes);
+        Assert.Equal(threads, cache.Hits + cache.Misses);
+        Assert.Equal([100L, 200L], [.. Enumerable.Range(0, opened[0].RowCount).Select(row => opened[0].Row(row).NativeTicks)]);
+    }
+
+    [Fact(DisplayName = "A scan larger than the reader cache keeps what fits cached, rather than evicting what it reads next")]
+    public void AScanLargerThanTheCacheKeepsWhatFits()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, [Row(100, bytes: 1)]);
+        _ = Publish(session.Store, [Row(200, bytes: 2)]);
+        DerivedGenerationResult last = Publish(session.Store, [Row(300, bytes: 3)]);
+        string[] names = [.. SessionSegments.Names(last.Manifest)];
+        Assert.Equal(3, names.Length);
+
+        // Room for the first two segments a scan reads, and not the third.
+        long Payload(string segment) => last.Manifest.Dependencies
+            .Where(dependency => dependency.Name == segment
+                || (dependency.Kind == StoreDependencyKind.Dictionary
+                    && dependency.Name.StartsWith("dict-" + segment[4..15], StringComparison.Ordinal)))
+            .Sum(dependency => dependency.LengthBytes);
+        session.Store.UseSegmentReaderBudget(Payload(names[0]) + Payload(names[1]));
+
+        SegmentReaderV1[] Scan() => [.. names.Select(name => SessionSegments.Open(session.Store, last.Manifest, name))];
+        SegmentReaderV1[] first = Scan();
+        SegmentReaderCacheSnapshot afterFirst = session.Store.SegmentReaderCache;
+        Assert.Equal((0L, 3L, 1L, 2), (afterFirst.Hits, afterFirst.Misses, afterFirst.Bypasses, afterFirst.Entries));
+
+        // A recency policy would have evicted the first segment for the third, and every read of the next scan would
+        // evict the one after it: nothing would hit. The two that fit stay, and only the third is read again.
+        SegmentReaderV1[] second = Scan();
+        SegmentReaderCacheSnapshot afterSecond = session.Store.SegmentReaderCache;
+        Assert.Equal((2L, 4L, 2L, 2), (afterSecond.Hits, afterSecond.Misses, afterSecond.Bypasses, afterSecond.Entries));
+        Assert.Same(first[0], second[0]);
+        Assert.Same(first[1], second[1]);
+        Assert.NotSame(first[2], second[2]);
+        Assert.Equal(Payload(names[0]) + Payload(names[1]), afterSecond.AdmittedPayloadBytes);
+    }
+
+    [Fact(DisplayName = "A reopened store starts with an empty segment reader cache")]
+    public void AReopenedStoreStartsWithAnEmptyReaderCache()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1)]);
+        string segment = Assert.Single(result.Segments).Name;
+        SegmentReaderV1 first = SessionSegments.Open(session.Store, result.Manifest, segment);
+        Assert.Equal(1, session.Store.SegmentReaderCache.Entries);
+
+        SessionStore reopened = session.Reopen();
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        SegmentReaderV1 fresh = SessionSegments.Open(reopened, reopened.Current!, segment);
+
+        Assert.NotSame(first, fresh);
+        Assert.Equal(1, reopened.SegmentReaderCache.Misses);
+        Assert.Equal(1, reopened.SegmentReaderCache.Entries);
+    }
+
+    [Fact(DisplayName = "Retention drops cached readers that the new generation can no longer reach")]
+    public void RetentionDropsUnreachableCachedReaders()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1)]);
+        string segment = Assert.Single(result.Segments).Name;
+        _ = SessionSegments.Open(session.Store, result.Manifest, segment);
+        Assert.Equal(1, session.Store.SegmentReaderCache.Entries);
+
+        RetentionOutcome retained = session.Store.ReleaseDependencies(
+            [segment],
+            "reader-cache retirement test",
+            Committed,
+            Committed);
+
+        Assert.DoesNotContain(segment, SessionSegments.Names(retained.Manifest));
+        Assert.Equal(0, session.Store.SegmentReaderCache.Entries);
+        Assert.Equal(0, session.Store.SegmentReaderCache.AdmittedPayloadBytes);
+    }
+
+    [Fact(DisplayName = "A stale leased generation cannot repopulate the current segment reader cache")]
+    public void AStaleLeaseCannotRepopulateTheReaderCache()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1)]);
+        string segment = Assert.Single(result.Segments).Name;
+        using EvidenceLease lease = session.Store.AcquireLease(nowUtc: Committed);
+
+        RetentionOutcome retained = session.Store.ReleaseDependencies(
+            [segment],
+            "reader-cache stale lease test",
+            Committed,
+            Committed);
+
+        Assert.Contains(segment, retained.HeldByLease);
+        Assert.Equal(0, session.Store.SegmentReaderCache.Entries);
+
+        SegmentReaderV1 leasedReader = SessionSegments.Open(session.Store, lease.Manifest, segment);
+
+        Assert.Equal(1, leasedReader.RowCount);
+        SegmentReaderCacheSnapshot afterOpen = session.Store.SegmentReaderCache;
+        Assert.Equal(1, afterOpen.Misses);
+        Assert.Equal(0, afterOpen.Entries);
+        Assert.Equal(0, afterOpen.AdmittedPayloadBytes);
     }
 
     [Fact(DisplayName = "I8: a generation whose rows name another clock than its journal is refused")]

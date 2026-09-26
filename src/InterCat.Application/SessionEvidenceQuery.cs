@@ -150,7 +150,7 @@ public static class SessionEvidenceQuery
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         string[] names = [.. SessionSegments.Names(manifest)];
-        SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
         string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
@@ -175,7 +175,7 @@ public static class SessionEvidenceQuery
         {
             clock = SessionSegments.SourceClock(store.Root, manifest)
                 ?? throw new InvalidDataException("This generation has no source clock for process binding.");
-            fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
             derivation = SessionDerivationCache.For(manifest);
         }
 

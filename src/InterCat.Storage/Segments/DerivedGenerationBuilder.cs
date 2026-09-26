@@ -791,43 +791,84 @@ public static class SessionSegments
     /// <summary>
     /// Opens one published segment together with the dictionaries its columns reference. A dictionary the
     /// generation does not name is a refusal: a segment whose codes cannot be resolved is not read with the
-    /// codes shown as values.
+    /// codes shown as values. This overload is deliberately uncached for low-level readers that do not own a
+    /// <see cref="SessionStore"/> lifetime. Interactive/query paths should use the store overload below.
     /// </summary>
-    public static SegmentReaderV1 Open(IOwnedDirectory directory, SessionManifestV1 manifest, string segmentName)
+    public static SegmentReaderV1 Open(IOwnedDirectory directory, SessionManifestV1 manifest, string segmentName) =>
+        OpenCore(directory, manifest, segmentName).Reader;
+
+    /// <summary>
+    /// Opens a segment through the store's payload-admission-bounded immutable-reader cache. A later generation can
+    /// reuse a reader for an unchanged segment because published dependency names are immutable; the cache still verifies
+    /// that the later manifest names the exact segment and every dictionary that reader depends on. A concurrent reader
+    /// holds the <see cref="EvidenceLease"/> whose manifest is passed here; the cache does not replace evidence lifetime.
+    /// </summary>
+    public static SegmentReaderV1 Open(SessionStore store, SessionManifestV1 manifest, string segmentName)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(manifest);
+        OwnedFileName.Require(segmentName, nameof(segmentName));
+        if (manifest.SessionId != store.SessionId)
+        {
+            throw new InvalidDataException(
+                $"Generation {manifest.Generation} belongs to session {manifest.SessionId:N}, not the store "
+                + $"for {store.SessionId:N}.");
+        }
+
+        StoreDependency segmentDependency = SegmentDependency(manifest, segmentName);
+        if (store.SegmentReaders.TryGet(segmentDependency, manifest, out SegmentReaderV1 cached))
+        {
+            return cached;
+        }
+
+        (SegmentReaderV1 Reader, StoreDependency Segment, StoreDependency[] Dictionaries) opened =
+            OpenCore(store.Root, manifest, segmentName);
+        return store.SegmentReaders.Add(opened.Segment, opened.Dictionaries, opened.Reader);
+    }
+
+    private static (SegmentReaderV1 Reader, StoreDependency Segment, StoreDependency[] Dictionaries) OpenCore(
+        IOwnedDirectory directory,
+        SessionManifestV1 manifest,
+        string segmentName)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(manifest);
         OwnedFileName.Require(segmentName, nameof(segmentName));
-        StoreDependency segmentDependency = manifest.Dependencies.FirstOrDefault(dependency =>
-            dependency.Name.Equals(segmentName, StringComparison.OrdinalIgnoreCase)
-            && dependency.Kind == StoreDependencyKind.Segment)
-            ?? throw new InvalidDataException(
-                $"Generation {manifest.Generation} names no segment '{segmentName}'.");
+        StoreDependency segmentDependency = SegmentDependency(manifest, segmentName);
 
         long generation = GenerationOf(segmentDependency.Name);
         byte[] bytes = ReadAll(directory, segmentDependency.Name);
+        var dictionaryDependencies = new List<StoreDependency>();
         var dictionaries = new List<SegmentDictionaryV1>();
         foreach (ushort id in SegmentReaderV1.ReferencedDictionaryIds(bytes))
         {
             string name = SegmentFormatV1.DictionaryFileName(generation, id);
-            if (!manifest.Dependencies.Any(dependency =>
+            StoreDependency dictionaryDependency = manifest.Dependencies.FirstOrDefault(dependency =>
                 dependency.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
-                && dependency.Kind == StoreDependencyKind.Dictionary))
-            {
-                throw new InvalidDataException(
+                && dependency.Kind == StoreDependencyKind.Dictionary)
+                ?? throw new InvalidDataException(
                     $"Segment '{segmentName}' references dictionary {id}, which generation "
                     + $"{manifest.Generation} does not name as '{name}'.");
-            }
-
+            dictionaryDependencies.Add(dictionaryDependency);
             dictionaries.Add(SegmentDictionaryV1.Decode(ReadAll(directory, name)));
         }
 
         SegmentReaderV1 reader = SegmentReaderV1.Open(bytes, dictionaries);
-        return reader.Table == TableOf(segmentDependency.Name)
-            ? reader
-            : throw new InvalidDataException(
+        if (reader.Table != TableOf(segmentDependency.Name))
+        {
+            throw new InvalidDataException(
                 $"'{segmentName}' is named as a {TableOf(segmentDependency.Name)} segment and holds {reader.Table}.");
+        }
+
+        return (reader, segmentDependency, [.. dictionaryDependencies]);
     }
+
+    private static StoreDependency SegmentDependency(SessionManifestV1 manifest, string segmentName) =>
+        manifest.Dependencies.FirstOrDefault(dependency =>
+            dependency.Name.Equals(segmentName, StringComparison.OrdinalIgnoreCase)
+            && dependency.Kind == StoreDependencyKind.Segment)
+        ?? throw new InvalidDataException(
+            $"Generation {manifest.Generation} names no segment '{segmentName}'.");
 
     /// <summary>
     /// The coverage ledger a generation names, or null for a legacy generation that publishes none: every coverage

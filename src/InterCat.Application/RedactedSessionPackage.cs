@@ -859,8 +859,8 @@ public static class RedactedSessionPackage
         CancellationToken cancellationToken)
     {
         SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(staging));
-        SessionManifestV1 manifest = reopened.Current
-            ?? throw new InvalidDataException("The redacted package did not publish a generation.");
+        using EvidenceLease lease = reopened.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
         Require(!reopened.Recovery.RolledBackToLastKnownGood && reopened.Recovery.OrphanFiles.Count == 0,
             "The package holds a file its generation does not name.");
         Require(manifest.SessionId == written.SessionId && manifest.SourceIdentity == Contract
@@ -949,7 +949,7 @@ public static class RedactedSessionPackage
         foreach (string name in SessionSegments.Names(manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = SessionSegments.Open(reopened.Root, manifest, name);
+            SegmentReaderV1 segment = SessionSegments.Open(reopened, manifest, name);
             RequirePackageSegment(segment, written);
             for (int index = 0; index < segment.RowCount; index++)
             {
@@ -987,7 +987,7 @@ public static class RedactedSessionPackage
         foreach (string name in SessionSegments.FieldNames(manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = SessionSegments.Open(reopened.Root, manifest, name);
+            SegmentReaderV1 segment = SessionSegments.Open(reopened, manifest, name);
             RequirePackageSegment(segment, written);
             for (int index = 0; index < segment.RowCount; index++)
             {

@@ -1,0 +1,1216 @@
+{
+  "Schema": "intercat.first-feedback.v3",
+  "StartedUtc": "2026-09-26T15:35:33.3014192+00:00",
+  "FinishedUtc": "2026-09-26T15:45:46.4113888+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "QpcFrequency": 10000000,
+  "RecordingSeconds": 600,
+  "Bounded": true,
+  "Budgets": {
+    "firstUsefulOverviewAfterFirstDeliveredMs": 3000,
+    "eventToVisibleP95Ms": 1500,
+    "eventToVisibleP99Ms": 3000,
+    "derivationP95Ms": 500,
+    "projectionP95Ms": 250
+  },
+  "Passed": true,
+  "MeetsBudgets": true,
+  "Runs": [
+    {
+      "Run": 1,
+      "Valid": true,
+      "MeetsBudgets": true,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The configured maximum capture duration elapsed; evidence was finalized.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 244,
+      "PreparedMs": 811,
+      "StartedMs": 1085,
+      "FirstGenerationMs": 2215,
+      "FirstOverviewMs": 2362,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1396,
+      "OverviewsHandedOff": 291,
+      "ChunksFollowed": 291,
+      "LiveCounterReadings": 588,
+      "LastLiveCounters": {
+        "AdmittedRecords": 105846,
+        "ObservedRecords": 105846,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 105944,
+      "SessionBytes": 64813779,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 2025,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 41,
+      "EventToVisible": {
+        "Count": 105944,
+        "P50Ms": 546,
+        "P95Ms": 846,
+        "P99Ms": 967,
+        "MaxMs": 1285
+      },
+      "EventToPreview": {
+        "Count": 105903,
+        "P50Ms": 546,
+        "P95Ms": 851,
+        "P99Ms": 968,
+        "MaxMs": 1189
+      },
+      "EventToExact": {
+        "Count": 105944,
+        "P50Ms": 1742,
+        "P95Ms": 2688,
+        "P99Ms": 2888,
+        "MaxMs": 3577
+      },
+      "Derivation": {
+        "Count": 291,
+        "P50Ms": 66,
+        "P95Ms": 87,
+        "P99Ms": 699,
+        "MaxMs": 733
+      },
+      "Projection": {
+        "Count": 291,
+        "P50Ms": 44,
+        "P95Ms": 81,
+        "P99Ms": 109,
+        "MaxMs": 147
+      },
+      "LastOverviewDerivedRecords": 105944,
+      "LastOverviewDerivationMs": 733,
+      "LastOverviewProjectionMs": 140,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 1680,
+          "JournaledRecords": 2000,
+          "ViewerWorkingSetBytes": 104984576,
+          "ViewerPrivateBytes": 48541696,
+          "ViewerManagedHeapBytes": 6291240,
+          "BrokerWorkingSetBytes": 91164672,
+          "BrokerPrivateBytes": 40943616
+        },
+        {
+          "ElapsedSeconds": 20,
+          "Phase": "Recording",
+          "DerivedRecords": 4795,
+          "JournaledRecords": 4977,
+          "ViewerWorkingSetBytes": 105099264,
+          "ViewerPrivateBytes": 48103424,
+          "ViewerManagedHeapBytes": 10216688,
+          "BrokerWorkingSetBytes": 100868096,
+          "BrokerPrivateBytes": 49422336
+        },
+        {
+          "ElapsedSeconds": 30,
+          "Phase": "Recording",
+          "DerivedRecords": 6558,
+          "JournaledRecords": 6728,
+          "ViewerWorkingSetBytes": 112611328,
+          "ViewerPrivateBytes": 55291904,
+          "ViewerManagedHeapBytes": 13777496,
+          "BrokerWorkingSetBytes": 95731712,
+          "BrokerPrivateBytes": 43974656
+        },
+        {
+          "ElapsedSeconds": 40,
+          "Phase": "Recording",
+          "DerivedRecords": 8370,
+          "JournaledRecords": 8453,
+          "ViewerWorkingSetBytes": 107405312,
+          "ViewerPrivateBytes": 49516544,
+          "ViewerManagedHeapBytes": 14775728,
+          "BrokerWorkingSetBytes": 101892096,
+          "BrokerPrivateBytes": 49573888
+        },
+        {
+          "ElapsedSeconds": 50,
+          "Phase": "Recording",
+          "DerivedRecords": 9788,
+          "JournaledRecords": 9848,
+          "ViewerWorkingSetBytes": 106049536,
+          "ViewerPrivateBytes": 48017408,
+          "ViewerManagedHeapBytes": 15757264,
+          "BrokerWorkingSetBytes": 100737024,
+          "BrokerPrivateBytes": 49029120
+        },
+        {
+          "ElapsedSeconds": 60,
+          "Phase": "Recording",
+          "DerivedRecords": 10870,
+          "JournaledRecords": 10907,
+          "ViewerWorkingSetBytes": 112582656,
+          "ViewerPrivateBytes": 53813248,
+          "ViewerManagedHeapBytes": 16012912,
+          "BrokerWorkingSetBytes": 101285888,
+          "BrokerPrivateBytes": 49430528
+        },
+        {
+          "ElapsedSeconds": 70,
+          "Phase": "Recording",
+          "DerivedRecords": 12177,
+          "JournaledRecords": 12238,
+          "ViewerWorkingSetBytes": 119885824,
+          "ViewerPrivateBytes": 60366848,
+          "ViewerManagedHeapBytes": 17388800,
+          "BrokerWorkingSetBytes": 102281216,
+          "BrokerPrivateBytes": 50774016
+        },
+        {
+          "ElapsedSeconds": 80,
+          "Phase": "Recording",
+          "DerivedRecords": 13441,
+          "JournaledRecords": 13468,
+          "ViewerWorkingSetBytes": 116269056,
+          "ViewerPrivateBytes": 57118720,
+          "ViewerManagedHeapBytes": 16911400,
+          "BrokerWorkingSetBytes": 98701312,
+          "BrokerPrivateBytes": 46387200
+        },
+        {
+          "ElapsedSeconds": 90,
+          "Phase": "Recording",
+          "DerivedRecords": 14941,
+          "JournaledRecords": 15203,
+          "ViewerWorkingSetBytes": 117325824,
+          "ViewerPrivateBytes": 58593280,
+          "ViewerManagedHeapBytes": 16606632,
+          "BrokerWorkingSetBytes": 101937152,
+          "BrokerPrivateBytes": 49938432
+        },
+        {
+          "ElapsedSeconds": 100,
+          "Phase": "Recording",
+          "DerivedRecords": 16228,
+          "JournaledRecords": 16496,
+          "ViewerWorkingSetBytes": 113438720,
+          "ViewerPrivateBytes": 54325248,
+          "ViewerManagedHeapBytes": 21516096,
+          "BrokerWorkingSetBytes": 99188736,
+          "BrokerPrivateBytes": 47128576
+        },
+        {
+          "ElapsedSeconds": 110,
+          "Phase": "Recording",
+          "DerivedRecords": 17311,
+          "JournaledRecords": 17472,
+          "ViewerWorkingSetBytes": 123207680,
+          "ViewerPrivateBytes": 63627264,
+          "ViewerManagedHeapBytes": 22012672,
+          "BrokerWorkingSetBytes": 98955264,
+          "BrokerPrivateBytes": 46600192
+        },
+        {
+          "ElapsedSeconds": 120,
+          "Phase": "Recording",
+          "DerivedRecords": 18408,
+          "JournaledRecords": 18531,
+          "ViewerWorkingSetBytes": 119066624,
+          "ViewerPrivateBytes": 59248640,
+          "ViewerManagedHeapBytes": 23446144,
+          "BrokerWorkingSetBytes": 103751680,
+          "BrokerPrivateBytes": 51421184
+        },
+        {
+          "ElapsedSeconds": 130,
+          "Phase": "Recording",
+          "DerivedRecords": 19597,
+          "JournaledRecords": 19737,
+          "ViewerWorkingSetBytes": 135864320,
+          "ViewerPrivateBytes": 77213696,
+          "ViewerManagedHeapBytes": 38296872,
+          "BrokerWorkingSetBytes": 101851136,
+          "BrokerPrivateBytes": 50155520
+        },
+        {
+          "ElapsedSeconds": 140,
+          "Phase": "Recording",
+          "DerivedRecords": 20948,
+          "JournaledRecords": 21053,
+          "ViewerWorkingSetBytes": 150093824,
+          "ViewerPrivateBytes": 92045312,
+          "ViewerManagedHeapBytes": 57869584,
+          "BrokerWorkingSetBytes": 99876864,
+          "BrokerPrivateBytes": 47616000
+        },
+        {
+          "ElapsedSeconds": 150,
+          "Phase": "Recording",
+          "DerivedRecords": 22376,
+          "JournaledRecords": 22597,
+          "ViewerWorkingSetBytes": 167632896,
+          "ViewerPrivateBytes": 109936640,
+          "ViewerManagedHeapBytes": 73693680,
+          "BrokerWorkingSetBytes": 99844096,
+          "BrokerPrivateBytes": 47562752
+        },
+        {
+          "ElapsedSeconds": 161,
+          "Phase": "Recording",
+          "DerivedRecords": 27465,
+          "JournaledRecords": 27719,
+          "ViewerWorkingSetBytes": 171872256,
+          "ViewerPrivateBytes": 113967104,
+          "ViewerManagedHeapBytes": 79806536,
+          "BrokerWorkingSetBytes": 102711296,
+          "BrokerPrivateBytes": 50089984
+        },
+        {
+          "ElapsedSeconds": 171,
+          "Phase": "Recording",
+          "DerivedRecords": 28887,
+          "JournaledRecords": 28983,
+          "ViewerWorkingSetBytes": 166289408,
+          "ViewerPrivateBytes": 108019712,
+          "ViewerManagedHeapBytes": 54782824,
+          "BrokerWorkingSetBytes": 103194624,
+          "BrokerPrivateBytes": 50540544
+        },
+        {
+          "ElapsedSeconds": 181,
+          "Phase": "Recording",
+          "DerivedRecords": 34210,
+          "JournaledRecords": 34270,
+          "ViewerWorkingSetBytes": 154075136,
+          "ViewerPrivateBytes": 95645696,
+          "ViewerManagedHeapBytes": 63410264,
+          "BrokerWorkingSetBytes": 101900288,
+          "BrokerPrivateBytes": 48885760
+        },
+        {
+          "ElapsedSeconds": 191,
+          "Phase": "Recording",
+          "DerivedRecords": 35392,
+          "JournaledRecords": 35661,
+          "ViewerWorkingSetBytes": 157364224,
+          "ViewerPrivateBytes": 99016704,
+          "ViewerManagedHeapBytes": 59951224,
+          "BrokerWorkingSetBytes": 101601280,
+          "BrokerPrivateBytes": 48566272
+        },
+        {
+          "ElapsedSeconds": 201,
+          "Phase": "Recording",
+          "DerivedRecords": 37626,
+          "JournaledRecords": 38365,
+          "ViewerWorkingSetBytes": 158474240,
+          "ViewerPrivateBytes": 100032512,
+          "ViewerManagedHeapBytes": 58712568,
+          "BrokerWorkingSetBytes": 101687296,
+          "BrokerPrivateBytes": 48676864
+        },
+        {
+          "ElapsedSeconds": 211,
+          "Phase": "Recording",
+          "DerivedRecords": 40641,
+          "JournaledRecords": 40767,
+          "ViewerWorkingSetBytes": 160423936,
+          "ViewerPrivateBytes": 102043648,
+          "ViewerManagedHeapBytes": 65161920,
+          "BrokerWorkingSetBytes": 102899712,
+          "BrokerPrivateBytes": 49909760
+        },
+        {
+          "ElapsedSeconds": 221,
+          "Phase": "Recording",
+          "DerivedRecords": 43362,
+          "JournaledRecords": 43565,
+          "ViewerWorkingSetBytes": 161124352,
+          "ViewerPrivateBytes": 101863424,
+          "ViewerManagedHeapBytes": 60528384,
+          "BrokerWorkingSetBytes": 103415808,
+          "BrokerPrivateBytes": 50675712
+        },
+        {
+          "ElapsedSeconds": 231,
+          "Phase": "Recording",
+          "DerivedRecords": 45253,
+          "JournaledRecords": 45368,
+          "ViewerWorkingSetBytes": 162557952,
+          "ViewerPrivateBytes": 103301120,
+          "ViewerManagedHeapBytes": 62012848,
+          "BrokerWorkingSetBytes": 102711296,
+          "BrokerPrivateBytes": 49680384
+        },
+        {
+          "ElapsedSeconds": 241,
+          "Phase": "Recording",
+          "DerivedRecords": 46709,
+          "JournaledRecords": 47538,
+          "ViewerWorkingSetBytes": 158289920,
+          "ViewerPrivateBytes": 99041280,
+          "ViewerManagedHeapBytes": 63478264,
+          "BrokerWorkingSetBytes": 101543936,
+          "BrokerPrivateBytes": 48484352
+        },
+        {
+          "ElapsedSeconds": 251,
+          "Phase": "Recording",
+          "DerivedRecords": 49803,
+          "JournaledRecords": 49839,
+          "ViewerWorkingSetBytes": 162287616,
+          "ViewerPrivateBytes": 102584320,
+          "ViewerManagedHeapBytes": 74533208,
+          "BrokerWorkingSetBytes": 101621760,
+          "BrokerPrivateBytes": 48607232
+        },
+        {
+          "ElapsedSeconds": 261,
+          "Phase": "Recording",
+          "DerivedRecords": 52528,
+          "JournaledRecords": 52778,
+          "ViewerWorkingSetBytes": 185303040,
+          "ViewerPrivateBytes": 124846080,
+          "ViewerManagedHeapBytes": 49465544,
+          "BrokerWorkingSetBytes": 101568512,
+          "BrokerPrivateBytes": 48525312
+        },
+        {
+          "ElapsedSeconds": 271,
+          "Phase": "Recording",
+          "DerivedRecords": 55621,
+          "JournaledRecords": 55947,
+          "ViewerWorkingSetBytes": 182255616,
+          "ViewerPrivateBytes": 123437056,
+          "ViewerManagedHeapBytes": 54448936,
+          "BrokerWorkingSetBytes": 101617664,
+          "BrokerPrivateBytes": 48476160
+        },
+        {
+          "ElapsedSeconds": 281,
+          "Phase": "Recording",
+          "DerivedRecords": 57967,
+          "JournaledRecords": 58112,
+          "ViewerWorkingSetBytes": 175243264,
+          "ViewerPrivateBytes": 115634176,
+          "ViewerManagedHeapBytes": 49084336,
+          "BrokerWorkingSetBytes": 101658624,
+          "BrokerPrivateBytes": 48877568
+        },
+        {
+          "ElapsedSeconds": 291,
+          "Phase": "Recording",
+          "DerivedRecords": 61511,
+          "JournaledRecords": 61630,
+          "ViewerWorkingSetBytes": 136691712,
+          "ViewerPrivateBytes": 75542528,
+          "ViewerManagedHeapBytes": 41222896,
+          "BrokerWorkingSetBytes": 101797888,
+          "BrokerPrivateBytes": 48828416
+        },
+        {
+          "ElapsedSeconds": 301,
+          "Phase": "Recording",
+          "DerivedRecords": 62615,
+          "JournaledRecords": 62728,
+          "ViewerWorkingSetBytes": 138735616,
+          "ViewerPrivateBytes": 77553664,
+          "ViewerManagedHeapBytes": 46809192,
+          "BrokerWorkingSetBytes": 102068224,
+          "BrokerPrivateBytes": 49479680
+        },
+        {
+          "ElapsedSeconds": 311,
+          "Phase": "Recording",
+          "DerivedRecords": 63792,
+          "JournaledRecords": 63873,
+          "ViewerWorkingSetBytes": 148062208,
+          "ViewerPrivateBytes": 87097344,
+          "ViewerManagedHeapBytes": 48061608,
+          "BrokerWorkingSetBytes": 106463232,
+          "BrokerPrivateBytes": 53223424
+        },
+        {
+          "ElapsedSeconds": 321,
+          "Phase": "Recording",
+          "DerivedRecords": 64853,
+          "JournaledRecords": 64879,
+          "ViewerWorkingSetBytes": 143269888,
+          "ViewerPrivateBytes": 82583552,
+          "ViewerManagedHeapBytes": 58324136,
+          "BrokerWorkingSetBytes": 107200512,
+          "BrokerPrivateBytes": 53907456
+        },
+        {
+          "ElapsedSeconds": 331,
+          "Phase": "Recording",
+          "DerivedRecords": 66110,
+          "JournaledRecords": 66296,
+          "ViewerWorkingSetBytes": 154980352,
+          "ViewerPrivateBytes": 94797824,
+          "ViewerManagedHeapBytes": 49651304,
+          "BrokerWorkingSetBytes": 106713088,
+          "BrokerPrivateBytes": 53444608
+        },
+        {
+          "ElapsedSeconds": 341,
+          "Phase": "Recording",
+          "DerivedRecords": 67554,
+          "JournaledRecords": 67754,
+          "ViewerWorkingSetBytes": 149008384,
+          "ViewerPrivateBytes": 87912448,
+          "ViewerManagedHeapBytes": 48654520,
+          "BrokerWorkingSetBytes": 106651648,
+          "BrokerPrivateBytes": 53338112
+        },
+        {
+          "ElapsedSeconds": 351,
+          "Phase": "Recording",
+          "DerivedRecords": 68907,
+          "JournaledRecords": 69070,
+          "ViewerWorkingSetBytes": 145612800,
+          "ViewerPrivateBytes": 84496384,
+          "ViewerManagedHeapBytes": 49782440,
+          "BrokerWorkingSetBytes": 106651648,
+          "BrokerPrivateBytes": 53338112
+        },
+        {
+          "ElapsedSeconds": 361,
+          "Phase": "Recording",
+          "DerivedRecords": 69937,
+          "JournaledRecords": 70055,
+          "ViewerWorkingSetBytes": 151965696,
+          "ViewerPrivateBytes": 91303936,
+          "ViewerManagedHeapBytes": 51152288,
+          "BrokerWorkingSetBytes": 106790912,
+          "BrokerPrivateBytes": 53489664
+        },
+        {
+          "ElapsedSeconds": 371,
+          "Phase": "Recording",
+          "DerivedRecords": 71129,
+          "JournaledRecords": 71211,
+          "ViewerWorkingSetBytes": 151859200,
+          "ViewerPrivateBytes": 91086848,
+          "ViewerManagedHeapBytes": 52534384,
+          "BrokerWorkingSetBytes": 106766336,
+          "BrokerPrivateBytes": 53436416
+        },
+        {
+          "ElapsedSeconds": 381,
+          "Phase": "Recording",
+          "DerivedRecords": 72210,
+          "JournaledRecords": 72510,
+          "ViewerWorkingSetBytes": 154734592,
+          "ViewerPrivateBytes": 94044160,
+          "ViewerManagedHeapBytes": 54466784,
+          "BrokerWorkingSetBytes": 106758144,
+          "BrokerPrivateBytes": 53395456
+        },
+        {
+          "ElapsedSeconds": 391,
+          "Phase": "Recording",
+          "DerivedRecords": 73751,
+          "JournaledRecords": 73946,
+          "ViewerWorkingSetBytes": 154877952,
+          "ViewerPrivateBytes": 93798400,
+          "ViewerManagedHeapBytes": 52830936,
+          "BrokerWorkingSetBytes": 106762240,
+          "BrokerPrivateBytes": 53395456
+        },
+        {
+          "ElapsedSeconds": 401,
+          "Phase": "Recording",
+          "DerivedRecords": 75271,
+          "JournaledRecords": 75405,
+          "ViewerWorkingSetBytes": 195268608,
+          "ViewerPrivateBytes": 139087872,
+          "ViewerManagedHeapBytes": 94070872,
+          "BrokerWorkingSetBytes": 106352640,
+          "BrokerPrivateBytes": 52830208
+        },
+        {
+          "ElapsedSeconds": 411,
+          "Phase": "Recording",
+          "DerivedRecords": 76695,
+          "JournaledRecords": 76801,
+          "ViewerWorkingSetBytes": 208826368,
+          "ViewerPrivateBytes": 151904256,
+          "ViewerManagedHeapBytes": 114265656,
+          "BrokerWorkingSetBytes": 106434560,
+          "BrokerPrivateBytes": 52948992
+        },
+        {
+          "ElapsedSeconds": 421,
+          "Phase": "Recording",
+          "DerivedRecords": 77733,
+          "JournaledRecords": 77783,
+          "ViewerWorkingSetBytes": 201129984,
+          "ViewerPrivateBytes": 142422016,
+          "ViewerManagedHeapBytes": 91179104,
+          "BrokerWorkingSetBytes": 106459136,
+          "BrokerPrivateBytes": 52985856
+        },
+        {
+          "ElapsedSeconds": 431,
+          "Phase": "Recording",
+          "DerivedRecords": 78691,
+          "JournaledRecords": 78937,
+          "ViewerWorkingSetBytes": 197025792,
+          "ViewerPrivateBytes": 138342400,
+          "ViewerManagedHeapBytes": 90925968,
+          "BrokerWorkingSetBytes": 106463232,
+          "BrokerPrivateBytes": 52985856
+        },
+        {
+          "ElapsedSeconds": 442,
+          "Phase": "Recording",
+          "DerivedRecords": 80028,
+          "JournaledRecords": 80274,
+          "ViewerWorkingSetBytes": 197103616,
+          "ViewerPrivateBytes": 138448896,
+          "ViewerManagedHeapBytes": 87007984,
+          "BrokerWorkingSetBytes": 106463232,
+          "BrokerPrivateBytes": 52985856
+        },
+        {
+          "ElapsedSeconds": 452,
+          "Phase": "Recording",
+          "DerivedRecords": 81754,
+          "JournaledRecords": 81894,
+          "ViewerWorkingSetBytes": 191467520,
+          "ViewerPrivateBytes": 130977792,
+          "ViewerManagedHeapBytes": 89704960,
+          "BrokerWorkingSetBytes": 106754048,
+          "BrokerPrivateBytes": 53362688
+        },
+        {
+          "ElapsedSeconds": 462,
+          "Phase": "Recording",
+          "DerivedRecords": 83186,
+          "JournaledRecords": 83343,
+          "ViewerWorkingSetBytes": 188219392,
+          "ViewerPrivateBytes": 127762432,
+          "ViewerManagedHeapBytes": 106999704,
+          "BrokerWorkingSetBytes": 106704896,
+          "BrokerPrivateBytes": 53288960
+        },
+        {
+          "ElapsedSeconds": 472,
+          "Phase": "Recording",
+          "DerivedRecords": 84701,
+          "JournaledRecords": 84766,
+          "ViewerWorkingSetBytes": 191393792,
+          "ViewerPrivateBytes": 130854912,
+          "ViewerManagedHeapBytes": 90217848,
+          "BrokerWorkingSetBytes": 106622976,
+          "BrokerPrivateBytes": 53121024
+        },
+        {
+          "ElapsedSeconds": 482,
+          "Phase": "Recording",
+          "DerivedRecords": 85777,
+          "JournaledRecords": 85951,
+          "ViewerWorkingSetBytes": 187289600,
+          "ViewerPrivateBytes": 126562304,
+          "ViewerManagedHeapBytes": 90198992,
+          "BrokerWorkingSetBytes": 106622976,
+          "BrokerPrivateBytes": 53121024
+        },
+        {
+          "ElapsedSeconds": 492,
+          "Phase": "Recording",
+          "DerivedRecords": 87196,
+          "JournaledRecords": 87540,
+          "ViewerWorkingSetBytes": 187338752,
+          "ViewerPrivateBytes": 126627840,
+          "ViewerManagedHeapBytes": 89867848,
+          "BrokerWorkingSetBytes": 106635264,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 502,
+          "Phase": "Recording",
+          "DerivedRecords": 90859,
+          "JournaledRecords": 90953,
+          "ViewerWorkingSetBytes": 190152704,
+          "ViewerPrivateBytes": 129515520,
+          "ViewerManagedHeapBytes": 94597064,
+          "BrokerWorkingSetBytes": 106635264,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 512,
+          "Phase": "Recording",
+          "DerivedRecords": 92580,
+          "JournaledRecords": 92580,
+          "ViewerWorkingSetBytes": 187392000,
+          "ViewerPrivateBytes": 126681088,
+          "ViewerManagedHeapBytes": 91452360,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53092352
+        },
+        {
+          "ElapsedSeconds": 522,
+          "Phase": "Recording",
+          "DerivedRecords": 94706,
+          "JournaledRecords": 95074,
+          "ViewerWorkingSetBytes": 191598592,
+          "ViewerPrivateBytes": 130875392,
+          "ViewerManagedHeapBytes": 85003216,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 532,
+          "Phase": "Recording",
+          "DerivedRecords": 96319,
+          "JournaledRecords": 96454,
+          "ViewerWorkingSetBytes": 188592128,
+          "ViewerPrivateBytes": 127238144,
+          "ViewerManagedHeapBytes": 80212120,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 542,
+          "Phase": "Recording",
+          "DerivedRecords": 97515,
+          "JournaledRecords": 97635,
+          "ViewerWorkingSetBytes": 198213632,
+          "ViewerPrivateBytes": 137502720,
+          "ViewerManagedHeapBytes": 99330160,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 552,
+          "Phase": "Recording",
+          "DerivedRecords": 98866,
+          "JournaledRecords": 98927,
+          "ViewerWorkingSetBytes": 183255040,
+          "ViewerPrivateBytes": 121618432,
+          "ViewerManagedHeapBytes": 77062384,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53116928
+        },
+        {
+          "ElapsedSeconds": 562,
+          "Phase": "Recording",
+          "DerivedRecords": 100104,
+          "JournaledRecords": 100333,
+          "ViewerWorkingSetBytes": 185982976,
+          "ViewerPrivateBytes": 124588032,
+          "ViewerManagedHeapBytes": 81223136,
+          "BrokerWorkingSetBytes": 106639360,
+          "BrokerPrivateBytes": 53116928
+        },
+        {
+          "ElapsedSeconds": 572,
+          "Phase": "Recording",
+          "DerivedRecords": 101705,
+          "JournaledRecords": 101891,
+          "ViewerWorkingSetBytes": 183857152,
+          "ViewerPrivateBytes": 122302464,
+          "ViewerManagedHeapBytes": 76636504,
+          "BrokerWorkingSetBytes": 106668032,
+          "BrokerPrivateBytes": 53133312
+        },
+        {
+          "ElapsedSeconds": 582,
+          "Phase": "Recording",
+          "DerivedRecords": 103268,
+          "JournaledRecords": 103344,
+          "ViewerWorkingSetBytes": 181518336,
+          "ViewerPrivateBytes": 119996416,
+          "ViewerManagedHeapBytes": 82605520,
+          "BrokerWorkingSetBytes": 106958848,
+          "BrokerPrivateBytes": 53440512
+        },
+        {
+          "ElapsedSeconds": 592,
+          "Phase": "Recording",
+          "DerivedRecords": 104890,
+          "JournaledRecords": 105028,
+          "ViewerWorkingSetBytes": 184958976,
+          "ViewerPrivateBytes": 123457536,
+          "ViewerManagedHeapBytes": 78936712,
+          "BrokerWorkingSetBytes": 106401792,
+          "BrokerPrivateBytes": 52740096
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 592,
+        "Phase": "Recording",
+        "DerivedRecords": 104890,
+        "JournaledRecords": 105028,
+        "ViewerWorkingSetBytes": 184958976,
+        "ViewerPrivateBytes": 123457536,
+        "ViewerManagedHeapBytes": 78936712,
+        "BrokerWorkingSetBytes": 106401792,
+        "BrokerPrivateBytes": 52740096
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 30,
+          "DerivedRecordsAtEnd": 10870,
+          "Derivation": {
+            "Count": 30,
+            "P50Ms": 67,
+            "P95Ms": 89,
+            "P99Ms": 252,
+            "MaxMs": 252
+          },
+          "Projection": {
+            "Count": 30,
+            "P50Ms": 13,
+            "P95Ms": 53,
+            "P99Ms": 147,
+            "MaxMs": 147
+          },
+          "Records": 10947,
+          "EventToVisible": {
+            "Count": 10947,
+            "P50Ms": 578,
+            "P95Ms": 926,
+            "P99Ms": 968,
+            "MaxMs": 1061
+          },
+          "EventToPreview": {
+            "Count": 10947,
+            "P50Ms": 579,
+            "P95Ms": 926,
+            "P99Ms": 970,
+            "MaxMs": 1178
+          },
+          "EventToExact": {
+            "Count": 10947,
+            "P50Ms": 1508,
+            "P95Ms": 2589,
+            "P99Ms": 2724,
+            "MaxMs": 2912
+          }
+        },
+        {
+          "FromSecond": 60,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 18408,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 57,
+            "P95Ms": 68,
+            "P99Ms": 69,
+            "MaxMs": 69
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 13,
+            "P95Ms": 33,
+            "P99Ms": 49,
+            "MaxMs": 49
+          },
+          "Records": 7596,
+          "EventToVisible": {
+            "Count": 7596,
+            "P50Ms": 554,
+            "P95Ms": 824,
+            "P99Ms": 947,
+            "MaxMs": 1147
+          },
+          "EventToPreview": {
+            "Count": 7596,
+            "P50Ms": 554,
+            "P95Ms": 827,
+            "P99Ms": 953,
+            "MaxMs": 1147
+          },
+          "EventToExact": {
+            "Count": 7596,
+            "P50Ms": 1619,
+            "P95Ms": 2583,
+            "P99Ms": 2717,
+            "MaxMs": 2825
+          }
+        },
+        {
+          "FromSecond": 120,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 34042,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 59,
+            "P95Ms": 94,
+            "P99Ms": 389,
+            "MaxMs": 389
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 18,
+            "P95Ms": 35,
+            "P99Ms": 36,
+            "MaxMs": 36
+          },
+          "Records": 15710,
+          "EventToVisible": {
+            "Count": 15710,
+            "P50Ms": 505,
+            "P95Ms": 752,
+            "P99Ms": 923,
+            "MaxMs": 1122
+          },
+          "EventToPreview": {
+            "Count": 15710,
+            "P50Ms": 505,
+            "P95Ms": 752,
+            "P99Ms": 923,
+            "MaxMs": 1122
+          },
+          "EventToExact": {
+            "Count": 15710,
+            "P50Ms": 1879,
+            "P95Ms": 2638,
+            "P99Ms": 2727,
+            "MaxMs": 3065
+          }
+        },
+        {
+          "FromSecond": 180,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 46487,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 67,
+            "P95Ms": 77,
+            "P99Ms": 99,
+            "MaxMs": 99
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 33,
+            "P95Ms": 43,
+            "P99Ms": 45,
+            "MaxMs": 45
+          },
+          "Records": 13226,
+          "EventToVisible": {
+            "Count": 13226,
+            "P50Ms": 524,
+            "P95Ms": 835,
+            "P99Ms": 966,
+            "MaxMs": 1189
+          },
+          "EventToPreview": {
+            "Count": 13226,
+            "P50Ms": 524,
+            "P95Ms": 835,
+            "P99Ms": 966,
+            "MaxMs": 1189
+          },
+          "EventToExact": {
+            "Count": 13226,
+            "P50Ms": 1718,
+            "P95Ms": 2578,
+            "P99Ms": 2795,
+            "MaxMs": 2975
+          }
+        },
+        {
+          "FromSecond": 240,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 62435,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 68,
+            "P95Ms": 81,
+            "P99Ms": 699,
+            "MaxMs": 699
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 42,
+            "P95Ms": 54,
+            "P99Ms": 57,
+            "MaxMs": 57
+          },
+          "Records": 15175,
+          "EventToVisible": {
+            "Count": 15175,
+            "P50Ms": 579,
+            "P95Ms": 899,
+            "P99Ms": 982,
+            "MaxMs": 1157
+          },
+          "EventToPreview": {
+            "Count": 15175,
+            "P50Ms": 579,
+            "P95Ms": 899,
+            "P99Ms": 982,
+            "MaxMs": 1157
+          },
+          "EventToExact": {
+            "Count": 15175,
+            "P50Ms": 1406,
+            "P95Ms": 2631,
+            "P99Ms": 2797,
+            "MaxMs": 3278
+          }
+        },
+        {
+          "FromSecond": 300,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 69750,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 62,
+            "P95Ms": 78,
+            "P99Ms": 85,
+            "MaxMs": 85
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 48,
+            "P95Ms": 56,
+            "P99Ms": 59,
+            "MaxMs": 59
+          },
+          "Records": 7291,
+          "EventToVisible": {
+            "Count": 7291,
+            "P50Ms": 555,
+            "P95Ms": 843,
+            "P99Ms": 953,
+            "MaxMs": 1173
+          },
+          "EventToPreview": {
+            "Count": 7291,
+            "P50Ms": 555,
+            "P95Ms": 853,
+            "P99Ms": 955,
+            "MaxMs": 1173
+          },
+          "EventToExact": {
+            "Count": 7291,
+            "P50Ms": 1752,
+            "P95Ms": 2694,
+            "P99Ms": 2848,
+            "MaxMs": 3028
+          }
+        },
+        {
+          "FromSecond": 360,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 77545,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 70,
+            "P95Ms": 89,
+            "P99Ms": 451,
+            "MaxMs": 451
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 57,
+            "P95Ms": 70,
+            "P99Ms": 70,
+            "MaxMs": 70
+          },
+          "Records": 7734,
+          "EventToVisible": {
+            "Count": 7734,
+            "P50Ms": 542,
+            "P95Ms": 796,
+            "P99Ms": 917,
+            "MaxMs": 1123
+          },
+          "EventToPreview": {
+            "Count": 7734,
+            "P50Ms": 542,
+            "P95Ms": 799,
+            "P99Ms": 919,
+            "MaxMs": 1123
+          },
+          "EventToExact": {
+            "Count": 7734,
+            "P50Ms": 1781,
+            "P95Ms": 2717,
+            "P99Ms": 2889,
+            "MaxMs": 3093
+          }
+        },
+        {
+          "FromSecond": 420,
+          "Overviews": 29,
+          "DerivedRecordsAtEnd": 85777,
+          "Derivation": {
+            "Count": 29,
+            "P50Ms": 68,
+            "P95Ms": 86,
+            "P99Ms": 89,
+            "MaxMs": 89
+          },
+          "Projection": {
+            "Count": 29,
+            "P50Ms": 63,
+            "P95Ms": 77,
+            "P99Ms": 79,
+            "MaxMs": 79
+          },
+          "Records": 8164,
+          "EventToVisible": {
+            "Count": 8164,
+            "P50Ms": 546,
+            "P95Ms": 820,
+            "P99Ms": 964,
+            "MaxMs": 1161
+          },
+          "EventToPreview": {
+            "Count": 8164,
+            "P50Ms": 546,
+            "P95Ms": 827,
+            "P99Ms": 964,
+            "MaxMs": 1161
+          },
+          "EventToExact": {
+            "Count": 8164,
+            "P50Ms": 1776,
+            "P95Ms": 2735,
+            "P99Ms": 2881,
+            "MaxMs": 3036
+          }
+        },
+        {
+          "FromSecond": 480,
+          "Overviews": 28,
+          "DerivedRecordsAtEnd": 97284,
+          "Derivation": {
+            "Count": 28,
+            "P50Ms": 74,
+            "P95Ms": 88,
+            "P99Ms": 717,
+            "MaxMs": 717
+          },
+          "Projection": {
+            "Count": 28,
+            "P50Ms": 66,
+            "P95Ms": 96,
+            "P99Ms": 96,
+            "MaxMs": 96
+          },
+          "Records": 11616,
+          "EventToVisible": {
+            "Count": 11616,
+            "P50Ms": 551,
+            "P95Ms": 856,
+            "P99Ms": 982,
+            "MaxMs": 1171
+          },
+          "EventToPreview": {
+            "Count": 11616,
+            "P50Ms": 551,
+            "P95Ms": 879,
+            "P99Ms": 1035,
+            "MaxMs": 1171
+          },
+          "EventToExact": {
+            "Count": 11616,
+            "P50Ms": 1867,
+            "P95Ms": 2845,
+            "P99Ms": 2994,
+            "MaxMs": 3577
+          }
+        },
+        {
+          "FromSecond": 540,
+          "Overviews": 28,
+          "DerivedRecordsAtEnd": 105693,
+          "Derivation": {
+            "Count": 28,
+            "P50Ms": 68,
+            "P95Ms": 83,
+            "P99Ms": 83,
+            "MaxMs": 83
+          },
+          "Projection": {
+            "Count": 28,
+            "P50Ms": 77,
+            "P95Ms": 85,
+            "P99Ms": 86,
+            "MaxMs": 86
+          },
+          "Records": 8485,
+          "EventToVisible": {
+            "Count": 8485,
+            "P50Ms": 548,
+            "P95Ms": 818,
+            "P99Ms": 955,
+            "MaxMs": 1285
+          },
+          "EventToPreview": {
+            "Count": 8444,
+            "P50Ms": 548,
+            "P95Ms": 813,
+            "P99Ms": 922,
+            "MaxMs": 1047
+          },
+          "EventToExact": {
+            "Count": 8485,
+            "P50Ms": 1862,
+            "P95Ms": 2858,
+            "P99Ms": 3025,
+            "MaxMs": 3183
+          }
+        },
+        {
+          "FromSecond": 600,
+          "Overviews": 2,
+          "DerivedRecordsAtEnd": 105944,
+          "Derivation": {
+            "Count": 2,
+            "P50Ms": 68,
+            "P95Ms": 733,
+            "P99Ms": 733,
+            "MaxMs": 733
+          },
+          "Projection": {
+            "Count": 2,
+            "P50Ms": 109,
+            "P95Ms": 140,
+            "P99Ms": 140,
+            "MaxMs": 140
+          },
+          "Records": 0,
+          "EventToVisible": null,
+          "EventToPreview": null,
+          "EventToExact": null
+        }
+      ]
+    }
+  ],
+  "LeakedSessions": [],
+  "Failure": null,
+  "Notes": [
+    "The Desktop\u0027s DesktopCaptureRunner runs unchanged except for three options: this tool as its broker (the production composition over a qualification root, never the production root), a session root in the output directory, and the capture\u0027s duration quota.",
+    "Bounded: the quota is the recording time, and nothing here stops the capture. The broker ends it at its quota, as it ends the default 600-second Explore capture, and the viewer follows it to the end.",
+    "Exact means the overview was projected and handed to the window; drawing it is not included. A record\u0027s exact delay is the QPC reading at hand-off of the first overview whose derived records include it, minus the record\u0027s own QPC reading.",
+    "Previewed means a live preview (broker-v1 \u00A75.9) holding the record was handed to the window: its capture-wide journal index lies in [journaled - counted, journaled) of that preview. Visible is whichever came first, preview or exact, and is what the event-to-visible budget is judged on (plan \u00A712, \u00A719.3\u0027s labelled preview). Schema v2 added the preview; v1\u0027s event-to-visible is v2\u0027s event-to-exact.",
+    "Schema v3 adds bounded runs, memory samples every 10 s and 60-second trend windows: overviews by their hand-off time, records by their own acquisition time, both from the first recording update.",
+    "Memory: the viewer is this process, which runs the Desktop\u0027s capture runner (follower, derived session and overview projection) and keeps only compact measurements of each update, never an overview. It excludes the window, its workspace and drawing. The broker is this tool\u0027s serve mode, a separate process. The managed heap is its size after the most recent collection.",
+    "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the ordinary-integrity first run is not measured here.",
+    "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, on top of whatever else the machine did during the run."
+  ]
+}

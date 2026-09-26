@@ -1,7 +1,11 @@
 using System.Diagnostics;
 using InterCat.Analysis.Tests;
+using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
+using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Desktop.Tests;
 
@@ -46,5 +50,36 @@ public sealed class LiveDerivationTests
         // Once halted, a step does nothing, even under a token that was never cancelled.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => derivation.StepAsync(CancellationToken.None));
         Assert.Null(derivation.Last);
+    }
+
+    [Fact(DisplayName = "§20.1: the store a capture derives into is its session's shared store, so the window reads through it")]
+    public async Task TheDerivedStoreIsTheSessionsSharedStore()
+    {
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        using var shown = new TemporarySession();
+        Publish(shown.Store, [Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 }]);
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4]);
+        string sessionPath = Path.Combine(user.Path, "explore");
+
+        // A registry of its own, as the window's would be: it shows a saved session when the capture begins.
+        var stores = new SessionStoreRegistry(capacity: 4);
+        SessionStore saved = stores.Open(shown.Path);
+        foreach (string name in SessionSegments.Names(saved.Current!))
+        {
+            _ = SessionSegments.Open(saved, saved.Current!, name);
+        }
+
+        using var derivation = new LiveDerivation(evidence.Path, sessionPath, Stopwatch.StartNew(), stores);
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+
+        Assert.True(step.Follow!.Finished);
+        SessionStore derived = Assert.IsType<SessionStore>(derivation.Store);
+        Assert.Same(derived, stores.Open(sessionPath, derived.SessionId));
+        Assert.Same(derived, stores.Open(sessionPath.ToUpperInvariant()));
+
+        // Projecting the new generation read through that store, and the saved session no longer holds readers.
+        Assert.NotEqual(0, derived.SegmentReaderCache.Entries);
+        Assert.Equal(0, saved.SegmentReaderCache.Entries);
     }
 }

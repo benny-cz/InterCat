@@ -54,9 +54,9 @@ public static class SessionChannelQuery
         }
 
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation has no source clock for channel binding.");
         SessionDerivation derivation = SessionDerivationCache.For(manifest);

@@ -245,7 +245,9 @@ internal static class SessionCommand
         string path,
         Dictionary<string, SegmentReaderV1> opened)
     {
-        SessionManifestV1? manifest = store.Current;
+        SessionManifestV1? visible = store.Current;
+        using EvidenceLease? lease = visible is null ? null : store.AcquireLease();
+        SessionManifestV1? manifest = lease?.Manifest;
         var notes = new List<string>();
         var segments = new List<SessionSegmentDocument>();
         var fieldSegments = new List<SessionFieldSegmentDocument>();
@@ -270,7 +272,7 @@ internal static class SessionCommand
             long? maxTicks = null;
             foreach (string name in SessionSegments.Names(manifest))
             {
-                SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, name);
+                SegmentReaderV1 segment = SessionSegments.Open(store, manifest, name);
                 opened[name] = segment;
                 segments.Add(Describe(segment, name));
                 rowCount += segment.RowCount;
@@ -287,7 +289,7 @@ internal static class SessionCommand
 
             foreach (string name in SessionSegments.FieldNames(manifest))
             {
-                SegmentReaderV1 segment = SessionSegments.Open(store.Root, manifest, name);
+                SegmentReaderV1 segment = SessionSegments.Open(store, manifest, name);
                 var counts = new SortedDictionary<string, long>(StringComparer.Ordinal);
                 for (int row = 0; row < segment.RowCount; row++)
                 {

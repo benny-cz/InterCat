@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
+    <InternalsVisibleTo Include="InterCat.Storage.Tests" />
   </ItemGroup>
 </Project>

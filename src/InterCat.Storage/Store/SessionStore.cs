@@ -232,6 +232,13 @@ public sealed class SessionStore
     public const int MaximumStagedFiles = 4_096;
 
     /// <summary>
+    /// Per open store, the immutable segment and dictionary payload most recently used by queries. This is a strict
+    /// admission budget over published payload bytes, not an entry count or a managed-memory measurement; a segment
+    /// larger than it is served without entering the cache (R8, §12).
+    /// </summary>
+    public const long DefaultSegmentReaderCacheBytes = 64L * 1024 * 1024;
+
+    /// <summary>
     /// An upper bound on the metadata one publication writes besides its staged files: the generation's manifest
     /// (a fixed part plus one entry per dependency, whose name is at most <see cref="OwnedFileName.MaximumLength"/>
     /// characters) and the replaced current and last-known-good pointers. It excludes a retention record, which a
@@ -247,6 +254,7 @@ public sealed class SessionStore
     private readonly IOwnedDirectory directory;
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, EvidenceLease> leases = [];
+    private SegmentReaderCache segmentReaders = new(DefaultSegmentReaderCacheBytes);
 
     /// <summary>What this instance has read back and hashed, so an unchanged immutable file is hashed once.</summary>
     private readonly DependencyMeasurements measurements;
@@ -266,6 +274,11 @@ public sealed class SessionStore
         SourceIdentity = sourceIdentity;
         this.current = current;
         publicationBaseline = current;
+        if (current is not null)
+        {
+            segmentReaders.Prune(current);
+        }
+
         Recovery = recovery;
         this.measurements = measurements;
     }
@@ -337,6 +350,34 @@ public sealed class SessionStore
 
     /// <summary>The validated root this session is held open on, so a reader can open its dependencies.</summary>
     public IOwnedDirectory Root => directory;
+
+    /// <summary>
+    /// Diagnostics for the payload-admission-bounded immutable segment-reader cache. Counts are per store instance and
+    /// are never evidence or query results; they exist so scale qualification can prove the cache stays bounded.
+    /// </summary>
+    public SegmentReaderCacheSnapshot SegmentReaderCache => segmentReaders.Snapshot;
+
+    internal SegmentReaderCache SegmentReaders => segmentReaders;
+
+    /// <summary>
+    /// Gives up every cached segment reader and keeps what this store has verified. A viewer does this for a session it
+    /// no longer shows, so it holds one session's readers rather than one set per session it has shown. A query already
+    /// holding a reader keeps it.
+    /// </summary>
+    public void ReleaseSegmentReaders() => segmentReaders.Clear();
+
+    /// <summary>Replaces the reader cache with an empty one of another budget, so a test can exercise admission.</summary>
+    internal void UseSegmentReaderBudget(long budgetBytes)
+    {
+        lock (gate)
+        {
+            segmentReaders = new(budgetBytes);
+            if (current is not null)
+            {
+                segmentReaders.Prune(current);
+            }
+        }
+    }
 
     /// <summary>
     /// Opens a session for reading without being told which session it is. The identity comes from the
@@ -588,6 +629,7 @@ public sealed class SessionStore
             Write(directory, SessionManifestV1.FileNameFor(manifest.Generation), manifest, SessionManifestV1.Json);
             RetainPreviousPointer(directory);
             Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+            segmentReaders.Prune(manifest);
             current = manifest;
             publicationBaseline = manifest;
             foreach (StoreStagingFile file in staged)
@@ -639,6 +681,10 @@ public sealed class SessionStore
                 {
                     // Keep the object identity of a still-verified generation for existing readers.
                     manifest = current;
+                }
+                else
+                {
+                    segmentReaders.Prune(manifest);
                 }
 
                 current = manifest;
@@ -1231,6 +1277,7 @@ public sealed class SessionStore
                     + "Do not publish until the session is inspected again.");
             }
 
+            segmentReaders.Prune(manifest);
             current = manifest;
             publicationBaseline = manifest;
             return new(true, manifest.Generation, reason, backupName);
@@ -1272,6 +1319,7 @@ public sealed class SessionStore
         Write(directory, SessionManifestV1.FileNameFor(manifest.Generation), manifest, SessionManifestV1.Json);
         RetainPreviousPointer(directory);
         Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
+        segmentReaders.Prune(manifest);
         current = manifest;
         publicationBaseline = manifest;
 

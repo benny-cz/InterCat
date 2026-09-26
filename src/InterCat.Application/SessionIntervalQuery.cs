@@ -38,9 +38,9 @@ public static class SessionIntervalQuery
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so an interval cannot be placed.");
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store.Root, manifest, name))];
+            .Select(name => SessionSegments.Open(store, manifest, name))];
         TransportRelationIndex relations = SessionDerivationCache.For(manifest)
             .Relations(segments, clock, fields, cancellationToken);
 

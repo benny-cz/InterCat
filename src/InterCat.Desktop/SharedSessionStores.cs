@@ -11,48 +11,99 @@ namespace InterCat.Desktop;
 /// </summary>
 internal static class SharedSessionStores
 {
-    /// <summary>Sessions kept open at once; a store holds no file handle between reads, only what it has verified.</summary>
+    /// <summary>Sessions kept open at once.</summary>
     private const int Capacity = 4;
 
-    private static readonly Lock Gate = new();
-    private static readonly List<(string Path, SessionStore Store)> Recent = [];
+    /// <summary>The process-wide registry behind <see cref="Open"/>.</summary>
+    internal static SessionStoreRegistry Registry { get; } = new(Capacity);
 
     /// <summary>
     /// The shared store of a session directory. When <paramref name="sessionId"/> is given and the directory now holds
     /// another session, a store for that one is opened instead: a store never reads one session as another.
     /// </summary>
-    public static SessionStore Open(string sessionPath, Guid? sessionId = null)
+    public static SessionStore Open(string sessionPath, Guid? sessionId = null) => Registry.Open(sessionPath, sessionId);
+}
+
+/// <summary>
+/// The session stores a viewer keeps open, most recently opened first. A kept store holds no file handle between reads;
+/// it keeps what it has verified, so returning to its session hashes nothing again. Only the session opened last keeps
+/// its cached segment readers: the others give theirs up, so the process holds one session's working set within
+/// §20.1's admission bound rather than one per session it has shown.
+/// </summary>
+internal sealed class SessionStoreRegistry
+{
+    private readonly int capacity;
+    private readonly Lock gate = new();
+    private readonly List<(string Path, SessionStore Store)> recent = [];
+
+    public SessionStoreRegistry(int capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
+        this.capacity = capacity;
+    }
+
+    /// <inheritdoc cref="SharedSessionStores.Open"/>
+    public SessionStore Open(string sessionPath, Guid? sessionId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionPath);
         string key = Path.GetFullPath(sessionPath);
-        lock (Gate)
+        lock (gate)
         {
-            int index = Recent.FindIndex(entry => string.Equals(entry.Path, key, StringComparison.OrdinalIgnoreCase));
-            if (index >= 0)
+            SessionStore? kept = recent.Find(entry => SameDirectory(entry.Path, key)).Store;
+            if (kept is not null && (sessionId is null || kept.SessionId == sessionId))
             {
-                (string Path, SessionStore Store) entry = Recent[index];
-                Recent.RemoveAt(index);
-                if (sessionId is null || entry.Store.SessionId == sessionId)
-                {
-                    Recent.Insert(0, entry);
-                    return entry.Store;
-                }
+                Keep(key, kept);
+                return kept;
             }
         }
 
         // Opening hashes the session, so it happens outside the lock; two first readers may both open, and the later one
         // is simply the one kept.
         SessionStore opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(key));
-        lock (Gate)
+        lock (gate)
         {
-            Recent.RemoveAll(entry => string.Equals(entry.Path, key, StringComparison.OrdinalIgnoreCase));
-            Recent.Insert(0, (key, opened));
-            if (Recent.Count > Capacity)
-            {
-                Recent.RemoveAt(Recent.Count - 1);
-            }
+            Keep(key, opened);
         }
 
         return opened;
     }
+
+    /// <summary>
+    /// Makes an open store the shared store of its session directory, as a live capture's writer becomes: every later
+    /// <see cref="Open"/> of the directory returns it while it is kept, and it is the session opened last.
+    /// </summary>
+    public void Adopt(string sessionPath, SessionStore store)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionPath);
+        ArgumentNullException.ThrowIfNull(store);
+        lock (gate)
+        {
+            Keep(Path.GetFullPath(sessionPath), store);
+        }
+    }
+
+    /// <summary>
+    /// Keeps a store as its directory's, first. Every other store gives its readers up: those of other sessions, one it
+    /// replaces for the same directory, and one that falls off the end, whoever still holds it.
+    /// </summary>
+    private void Keep(string key, SessionStore store)
+    {
+        foreach ((string _, SessionStore other) in recent)
+        {
+            if (!ReferenceEquals(other, store))
+            {
+                other.ReleaseSegmentReaders();
+            }
+        }
+
+        _ = recent.RemoveAll(entry => SameDirectory(entry.Path, key));
+        recent.Insert(0, (key, store));
+        if (recent.Count > capacity)
+        {
+            recent.RemoveAt(recent.Count - 1);
+        }
+    }
+
+    private static bool SameDirectory(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 }
