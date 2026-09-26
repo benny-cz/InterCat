@@ -116,6 +116,35 @@ public sealed class RedactedSessionPackageTests
         Assert.True(result.NameNeedles > 0);
     }
 
+    [Fact(DisplayName = "P17: a package labelled redacted carries none of its source's evidence: no journal, segment or plan of it")]
+    public void APackageCarriesNoSourceEvidence()
+    {
+        using var source = new TemporarySession();
+        PublishRichSource(source.Store);
+        using var package = new PackageDirectory();
+        _ = RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+
+        SessionManifestV1 original = source.Store.Current!;
+        SessionManifestV1 manifest = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path)).Current!;
+        StoreDependency[] evidence = [.. original.Dependencies.Where(dependency => dependency.Kind is StoreDependencyKind.Journal
+            or StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Index
+            or StoreDependencyKind.DerivationPlan)];
+        Assert.NotEmpty(evidence);
+
+        // Not one of them is a dependency of the package, and no package file holds one's bytes - a package file may share
+        // a conventional name, such as its own synthetic journal's, but never the content: the package is built from
+        // synthetic records, never from a copy of what was captured.
+        foreach (StoreDependency dependency in evidence)
+        {
+            Assert.DoesNotContain(manifest.Dependencies, candidate => candidate.Digest == dependency.Digest);
+            byte[] bytes = File.ReadAllBytes(Path.Combine(source.Path, dependency.Name));
+            foreach (string file in Directory.EnumerateFiles(package.Path, "*", SearchOption.AllDirectories))
+            {
+                Assert.False(bytes.AsSpan().SequenceEqual(File.ReadAllBytes(file)), $"{Path.GetFileName(file)} is {dependency.Name}");
+            }
+        }
+    }
+
     [Fact(DisplayName = "I22: no source name, identity, reading, locator or body byte reaches a package file")]
     public void HoldsNoSourceValue()
     {

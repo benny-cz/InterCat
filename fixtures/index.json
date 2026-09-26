@@ -718,12 +718,22 @@
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
         "P16: starting a journal never replaces evidence that is already there"
       ],
+      "P17": [
+        "P17: a package labelled redacted carries none of its source's evidence: no journal, segment or plan of it"
+      ],
       "P2": [
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured"
+      ],
+      "P21": [
+        "P21: a closed workspace applies nothing that was still being counted for it",
+        "P21: a count superseded while it runs never applies, and every pane answers the one scope on screen"
       ],
       "P22": [
         "P22: a pin or a resize that moves graph nodes under a resting pointer re-answers its hover for the mark there now",
         "P22: a zoom, a resize or a newer generation under a resting pointer re-answers the timeline's hover for what is there now"
+      ],
+      "P23": [
+        "P23: while a count is in flight the view stays populated, says it is pending, and the ladder still answers"
       ],
       "P24": [
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
@@ -1123,10 +1133,6 @@
         "reason": "View-filter substitution for retention is asserted with IC-012.",
         "plannedBy": "IC-012"
       },
-      "P17": {
-        "reason": "Redacted package contents belong to M5.",
-        "plannedBy": "M5"
-      },
       "P18": {
         "reason": "Broker isolation is asserted with IC-014.",
         "plannedBy": "IC-014"
@@ -1138,14 +1144,6 @@
       "P20": {
         "reason": "Intrusive peer resolution is asserted with IC-005.",
         "plannedBy": "IC-005"
-      },
-      "P21": {
-        "reason": "Obsolete result publication is asserted with IC-017.",
-        "plannedBy": "IC-017"
-      },
-      "P23": {
-        "reason": "In-flight analysis states are asserted with IC-017.",
-        "plannedBy": "IC-017"
       },
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",

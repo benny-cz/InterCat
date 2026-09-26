@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 136 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 137 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 137 — P17, P21 and P23 asserted; the theme gap stated (§13.5, §6.1):**
+  - **Ledger:** P21 and P23 were uncovered "until IC-017", which is well under way, and P17 "until M5", although
+    redacted packages shipped in revision 106. Each now names tests:
+    - P21: a brush superseded mid-count never applies, and the ranking, relationship table, graph and export all
+      answer the one scope on screen; a closed workspace applies nothing counted for it. With the supersession check
+      removed, the obsolete count overwrites the newer one ("40" for "20").
+    - P23: while a count is in flight the previous answer stays on screen, marked pending, and a descent happens at
+      once.
+    - P17: a redacted package carries none of its source's evidence: no journal, segment, dictionary, index or plan
+      of it, by digest or by content.
+  - **Theme gap:** §6.1 asks for dark, light and high-contrast token sets with no view hard-coding a colour. Dark and
+    light exist and are verified, but the Desktop always runs dark, and no high-contrast set exists. §26.2 named no
+    default, so it now says to follow the operating system. The work is listed under open work.
+  - **Tests:** four (+4), all in the ledger.
 - **Revision 136 — a live capture keeps the scope's counts on screen (§6.4, R7):**
   - **Found:** each publication is a new workspace, which counts its scope afresh. Until it had, a brushed or (since
     revision 134) zoomed ranking, graph and tables blinked back to whole-session numbers under "Ranking within …",
@@ -566,9 +580,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      because a hit takes the whole column's time. Widening must stay cosmetic (R13).
    - R11: the drawn panes allocate and use LINQ every frame. Measure a frame budget and add an allocation test before
      removing it.
+   - Theme modes (§6.1, §26.2):
+     - Follow the operating system's light or dark setting at runtime; the Desktop always runs dark today.
+     - The graph, timeline, minimap and hover layer build their brushes once from dark tokens, and the view model
+       writes dark colours into legend and table rows; both need the current mode.
+     - Define and verify a high-contrast token set.
 
 ## Verification and cautions
 
+- Revision 137 was built and tested in the same Linux container: Debug and Release both ran **1,004 tests: 916 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 136 was built and tested in the same Linux container: Debug and Release both ran **1,000 tests: 912 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 135 was built and tested in the same Linux container: Debug and Release both ran **999 tests: 911 passed, 2 skipped, 86 failed**, and the

@@ -615,6 +615,73 @@ public sealed class EvidenceRungTests
         Assert.Equal("40", workspace.RungRows.Single().Observations);
     });
 
+    [Fact(DisplayName = "P21: a count superseded while it runs never applies, and every pane answers the one scope on screen")]
+    public void ASupersededCountNeverApplies() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+
+        // A second brush lands before the first one's count can: only the second is ever applied.
+        workspace.SelectInterval(new TimeRange(10, 50));
+        Task first = workspace.IntervalReady;
+        var second = new TimeRange(10, 30);
+        workspace.SelectInterval(second);
+        await workspace.IntervalReady;
+        await first;
+        Assert.Equal(second, workspace.ScopeInterval);
+
+        // The ranking, the relationship table, the graph and an export all answer that one scope, never a mixture.
+        Assert.Equal("20", workspace.RungRows.Single().Observations);
+        Assert.Equal("20", workspace.Relationships.Single().Observations);
+        Assert.Equal(20, workspace.GraphDisplay.Edges.Sum(edge => edge.ObservationCount));
+        Assert.Equal(second, workspace.DescribeExport(DateTimeOffset.UnixEpoch).Interval);
+        Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "P21: a closed workspace applies nothing that was still being counted for it")]
+    public void AClosedWorkspaceAppliesNothing() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        WorkspaceViewModel workspace = Open(session);
+        workspace.SelectInterval(new TimeRange(10, 50));
+        Task pending = workspace.IntervalReady;
+        string whole = workspace.RungRows.Single().Observations;
+
+        workspace.Dispose();
+        await pending;
+        Assert.False(workspace.IsRankedWithinInterval);
+        Assert.Equal(whole, workspace.RungRows.Single().Observations);
+    });
+
+    [Fact(DisplayName = "P23: while a count is in flight the view stays populated, says it is pending, and the ladder still answers")]
+    public void AnInFlightCountBlocksNothing() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.SelectInterval(new TimeRange(10, 50));
+        await workspace.IntervalReady;
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+
+        // A new brush is being counted: the previous answer stays on screen, labelled pending, never cleared.
+        workspace.SelectInterval(new TimeRange(10, 30));
+        Assert.True(workspace.IsRankedWithinInterval);
+        Assert.Equal("40", workspace.RungRows.Single().Observations);
+        Assert.StartsWith("Ranking within", workspace.RankingScopeText, StringComparison.Ordinal);
+
+        // Input is not gated on the count: a descent happens now, with rows, and the count lands afterwards.
+        DescendTo(workspace, client.GroupKey);
+        Assert.Equal("L1 · GROUP", workspace.LevelBadge);
+        Assert.NotEmpty(workspace.RungRows);
+        await workspace.IntervalReady;
+        Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
+        Assert.Equal(20, workspace.RungRows.Sum(row => long.Parse(row.Observations, System.Globalization.NumberStyles.AllowThousands,
+            System.Globalization.CultureInfo.CurrentCulture)));
+    });
+
     [Fact]
     public async Task AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope()
     {
