@@ -29,7 +29,7 @@ public sealed class InterruptedCaptureWindowTests
             Border card = window.GetControl<Border>("UnfinishedCaptureCard");
             Assert.False(card.IsVisible);
 
-            await window.OfferInterruptedCapturesAsync(sessions);
+            await window.UseSessionRootAsync(sessions);
             Dispatch();
             Assert.True(card.IsVisible);
             Assert.EndsWith("is not finished saving", window.GetControl<TextBlock>("UnfinishedCaptureHeadline").Text,
@@ -62,7 +62,7 @@ public sealed class InterruptedCaptureWindowTests
             Save(window, "unfinished-capture-finished-1080x700.png");
 
             // Nothing is left to offer at the launch after.
-            await window.OfferInterruptedCapturesAsync(sessions);
+            await window.UseSessionRootAsync(sessions);
             Dispatch();
             Assert.False(card.IsVisible);
         }
@@ -81,7 +81,7 @@ public sealed class InterruptedCaptureWindowTests
         window.Show();
         try
         {
-            await window.OfferInterruptedCapturesAsync(sessions);
+            await window.UseSessionRootAsync(sessions);
             Dispatch();
             Border card = window.GetControl<Border>("UnfinishedCaptureCard");
             Assert.True(card.IsVisible);
@@ -105,7 +105,7 @@ public sealed class InterruptedCaptureWindowTests
             Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
             Assert.True(Directory.Exists(session));
             Assert.True(Directory.Exists(evidence));
-            await window.OfferInterruptedCapturesAsync(sessions);
+            await window.UseSessionRootAsync(sessions);
             Dispatch();
             Assert.False(card.IsVisible);
         }

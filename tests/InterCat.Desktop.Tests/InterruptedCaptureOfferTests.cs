@@ -99,7 +99,7 @@ public sealed class InterruptedCaptureOfferTests
     public void ACaptureIsNamedByWhenItStarted(int year, int month, int day, int hour, int minute, string expected) =>
         Assert.Equal(
             expected,
-            InterruptedCaptureOffer.When(new(year, month, day, hour, minute, 0, TimeSpan.Zero), Now, Zone, Culture));
+            Moments.When(new(year, month, day, hour, minute, 0, TimeSpan.Zero), Now, Zone, Culture));
 
     private static InterruptedCaptureOffer? OfferFor(
         InterruptedFollowState state, int sessionChunks, int? evidenceChunks, string? problem = null) =>

@@ -65,8 +65,26 @@
           </Border>
         </StackPanel>
 
-        <Grid Grid.Row="2" RowDefinitions="*,Auto">
-          <ListBox x:Name="SearchResultsList" ItemsSource="{Binding SearchResults}"
+        <Grid Grid.Row="2" RowDefinitions="Auto,*,Auto">
+          <!-- While no session is open, the sessions the user saved are one gesture away rather than a path to remember
+               (section 3.1). Listing reads each session's manifest only; opening one verifies it in full. -->
+          <StackPanel x:Name="RecentSessionsPanel" Spacing="4" IsVisible="False" Margin="0,0,0,8">
+            <TextBlock Text="RECENT SESSIONS" Classes="eyebrow" />
+            <ListBox x:Name="RecentSessionsList" MaxHeight="260" Background="Transparent" BorderThickness="0"
+                     DoubleTapped="OpenRecentSession"
+                     AutomationProperties.Name="Recent sessions; press Enter to open the selected one">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="pres:RecentSessionRow">
+                  <StackPanel Margin="2,4" Spacing="1">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Path}" />
+                    <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
+          <ListBox x:Name="SearchResultsList" Grid.Row="1" ItemsSource="{Binding SearchResults}"
                    SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
                    Background="Transparent" BorderThickness="0" IsVisible="{Binding IsSearching}"
                    DoubleTapped="OpenSearchHit"
@@ -82,7 +100,7 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <ListBox x:Name="RungList"
+          <ListBox x:Name="RungList" Grid.Row="1"
                    ItemsSource="{Binding RungRows}"
                    SelectedItem="{Binding SelectedRung, Mode=TwoWay}"
                    Background="Transparent"
@@ -110,7 +128,7 @@
 
           <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2).
                At the minimum window height the reason scrolls rather than being clipped. -->
-          <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding ShowsEmptyReason}">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" IsVisible="{Binding ShowsEmptyReason}">
             <Border Classes="card" Padding="11" CornerRadius="8" VerticalAlignment="Top"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="6">
@@ -125,7 +143,7 @@
             </Border>
           </ScrollViewer>
 
-          <Button Grid.Row="1" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+          <Button Grid.Row="2" Margin="0,8,0,0" HorizontalAlignment="Stretch"
                   Content="Load more records (M)" Click="LoadMoreRecords"
                   IsVisible="{Binding ShowsLoadMoreEvidence}"
                   AutomationProperties.Name="Load the next page of source records" />

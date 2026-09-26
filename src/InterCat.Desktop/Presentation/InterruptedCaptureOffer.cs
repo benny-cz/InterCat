@@ -43,7 +43,7 @@ internal sealed record InterruptedCaptureOffer(
         ArgumentNullException.ThrowIfNull(follow);
         ArgumentNullException.ThrowIfNull(zone);
         ArgumentNullException.ThrowIfNull(culture);
-        string capture = "The capture from " + When(follow.Ticket.StartedUtc, nowUtc, zone, culture);
+        string capture = "The capture from " + Moments.When(follow.Ticket.StartedUtc, nowUtc, zone, culture);
         string missing = Missing(follow.MissingChunks, follow.EvidenceChunks ?? 0, culture);
         return follow.State switch
         {
@@ -83,7 +83,7 @@ internal sealed record InterruptedCaptureOffer(
         CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(follow);
-        string headline = "Finishing the capture from " + When(follow.Ticket.StartedUtc, nowUtc, zone, culture);
+        string headline = "Finishing the capture from " + Moments.When(follow.Ticket.StartedUtc, nowUtc, zone, culture);
         return step is null
             ? (headline, "Reading the evidence the broker kept. Stopping keeps what is derived.")
             : (headline, $"{step.DerivedChunks.ToString("N0", culture)} of {Chunks(step.EvidenceChunks, culture)} "
@@ -101,19 +101,6 @@ internal sealed record InterruptedCaptureOffer(
             : ("Partial session saved", "The capture ended before it was finalized, so records after its last publication "
                 + $"were not kept. Every chunk it published is in this session: {Chunks(step.DerivedChunks, culture)}, "
                 + $"{Records(step.DerivedRecords, culture)}.");
-    }
-
-    /// <summary>When a capture started, in the viewer's own zone: "today at 17:35", "yesterday at 09:02", or a date.</summary>
-    public static string When(DateTimeOffset startedUtc, DateTimeOffset nowUtc, TimeZoneInfo zone, CultureInfo culture)
-    {
-        ArgumentNullException.ThrowIfNull(zone);
-        ArgumentNullException.ThrowIfNull(culture);
-        DateTime started = TimeZoneInfo.ConvertTime(startedUtc, zone).DateTime;
-        DateTime today = TimeZoneInfo.ConvertTime(nowUtc, zone).Date;
-        string time = started.ToString("t", culture);
-        return started.Date == today ? "today at " + time
-            : started.Date == today.AddDays(-1) ? "yesterday at " + time
-            : started.ToString("d MMM", culture) + " at " + time;
     }
 
     /// <summary>"2 of its 3 published chunks are not in your session yet", or "its 1 published chunk is not…".</summary>

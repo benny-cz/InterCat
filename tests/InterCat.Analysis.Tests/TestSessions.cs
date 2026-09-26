@@ -161,7 +161,8 @@ internal static class TestSessions
         IReadOnlyList<SourceFieldRowV1>? fields = null,
         CoverageLedgerV1? coverage = null,
         Func<ObservationRowV1, BodyV1>? bodyForRow = null,
-        int journalBatchRecords = 4_096)
+        int journalBatchRecords = 4_096,
+        DateTimeOffset? committedUtc = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -175,7 +176,7 @@ internal static class TestSessions
                 Derivation = derivation ?? NormalizerContractVersion.V1,
             },
             sourceClock,
-            Committed,
+            committedUtc ?? Committed,
             new() { RowsPerSegment = rowsPerSegment, JournalBatchRecords = journalBatchRecords });
         var schemas = new JournalV1SchemaTable();
         var references = new Dictionary<(Guid, ushort, byte, string), uint>();
@@ -212,7 +213,7 @@ internal static class TestSessions
             builder.StageCoverageLedger(coverage);
         }
 
-        return builder.Complete(Committed);
+        return builder.Complete(committedUtc ?? Committed);
     }
 
     private static RecordEnvelopeV1 Envelope(ObservationRowV1 row, uint schema, uint policy, CaptureId capture,

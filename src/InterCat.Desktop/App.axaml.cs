@@ -41,7 +41,7 @@ public sealed partial class App : Avalonia.Application
             // step 6). Only the application looks in the user's own session folder, never a test.
             try
             {
-                _ = window.OfferInterruptedCapturesAsync(DesktopCaptureRunner.DefaultSessionRoot());
+                _ = window.UseSessionRootAsync(DesktopCaptureRunner.DefaultSessionRoot());
             }
             catch (InvalidOperationException)
             {

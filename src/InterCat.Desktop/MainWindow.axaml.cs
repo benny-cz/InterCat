@@ -64,7 +64,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     // A capture an earlier viewer left unfinished, offered in the rail (§3.1 step 6): where to look for one, the one
     // offered, what its card says, and the finish running for it, whose cancellation is the finish button's second meaning.
-    private string? interruptedRoot;
+    private string? sessionRoot;
+    private IReadOnlyList<RecentSessionRow> recentSessions = [];
     private InterruptedFollow? offeredFollow;
     private InterruptedCaptureOffer? offer;
     private CancellationTokenSource? finishingCapture;
@@ -178,6 +179,14 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             if (e.Handled || e.Key is Key.Enter or Key.Escape) return;
+        }
+
+        // In the recent sessions, Enter opens the selected one; it is not a descent in a session nobody opened yet.
+        if (RecentSessionsList.IsKeyboardFocusWithin && e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            _ = OpenSelectedRecentSessionAsync();
+            return;
         }
 
         if (e.Source is TextBox) return;
@@ -497,9 +506,13 @@ public sealed partial class MainWindow : Window, IDisposable
         choosingSession = true;
         try
         {
+            // The picker starts where InterCat saves sessions, so the user's own captures are the first thing shown.
+            Avalonia.Platform.Storage.IStorageFolder? saved = sessionRoot is { } root && Directory.Exists(root)
+                ? await StorageProvider.TryGetFolderFromPathAsync(new Uri(root))
+                : null;
             folders = await StorageProvider.OpenFolderPickerAsync(new()
             {
-                Title = "Open an InterCat session directory", AllowMultiple = false,
+                Title = "Open an InterCat session directory", AllowMultiple = false, SuggestedStartLocation = saved,
             });
         }
         finally
@@ -561,20 +574,51 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Looks under <paramref name="sessionRoot"/> for captures an earlier viewer left unfinished and offers the newest in
-    /// the rail (§3.1 step 6). The application calls it once at launch with the user's session folder. A capture whose
-    /// session is already whole is let go without a word.
+    /// Takes the user's session folder: lists the sessions saved in it while none is open, and offers to finish the
+    /// newest capture an earlier viewer left unfinished there (§3.1). The application calls it once at launch; a test
+    /// calls it with a folder of its own. A capture whose session is already whole is let go without a word.
     /// </summary>
-    internal Task OfferInterruptedCapturesAsync(string sessionRoot)
+    internal async Task UseSessionRootAsync(string root)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sessionRoot);
-        interruptedRoot = sessionRoot;
-        return RefreshInterruptedOfferAsync();
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        sessionRoot = root;
+        await RefreshRecentSessionsAsync();
+        await RefreshInterruptedOfferAsync();
+    }
+
+    private async Task RefreshRecentSessionsAsync()
+    {
+        if (closed || sessionRoot is not { } root) return;
+        IReadOnlyList<RecentSessionRow> rows = await Task.Run(() => RecentSessions.Find(
+            root, DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture));
+        if (closed) return;
+        recentSessions = rows;
+        RecentSessionsList.ItemsSource = rows;
+        UpdateRecentSessionsVisibility();
+    }
+
+    /// <summary>The saved sessions show only while no session is open and no capture is running, where the ranked table
+    /// will be.</summary>
+    private void UpdateRecentSessionsVisibility() =>
+        RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && displayedOverview is null
+            && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
+
+    private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
+
+    /// <summary>
+    /// Opens the recent session the keyboard is on, or else the one selected: Tab reaches a row without selecting it.
+    /// False when there is none, or it could not open.
+    /// </summary>
+    internal async Task<bool> OpenSelectedRecentSessionAsync()
+    {
+        RecentSessionRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as RecentSessionRow
+            ?? RecentSessionsList.SelectedItem as RecentSessionRow;
+        return row is not null && await OpenSessionAsync(row.Path);
     }
 
     private async Task RefreshInterruptedOfferAsync()
     {
-        if (closed || interruptedRoot is not { } root || finishingCapture is not null) return;
+        if (closed || sessionRoot is not { } root || finishingCapture is not null) return;
         InterruptedFollow? found;
         try
         {
@@ -998,6 +1042,12 @@ public sealed partial class MainWindow : Window, IDisposable
             if (!closed && run == captureRunId)
             {
                 ApplyCaptureUpdate(update);
+
+                // A capture that ends has saved a session: the next time none is open, it is listed.
+                if (update.Phase == CaptureUiPhase.Complete)
+                {
+                    _ = RefreshRecentSessionsAsync();
+                }
             }
         });
 
@@ -1072,6 +1122,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateHealthStrip();
         ToolTip.SetTip(HealthStateText, unavailable ? update.Detail : null);
         UpdateEvidenceAction();
+        UpdateRecentSessionsVisibility();
     }
 
     /// <summary>

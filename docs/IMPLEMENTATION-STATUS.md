@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 144 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 145 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -56,13 +56,32 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, within 64 MiB of payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, and a launch-time offer to finish a session a crashed viewer left | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | Metadata-only report (`intercat-share-report-v1`) and reopenable redacted session package (`redacted-session-v1`) implemented, CLI and Desktop | Original evidence package preset; packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 145 — the saved sessions, one gesture away (§3.1 step 1):**
+  - **Gap:** every capture saves a session in `%LOCALAPPDATA%\InterCat\Sessions`, but reopening one meant knowing
+    that path. *Open saved session*'s picker started wherever the platform chose, and the plan named no way back to a
+    capture.
+  - **List:** while no session is open, the rail lists the eight newest where the ranked table will be. Each row gives
+    when it was saved, its records, its size, and *not finished saving* when a follow ticket is beside it. A directory
+    that is not a readable session, or has a torn pointer, is left out rather than guessed at.
+  - **Cost:** listing reads each session's current manifest and its segments' 128-byte headers, never hashing a
+    session; opening one still verifies it in full.
+  - **Keyboard:** Enter opens the row the keyboard is on. A list item takes focus from Tab without being selected, and
+    the window's Enter otherwise meant a descent. A double click opens a row too.
+  - **Around it:** a running capture hides the list with the other actions that wait for it to end, a finished capture
+    re-lists it, and the picker now starts in the sessions folder. `Moments.When` now serves both the recent list and
+    the unfinished-capture card.
+  - **Tests:** one presenter and one window test (+2). The window test found the Enter path, and that a list item
+    rather than the list takes focus.
+- **Scale baseline** (`bench/results/interaction-latency-20260926T165252Z`, measured at revision 144): at 1M rows, open
+  1,374 ms (was 1,550), group level change 681 ms (799), brush to ranking 337 ms (342), every window in budget. A
+  sampled trace of the warm paths shows where the rest goes (open work item 1).
 - **Revision 144 — superseded manifests go as a session publishes (store-v1 §9, §20.1, S2):**
   - **Found:** every generation's manifest lists every dependency it names, and `store-v1` kept each superseded one
     as an orphan until asked. A live session therefore held manifest bytes growing with the square of its length: 297
@@ -743,6 +762,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    Revision 142 removes repeat segment reads and checks within one open store, but the projection still scans the rows;
    re-run the bounded 10-minute first-feedback and revision 127's latency benchmark, then the 1M and 10M-row gates, as
    S4 and incremental derivation land.
+   - **Measured next step:** at 1M rows the four segments hold about 200 MB, beyond the 64 MiB reader cache, so a warm
+     query re-reads and re-verifies most of them. In a sampled trace of warm projections and focused counts, opening
+     segments took 13.7% of the time: a whole-file SHA-256 took 9.1% and column checksums 8.8%. `BindingsOf` took 6.5%
+     and the per-row tallies about 3%. A plain scan of time and mechanism is 30 ms per million rows. The timeline's
+     detail over the same rows takes about 190 ms. §20.1 already allows mapping fixed-width columns: map segments,
+     verify each file once per store, and let the page cache hold them. Mind that Windows refuses to delete a mapped
+     file, so pruning and retention must unmap first.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
    count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
@@ -776,6 +802,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 145 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,055 tests: 1,053
+  passed, 2 skipped**, zero failures.
 - Revision 144 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,053 tests: 1,051
   passed, 2 skipped**, zero failures.
 - Revision 143 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,050 tests: 1,048
@@ -814,8 +842,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 144, **1,051 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 143: 1,048 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 145, **1,053 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 144: 1,051 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
