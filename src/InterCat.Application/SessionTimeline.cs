@@ -596,6 +596,32 @@ internal sealed class TimelineColumns
     /// <summary>The interval the columns divide.</summary>
     public TimeRange Interval => interval;
 
+    /// <summary>Whether each column's count is also kept per mechanism.</summary>
+    internal bool TalliesMechanisms => mechanisms is not null;
+
+    /// <summary>
+    /// Every nonzero count of one mechanism in one column, by column and then mechanism code: what a persisted overview
+    /// holds (`contracts/overview-v1.md`). Columns counted without their mechanisms have none.
+    /// </summary>
+    internal IEnumerable<(int Column, Mechanism Mechanism, int Count)> Tallies()
+    {
+        if (mechanisms is null)
+        {
+            yield break;
+        }
+
+        for (int column = 0; column < counts.Length; column++)
+        {
+            for (int slot = 0; slot < Slots.Length; slot++)
+            {
+                if (mechanisms[(column * Slots.Length) + slot] is > 0 and int count)
+                {
+                    yield return (column, Slots[slot], count);
+                }
+            }
+        }
+    }
+
     /// <summary>One more than the largest mechanism code §23 defines: a table indexed by code has this many slots.</summary>
     internal static int MechanismCodes => SlotOfCode.Length;
 

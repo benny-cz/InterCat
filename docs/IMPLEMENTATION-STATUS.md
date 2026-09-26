@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 162 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 163 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -23,8 +23,8 @@ finalized by its lease without a leaked trace, and the next launch offers to fin
 broker kept, including what the broker recorded after the crash. Since revision 157, a live generation's derivation
 extends the previous one's, and since revision 158 the overview and minimap come from each segment's in-memory tiles,
 S4's first level. Since revision 162 a finished session reopens from its derivation checkpoint instead of deriving
-its processes and relationships from every record: 10M rows reopen in 0.62–0.65 s, down from 2.2–2.4 s. A reopen
-still reads every segment's session-time and mechanism columns until the tiles are persisted.
+its processes and relationships from every record. Since revision 163 its first view comes from a persisted overview
+too, and opens no segment: 4M and 10M rows both reopen in about 0.17 s, down from 1.1 s and 2.2–2.4 s.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. All three of §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
@@ -55,17 +55,45 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
-| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`) | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
+| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-v1`), so a reopen opens no segment | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
 
+- **Revision 163 — a finished session's first view opens no segment (S1, S4's top level):**
+  - **Found:** with revision 162's checkpoint, most of what still grew with a session was the tiles: at 10M rows,
+    400 ms of a 0.62 s reopen went to reading every segment's session-time and mechanism columns, and 160 ms to
+    opening the segments.
+  - **Changed:**
+    - A **persisted overview** (`contracts/overview-v1.md`) holds what a finished session's first view draws: its row
+      counts, its extent, the 64 buckets' counts per mechanism and the minimap's columns. It is S4's top level.
+    - It is published beside the derivation checkpoint, in the same index generation, by every writer that publishes
+      one. `icat checkpoint` adds it to a session revision 162 checkpointed.
+    - When both cover exactly the segments the manifest names, the projection opens no segment. The derivations are
+      the checkpoint's as they stand, compared with the manifest rather than with segment readers. A checkpoint
+      without an overview still gives the derivations, and the timeline is counted from the segments.
+    - An overview this build would place otherwise (bounds, column count, minimap span) or whose counts do not add
+      up is not used. One that cannot be read is counted around, with a caveat.
+    - The bounded index-file fields both formats use moved to Storage (`IndexFileWriter`, `IndexFileReader`).
+  - **Found while testing:** a damaged column index escaped the overview reader as an overflow instead of a refusal.
+    Reads now compare indexes unsigned, and anything the counting rules refuse is refused as unreadable.
+  - **Measured** (Release, synthetic, 100 processes and 50 relations):
+    - reopen at 4M rows: 0.48–0.50 → 0.17–0.18 s;
+    - reopen at 10M rows: 0.62–0.65 → 0.17 s, working set 223 → 37 MiB;
+    - no segment opened before the first view.
+    The real sparse ETL session's overview is identical under every evidence policy.
+  - **Tests:** +3, and one strengthened:
+    - a reopen opens no segment;
+    - an unreadable overview is counted around;
+    - a checkpoint without an overview;
+    - the overview format's round trip, truncation, damage, session and bounds.
+    Two mutations are each caught.
 - **Revision 162 — a finished session reopens from its derivation checkpoint (S1):**
   - **Found:** at 4M rows the first derivation was 80% of a reopen: 225 ms of process instances and 615 ms of
     relations, against 99 ms of tiles. At 10M rows the reopen took 2.2–2.4 s and 787 MiB, growing with the session.
@@ -1160,13 +1188,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      1 ms.
    - Revision 162 reopens a finished session from its derivation checkpoint rather than deriving from every record.
      A 10M-row session reopens in 0.62–0.65 s, down from 2.2–2.4 s, and holds 223 MiB, down from 787 MiB.
-   - **Next:** persist the tiles, in the segment or beside it (S1, S4). They are now most of a reopen: at 10M rows,
-     400 ms of 620 go to reading every segment's session-time and mechanism columns. Then open a segment only when a
-     query reads its rows; the opens are another 160 ms. Then re-run the bounded 10-minute first-feedback and revision
-     127's latency benchmark, and the 1M- and 10M-row gates.
+   - Revision 163 persists the whole-session overview beside it, S4's top level, and a finished session's first view
+     opens no segment: 4M and 10M rows both reopen in about 0.17 s, holding 37 MiB.
+   - **Next:** re-run the bounded 10-minute first-feedback on real ETW, which now ends by publishing the checkpoint and
+     overview, and revision 127's latency benchmark with the window's own open at 4M and 10M rows. Then the 1M- and
+     10M-row gates. A live session still counts its overview from tiles until its writer finishes.
+   - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Metric queries (`icat metric`) still derive their own instances and read no checkpoint.
-   - Viewer memory is bounded by the reader cache since revision 161 (S2); what a reopen reads to build tiles fills it.
+   - Viewer memory is bounded by the reader cache since revision 161 (S2), and a reopen fills it only as views read.
    - **Measured next step:** a warm query re-reads and re-verifies every segment the reader cache cannot hold. In a
      sampled trace at 1M rows under the old 64 MiB budget, opening segments took 13.7% of the samples, 8.7% of them the
      whole-file SHA-256, and column checksums took 8.8%, nearly all on a column's first read after an open. Revision
@@ -1217,6 +1247,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 163 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,125 tests: 1,123
+  passed, 2 skipped**, zero failures.
 - Revision 162 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,122 tests: 1,120
   passed, 2 skipped**, zero failures.
 - Revision 161 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,110 tests: 1,108
@@ -1292,8 +1324,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 162, **1,120 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 161: 1,108 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 163, **1,123 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 162: 1,120 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
@@ -1385,5 +1417,5 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Key reference contracts
 
-`contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `derivation-checkpoint-v1.md`,
+`contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `derivation-checkpoint-v1.md`, `overview-v1.md`,
 `query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–028; the complete historical ledger linked above.

@@ -71,7 +71,8 @@ rollback to the generation before it, as any damaged file does (store-v1 §6). I
 generation, or a live writer's next commit, which re-measures everything it carries. A writer publishes a new
 checkpoint when it finishes.
 
-A writer publishes a checkpoint when it has finished writing a session:
+A writer publishes a checkpoint, and since revision 163 the persisted overview with it (`contracts/overview-v1.md`),
+when it has finished writing a session:
 
 - an import (`icat import --into`);
 - the end of a live follow: the Desktop's, its finish of an interrupted one, `icat follow` and `icat capture`;
@@ -171,8 +172,10 @@ checkpoint. Both give the same result.
 
 ## 5. What is not defined at this version
 
-- The time tiles of the overview (§12.1 S4). A reopen still reads each segment's session-time and mechanism columns
-  to build them, and still opens every segment to do so.
+- The overview's counts, which the persisted overview publishes beside the checkpoint (`contracts/overview-v1.md`,
+  revision 163). When both cover exactly the segments a generation names, a reopen opens no segment before its first
+  view. The checkpoint is then used as it stands, without a segment reader to compare it with: its covered files are
+  compared with the manifest's.
 - Metric queries (`icat metric`) derive their own instances and do not read a checkpoint.
 - The boundary checkpoint of §20.2 (IC-016a). It keeps still-live identities across a retention, which this
   checkpoint does not attempt: a retention that releases a segment releases the checkpoint with it.

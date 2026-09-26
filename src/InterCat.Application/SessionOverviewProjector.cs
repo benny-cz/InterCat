@@ -71,15 +71,18 @@ public static class SessionOverviewProjector
             ?? throw new InvalidDataException(
                 "This generation names no source clock. Process lifetimes and the overview time axis cannot be "
                 + "derived from an assumed clock.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
         SessionRedaction? redaction = SessionRedaction.Read(store.Root, manifest);
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
-        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
+
+        // A finished session names a derivation checkpoint and a persisted overview covering every segment, and then
+        // its first view opens no segment (§12.1 S1, S4). A segment is opened only for what neither holds.
+        SegmentReaderV1[]? opened = null;
+        SegmentReaderV1[]? openedFields = null;
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = derivation.FromCheckpoint(store.Root, clock)
+            ?? (derivation.Processes(store.Root, Segments(), clock, Fields(), cancellationToken),
+                derivation.Relations(store.Root, Segments(), clock, Fields(), cancellationToken));
+        OverviewCounts counted = derivation.PersistedOverview(store.Root) ?? Count(Segments(), cancellationToken);
 
         // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
         // display projection's bound (GraphProjection, §6.3): it clusters rather than omitting anyone.
@@ -143,7 +146,7 @@ public static class SessionOverviewProjector
         long graphWithoutTime = admitted.Sum(relation => relation.RecordsWithoutSessionTime);
         long unresolved = relations.RecordsWithoutAdmittedPeer(Mechanism.Tcp, policy);
         (TimeRange? extent, TimelineBucket[] timeline, MechanismTimelineLane[] lanes, SessionMinimap? minimap,
-            long rows, long withoutTime) = Timeline(segments, clock, coverage, cancellationToken);
+            long rows, long withoutTime) = Timeline(counted, clock, coverage);
         string[] caveats =
         [
             "Graph edges show paired TCP connection incarnations whose two process instances are admitted. "
@@ -186,6 +189,13 @@ public static class SessionOverviewProjector
                     $"This generation's derivation checkpoint was not used. {problem} Processes and relationships were "
                         + "derived from every segment instead, which takes longer and gives the same result.",
                 }),
+            .. (derivation.OverviewProblem is not { } overviewProblem
+                ? []
+                : new[]
+                {
+                    $"This generation's persisted overview was not used. {overviewProblem} The timeline and minimap were "
+                        + "counted from every segment instead, which takes longer and gives the same result.",
+                }),
         ];
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
@@ -214,16 +224,23 @@ public static class SessionOverviewProjector
             MechanismLanes = Array.AsReadOnly(lanes),
             Clock = clock,
         };
+
+        SegmentReaderV1[] Segments() => opened ??=
+            [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+
+        SegmentReaderV1[] Fields() => openedFields ??=
+            [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
     }
 
-    private static (TimeRange? Extent, TimelineBucket[] Buckets, MechanismTimelineLane[] Lanes, SessionMinimap? Minimap,
-        long Rows, long WithoutTime)
-        Timeline(
-            SegmentReaderV1[] segments,
-            SourceClockDescriptor clock,
-            CoverageLedgerV1? coverage,
-            CancellationToken cancellationToken)
+    /// <summary>
+    /// What the overview counts from a generation's rows: how many there are, how many have no session time, the extent
+    /// of the rest, and their counts in the overview's columns and the minimap's. It is what a persisted overview holds
+    /// (`contracts/overview-v1.md`); coverage is judged when the counts are presented.
+    /// </summary>
+    internal static OverviewCounts Count(IReadOnlyList<SegmentReaderV1> segments, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(segments);
+
         // Every count comes from the segments' tiles (§12.1 S4's first level), built once per reader: the extent from
         // their earliest and latest readings, and the buckets and minimap columns from tiles whole wherever a tile's
         // records fall in one column. Only a tile a bucket boundary crosses has its rows read (§10.3).
@@ -231,8 +248,8 @@ public static class SessionOverviewProjector
         long withoutTime = 0;
         long minimum = long.MaxValue;
         long maximum = long.MinValue;
-        var tiles = new SegmentTimeTiles[segments.Length];
-        for (int index = 0; index < segments.Length; index++)
+        var tiles = new SegmentTimeTiles[segments.Count];
+        for (int index = 0; index < segments.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentTimeTiles segment = SegmentTimeTiles.Of(segments[index], cancellationToken);
@@ -248,17 +265,30 @@ public static class SessionOverviewProjector
 
         if (minimum == long.MaxValue)
         {
-            return (null, [], [], null, rows, withoutTime);
+            return new(rows, withoutTime, null, null, null);
         }
 
         var extent = new TimeRange(minimum, maximum + 1);
         var main = new TimelineColumns(extent, MaximumTimelineBuckets, tallyMechanisms: true);
         (TimeRange span, int count) = SessionMinimap.ColumnsFor(extent);
         var minimap = new TimelineColumns(span, count, tallyMechanisms: false);
-        for (int index = 0; index < segments.Length; index++)
+        for (int index = 0; index < segments.Count; index++)
         {
             tiles[index].CountInto(segments[index], main, cancellationToken);
             tiles[index].CountInto(segments[index], minimap, cancellationToken);
+        }
+
+        return new(rows, withoutTime, extent, main, minimap);
+    }
+
+    /// <summary>The timeline, its mechanism lanes and the minimap the counts give, with coverage judged by the ledger.</summary>
+    private static (TimeRange? Extent, TimelineBucket[] Buckets, MechanismTimelineLane[] Lanes, SessionMinimap? Minimap,
+        long Rows, long WithoutTime)
+        Timeline(OverviewCounts counts, SourceClockDescriptor clock, CoverageLedgerV1? coverage)
+    {
+        if (counts is not { Extent: { } extent, Main: { } main, Minimap: { } minimap })
+        {
+            return (null, [], [], null, counts.Rows, counts.WithoutTime);
         }
 
         var overviewMinimap = new SessionMinimap(
@@ -266,9 +296,10 @@ public static class SessionOverviewProjector
             Array.AsReadOnly([.. minimap.Counts]),
             Array.AsReadOnly(minimap.CaptureCoverage(coverage, clock, within: extent)))
         {
-            ColumnSpan = span,
+            ColumnSpan = minimap.Interval,
         };
-        return (extent, main.Buckets(coverage, clock), main.MechanismLanes(coverage, clock), overviewMinimap, rows, withoutTime);
+        return (extent, main.Buckets(coverage, clock), main.MechanismLanes(coverage, clock), overviewMinimap,
+            counts.Rows, counts.WithoutTime);
     }
 
     internal static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch

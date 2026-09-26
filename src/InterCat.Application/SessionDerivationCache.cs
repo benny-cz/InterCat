@@ -104,6 +104,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private DerivationCheckpoint? checkpoint;
     private bool checkpointRead;
     private string? checkpointProblem;
+    private OverviewCounts? overview;
+    private bool overviewRead;
+    private string? overviewProblem;
 
     /// <summary>The generation these derivations are of.</summary>
     public SessionManifestV1 Manifest { get; } = manifest;
@@ -125,6 +128,12 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// none, or it was read. The derivations are then made without it, and are the same.
     /// </summary>
     public string? CheckpointProblem => Volatile.Read(ref checkpointProblem);
+
+    /// <summary>
+    /// Why the persisted overview this generation names could not be read, once it was asked for; null when it names
+    /// none, or it was read. The overview is then counted from the segments, and is the same.
+    /// </summary>
+    public string? OverviewProblem => Volatile.Read(ref overviewProblem);
 
     /// <summary>Whether the instances were extended from an earlier generation's rather than derived in full.</summary>
     internal bool ProcessesExtended { get; private set; }
@@ -148,6 +157,78 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
         lock (gate)
         {
             return ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Both derivations without opening a segment: those already made, or the checkpoint's when it covers exactly the
+    /// segments the generation names. Null when neither is so, and the caller derives with the segments opened.
+    /// </summary>
+    public (ProcessInstanceIndex Processes, TransportRelationIndex Relations)? FromCheckpoint(
+        IOwnedDirectory directory,
+        SourceClockDescriptor clock)
+    {
+        lock (gate)
+        {
+            if (processes is { } madeProcesses && relations is { } madeRelations)
+            {
+                return (madeProcesses, madeRelations);
+            }
+
+            if (processes is not null
+                || relations is not null
+                || CheckpointLocked(directory, clock) is not { } saved
+                || !saved.Covers(SessionOverviewIndex.ObservationSegments(Manifest), SessionOverviewIndex.FieldSegments(Manifest)))
+            {
+                return null;
+            }
+
+            Volatile.Write(ref processes, saved.Processes);
+            Volatile.Write(ref relations, saved.Relations);
+            (ProcessesFromCheckpoint, RelationsFromCheckpoint) = (true, true);
+            checkpoint = null;
+            return (saved.Processes, saved.Relations);
+        }
+    }
+
+    /// <summary>
+    /// The counts this generation's persisted overview holds (`contracts/overview-v1.md`), read and checked once; null
+    /// when it names none, when it covers other segments than the generation names, or when it could not be read, which
+    /// <see cref="OverviewProblem"/> then says.
+    /// </summary>
+    public OverviewCounts? PersistedOverview(IOwnedDirectory directory)
+    {
+        lock (gate)
+        {
+            if (overviewRead)
+            {
+                return overview;
+            }
+
+            overviewRead = true;
+            try
+            {
+                if (SessionOverviewIndex.NamedBy(Manifest) is { } named)
+                {
+                    (OverviewCounts counts, IReadOnlyList<StoreDependency> covered) = SessionOverviewIndex.Read(
+                        SessionSegments.ReadVerified(directory, named, SessionOverviewIndex.MaximumBytes), Manifest.SessionId);
+                    overview = SessionOverviewIndex.Covers(covered, Manifest) ? counts : null;
+                }
+            }
+            catch (InvalidDataException exception)
+            {
+                Volatile.Write(ref overviewProblem, exception.Message);
+            }
+            catch (IOException exception)
+            {
+                Volatile.Write(ref overviewProblem, exception.Message);
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Volatile.Write(ref overviewProblem, exception.Message);
+            }
+
+            return overview;
         }
     }
 

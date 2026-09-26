@@ -18,14 +18,14 @@ public sealed partial class ProcessInstanceIndex
     /// Writes what this derivation read, which is everything its instances are built from, in canonical order
     /// (`contracts/derivation-checkpoint-v1.md` §3, <c>instances</c>).
     /// </summary>
-    internal void WriteState(CheckpointWriter writer) => evidence.Write(writer);
+    internal void WriteState(IndexFileWriter writer) => evidence.Write(writer);
 
     /// <summary>
     /// Rebuilds a derivation from what a checkpoint says it read. The instances are built from that evidence exactly as
     /// they are from the segments themselves, so they are the instances a derivation of the covered segments gives.
     /// </summary>
     internal static ProcessInstanceIndex ReadState(
-        CheckpointReader reader,
+        IndexFileReader reader,
         SourceClockDescriptor clock,
         CaptureId? capture,
         NormalizerContractVersion? derivation,
@@ -53,7 +53,7 @@ public sealed partial class ProcessInstanceIndex
         return order != 0 ? order : left.Field.CompareTo(right.Field);
     }
 
-    private static void WriteAddress(CheckpointWriter writer, RecordAddress address)
+    private static void WriteAddress(IndexFileWriter writer, RecordAddress address)
     {
         writer.U32(address.Stream);
         writer.U32(address.Epoch);
@@ -62,7 +62,7 @@ public sealed partial class ProcessInstanceIndex
         writer.U64(address.FactKey.Low);
     }
 
-    private static RecordAddress ReadAddress(CheckpointReader reader) =>
+    private static RecordAddress ReadAddress(IndexFileReader reader) =>
         new(reader.U32(), reader.U32(), reader.U64(), new FactKey(reader.U64(), reader.U64()));
 
     private sealed partial class Evidence
@@ -76,7 +76,7 @@ public sealed partial class ProcessInstanceIndex
 
         public NormalizerContractVersion? Derivation => derivations.Count == 1 ? derivations.Single() : null;
 
-        public void Write(CheckpointWriter writer)
+        public void Write(IndexFileWriter writer)
         {
             writer.I64(WithoutOwner);
             LifecycleRow[] lifecycle = [.. Lifecycle];
@@ -162,7 +162,7 @@ public sealed partial class ProcessInstanceIndex
         }
 
         public static Evidence Read(
-            CheckpointReader reader,
+            IndexFileReader reader,
             ClockId clock,
             CaptureId? capture,
             NormalizerContractVersion? derivation,
@@ -171,7 +171,7 @@ public sealed partial class ProcessInstanceIndex
             long withoutOwner = reader.I64();
             if (withoutOwner < 0)
             {
-                throw CheckpointReader.Invalid("it counts a negative number of lifecycle records without an owner.");
+                throw reader.Invalid("it counts a negative number of lifecycle records without an owner.");
             }
 
             int count = reader.Count(4 + 1 + RecordBytes + 1);
@@ -182,14 +182,14 @@ public sealed partial class ProcessInstanceIndex
                 var kind = (ObservationKind)reader.U8();
                 if (kind is not (ObservationKind.Create or ObservationKind.Exit or ObservationKind.Inventory))
                 {
-                    throw CheckpointReader.Invalid($"a lifecycle record has kind {(int)kind}, which is not a lifecycle kind.");
+                    throw reader.Invalid($"a lifecycle record has kind {(int)kind}, which is not a lifecycle kind.");
                 }
 
                 RecordKey record = ReadRecord(reader, capture, derivation);
                 byte flags = reader.U8();
                 if ((flags & ~(HasExitCode | HasName)) != 0)
                 {
-                    throw CheckpointReader.Invalid($"a lifecycle record has flags {flags}.");
+                    throw reader.Invalid($"a lifecycle record has flags {flags}.");
                 }
 
                 long? exitCode = (flags & HasExitCode) != 0 ? reader.I64() : null;
@@ -197,7 +197,7 @@ public sealed partial class ProcessInstanceIndex
                 var row = new LifecycleRow(processId, kind, record, exitCode, name);
                 if (lifecycle.Count > 0 && CompareLifecycle(lifecycle[^1], row) >= 0)
                 {
-                    throw CheckpointReader.Invalid("its lifecycle records are not in canonical order.");
+                    throw reader.Invalid("its lifecycle records are not in canonical order.");
                 }
 
                 lifecycle.Add(row);
@@ -211,13 +211,13 @@ public sealed partial class ProcessInstanceIndex
                 RecordAddress address = ReadAddress(reader);
                 if (previous is { } before && CompareAddresses(before, address) >= 0)
                 {
-                    throw CheckpointReader.Invalid("its process fields are not in canonical order.");
+                    throw reader.Invalid("its process fields are not in canonical order.");
                 }
 
                 byte present = reader.U8();
                 if (present is 0 or > 63)
                 {
-                    throw CheckpointReader.Invalid($"a record's process fields are marked {present}.");
+                    throw reader.Invalid($"a record's process fields are marked {present}.");
                 }
 
                 fields.Add(address, new ProcessFields(
@@ -240,12 +240,12 @@ public sealed partial class ProcessInstanceIndex
                     or SourceField.ParentProcessId or SourceField.ParentStartSequence
                     or SourceField.ProcessSessionId or SourceField.ProcessExitTime))
                 {
-                    throw CheckpointReader.Invalid($"a record carried source field {(int)entry.Field}, which is not a process field.");
+                    throw reader.Invalid($"a record carried source field {(int)entry.Field}, which is not a process field.");
                 }
 
                 if (last is { } before && CompareSeen(before, entry) >= 0)
                 {
-                    throw CheckpointReader.Invalid("the process fields records carried are not in canonical order.");
+                    throw reader.Invalid("the process fields records carried are not in canonical order.");
                 }
 
                 _ = seen.Add(entry);
@@ -260,7 +260,7 @@ public sealed partial class ProcessInstanceIndex
                 int processId = reader.I32();
                 if (previousProcess is { } before && before >= processId)
                 {
-                    throw CheckpointReader.Invalid("the earliest records of each PID are not in PID order.");
+                    throw reader.Invalid("the earliest records of each PID are not in PID order.");
                 }
 
                 first.Add(processId, ReadRecord(reader, capture, derivation));
@@ -290,7 +290,7 @@ public sealed partial class ProcessInstanceIndex
         }
 
         /// <summary>A record's canonical position; the capture and derivation it shares with every record are stated once.</summary>
-        private void WriteRecord(CheckpointWriter writer, RecordKey record)
+        private void WriteRecord(IndexFileWriter writer, RecordKey record)
         {
             if (record.Capture != Capture || record.Derivation != Derivation)
             {
@@ -302,11 +302,11 @@ public sealed partial class ProcessInstanceIndex
             WriteAddress(writer, record.Address);
         }
 
-        private static RecordKey ReadRecord(CheckpointReader reader, CaptureId? capture, NormalizerContractVersion? derivation)
+        private static RecordKey ReadRecord(IndexFileReader reader, CaptureId? capture, NormalizerContractVersion? derivation)
         {
             if (capture is not { } captured || derivation is not { } derived)
             {
-                throw CheckpointReader.Invalid("it holds records but names no capture or normalizer derivation for them.");
+                throw reader.Invalid("it holds records but names no capture or normalizer derivation for them.");
             }
 
             long ticks = reader.I64();

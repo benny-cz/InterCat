@@ -83,17 +83,24 @@ public static class SessionCheckpoints
             if (IsCurrent(store.Root, manifest, clock, segments, fields))
             {
                 return Unpublished(CheckpointOutcome.AlreadyCurrent, manifest.Generation, started,
-                    "The generation already names a checkpoint of every segment it names.");
+                    "The generation already names a checkpoint and an overview of every segment it names.");
             }
 
+            // The derivation checkpoint and the persisted overview are published together: with both, a reopen opens no
+            // segment before its first view (overview-v1).
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
             long next = store.NextGeneration;
-            using StoreStagingFile staged = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
-            long bytes = DerivationCheckpoint.Write(staged.Content, manifest.SessionId, manifest.Generation, processes, relations);
-            _ = staged.Complete();
-            StoreCommitResult result = store.CommitIndex([staged], manifest.Generation, committedUtc, next, cancellationToken);
+            using StoreStagingFile checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
+            long bytes = DerivationCheckpoint.Write(checkpoint.Content, manifest.SessionId, manifest.Generation, processes, relations);
+            _ = checkpoint.Complete();
+            using StoreStagingFile overview = store.Stage(SessionOverviewIndex.FileNameFor(next), StoreDependencyKind.Index);
+            bytes += SessionOverviewIndex.Write(
+                overview.Content, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest), counts);
+            _ = overview.Complete();
+            StoreCommitResult result = store.CommitIndex([checkpoint, overview], manifest.Generation, committedUtc, next, cancellationToken);
             return new(CheckpointOutcome.Published, manifest.Generation, result.Manifest.Generation, bytes,
                 Stopwatch.GetElapsedTime(started), null);
         }
@@ -115,7 +122,10 @@ public static class SessionCheckpoints
         }
     }
 
-    /// <summary>Whether the generation names a readable checkpoint covering exactly the segments it names.</summary>
+    /// <summary>
+    /// Whether the generation names a readable checkpoint and a readable persisted overview, each covering exactly the
+    /// segments it names.
+    /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
         SessionManifestV1 manifest,
@@ -125,16 +135,22 @@ public static class SessionCheckpoints
     {
         try
         {
-            return DerivationCheckpoint.NamedBy(manifest) is { } named
+            return DerivationCheckpoint.NamedBy(manifest) is { } checkpoint
                 && DerivationCheckpoint.Read(
-                        SessionSegments.ReadVerified(directory, named, DerivationCheckpoint.MaximumBytes),
+                        SessionSegments.ReadVerified(directory, checkpoint, DerivationCheckpoint.MaximumBytes),
                         manifest.SessionId,
                         clock)
-                    .Covers(segments, fields);
+                    .Covers(segments, fields)
+                && SessionOverviewIndex.NamedBy(manifest) is { } overview
+                && SessionOverviewIndex.Covers(
+                    SessionOverviewIndex.Read(
+                        SessionSegments.ReadVerified(directory, overview, SessionOverviewIndex.MaximumBytes),
+                        manifest.SessionId).Segments,
+                    manifest);
         }
         catch (InvalidDataException)
         {
-            // One that cannot be read is replaced by the one published now.
+            // What cannot be read is replaced by what is published now.
             return false;
         }
     }

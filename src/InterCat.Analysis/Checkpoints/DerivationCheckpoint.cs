@@ -22,6 +22,7 @@ public sealed class DerivationCheckpoint
     private const ushort Minor = 0;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
+    private const string What = "derivation checkpoint";
 
     private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
@@ -111,6 +112,18 @@ public sealed class DerivationCheckpoint
     }
 
     /// <summary>
+    /// Whether the state covers exactly the segments a generation names, as its manifest records them: the derivations
+    /// are then the checkpoint's, and no segment needs opening to know it.
+    /// </summary>
+    public bool Covers(IReadOnlyCollection<StoreDependency> segments, IReadOnlyCollection<StoreDependency> fieldSegments)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        return segments.Count == Segments.Count && Segments.ToHashSet().SetEquals(segments)
+            && fieldSegments.Count == FieldSegments.Count && FieldSegments.ToHashSet().SetEquals(fieldSegments);
+    }
+
+    /// <summary>
     /// Writes the state of <paramref name="processes"/> and <paramref name="relations"/>, derived from the segments of
     /// generation <paramref name="derivedGeneration"/>, in the canonical order of §3. The same derivations always write
     /// the same bytes.
@@ -155,12 +168,8 @@ public sealed class DerivationCheckpoint
         }
 
         (CaptureId? capture, NormalizerContractVersion? derivation) = processes.Provenance;
-        var writer = new CheckpointWriter(destination);
-        foreach (byte value in Magic)
-        {
-            writer.U8(value);
-        }
-
+        var writer = new IndexFileWriter(destination, MaximumBytes, What);
+        writer.Raw(Magic);
         writer.U16(Major);
         writer.U16(Minor);
         writer.Str8(ProcessInstanceIndex.BindingRule);
@@ -195,51 +204,48 @@ public sealed class DerivationCheckpoint
     {
         if (bytes.Length > MaximumBytes)
         {
-            throw CheckpointReader.Invalid($"it is larger than {MaximumBytes / (1024 * 1024)} MiB.");
+            throw new InvalidDataException($"The {What} is not readable: it is larger than {MaximumBytes / (1024 * 1024)} MiB.");
         }
 
         // Instances are rebuilt by the derivation's own rules, which refuse what no segment could have held with the
         // exceptions a derivation raises; here they say only that the checkpoint is unreadable.
         try
         {
-            return ReadCore(new CheckpointReader(bytes), sessionId, clock);
+            return ReadCore(new IndexFileReader(bytes, What), sessionId, clock);
         }
         catch (ArgumentException exception)
         {
-            throw new InvalidDataException("The derivation checkpoint is not readable: " + exception.Message, exception);
+            throw new InvalidDataException($"The {What} is not readable: {exception.Message}", exception);
         }
         catch (OverflowException exception)
         {
-            throw new InvalidDataException("The derivation checkpoint is not readable: " + exception.Message, exception);
+            throw new InvalidDataException($"The {What} is not readable: {exception.Message}", exception);
         }
         catch (InvalidOperationException exception)
         {
-            throw new InvalidDataException("The derivation checkpoint is not readable: " + exception.Message, exception);
+            throw new InvalidDataException($"The {What} is not readable: {exception.Message}", exception);
         }
     }
 
-    private static DerivationCheckpoint ReadCore(CheckpointReader reader, Guid sessionId, SourceClockDescriptor clock)
+    private static DerivationCheckpoint ReadCore(IndexFileReader reader, Guid sessionId, SourceClockDescriptor clock)
     {
-        foreach (byte expected in Magic)
+        if (!reader.Matches(Magic))
         {
-            if (reader.U8() != expected)
-            {
-                throw CheckpointReader.Invalid("it does not begin as a derivation checkpoint does.");
-            }
+            throw reader.Invalid("it does not begin as a derivation checkpoint does.");
         }
 
         ushort major = reader.U16();
         ushort minor = reader.U16();
         if (major != Major || minor != Minor)
         {
-            throw CheckpointReader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.{Minor}.");
+            throw reader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.{Minor}.");
         }
 
         string binding = reader.Str8();
         string relation = reader.Str8();
         if (binding != ProcessInstanceIndex.BindingRule || relation != TransportRelationIndex.RelationRule)
         {
-            throw CheckpointReader.Invalid(
+            throw reader.Invalid(
                 $"it was derived under {binding} and {relation}, and this build derives under "
                 + $"{ProcessInstanceIndex.BindingRule} and {TransportRelationIndex.RelationRule}.");
         }
@@ -247,7 +253,7 @@ public sealed class DerivationCheckpoint
         Guid session = reader.Identity();
         if (session != sessionId)
         {
-            throw CheckpointReader.Invalid($"it belongs to session {session:N}, not {sessionId:N}.");
+            throw reader.Invalid($"it belongs to session {session:N}, not {sessionId:N}.");
         }
 
         long derivedGeneration = reader.I64();
@@ -255,14 +261,14 @@ public sealed class DerivationCheckpoint
         Guid host = reader.Identity();
         if (derivedGeneration < 1 || clockId != clock.Id.Value || host != clock.HostId.Value)
         {
-            throw CheckpointReader.Invalid("it was derived on another clock or host, or from no generation.");
+            throw reader.Invalid("it was derived on another clock or host, or from no generation.");
         }
 
         Guid captured = reader.Identity();
         uint normalizer = reader.U32();
         if ((captured == Guid.Empty) != (normalizer == 0))
         {
-            throw CheckpointReader.Invalid("it names a capture without its normalizer derivation, or one without the other.");
+            throw reader.Invalid("it names a capture without its normalizer derivation, or one without the other.");
         }
 
         CaptureId? capture = normalizer == 0 ? null : new CaptureId(captured);
@@ -285,7 +291,7 @@ public sealed class DerivationCheckpoint
                 || !IsDigest(digest)
                 || (previous is not null && string.CompareOrdinal(previous, name) >= 0))
             {
-                throw CheckpointReader.Invalid("a covered file is not a named, measured segment in name order.");
+                throw reader.Invalid("a covered file is not a named, measured segment in name order.");
             }
 
             (role == ObservationRole ? segments : fields).Add(new(name, StoreDependencyKind.Segment, length, digest));
@@ -294,7 +300,7 @@ public sealed class DerivationCheckpoint
 
         if ((count > 0) != capture.HasValue)
         {
-            throw CheckpointReader.Invalid("it covers segments without the capture they belong to, or names a capture and covers none.");
+            throw reader.Invalid("it covers segments without the capture they belong to, or names a capture and covers none.");
         }
 
         ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);

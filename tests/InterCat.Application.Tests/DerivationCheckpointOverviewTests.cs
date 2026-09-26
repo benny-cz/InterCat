@@ -17,7 +17,7 @@ namespace InterCat.Application.Tests;
 [Collection(SharedDerivationCache.Name)]
 public sealed class DerivationCheckpointOverviewTests
 {
-    [Fact(DisplayName = "I14: a session reopened from its derivation checkpoint projects exactly as a derivation of every segment")]
+    [Fact(DisplayName = "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment")]
     public void AReopenedSessionProjectsFromItsCheckpoint()
     {
         SessionDerivationCache.Clear();
@@ -35,12 +35,14 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.True(publication.Bytes > 0);
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
 
-        // A fresh viewer, with nothing derived in memory, takes both derivations from the checkpoint as they stand.
+        // A fresh viewer, with nothing derived in memory, takes both derivations from the checkpoint as they stand and
+        // the timeline from the persisted overview: it opens no segment before its first view (S1).
         SessionDerivationCache.Clear();
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
         SessionDerivation slot = SessionDerivationCache.For(reopened.Current!);
-        Assert.Equal((true, true, null), (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.CheckpointProblem));
+        Assert.Equal((true, true, null, null), (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.CheckpointProblem, slot.OverviewProblem));
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
         Assert.Equal(written + 1, overview.Generation);
         Assert.Equal(derived, Comparable(overview));
         Assert.Equal(full.Caveats, overview.Caveats);
@@ -94,7 +96,9 @@ public sealed class DerivationCheckpointOverviewTests
 
         // Publishing replaces the unreadable checkpoint, and the next open uses the new one without a caveat.
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
-        Assert.Single(session.Store.Current!.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Index);
+        Assert.Equal(
+            [DerivationCheckpoint.NamedBy(session.Store.Current!)!, SessionOverviewIndex.NamedBy(session.Store.Current!)!],
+            session.Store.Current!.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Index));
         SessionDerivationCache.Clear();
         SessionOverviewBundle replaced = SessionOverviewProjector.Project(session.Store);
         Assert.Equal(full.Caveats, replaced.Caveats);
@@ -119,6 +123,153 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Null(refused.PublishedGeneration);
         Assert.NotNull(refused.Reason);
         Assert.Null(DerivationCheckpoint.NamedBy(session.Store.Current!));
+    }
+
+    [Fact(DisplayName = "I14: an overview that cannot be read is counted around from the segments, and the overview says why")]
+    public void AnUnreadableOverviewIsCountedAround()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionOverviewBundle full = SessionOverviewProjector.Project(session.Store);
+        PublishIndexes(session.Store, withCheckpoint: true, overview: "ICATOVRV not an overview"u8.ToArray());
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
+        SessionDerivation slot = SessionDerivationCache.For(reopened.Current!);
+
+        // The processes and relationships still come from the checkpoint; only the timeline reads the segments.
+        Assert.Equal((true, true, null), (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.CheckpointProblem));
+        Assert.Contains("not readable", slot.OverviewProblem, StringComparison.Ordinal);
+        Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(Comparable(full), Comparable(overview));
+        string caveat = Assert.Single(overview.Caveats.Except(full.Caveats));
+        Assert.Contains(slot.OverviewProblem!, caveat, StringComparison.Ordinal);
+        Assert.Contains("same result", caveat, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I14: a checkpoint without an overview gives the derivations, and the timeline is counted from the segments")]
+    public void ACheckpointWithoutAnOverviewCountsTheTimeline()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionOverviewBundle full = SessionOverviewProjector.Project(session.Store);
+
+        // As revision 162 published: a checkpoint alone. Publishing again adds the overview.
+        PublishIndexes(session.Store, withCheckpoint: true, overview: null);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
+        SessionDerivation slot = SessionDerivationCache.For(reopened.Current!);
+        Assert.Equal((true, true, null), (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.OverviewProblem));
+        Assert.Equal(Comparable(full), Comparable(overview));
+        Assert.Equal(full.Caveats, overview.Caveats);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.NotNull(SessionOverviewIndex.NamedBy(session.Store.Current!));
+    }
+
+    [Fact(DisplayName = "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged")]
+    public void APersistedOverviewReadsBackOrIsRefused()
+    {
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        OverviewCounts counts = SessionOverviewProjector.Count(segments, CancellationToken.None);
+        StoreDependency[] covered = SessionOverviewIndex.ObservationSegments(manifest);
+        using var written = new MemoryStream();
+        _ = SessionOverviewIndex.Write(written, manifest.SessionId, manifest.Generation, covered, counts);
+        byte[] bytes = written.ToArray();
+
+        (OverviewCounts read, IReadOnlyList<StoreDependency> readCovered) = SessionOverviewIndex.Read(bytes, manifest.SessionId);
+        Assert.True(SessionOverviewIndex.Covers(readCovered, manifest));
+        Assert.Equal((counts.Rows, counts.WithoutTime, counts.Extent), (read.Rows, read.WithoutTime, read.Extent));
+        Assert.Equal(counts.Main!.Counts, read.Main!.Counts);
+        Assert.Equal(counts.Main.Tallies(), read.Main.Tallies());
+        Assert.Equal(counts.Minimap!.Interval, read.Minimap!.Interval);
+        Assert.Equal(counts.Minimap.Counts, read.Minimap.Counts);
+
+        for (int length = 0; length < bytes.Length; length++)
+        {
+            _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read(bytes.AsMemory(0, length), manifest.SessionId));
+        }
+
+        // A changed byte is refused or reads as some overview whose columns still add up; nothing else escapes.
+        for (int index = 0; index < bytes.Length; index++)
+        {
+            byte[] changed = [.. bytes];
+            changed[index] ^= 0xFF;
+            try
+            {
+                _ = SessionOverviewIndex.Read(changed, manifest.SessionId);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+
+        Assert.Contains("belongs to session", Assert.Throws<InvalidDataException>(
+            () => SessionOverviewIndex.Read(bytes, Guid.NewGuid())).Message, StringComparison.Ordinal);
+        byte[] otherBounds = [.. bytes];
+        otherBounds[36] = 65;
+        Assert.Contains("columns this build does not draw", Assert.Throws<InvalidDataException>(
+            () => SessionOverviewIndex.Read(otherBounds, manifest.SessionId)).Message, StringComparison.Ordinal);
+        _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read((byte[])[.. bytes, 0], manifest.SessionId));
+    }
+
+    /// <summary>
+    /// Publishes, as the next generation, a checkpoint of the current one when asked and an overview holding
+    /// <paramref name="overview"/> when given.
+    /// </summary>
+    private static void PublishIndexes(SessionStore store, bool withCheckpoint, byte[]? overview)
+    {
+        SessionManifestV1 manifest = store.Current!;
+        long next = store.NextGeneration;
+        var staged = new List<StoreStagingFile>();
+        try
+        {
+            if (withCheckpoint)
+            {
+                SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+                SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+                ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, SessionSegments.SourceClock(store.Root, manifest)!.Value, fields);
+                StoreStagingFile checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
+                staged.Add(checkpoint);
+                _ = DerivationCheckpoint.Write(checkpoint.Content, manifest.SessionId, manifest.Generation, processes,
+                    TransportRelationIndex.Derive(segments, processes));
+                _ = checkpoint.Complete();
+            }
+
+            if (overview is not null)
+            {
+                StoreStagingFile file = store.Stage(SessionOverviewIndex.FileNameFor(next), StoreDependencyKind.Index);
+                staged.Add(file);
+                file.Content.Write(overview);
+                _ = file.Complete();
+            }
+
+            _ = store.CommitIndex(staged, manifest.Generation, Committed, next);
+        }
+        finally
+        {
+            foreach (StoreStagingFile file in staged)
+            {
+                file.Dispose();
+            }
+        }
     }
 
     /// <summary>

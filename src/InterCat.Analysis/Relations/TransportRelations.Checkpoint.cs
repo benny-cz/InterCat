@@ -19,7 +19,7 @@ public sealed partial class TransportRelationIndex
     /// order (`contracts/derivation-checkpoint-v1.md` §3, <c>relations</c>). Pairing and channel numbers are not written:
     /// they are a function of these and are computed again when the relations are read.
     /// </summary>
-    internal void WriteState(CheckpointWriter writer)
+    internal void WriteState(IndexFileWriter writer)
     {
         KeyValuePair<Mechanism, long>[] unmatched = [.. withoutEnd.Where(entry => entry.Value > 0)];
         Array.Sort(unmatched, static (left, right) => left.Key.CompareTo(right.Key));
@@ -50,7 +50,7 @@ public sealed partial class TransportRelationIndex
     /// checkpoint, whose positions its holders name.
     /// </summary>
     internal static TransportRelationIndex ReadState(
-        CheckpointReader reader,
+        IndexFileReader reader,
         ProcessInstanceIndex processes,
         HashSet<StoreDependency> read)
     {
@@ -63,7 +63,7 @@ public sealed partial class TransportRelationIndex
             long records = reader.I64();
             if (!Relates(mechanism) || records <= 0 || (previous is { } before && before >= mechanism))
             {
-                throw CheckpointReader.Invalid("its records without an end are not counted once per related mechanism.");
+                throw reader.Invalid("its records without an end are not counted once per related mechanism.");
             }
 
             withoutEnd.Add(mechanism, records);
@@ -80,12 +80,12 @@ public sealed partial class TransportRelationIndex
             if (!Relates((Mechanism)key.Protocol)
                 || key.LocalAddress == 0 || key.LocalPort == 0 || key.RemoteAddress == 0 || key.RemotePort == 0)
             {
-                throw CheckpointReader.Invalid("an end is not a TCP or UDP end with both endpoints.");
+                throw reader.Invalid("an end is not a TCP or UDP end with both endpoints.");
             }
 
             if (last is { } before && before.CompareTo(key) >= 0)
             {
-                throw CheckpointReader.Invalid("its ends are not in canonical order.");
+                throw reader.Invalid("its ends are not in canonical order.");
             }
 
             ends.Add(key, EndTimeline.Read(reader, processes.Instances.Count));
@@ -95,7 +95,7 @@ public sealed partial class TransportRelationIndex
         return new(processes, ends, withoutEnd, read);
     }
 
-    private static void WritePosition(CheckpointWriter writer, Position position)
+    private static void WritePosition(IndexFileWriter writer, Position position)
     {
         writer.I64(position.Ticks);
         writer.U32(position.Stream);
@@ -105,12 +105,12 @@ public sealed partial class TransportRelationIndex
         writer.U64(position.FactLow);
     }
 
-    private static Position ReadPosition(CheckpointReader reader) =>
+    private static Position ReadPosition(IndexFileReader reader) =>
         new(reader.I64(), reader.U32(), reader.U32(), reader.U64(), reader.U64(), reader.U64());
 
     private sealed partial class EndTimeline
     {
-        public void Write(CheckpointWriter writer)
+        public void Write(IndexFileWriter writer)
         {
             if (Incarnations.Length != cuts.Count + 1)
             {
@@ -136,7 +136,7 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        public static EndTimeline Read(CheckpointReader reader, int instances)
+        public static EndTimeline Read(IndexFileReader reader, int instances)
         {
             int count = reader.Count(PositionBytes + 1);
             var timeline = new EndTimeline();
@@ -145,7 +145,7 @@ public sealed partial class TransportRelationIndex
                 var cut = new Cut(ReadPosition(reader), reader.Flag());
                 if (index > 0 && timeline.cuts[^1].At.CompareTo(cut.At) > 0)
                 {
-                    throw CheckpointReader.Invalid("an end's cuts are not in canonical order.");
+                    throw reader.Invalid("an end's cuts are not in canonical order.");
                 }
 
                 timeline.cuts.Add(cut);
@@ -162,7 +162,7 @@ public sealed partial class TransportRelationIndex
 
             if (holdsRecords != latest.HasValue)
             {
-                throw CheckpointReader.Invalid("an end's latest record does not agree with the records its incarnations hold.");
+                throw reader.Invalid("an end's latest record does not agree with the records its incarnations hold.");
             }
 
             timeline.LastPosition = latest;
@@ -182,7 +182,7 @@ public sealed partial class TransportRelationIndex
         /// first, and which PID one naming two recorded first, depend on the order its records were read in and are
         /// never read, so neither is written: the checkpoint is then a function of the records alone.
         /// </summary>
-        public void Write(CheckpointWriter writer)
+        public void Write(IndexFileWriter writer)
         {
             if (Records == 0)
             {
@@ -210,7 +210,7 @@ public sealed partial class TransportRelationIndex
         }
 
         /// <summary>The incarnation within <paramref name="bounds"/> that a checkpoint describes.</summary>
-        public static Incarnation Read(CheckpointReader reader, Incarnation bounds, int instances)
+        public static Incarnation Read(IndexFileReader reader, Incarnation bounds, int instances)
         {
             byte flags = reader.U8();
             if (flags == 0)
@@ -220,7 +220,7 @@ public sealed partial class TransportRelationIndex
 
             if ((flags & HoldsRecords) == 0 || flags > (HoldsRecords | NamesProcess | NamesTwoProcesses | BindsToTwo))
             {
-                throw CheckpointReader.Invalid($"an incarnation has flags {flags}.");
+                throw reader.Invalid($"an incarnation has flags {flags}.");
             }
 
             int? named = (flags & NamesProcess) != 0 ? reader.I32() : null;
@@ -240,7 +240,7 @@ public sealed partial class TransportRelationIndex
                 || first > last || firstPosition.Ticks != first
                 || records <= 0 || untimed < 0 || untimed > records)
             {
-                throw CheckpointReader.Invalid("an incarnation's records, readings or holder contradict each other.");
+                throw reader.Invalid("an incarnation's records, readings or holder contradict each other.");
             }
 
             return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed)

@@ -1,19 +1,30 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace InterCat.Analysis;
+namespace InterCat.Storage;
 
 /// <summary>
-/// Writes a derivation checkpoint's little-endian fields to a stream, a buffer at a time, and refuses to write more than
-/// a checkpoint may hold (`contracts/derivation-checkpoint-v1.md` §3).
+/// Writes an index file's little-endian fields to a stream, a buffer at a time, and refuses to write more than the
+/// index may hold. The indexes a generation publishes (`contracts/derivation-checkpoint-v1.md`,
+/// `contracts/overview-v1.md`) share these field encodings.
 /// </summary>
-internal sealed class CheckpointWriter(Stream destination)
+public sealed class IndexFileWriter(Stream destination, long maximumBytes, string what)
 {
     private readonly byte[] buffer = new byte[64 * 1024];
     private int used;
 
     /// <summary>How many bytes were written, including those still buffered.</summary>
     public long Written { get; private set; }
+
+    public void Raw(ReadOnlySpan<byte> bytes)
+    {
+        while (!bytes.IsEmpty)
+        {
+            int take = Math.Min(bytes.Length, buffer.Length);
+            bytes[..take].CopyTo(Reserve(take));
+            bytes = bytes[take..];
+        }
+    }
 
     public void U8(byte value) => Reserve(1)[0] = value;
 
@@ -46,53 +57,44 @@ internal sealed class CheckpointWriter(Stream destination)
     /// <summary>A string of at most 255 UTF-8 bytes, after its one-byte length.</summary>
     public void Str8(string value)
     {
+        ArgumentNullException.ThrowIfNull(value);
         byte[] bytes = Encoding.UTF8.GetBytes(value);
         if (bytes.Length > byte.MaxValue)
         {
-            throw new InvalidOperationException($"'{value}' is longer than a checkpoint's short strings.");
+            throw new InvalidOperationException($"'{value}' is longer than an index's short strings.");
         }
 
         U8((byte)bytes.Length);
-        Bytes(bytes);
+        Raw(bytes);
     }
 
-    /// <summary>A string of at most <see cref="CheckpointReader.MaximumStringBytes"/> UTF-8 bytes, after its four-byte length.</summary>
+    /// <summary>A string of at most <see cref="IndexFileReader.MaximumStringBytes"/> UTF-8 bytes, after its four-byte length.</summary>
     public void Str32(string value)
     {
+        ArgumentNullException.ThrowIfNull(value);
         byte[] bytes = Encoding.UTF8.GetBytes(value);
-        if (bytes.Length > CheckpointReader.MaximumStringBytes)
+        if (bytes.Length > IndexFileReader.MaximumStringBytes)
         {
-            throw new InvalidOperationException("A name is longer than a checkpoint's strings.");
+            throw new InvalidOperationException("A name is longer than an index's strings.");
         }
 
         U32((uint)bytes.Length);
-        Bytes(bytes);
+        Raw(bytes);
     }
 
-    /// <summary>Writes what is buffered. Nothing is written past <see cref="DerivationCheckpoint.MaximumBytes"/>.</summary>
+    /// <summary>Writes what is buffered.</summary>
     public void Flush()
     {
         destination.Write(buffer, 0, used);
         used = 0;
     }
 
-    private void Bytes(ReadOnlySpan<byte> bytes)
-    {
-        while (!bytes.IsEmpty)
-        {
-            int take = Math.Min(bytes.Length, buffer.Length);
-            bytes[..take].CopyTo(Reserve(take));
-            bytes = bytes[take..];
-        }
-    }
-
     private Span<byte> Reserve(int count)
     {
-        if (Written + count > DerivationCheckpoint.MaximumBytes)
+        if (Written + count > maximumBytes)
         {
             throw new InvalidOperationException(
-                $"The derivation state is larger than a checkpoint's {DerivationCheckpoint.MaximumBytes / (1024 * 1024)} MiB, "
-                + "so none is written; opening the session derives it from its segments.");
+                $"The {what} would be larger than its {maximumBytes / (1024 * 1024)} MiB, so none is written.");
         }
 
         if (buffer.Length - used < count)
@@ -108,12 +110,12 @@ internal sealed class CheckpointWriter(Stream destination)
 }
 
 /// <summary>
-/// Reads a derivation checkpoint's fields, refusing with <see cref="InvalidDataException"/> anything the bytes cannot
-/// hold: a field past the end, a count larger than the bytes left could hold, a string that is not UTF-8.
+/// Reads an index file's fields, refusing with <see cref="InvalidDataException"/> anything the bytes cannot hold: a field
+/// past the end, a count larger than the bytes left could hold, a string that is not UTF-8.
 /// </summary>
-internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
+public sealed class IndexFileReader(ReadOnlyMemory<byte> bytes, string what)
 {
-    /// <summary>The longest string a checkpoint holds: an image path far beyond any Windows allows.</summary>
+    /// <summary>The longest string an index holds: an image path far beyond any Windows allows.</summary>
     public const int MaximumStringBytes = 1024 * 1024;
 
     private static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -127,7 +129,7 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
     {
         0 => false,
         1 => true,
-        var other => throw Invalid($"A flag holds {other}, where only 0 and 1 are defined."),
+        var other => throw Invalid($"a flag holds {other}, where only 0 and 1 are defined."),
     };
 
     public ushort U16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
@@ -142,12 +144,17 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
 
     public Guid Identity() => new(Take(16));
 
+    /// <summary>Whether the next bytes are exactly <paramref name="expected"/>; they are consumed either way.</summary>
+    public bool Matches(ReadOnlySpan<byte> expected) =>
+        expected.Length <= Remaining && Take(expected.Length).SequenceEqual(expected);
+
     /// <summary>A count of elements that each take at least <paramref name="minimumBytes"/>, which the bytes left must be able to hold.</summary>
     public int Count(int minimumBytes)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumBytes);
         uint count = U32();
         return count > (uint)(Remaining / minimumBytes)
-            ? throw Invalid($"A count of {count:N0} is more than the {Remaining:N0} bytes left can hold.")
+            ? throw Invalid($"a count of {count:N0} is more than the {Remaining:N0} bytes left can hold.")
             : (int)count;
     }
 
@@ -157,7 +164,7 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
     {
         uint length = U32();
         return length > MaximumStringBytes
-            ? throw Invalid($"A string of {length:N0} bytes is longer than a checkpoint holds.")
+            ? throw Invalid($"a string of {length:N0} bytes is longer than an index holds.")
             : Text(Take(checked((int)length)));
     }
 
@@ -165,11 +172,12 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
     {
         if (Remaining != 0)
         {
-            throw Invalid($"{Remaining:N0} bytes follow the last end.");
+            throw Invalid($"{Remaining:N0} bytes follow its last field.");
         }
     }
 
-    public static InvalidDataException Invalid(string reason) => new("The derivation checkpoint is not readable: " + reason);
+    /// <summary>The refusal of this index, and why.</summary>
+    public InvalidDataException Invalid(string reason) => new($"The {what} is not readable: {reason}");
 
     private ReadOnlySpan<byte> Take(int count)
     {
@@ -183,7 +191,7 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
         return span;
     }
 
-    private static string Text(ReadOnlySpan<byte> utf8)
+    private string Text(ReadOnlySpan<byte> utf8)
     {
         try
         {
@@ -191,7 +199,7 @@ internal sealed class CheckpointReader(ReadOnlyMemory<byte> bytes)
         }
         catch (DecoderFallbackException exception)
         {
-            throw new InvalidDataException("The derivation checkpoint is not readable: a string is not UTF-8.", exception);
+            throw new InvalidDataException($"The {what} is not readable: a string is not UTF-8.", exception);
         }
     }
 }
