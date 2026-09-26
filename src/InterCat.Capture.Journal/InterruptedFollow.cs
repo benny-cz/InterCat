@@ -76,8 +76,10 @@ public sealed record InterruptedFollow(
         {
             try
             {
+                // A look for the card, repeated while a capture stops: it reads the manifest and lists the files.
+                // The finish hashes the evidence it derives from.
                 (evidenceChunks, evidenceFinished) = LiveSessionFollower.Progress(
-                    SessionStore.OpenExisting(LocalOwnedDirectory.Open(ticket.EvidenceDirectory)).Current);
+                    SessionStore.OpenForViewing(LocalOwnedDirectory.Open(ticket.EvidenceDirectory)).Current);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                 or InvalidDataException)
@@ -177,7 +179,7 @@ public sealed record InterruptedFollow(
         try
         {
             return Directory.Exists(sessionDirectory)
-                ? LiveSessionFollower.Progress(SessionStore.OpenExisting(LocalOwnedDirectory.Open(sessionDirectory)).Current)
+                ? LiveSessionFollower.Progress(SessionStore.OpenForViewing(LocalOwnedDirectory.Open(sessionDirectory)).Current)
                 : (0, false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)

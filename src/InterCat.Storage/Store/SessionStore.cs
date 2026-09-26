@@ -7,30 +7,74 @@ using System.Text.Json;
 namespace InterCat.Storage;
 
 /// <summary>
-/// The dependencies one store instance has read back and hashed. A published file is immutable, so a dependency this
-/// instance already measured - the same name, length and digest, unchanged in last-write time since - is not hashed
-/// again. Any other file, or one another instance published, is. A fresh instance hashes everything once, which is
-/// where corruption that leaves a file's length and time alone is found (store-v1 §3).
+/// The dependencies one store instance has measured. A published file is immutable, so a dependency this instance
+/// already measured - the same name, length and digest, unchanged in last-write time since - is not measured again.
+/// Any other file, or one another instance published, is. A fresh instance hashes everything once, which is where
+/// corruption that leaves a file's length and time alone is found (store-v1 §3). A viewer's instance first only lists
+/// what a generation names and hashes it after its first view: a listed dependency holds for a lease as a hashed one
+/// does, until its hash is taken or it is forgotten.
 /// </summary>
 internal sealed class DependencyMeasurements
 {
     private readonly Lock gate = new();
-    private readonly Dictionary<string, (long Length, string Digest, long LastWriteTicks)> measured =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Measurement> measured = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Whether this dependency's bytes were hashed here and its file has not been written since.</summary>
+    /// <summary>
+    /// Whether this dependency was measured here, hashed or listed, and its file has not been written since.
+    /// </summary>
     public bool Holds(StoreDependency dependency, long lastWriteTicks)
     {
         lock (gate)
         {
-            return measured.TryGetValue(dependency.Name, out (long Length, string Digest, long LastWriteTicks) known)
-                && known.Length == dependency.LengthBytes
-                && known.LastWriteTicks == lastWriteTicks
-                && string.Equals(known.Digest, dependency.Digest, StringComparison.Ordinal);
+            return measured.TryGetValue(dependency.Name, out Measurement known) && known.Matches(dependency, lastWriteTicks);
         }
     }
 
-    /// <summary>Whether nothing has been hashed here yet, as in a fresh instance, which therefore hashes everything.</summary>
+    /// <summary>Whether this dependency's bytes were hashed here and its file has not been written since.</summary>
+    public bool HasHashed(StoreDependency dependency, long lastWriteTicks)
+    {
+        lock (gate)
+        {
+            return measured.TryGetValue(dependency.Name, out Measurement known)
+                && known.Hashed
+                && known.Matches(dependency, lastWriteTicks);
+        }
+    }
+
+    /// <summary>
+    /// Records a dependency found present with its recorded length and not hashed. A hash already taken of the same
+    /// unchanged file is kept.
+    /// </summary>
+    public void RecordListed(StoreDependency dependency, long lastWriteTicks)
+    {
+        lock (gate)
+        {
+            if (!(measured.TryGetValue(dependency.Name, out Measurement known) && known.Hashed
+                && known.Matches(dependency, lastWriteTicks)))
+            {
+                measured[dependency.Name] = new(dependency.LengthBytes, dependency.Digest, lastWriteTicks, Hashed: false);
+            }
+        }
+    }
+
+    /// <summary>Drops what was measured of a file, so the next lease measures it again from its bytes.</summary>
+    public void Forget(string name)
+    {
+        lock (gate)
+        {
+            _ = measured.Remove(name);
+        }
+    }
+
+    private readonly record struct Measurement(long Length, string Digest, long LastWriteTicks, bool Hashed)
+    {
+        public bool Matches(StoreDependency dependency, long lastWriteTicks) =>
+            Length == dependency.LengthBytes
+            && LastWriteTicks == lastWriteTicks
+            && string.Equals(Digest, dependency.Digest, StringComparison.Ordinal);
+    }
+
+    /// <summary>Whether nothing has been measured here yet, as in a fresh instance.</summary>
     public bool IsEmpty
     {
         get
@@ -47,7 +91,7 @@ internal sealed class DependencyMeasurements
     {
         lock (gate)
         {
-            measured[dependency.Name] = (dependency.LengthBytes, dependency.Digest, lastWriteTicks);
+            measured[dependency.Name] = new(dependency.LengthBytes, dependency.Digest, lastWriteTicks, Hashed: true);
         }
     }
 }
@@ -62,6 +106,16 @@ public sealed record StoreRecoveryReport(
     long OrphanBytes)
 {
     public static StoreRecoveryReport Empty { get; } = new(0, false, null, [], [], 0);
+}
+
+/// <summary>
+/// What hashing a generation's files after opening it found (<see cref="SessionStore.VerifyContents"/>): how many files
+/// and bytes it hashed, and each file whose bytes are not the ones its generation recorded.
+/// </summary>
+public sealed record StoreContentReport(long Generation, int HashedFiles, long HashedBytes, IReadOnlyList<string> Problems)
+{
+    /// <summary>Whether every file the generation names holds the bytes it recorded.</summary>
+    public bool Verified => Problems.Count == 0;
 }
 
 /// <summary>What one commit published.</summary>
@@ -269,6 +323,7 @@ public sealed class SessionStore
     private readonly DependencyMeasurements measurements;
     private SessionManifestV1? current;
     private SessionManifestV1? publicationBaseline;
+    private string? rollbackReason;
 
     private SessionStore(
         IOwnedDirectory directory,
@@ -289,6 +344,7 @@ public sealed class SessionStore
         }
 
         Recovery = recovery;
+        rollbackReason = recovery.RolledBackToLastKnownGood ? recovery.RollbackReason : null;
         this.measurements = measurements;
     }
 
@@ -297,6 +353,22 @@ public sealed class SessionStore
     public string SourceIdentity { get; }
 
     public StoreRecoveryReport Recovery { get; }
+
+    /// <summary>
+    /// Why the generation this store reads is not the one its current pointer names, or null when it is. Opening sets
+    /// it, as <see cref="Recovery"/> reports; every lease sets it again, so a generation that fails after opening, as a
+    /// viewer's hashing can find, is stated as a fallback rather than shown as the newest.
+    /// </summary>
+    public string? RollbackReason
+    {
+        get
+        {
+            lock (gate)
+            {
+                return rollbackReason;
+            }
+        }
+    }
 
     /// <summary>The generation a reader acquires, or null when nothing has been published yet.</summary>
     public SessionManifestV1? Current
@@ -393,11 +465,23 @@ public sealed class SessionStore
     /// generation the pointer names, so a viewer can open a directory it was handed. A store opened this way
     /// publishes nothing: a generation names the session it belongs to, and this one was not told which.
     /// </summary>
-    public static SessionStore OpenExisting(IOwnedDirectory directory)
+    public static SessionStore OpenExisting(IOwnedDirectory directory) => OpenExisting(directory, hashContents: true);
+
+    /// <summary>
+    /// Opens a session to view it, as <see cref="OpenExisting(IOwnedDirectory)"/> does, without hashing it first. The
+    /// pointer, the manifest's digest and every dependency's presence and length are checked now, from one listing;
+    /// what the files hold is hashed by <see cref="VerifyContents"/>, which a viewer runs after its first view. Until
+    /// then a reader checks every byte it interprets against that file's own checksums (segment-v1 §9), so the first
+    /// view costs what it reads rather than every byte of the session (S1).
+    /// </summary>
+    public static SessionStore OpenForViewing(IOwnedDirectory directory) => OpenExisting(directory, hashContents: false);
+
+    private static SessionStore OpenExisting(IOwnedDirectory directory, bool hashContents)
     {
         ArgumentNullException.ThrowIfNull(directory);
         var measurements = new DependencyMeasurements();
-        (SessionManifestV1? manifest, bool rolledBack, string? reason) = Acquire(directory, measurements);
+        (SessionManifestV1? manifest, bool rolledBack, string? reason) =
+            Acquire(directory, measurements, hashContents: hashContents);
         (IReadOnlyList<string> removed, IReadOnlyList<string> orphans, long orphanBytes) =
             Sweep(directory, manifest);
         return new(
@@ -678,7 +762,8 @@ public sealed class SessionStore
         {
             try
             {
-                (SessionManifestV1? disk, _, _) = Acquire(directory, measurements, current);
+                (SessionManifestV1? disk, bool rolledBack, string? reason) = Acquire(directory, measurements, current);
+                rollbackReason = rolledBack ? reason : null;
                 SessionManifestV1 manifest = disk
                     ?? throw new InvalidOperationException(
                         "This session has published no generation, so there is nothing to acquire. An empty "
@@ -733,6 +818,100 @@ public sealed class SessionStore
                 throw;
             }
         }
+    }
+
+    /// <summary>
+    /// Hashes every dependency the current generation names that this store has not hashed, as a viewer does after
+    /// its first view of a session it opened with <see cref="OpenForViewing"/>. The generation is held by a lease
+    /// meanwhile, so retention cannot remove what is being checked. A dependency whose bytes disagree with its recorded
+    /// digest is reported and forgotten: the next lease measures it again and fails its generation over to the
+    /// last-known-good, exactly as opening would have (store-v1 §3).
+    /// </summary>
+    public StoreContentReport VerifyContents(CancellationToken cancellationToken = default)
+    {
+        if (Current is null)
+        {
+            return new(0, 0, 0, []);
+        }
+
+        using EvidenceLease lease = AcquireLease(new EvidenceLeaseRequest { Duration = TimeSpan.FromHours(1) });
+        SessionManifestV1 manifest = lease.Manifest;
+        var problems = new List<string>();
+        int hashed = 0;
+        long hashedBytes = 0;
+        byte[] buffer = new byte[HashBufferBytes];
+        foreach (StoreDependency dependency in manifest.Dependencies)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? problem;
+            try
+            {
+                using FileStream stream = directory.OpenOwnedFile(
+                    dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+                long lastWrite = File.GetLastWriteTimeUtc(stream.SafeFileHandle).Ticks;
+                if (measurements.HasHashed(dependency, lastWrite))
+                {
+                    continue;
+                }
+
+                problem = stream.Length != dependency.LengthBytes
+                    ? $"dependency '{dependency.Name}' is {stream.Length} bytes where generation {manifest.Generation} "
+                        + $"recorded {dependency.LengthBytes}"
+                    : DigestProblem(stream, dependency, manifest.Generation, buffer, cancellationToken);
+                if (problem is null)
+                {
+                    measurements.Record(dependency, lastWrite);
+                    hashed++;
+                    hashedBytes += dependency.LengthBytes;
+                    continue;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                problem = $"dependency '{dependency.Name}' could not be read: {exception.Message}";
+            }
+
+            measurements.Forget(dependency.Name);
+            problems.Add(problem);
+        }
+
+        return new(manifest.Generation, hashed, hashedBytes, problems);
+    }
+
+    /// <summary>
+    /// How much of a file one read hands the hash. Hashing a stream directly read it a few kilobytes at a time, at about
+    /// half the rate: 309 MiB took 420 ms that way and 216 ms this way (revision 152).
+    /// </summary>
+    private const int HashBufferBytes = 1024 * 1024;
+
+    /// <summary>
+    /// Whether a dependency's readers check every byte they interpret against checksums the file carries, so it can be
+    /// read before its file is hashed: a segment (segment-v1 §9), a dictionary, whose decoder checks its own digest,
+    /// and a journal, whose frames and records carry theirs (journal-v1).
+    /// </summary>
+    private static bool ChecksItself(StoreDependencyKind kind) =>
+        kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Journal;
+
+    /// <summary>Why a dependency's bytes are not the ones its generation recorded, or null when they are.</summary>
+    private static string? DigestProblem(
+        FileStream stream,
+        StoreDependency dependency,
+        long generation,
+        byte[] buffer,
+        CancellationToken cancellationToken)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int read;
+        while ((read = stream.Read(buffer)) > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            hash.AppendData(buffer, 0, read);
+        }
+
+        string digest = string.Concat("sha256:", Convert.ToHexStringLower(hash.GetHashAndReset()));
+        return string.Equals(digest, dependency.Digest, StringComparison.Ordinal)
+            ? null
+            : $"dependency '{dependency.Name}' computes {digest} where generation {generation} recorded {dependency.Digest}";
     }
 
     /// <summary>Every lease still holding evidence at this moment. An expired one holds nothing.</summary>
@@ -1604,16 +1783,18 @@ public sealed class SessionStore
     private static (SessionManifestV1? Manifest, bool RolledBack, string? Reason) Acquire(
         IOwnedDirectory directory,
         DependencyMeasurements? measurements,
-        SessionManifestV1? verified = null)
+        SessionManifestV1? verified = null,
+        bool hashContents = true)
     {
         string? currentProblem = TryAcquire(
-            directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements, verified);
+            directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements, verified, hashContents);
         if (currentProblem is null)
         {
             return (manifest, false, null);
         }
 
-        string? previousProblem = TryAcquire(directory, SessionPointerV1.PreviousFileName, out manifest, measurements);
+        string? previousProblem = TryAcquire(
+            directory, SessionPointerV1.PreviousFileName, out manifest, measurements, hashContents: hashContents);
         if (previousProblem is null && manifest is not null)
         {
             return (manifest, true, currentProblem);
@@ -1633,7 +1814,8 @@ public sealed class SessionStore
         string pointerName,
         out SessionManifestV1? manifest,
         DependencyMeasurements? measurements,
-        SessionManifestV1? verified = null)
+        SessionManifestV1? verified = null,
+        bool hashContents = true)
     {
         manifest = null;
         SessionPointerV1? pointer = Read<SessionPointerV1>(directory, pointerName);
@@ -1678,7 +1860,7 @@ public sealed class SessionStore
                 + $"generation {candidate.Generation}";
         }
 
-        problem = VerifyDependencies(directory, candidate, measurements);
+        problem = VerifyDependencies(directory, candidate, measurements, hashContents);
         if (problem is not null)
         {
             return problem;
@@ -1700,23 +1882,38 @@ public sealed class SessionStore
     /// A live session names every journal chunk it published, so one open per file made each lease cost more as the
     /// capture grew: 33 ms at 292 chunks (ADR-025, revision 129).
     /// </remarks>
+    /// <param name="hashContents">
+    /// False for a viewer's first open: a segment, dictionary or journal present with its recorded length is recorded as
+    /// listed and hashed later, by <see cref="VerifyContents"/>, so opening costs one listing rather than every byte of
+    /// the session (S1). Every other dependency is small and carries no checksum of its own, so it is hashed now.
+    /// </param>
     private static string? VerifyDependencies(
         IOwnedDirectory directory,
         SessionManifestV1 manifest,
-        DependencyMeasurements? measurements)
+        DependencyMeasurements? measurements,
+        bool hashContents = true)
     {
-        IReadOnlyDictionary<string, OwnedFileFacts>? listed = measurements is { IsEmpty: false }
+        IReadOnlyDictionary<string, OwnedFileFacts>? listed = measurements is { IsEmpty: false } || !hashContents
             ? directory.DescribeOwnedFiles()
             : null;
+        byte[]? buffer = null;
         foreach (StoreDependency dependency in manifest.Dependencies)
         {
             if (listed is not null
                 && listed.TryGetValue(dependency.Name, out OwnedFileFacts facts)
                 && !facts.IsReparsePoint
-                && facts.LengthBytes == dependency.LengthBytes
-                && measurements!.Holds(dependency, facts.LastWriteUtcTicks))
+                && facts.LengthBytes == dependency.LengthBytes)
             {
-                continue;
+                if (measurements?.Holds(dependency, facts.LastWriteUtcTicks) == true)
+                {
+                    continue;
+                }
+
+                if (!hashContents && measurements is not null && ChecksItself(dependency.Kind))
+                {
+                    measurements.RecordListed(dependency, facts.LastWriteUtcTicks);
+                    continue;
+                }
             }
 
             try
@@ -1739,11 +1936,17 @@ public sealed class SessionStore
                     continue;
                 }
 
-                string digest = string.Concat("sha256:", Convert.ToHexStringLower(SHA256.HashData(stream)));
-                if (!string.Equals(digest, dependency.Digest, StringComparison.Ordinal))
+                if (!hashContents && measurements is not null && ChecksItself(dependency.Kind))
                 {
-                    return $"dependency '{dependency.Name}' computes {digest} where generation "
-                        + $"{manifest.Generation} recorded {dependency.Digest}";
+                    measurements.RecordListed(dependency, lastWrite);
+                    continue;
+                }
+
+                buffer ??= new byte[HashBufferBytes];
+                string? problem = DigestProblem(stream, dependency, manifest.Generation, buffer, CancellationToken.None);
+                if (problem is not null)
+                {
+                    return problem;
                 }
 
                 measurements?.Record(dependency, lastWrite);

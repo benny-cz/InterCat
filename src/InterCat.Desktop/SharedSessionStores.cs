@@ -3,11 +3,11 @@ using InterCat.Storage;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// One verified reader store per session directory for this process. Opening a store re-measures and hashes every file
-/// the current generation names (ADR-025): about 0.4 s for a million-record session. A store already open hashes only
-/// files it has not verified, and every lease still reads whichever generation is current. So every workspace of a
-/// session - one per live publication, one per reopen - shares one store instead of hashing the whole session again
-/// before its first answer (§6.8).
+/// One reader store per session directory for this process. A viewer opens a store by listing what the current
+/// generation names, and hashes it after the first view (store-v1 §6): at a million records the open takes 1 ms and the
+/// hashing 0.2 s. A store already open hashes only files it has not measured, and every lease still reads whichever
+/// generation is current. So every workspace of a session - one per live publication, one per reopen - shares one store
+/// instead of measuring the whole session again before its first answer (§6.8).
 /// </summary>
 internal static class SharedSessionStores
 {
@@ -57,9 +57,9 @@ internal sealed class SessionStoreRegistry
             }
         }
 
-        // Opening hashes the session, so it happens outside the lock; two first readers may both open, and the later one
-        // is simply the one kept.
-        SessionStore opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(key));
+        // Opening reads the pointer, the manifest and a listing, so it happens outside the lock; two first readers may
+        // both open, and the later one is simply the one kept.
+        SessionStore opened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(key));
         lock (gate)
         {
             Keep(key, opened);

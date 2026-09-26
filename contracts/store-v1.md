@@ -137,6 +137,20 @@ present with the recorded length and digest.
   nothing usable is not silently reset.
 - Neither pointer exists → the session is empty, which is not a failure.
 
+**A viewer opens without hashing what checks itself.** Hashing every dependency makes opening cost every byte of
+the session, which §12.1's S1 forbids at scale: a million-row session is 309 MiB, and hashing it took 210 ms of a
+fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary` or `Journal`
+dependency present with its recorded length is taken from one directory listing, without being hashed:
+
+- a segment reader checks every byte it interprets against the segment's own checksums (`segment-v1` §9);
+- a dictionary's decoder checks its own digest;
+- a journal's frames and records carry their own checksums (`journal-v1`).
+
+Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first
+view, the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next
+lease measures it again and fails its generation over to the last-known-good, exactly as opening would have. A
+store that publishes, and every command-line reader, still hashes everything at open.
+
 Opening **reports and keeps** every unreferenced file, including `stg-` files. A second process may have
 completed a staged file and not yet committed it, so opening cannot infer that a staging name was
 abandoned. Ordinary orphans are not removed automatically either: one may belong to a generation whose

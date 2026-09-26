@@ -424,6 +424,116 @@ public sealed class SessionStoreTests
         Assert.Contains("computes", reader.Recovery.RollbackReason!, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a viewer opens a session by listing its files, and hashes them after its first view")]
+    public void AViewerHashesAfterItsFirstView()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        string path = Path.Combine(session.Path, "segment-0002.icats");
+        DateTime measured = File.GetLastWriteTimeUtc(path);
+        session.WriteRaw("segment-0002.icats", "SECOND");
+        File.SetLastWriteTimeUtc(path, measured);
+
+        // Each file is there with the length its generation recorded, so the newest generation opens without a file
+        // being opened, and a lease hashes nothing it listed. A segment checks what a reader reads of it meanwhile.
+        var counting = new CountingDirectory(LocalOwnedDirectory.Open(session.Path));
+        SessionStore viewer = SessionStore.OpenForViewing(counting);
+        Assert.False(viewer.Recovery.RolledBackToLastKnownGood);
+        Assert.Null(viewer.RollbackReason);
+        Assert.Equal(2, viewer.Current!.Generation);
+        using (EvidenceLease lease = viewer.AcquireLease())
+        {
+            Assert.Equal(2, lease.Manifest.Generation);
+        }
+
+        Assert.DoesNotContain(counting.Opened, name => name.StartsWith("segment-", StringComparison.Ordinal));
+
+        // Hashing after the first view finds the change and reports it, and the next lease falls back to the
+        // last-known-good generation, as opening would have.
+        StoreContentReport report = viewer.VerifyContents();
+        Assert.False(report.Verified);
+        Assert.Equal((2L, 1), (report.Generation, report.HashedFiles));
+        string problem = Assert.Single(report.Problems);
+        Assert.Contains("'segment-0002.icats' computes", problem, StringComparison.Ordinal);
+        using EvidenceLease after = viewer.AcquireLease();
+        Assert.Equal(1, after.Manifest.Generation);
+        Assert.Equal(1, viewer.Current!.Generation);
+        Assert.Contains("'segment-0002.icats' computes", viewer.RollbackReason!, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: a viewer's open hashes at once a file that carries no checksum of its own")]
+    public void AViewerHashesAtOnceWhatCarriesNoChecksum()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        using (StoreStagingFile ledger = session.Store.Stage("coverage-0002.json", StoreDependencyKind.CoverageLedger))
+        {
+            ledger.Content.Write(Encoding.UTF8.GetBytes("{\"covered\":true}"));
+            _ = ledger.Complete();
+            _ = session.Store.Commit([ledger], CommittedBoundary.None, Committed);
+        }
+
+        string path = Path.Combine(session.Path, "coverage-0002.json");
+        DateTime measured = File.GetLastWriteTimeUtc(path);
+        session.WriteRaw("coverage-0002.json", "{\"covered\":fals}");
+        File.SetLastWriteTimeUtc(path, measured);
+
+        // A reader would take a ledger's bytes as they are, so a viewer hashes it before the first view, and the
+        // changed one fails its generation at open.
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+
+        Assert.True(viewer.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(1, viewer.Current!.Generation);
+        Assert.Contains("'coverage-0002.json' computes", viewer.Recovery.RollbackReason!, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: a viewer's open still refuses a file that is missing or not its recorded length")]
+    public void AViewerRefusesAMissingOrResizedFile()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        _ = Publish(session.Store, ("segment-0003.icats", "third"));
+        session.WriteRaw("segment-0003.icats", "third, and more");
+
+        SessionStore resized = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.True(resized.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(2, resized.Current!.Generation);
+        Assert.Contains("'segment-0003.icats' is 15 bytes", resized.Recovery.RollbackReason!, StringComparison.Ordinal);
+
+        File.Delete(Path.Combine(session.Path, "segment-0003.icats"));
+        SessionStore missing = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.True(missing.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(2, missing.Current!.Generation);
+        Assert.Contains("'segment-0003.icats' could not be read", missing.Recovery.RollbackReason!, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: hashing after the first view hashes each file once, and nothing an open already hashed")]
+    public void HashingAfterTheFirstViewHashesEachFileOnce()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        StoreContentReport first = viewer.VerifyContents();
+        StoreContentReport again = viewer.VerifyContents();
+        StoreContentReport opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)).VerifyContents();
+
+        Assert.True(first.Verified);
+        Assert.Equal((2, 11L), (first.HashedFiles, first.HashedBytes));
+        Assert.Equal((0, 0L), (again.HashedFiles, again.HashedBytes));
+        Assert.True(opened.Verified);
+        Assert.Equal(0, opened.HashedFiles);
+
+        // A session that has published nothing has nothing to hash.
+        using var empty = new TemporarySession();
+        StoreContentReport nothing = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(empty.Path)).VerifyContents();
+        Assert.True(nothing.Verified);
+        Assert.Equal((0L, 0), (nothing.Generation, nothing.HashedFiles));
+    }
+
     [Fact(DisplayName = "I15: a lease on the generation this instance verified opens none of its dependencies")]
     public void ARepeatedLeaseOpensNoDependency()
     {

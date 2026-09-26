@@ -548,21 +548,42 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             CaptureStatus.Text = "Opening saved session";
-            SessionOverviewBundle overview = await Task.Run(() =>
-                SessionOverviewProjector.Project(SharedSessionStores.Open(path)));
+            (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
+            {
+                SessionStore opened = SharedSessionStores.Open(path);
+                try
+                {
+                    return (opened, SessionOverviewProjector.Project(opened));
+                }
+                catch (InvalidDataException) when (!opened.VerifyContents().Verified)
+                {
+                    // The first view read a file that fails its own checksum, and hashing what the generation names
+                    // found files that changed after they were published. The hashing forgot them, so this projection's
+                    // lease falls back to the last complete generation, as hashing at open once did.
+                    return (opened, SessionOverviewProjector.Project(opened));
+                }
+            });
             if (closed) return false;
-            captureRunId++;
+            int run = ++captureRunId;
             heldUpdate = null;
             CaptureSummary.Text = string.Empty;
-            ApplyCaptureUpdate(overview.Redaction is { } redaction
-                ? new(CaptureUiPhase.Complete, "Redacted session package open",
-                    SessionRedaction.Summary + " " + redaction.Warning, SessionPath: path, Overview: overview)
-                : status is { } stated
-                    ? new(CaptureUiPhase.Complete, stated.Headline, stated.Detail, SessionPath: path, Overview: overview)
-                    : new(CaptureUiPhase.Complete, "Saved session open",
-                        "This is a published generation. The graph contains admitted paired TCP only; "
-                        + "other observed activity remains in the timeline.", SessionPath: path, Overview: overview),
+            (string headline, string detail) = overview.Redaction is { } redaction
+                ? ("Redacted session package open", SessionRedaction.Summary + " " + redaction.Warning)
+                : status ?? ("Saved session open",
+                    "This is a published generation. The graph contains admitted paired TCP only; "
+                    + "other observed activity remains in the timeline.");
+
+            // Opening on the last complete generation is stated, never passed off as the newest (S7).
+            if (store.RollbackReason is { } fallback)
+            {
+                detail = string.Create(CultureInfo.CurrentCulture,
+                    $"Its newest generation could not be verified ({fallback}), so generation {overview.Generation:N0}, the "
+                    + $"last complete one, is shown. Nothing on disk was changed. {detail}");
+            }
+
+            ApplyCaptureUpdate(new(CaptureUiPhase.Complete, headline, detail, SessionPath: path, Overview: overview),
                 forceOverview: true);
+            SessionFilesChecked = VerifySessionFilesAsync(path, store, run);
             return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
@@ -581,6 +602,47 @@ public sealed partial class MainWindow : Window, IDisposable
                 OpenSavedSessionButton.IsEnabled = true;
                 UpdateEvidenceAction();
             }
+        }
+    }
+
+    /// <summary>Completes when the latest saved session's files have been hashed and any fallback has been opened.</summary>
+    internal Task SessionFilesChecked { get; private set; } = Task.CompletedTask;
+
+    /// <summary>How a saved session's files are hashed after its first view; a test holds the hashing back with it.</summary>
+    internal Func<SessionStore, StoreContentReport> SessionFilesVerifier { get; set; } = store => store.VerifyContents();
+
+    /// <summary>
+    /// Hashes a saved session's files after its first view (store-v1 §6). Until then every byte a query read was checked
+    /// against its own file's checksums; this binds the files to what their generation recorded. A file that changed
+    /// after it was published fails its generation over to the last complete one, which is opened in its place, with
+    /// the reason stated. Nothing is shown while the files check out.
+    /// </summary>
+    private async Task VerifySessionFilesAsync(string path, SessionStore store, int run)
+    {
+        StoreContentReport report;
+        try
+        {
+            Func<SessionStore, StoreContentReport> verify = SessionFilesVerifier;
+            report = await Task.Run(() => verify(store));
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            // The session could not be leased just now. The next query's lease measures what it must again.
+            return;
+        }
+
+        // Another open or a capture that began meanwhile supersedes this session's view; its next lease measures again.
+        if (closed || run != captureRunId || report.Verified || openingSession || captureTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        if (!await OpenSessionAsync(path) && !closed && run == captureRunId)
+        {
+            CaptureDetail.Text = "Some of this session's files changed after they were published ("
+                + string.Join("; ", report.Problems) + "), and no earlier generation is complete. What is shown was "
+                + "read before that was found, from files that no longer hold what was recorded.";
         }
     }
 

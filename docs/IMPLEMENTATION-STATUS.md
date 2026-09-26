@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 151 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 152 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW); a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for | Cache admission by what a reader holds (open work item 1). Compression and derived scale structures are later work. |
-| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms hashed dependencies from one directory listing; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
+| IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. The persisted overview pyramid (S4) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
@@ -63,6 +63,37 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 152 — a viewer opens a session without hashing it first, and states a fallback (S1, S7, store-v1 §6):**
+  - **Found:** a fresh open hashed every file a generation names. At a million rows (309 MiB, 140 MiB of it journal)
+    that took about 420 ms, so about 3 s at T1's 2 GiB and 30 s at T2, where S1 wants time-to-interactive independent
+    of size. Separately, the Desktop never read a store's rollback: a saved session whose newest generation did not
+    verify opened on its last-known-good without a word (S7).
+  - **Changed (store):**
+    - `SessionStore.OpenForViewing` checks the pointer, the manifest's digest, and each dependency's presence and
+      recorded length from one listing.
+    - Segments, dictionaries and journals, whose readers check what they read, are hashed later by `VerifyContents`,
+      under a lease. Every other kind is small, carries no checksum of its own, and is hashed at open as before.
+    - A file whose digest disagrees is reported and forgotten, so the next lease fails its generation over to the
+      last-known-good. `RollbackReason` says why, and every lease keeps it current.
+    - Hashing reads 1 MiB at a time, which halved the opens that still hash: the command line's and a writer's.
+  - **Changed (Desktop):**
+    - The registry opens stores for viewing, and a saved session's files are hashed after its first view.
+    - If a file changed, the window opens the fallback in its place and says so. A first view that itself meets a
+      changed file hashes the generation at once and opens the fallback directly.
+    - Every open onto a last-known-good generation says which one is shown and why.
+    - The unfinished-capture card's five-second look lists the evidence instead of hashing it.
+  - **Measured** at 1M rows: open 420 ms → 1 ms, hashing afterwards 0.2 s, and the hashed open 420 → 210 ms. Opening
+    the session in the window fell from 1,067 to 729 ms, and at 100k rows from 423 to 367 ms
+    (`bench/results/interaction-latency-20260926T190828Z`).
+  - **Tests:** +6.
+    - Store: a viewer's open neither opens nor hashes a segment, and neither does a lease; hashing afterwards finds a
+      change, and the next lease falls back with the reason. A file with no checksum of its own is hashed at open. A
+      missing or resized file is still refused at open. Each file is hashed once, and a hashed open leaves nothing.
+    - Window: damage the first view cannot see falls back after the hashing, and damage it reads falls back at once.
+      Both state the fallback.
+
+    Eight mutations each failed a test: four in the store (hash at open, defer every kind, keep a mismatch, hash
+    what was listed) and four in the window (hash at open, fall back silently, no hashing afterwards, no retry).
 - **Revision 151 — a published segment reads a column when it is first asked for (§20.1, §12, segment-v1 §9):**
   - **Changed:** a published minor-1 segment opens by its header, its directories and its time column. Every other
     column, and the variable chunk, is read from the file when a caller first asks for it, checked, and held. Each
@@ -900,8 +931,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         files under the Desktop's queries (73 of 169 MiB at 1M rows), so the same budget would keep about twice the
         rows. The charge must then grow as a cached reader reads another column, and still be refused past the bound.
 
-     Then decide whether a fresh store must still hash every segment it names at open (store-v1 §3). S1's open budget
-     at scale turns on it.
+     Decided in revision 152: a viewer no longer hashes a session before its first view (store-v1 §6). It hashes
+     afterwards, and falls back and says so when a file changed. The command line and writers still hash at open.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
    count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
@@ -933,6 +964,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 152 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,079 tests: 1,077
+  passed, 2 skipped**, zero failures.
 - Revision 151 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,073 tests: 1,071
   passed, 2 skipped**, zero failures. Through the new reader, the sparse ETL sessions imported by revisions 148 and
   149 read with the same row digests as before.
@@ -986,8 +1019,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 151, **1,071 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 150: 1,066 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 152, **1,077 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 151: 1,071 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.
