@@ -249,6 +249,8 @@ internal static class RederiveCommand
             ConsoleUi.Success($"Re-derivation report written to {output}.");
         }
 
+        _ = CheckpointStep.Publish(writable, cancellationToken);
+
         return inspected.Recovery.RolledBackToLastKnownGood
             ? InterCatExitCode.PartialResultSuccess
             : InterCatExitCode.Success;

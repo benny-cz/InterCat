@@ -154,7 +154,7 @@ public sealed class IncrementalDerivationTests
         return (extended, extendedRelations);
     }
 
-    private static void AssertSameProcesses(
+    internal static void AssertSameProcesses(
         ProcessInstanceIndex expected, ProcessInstanceIndex actual, IReadOnlyList<SegmentReaderV1> segments)
     {
         Assert.Equal(expected.Instances, actual.Instances);
@@ -167,7 +167,7 @@ public sealed class IncrementalDerivationTests
         }
     }
 
-    private static void AssertSameRelations(
+    internal static void AssertSameRelations(
         TransportRelationIndex expected, TransportRelationIndex actual, IReadOnlyList<SegmentReaderV1> segments)
     {
         Assert.Equal(expected.Relations, actual.Relations);
@@ -191,7 +191,7 @@ public sealed class IncrementalDerivationTests
         }
     }
 
-    private static (SegmentReaderV1[] Observations, SegmentReaderV1[] Fields) SegmentsOf(SessionStore store)
+    internal static (SegmentReaderV1[] Observations, SegmentReaderV1[] Fields) SegmentsOf(SessionStore store)
     {
         SessionManifestV1 manifest = store.Current!;
         return (
@@ -205,7 +205,7 @@ public sealed class IncrementalDerivationTests
     /// so a chunk can hold records older than the chunk before it. Processes are created, exit, are reused and are
     /// confirmed by rundowns, some with the start key a source field carries, and a field can arrive after its record.
     /// </summary>
-    private static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> RandomChunks(Random random)
+    internal static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> RandomChunks(Random random)
     {
         string[] clients = ["127.0.0.1:50000", "127.0.0.1:50001", "10.0.0.5:50002"];
         string[] servers = ["127.0.0.1:8080", "127.0.0.1:9090"];

@@ -43,6 +43,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "compact" => await CompactCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "checkpoint" => await CheckpointCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "follow" => await FollowCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -187,6 +188,10 @@ static void PrintHelp()
     ConsoleUi.Line("  icat compact <directory> [--check] [--output <path>] [--overwrite] [--json]");
     ConsoleUi.Line("      Coalesces small publications into bounded segments, keeping every row (§20.1).");
     ConsoleUi.Line("      A live recording does this itself as it records and when it stops.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat checkpoint <directory> [--output <path>] [--overwrite] [--json]");
+    ConsoleUi.Line("      Publishes the session's derivation checkpoint, so opening it reads no record to");
+    ConsoleUi.Line("      build its processes and relationships. Writers publish one when they finish.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
     ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");

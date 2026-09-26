@@ -161,4 +161,5 @@ it left `NoRelationRule`; every TCP answer is the same under both.
 - Relations for IPv6, named pipes, RPC, ALPC and shared sections, and UDP endpoint reuse, multicast and broadcast
   beyond reporting them unobserved.
 - Per-transfer associations and the canonical owner they enable.
-- Persisting relations as a published table. They are computed from the segments on demand; IC-017 owns caching them.
+- Persisting relations as a published table of their own. Revision 162 publishes their derivation state instead, in a
+  checkpoint a reader extends (`contracts/derivation-checkpoint-v1.md`); the relations are still built from it.

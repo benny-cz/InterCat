@@ -85,7 +85,7 @@ public readonly record struct ChannelBinding(int Channel, ProcessBindingReason R
 /// entry per connection end and incarnation rather than per row, so a long capture's millions of transfers over a few
 /// thousand connections cost a few thousand entries.
 /// </remarks>
-public sealed class TransportRelationIndex
+public sealed partial class TransportRelationIndex
 {
     /// <summary>The rule identity a result names when it used these relations (§24 `correlationRevision`).</summary>
     public const string RelationRule = "transport-endpoint-relation-v3";
@@ -803,7 +803,7 @@ public sealed class TransportRelationIndex
     }
 
     /// <summary>One end's incarnations, divided by the lifecycle records the capture holds for it.</summary>
-    private sealed class EndTimeline
+    private sealed partial class EndTimeline
     {
         private readonly List<Cut> cuts = [];
 
@@ -965,7 +965,7 @@ public sealed class TransportRelationIndex
     /// appear. A record whose PID binds to no instance still names its PID, so a second process is noticed even when it
     /// cannot be bound.
     /// </summary>
-    private sealed class Incarnation(long Start, long End, bool OpenWitnessed, bool CloseWitnessed)
+    private sealed partial class Incarnation(long Start, long End, bool OpenWitnessed, bool CloseWitnessed)
     {
         private int? processId;
 

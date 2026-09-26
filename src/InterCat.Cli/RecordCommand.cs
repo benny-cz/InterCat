@@ -234,6 +234,12 @@ internal static class RecordCommand
             Render(document);
         }
 
+        if (!evidenceOnly && result.Generation is not null)
+        {
+            // Ctrl+C is how a recording is stopped early, so it does not cancel the checkpoint of what was recorded.
+            _ = CheckpointStep.Publish(store, CancellationToken.None);
+        }
+
         bool lossFree = result.Stop?.Health.IsLossFree ?? false;
         return lossFree && document.Degradations.Count == 0
             ? InterCatExitCode.Success

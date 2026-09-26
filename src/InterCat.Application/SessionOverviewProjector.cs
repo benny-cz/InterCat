@@ -78,8 +78,8 @@ public static class SessionOverviewProjector
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
         SessionRedaction? redaction = SessionRedaction.Read(store.Root, manifest);
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
-        ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
+        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
 
         // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
         // display projection's bound (GraphProjection, §6.3): it clusters rather than omitting anyone.
@@ -179,6 +179,13 @@ public static class SessionOverviewProjector
                         + "relationship remains addressable.",
                 }),
             .. (redaction is null ? [] : new[] { SessionRedaction.Summary + " " + redaction.Warning }),
+            .. (derivation.CheckpointProblem is not { } problem
+                ? []
+                : new[]
+                {
+                    $"This generation's derivation checkpoint was not used. {problem} Processes and relationships were "
+                        + "derived from every segment instead, which takes longer and gives the same result.",
+                }),
         ];
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"

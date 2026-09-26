@@ -179,7 +179,7 @@ public static class SessionEvidenceQuery
             derivation = SessionDerivationCache.For(manifest);
         }
 
-        ProcessInstanceIndex? processes = derivation?.Processes(segments, clock, fields, cancellationToken);
+        ProcessInstanceIndex? processes = derivation?.Processes(store.Root, segments, clock, fields, cancellationToken);
         HashSet<int> selectedOwners = [];
         foreach (ProcessInstanceId owner in owners)
         {
@@ -196,7 +196,7 @@ public static class SessionEvidenceQuery
         int? selectedChannel = null;
         if (channelKey is not null)
         {
-            relations = derivation!.Relations(segments, clock, fields, cancellationToken);
+            relations = derivation!.Relations(store.Root, segments, clock, fields, cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(relation =>
                 relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
                 && SessionOverviewProjector.Admitted(relation.Strength, policy))];

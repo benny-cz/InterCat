@@ -928,8 +928,19 @@ public sealed partial class MainWindow : Window, IDisposable
         });
         try
         {
-            InterruptedFollowResult result = await Task.Run(
-                () => InterruptedFollow.Finish(follow.Ticket, progress, cancellationToken: finishing.Token));
+            InterruptedFollowResult result = await Task.Run(() =>
+            {
+                InterruptedFollowResult finished = InterruptedFollow.Finish(follow.Ticket, progress, cancellationToken: finishing.Token);
+
+                // A finished session is complete, so its derivation checkpoint lets it reopen without reading every
+                // record; one that is not published only costs that reopen time (derivation-checkpoint-v1).
+                if (finished.Completed)
+                {
+                    _ = SessionCheckpoints.Publish(finished.Session, DateTimeOffset.UtcNow, finishing.Token);
+                }
+
+                return finished;
+            });
 
             // The finish's store becomes the session's shared store, so opening the session hashes nothing again.
             SharedSessionStores.Registry.Adopt(follow.Ticket.SessionDirectory, result.Session);

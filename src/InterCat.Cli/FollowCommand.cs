@@ -178,6 +178,11 @@ internal static class FollowCommand
             Render(document);
         }
 
+        if (document.Finished)
+        {
+            _ = CheckpointStep.Publish(derived, cancellationToken);
+        }
+
         return document.Finished ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
     }
 
@@ -268,6 +273,11 @@ internal static class FollowCommand
                     "The capture ended before it was finalized, so records after its last publication were never kept. "
                     + "The session holds everything it published.");
             }
+        }
+
+        if (result.Completed)
+        {
+            _ = CheckpointStep.Publish(result.Session, cancellationToken);
         }
 
         return result.Completed ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;

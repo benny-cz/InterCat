@@ -230,7 +230,7 @@ public sealed record ProcessInstance
 /// such records would merge two instances, and no session publishes a coverage ledger yet to say whether one was lost.
 /// </para>
 /// </remarks>
-public sealed class ProcessInstanceIndex
+public sealed partial class ProcessInstanceIndex
 {
     /// <summary>
     /// The binding rule's identity. A change to what binds, how strongly, or how an instance is keyed is a new rule
@@ -820,7 +820,7 @@ public sealed class ProcessInstanceIndex
     /// none of it depends on the order segments were read in, so a later generation extends a copy of it with the
     /// segments it adds and builds exactly what a full derivation would.
     /// </summary>
-    private sealed class Evidence(ClockId clock)
+    private sealed partial class Evidence(ClockId clock)
     {
         private readonly HashSet<StoreDependency> read = [];
 

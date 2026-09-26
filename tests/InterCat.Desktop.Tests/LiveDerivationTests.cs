@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
 using InterCat.Domain;
@@ -81,5 +83,29 @@ public sealed class LiveDerivationTests
         // Projecting the new generation read through that store, and the saved session no longer holds readers.
         Assert.NotEqual(0, derived.SegmentReaderCache.Entries);
         Assert.Equal(0, saved.SegmentReaderCache.Entries);
+    }
+
+    [Fact(DisplayName = "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation")]
+    public async Task AFinishedFollowPublishesTheCheckpoint()
+    {
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4]);
+        using var derivation = new LiveDerivation(
+            evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(), new SessionStoreRegistry(capacity: 4));
+
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        Assert.True(step.Follow!.Finished);
+        CheckpointPublication checkpoint = Assert.IsType<CheckpointPublication>(derivation.Checkpoint);
+        Assert.Equal(CheckpointOutcome.Published, checkpoint.Outcome);
+        Assert.Equal(step.Follow.DerivedGeneration, checkpoint.SourceGeneration);
+        Assert.Equal(checkpoint.PublishedGeneration, step.Generation);
+        Assert.Equal(checkpoint.PublishedGeneration, step.Overview!.Generation);
+        Assert.NotNull(DerivationCheckpoint.NamedBy(derivation.Store!.Current!));
+
+        // Nothing more is published once the session holds everything, however often the loop steps.
+        LiveDerivationStep again = await derivation.StepAsync(CancellationToken.None);
+        Assert.Null(again.Generation);
+        Assert.Equal(checkpoint.PublishedGeneration, derivation.Store.Current!.Generation);
     }
 }

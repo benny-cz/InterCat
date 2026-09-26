@@ -2,9 +2,9 @@
 
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
 dictionaries a generation publishes, evidence leases and the retention of a dependency or a journal prefix
-and journal re-derivation, and the removal of superseded manifests, are implemented and tested; the entity-state
-checkpoint of §20.2 is not**. The segment and dictionary formats
-are frozen separately in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
+and journal re-derivation, the removal of superseded manifests, and the publication of an index, are implemented
+and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats are frozen separately
+in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
 what a reader acquires, and what recovery does with a publication that was interrupted. It owns nothing
@@ -52,7 +52,8 @@ length and digest of every file it depends on. That is what makes it possible to
 survived a power failure from a name that was renamed into place and lost its contents: on Windows there
 is no directory flush, so a rename proves nothing about the bytes behind the name.
 
-A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index`, `DerivationPlan` (code 5,
+A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` (code 4, `contracts/derivation-checkpoint-v1.md` since
+revision 162), `DerivationPlan` (code 5,
 `contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`),
 `CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`) or `RedactionPolicy` (code 8,
 `contracts/redacted-session-v1.md`). An unknown kind, an unreadable
@@ -108,8 +109,8 @@ an existing target manifest is refused before any immutable name is replaced. Th
 control file, not evidence or an orphan. It serializes independently opened writer processes as well as
 threads within one store instance. A reader does not need that lock.
 
-A normal additive generation includes its predecessor's dependencies. A journal re-derivation is the
-exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan, the
+A normal additive generation includes its predecessor's dependencies, except an index (revision 162, below). A
+journal re-derivation is the exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan, the
 capture coverage ledger if published, the capture-finalization marker if present, and a redaction policy if present
 (a redacted package itself is refused before replay, because it has no plan); it stages a replacement set of
 segments and dictionaries and publishes it as the next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
@@ -120,6 +121,16 @@ replacement is refused if the source generation changed during replay. The repla
   capture's;
 - a generation whose rows derive from records its journals no longer hold (§8), because rows no replay can rebuild
   would be dropped without a word.
+
+**An index publication** (`CommitIndex`, revision 162) publishes an index of the current generation as the next
+generation. It carries every dependency but the earlier indexes and keeps the committed boundary. It adds only the
+staged `Index` files, such as a derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). An earlier index
+describes the files of an earlier generation, so it is not carried. Like a re-derivation, it names the generation it
+was derived from, and it is refused when a writer has published since. A re-derivation carries no index, because its
+segments are new. Neither does an additive generation. An index is then named only by the generation that published
+it, so a damaged one costs a rollback to the generation before, and never fails a live writer's next commit, which
+re-measures everything it carries. A dropped index stays with the last-known-good generation and is then an ordinary
+orphan (§6).
 
 Retiring a dependency otherwise is retention (§8).
 
@@ -139,12 +150,15 @@ present with the recorded length and digest.
 
 **A viewer opens without hashing what checks itself.** Hashing every dependency makes opening cost every byte of
 the session, which §12.1's S1 forbids at scale: a million-row session is 309 MiB, and hashing it took 210 ms of a
-fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary` or `Journal`
-dependency present with its recorded length is taken from one directory listing, without being hashed:
+fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary`, `Journal` or
+`Index` dependency present with its recorded length is taken from one directory listing, without being hashed:
 
 - a segment reader checks every byte it interprets against the segment's own checksums (`segment-v1` §9);
 - a dictionary's decoder checks its own digest;
-- a journal's frames and records carry their own checksums (`journal-v1`).
+- a journal's frames and records carry their own checksums (`journal-v1`);
+- an index is read whole and hashed against its recorded digest before a byte of it is interpreted
+  (`derivation-checkpoint-v1` §4). Revision 162 added it: a checkpoint can be tens of megabytes for a session of many
+  connections, and hashing it at open would read it twice.
 
 Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first
 view, the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next
@@ -313,6 +327,11 @@ A retention that released anything re-aims the retained last-known-good pointer 
 itself. The earlier generation is missing a file, now or as soon as a lease lets go, and a pointer that named
 it would promise a rollback that cannot be performed.
 
+**A retention that releases a segment releases every index too**, in the same record (revision 162). An index
+describes the segments of the generation it was derived from, and §20.2 removes stale index references atomically
+with the new manifest. A compaction is such a retention. A release of journal chunks or of a journal prefix keeps
+every segment, so it keeps the indexes.
+
 ### Releasing a journal prefix
 
 A journal is append-only and its published file is immutable, so a release does not truncate it: it publishes
@@ -361,8 +380,9 @@ A compaction (§20.1, ADR-026) coalesces a session's small publications into bou
 - **Every row moves unchanged**, with its locator, journal index and values, so every observation keeps its identity.
 
 The generation releases the replaced files with a `DerivedFiles` retention record whose reason says their rows were
-coalesced and kept. It carries the journals, the plan, any coverage ledger, the capture-finalization marker and the
-boundary unchanged; only segments and dictionaries can be replaced. A file a reader's lease holds stays until that reader lets go.
+coalesced and kept. The record also lists any index, which described the replaced segments. It carries the journals,
+the plan, any coverage ledger, the capture-finalization marker and the boundary unchanged; only segments and
+dictionaries can be replaced. A file a reader's lease holds stays until that reader lets go.
 
 A live recording compacts itself. When 64 small publications have accumulated, the writer coalesces the oldest run
 between chunks, at most one segment's worth of rows. When the capture stops, every run left is coalesced.

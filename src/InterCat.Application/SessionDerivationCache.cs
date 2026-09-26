@@ -38,7 +38,7 @@ internal static class SessionDerivationCache
             }
             else
             {
-                entry = new(manifest.SessionId, manifest.Digest, manifest.Generation);
+                entry = new(manifest);
             }
 
             Recent.Insert(0, entry);
@@ -92,20 +92,27 @@ internal static class SessionDerivationCache
 /// One generation's derivations. Each is computed at most once; a cancelled derivation stores nothing, so the next
 /// caller derives again under its own token. A derivation extends the latest earlier generation's when that one is
 /// kept and every segment it read is still named: exactly the result a full derivation gives, for the cost of the
-/// segments added since. Anything an extension cannot add exactly - a compaction, a retention, a late record that would
-/// change an earlier decision - is derived in full.
+/// segments added since. Otherwise it is built from the derivation checkpoint the generation names, extended by the
+/// segments the checkpoint does not cover (`contracts/derivation-checkpoint-v1.md`). Anything neither can add exactly -
+/// a compaction, a retention, a late record that would change an earlier decision - is derived in full.
 /// </summary>
-internal sealed class SessionDerivation(Guid sessionId, string digest, long generation)
+internal sealed class SessionDerivation(SessionManifestV1 manifest)
 {
     private readonly Lock gate = new();
     private ProcessInstanceIndex? processes;
     private TransportRelationIndex? relations;
+    private DerivationCheckpoint? checkpoint;
+    private bool checkpointRead;
+    private string? checkpointProblem;
 
-    public Guid SessionId { get; } = sessionId;
+    /// <summary>The generation these derivations are of.</summary>
+    public SessionManifestV1 Manifest { get; } = manifest;
 
-    public string Digest { get; } = digest;
+    public Guid SessionId => Manifest.SessionId;
 
-    public long Generation { get; } = generation;
+    public string Digest => Manifest.Digest;
+
+    public long Generation => Manifest.Generation;
 
     /// <summary>The instances, once derived; read by a later generation's derivation without waiting for this one.</summary>
     public ProcessInstanceIndex? DerivedProcesses => Volatile.Read(ref processes);
@@ -113,13 +120,26 @@ internal sealed class SessionDerivation(Guid sessionId, string digest, long gene
     /// <summary>The relations, once derived.</summary>
     public TransportRelationIndex? DerivedRelations => Volatile.Read(ref relations);
 
+    /// <summary>
+    /// Why the derivation checkpoint this generation names could not be read, once one was asked for; null when it names
+    /// none, or it was read. The derivations are then made without it, and are the same.
+    /// </summary>
+    public string? CheckpointProblem => Volatile.Read(ref checkpointProblem);
+
     /// <summary>Whether the instances were extended from an earlier generation's rather than derived in full.</summary>
     internal bool ProcessesExtended { get; private set; }
 
     /// <summary>Whether the relations were extended from an earlier generation's rather than derived in full.</summary>
     internal bool RelationsExtended { get; private set; }
 
+    /// <summary>Whether the instances were built from this generation's checkpoint, as it stands or extended.</summary>
+    internal bool ProcessesFromCheckpoint { get; private set; }
+
+    /// <summary>Whether the relations were built from this generation's checkpoint, as it stands or extended.</summary>
+    internal bool RelationsFromCheckpoint { get; private set; }
+
     public ProcessInstanceIndex Processes(
+        IOwnedDirectory directory,
         IReadOnlyList<SegmentReaderV1> segments,
         SourceClockDescriptor clock,
         IReadOnlyList<SegmentReaderV1> fields,
@@ -127,11 +147,12 @@ internal sealed class SessionDerivation(Guid sessionId, string digest, long gene
     {
         lock (gate)
         {
-            return ProcessesLocked(segments, clock, fields, cancellationToken);
+            return ProcessesLocked(directory, segments, clock, fields, cancellationToken);
         }
     }
 
     public TransportRelationIndex Relations(
+        IOwnedDirectory directory,
         IReadOnlyList<SegmentReaderV1> segments,
         SourceClockDescriptor clock,
         IReadOnlyList<SegmentReaderV1> fields,
@@ -144,17 +165,31 @@ internal sealed class SessionDerivation(Guid sessionId, string digest, long gene
                 return known;
             }
 
-            ProcessInstanceIndex instances = ProcessesLocked(segments, clock, fields, cancellationToken);
+            ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
             TransportRelationIndex? extended =
                 SessionDerivationCache.Earlier(this, entry => entry.DerivedRelations)?.Extend(segments, instances, cancellationToken);
             RelationsExtended = extended is not null;
+            if (extended is null && CheckpointLocked(directory, clock) is { } saved)
+            {
+                // Instances taken from the checkpoint as they stand are the ones its relations' holders name; any other
+                // instances map those holders onto their own, or decline.
+                extended = ReferenceEquals(instances, saved.Processes)
+                    ? saved.Relations
+                    : saved.Relations.Extend(segments, instances, cancellationToken);
+                RelationsFromCheckpoint = extended is not null;
+            }
+
             TransportRelationIndex derived = extended ?? TransportRelationIndex.Derive(segments, instances, cancellationToken);
             Volatile.Write(ref relations, derived);
+
+            // Both derivations are made, so the checkpoint has nothing left to give; what was taken from it stays.
+            checkpoint = null;
             return derived;
         }
     }
 
     private ProcessInstanceIndex ProcessesLocked(
+        IOwnedDirectory directory,
         IReadOnlyList<SegmentReaderV1> segments,
         SourceClockDescriptor clock,
         IReadOnlyList<SegmentReaderV1> fields,
@@ -169,8 +204,56 @@ internal sealed class SessionDerivation(Guid sessionId, string digest, long gene
             SessionDerivationCache.Earlier(this, entry => entry.DerivedProcesses is { } earlier && earlier.Clock == clock.Id ? earlier : null)
                 ?.Extend(segments, clock, fields, cancellationToken);
         ProcessesExtended = extended is not null;
+        if (extended is null && CheckpointLocked(directory, clock) is { } saved)
+        {
+            extended = saved.Covers(segments, fields)
+                ? saved.Processes
+                : saved.Processes.Extend(segments, clock, fields, cancellationToken);
+            ProcessesFromCheckpoint = extended is not null;
+        }
+
         ProcessInstanceIndex derived = extended ?? ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
         Volatile.Write(ref processes, derived);
         return derived;
+    }
+
+    /// <summary>
+    /// The checkpoint this generation names, read and checked on first use; null when it names none, when it could not
+    /// be read (<see cref="CheckpointProblem"/> says why), and once both derivations are made.
+    /// </summary>
+    private DerivationCheckpoint? CheckpointLocked(IOwnedDirectory directory, SourceClockDescriptor clock)
+    {
+        if (checkpointRead)
+        {
+            return checkpoint;
+        }
+
+        // A checkpoint saves time and never changes an answer, so one that cannot be read is set aside, and why is kept
+        // for the overview to say (derivation-checkpoint-v1 §4). The caller's lease holds the file while it is read.
+        try
+        {
+            if (DerivationCheckpoint.NamedBy(Manifest) is { } named)
+            {
+                checkpoint = DerivationCheckpoint.Read(
+                    SessionSegments.ReadVerified(directory, named, DerivationCheckpoint.MaximumBytes),
+                    Manifest.SessionId,
+                    clock);
+            }
+        }
+        catch (InvalidDataException exception)
+        {
+            Volatile.Write(ref checkpointProblem, exception.Message);
+        }
+        catch (IOException exception)
+        {
+            Volatile.Write(ref checkpointProblem, exception.Message);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Volatile.Write(ref checkpointProblem, exception.Message);
+        }
+
+        checkpointRead = true;
+        return checkpoint;
     }
 }

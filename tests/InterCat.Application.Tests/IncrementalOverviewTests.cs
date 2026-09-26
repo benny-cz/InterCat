@@ -81,7 +81,7 @@ public sealed class IncrementalOverviewTests
     /// late inside its connection, the server's close of the fourth connection arrives a chunk late at a reading before
     /// its own last records, and the last chunk holds the server's capture-end rundown.
     /// </summary>
-    private static ObservationRowV1[][] LiveChunks()
+    internal static ObservationRowV1[][] LiveChunks()
     {
         ulong ordinal = 0;
         List<ObservationRowV1>[] chunks = [.. Enumerable.Range(0, 8).Select(_ => new List<ObservationRowV1>())];

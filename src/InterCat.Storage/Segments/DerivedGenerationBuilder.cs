@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using InterCat.Domain;
 
 namespace InterCat.Storage;
@@ -936,6 +937,40 @@ public static class SessionSegments
             dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.None);
         stream.ReadExactly(header);
         return SegmentReaderV1.DeclaredRowCount(header);
+    }
+
+    /// <summary>
+    /// The bytes of a published dependency, once they are the length its generation recorded and hash to the digest it
+    /// recorded. A file that carries no checksums of its own, such as an index, is read this way before a byte of it is
+    /// interpreted, so it can be read before the store hashes the session (store-v1 §6).
+    /// </summary>
+    public static byte[] ReadVerified(IOwnedDirectory directory, StoreDependency dependency, int maximumBytes)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(dependency);
+        if (dependency.LengthBytes < 0 || dependency.LengthBytes > maximumBytes)
+        {
+            throw new InvalidDataException(
+                $"'{dependency.Name}' is {dependency.LengthBytes:N0} bytes, outside its {maximumBytes:N0}-byte bound.");
+        }
+
+        byte[] bytes = new byte[dependency.LengthBytes];
+        using (FileStream stream = directory.OpenOwnedFile(
+            dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan))
+        {
+            if (stream.Length != bytes.Length)
+            {
+                throw new InvalidDataException($"'{dependency.Name}' is not the length its generation recorded.");
+            }
+
+            stream.ReadExactly(bytes);
+        }
+
+        string digest = string.Concat("sha256:", Convert.ToHexStringLower(SHA256.HashData(bytes)));
+        return string.Equals(digest, dependency.Digest, StringComparison.Ordinal)
+            ? bytes
+            : throw new InvalidDataException(
+                $"'{dependency.Name}' computes {digest} where its generation recorded {dependency.Digest}.");
     }
 
     /// <summary>The largest redaction policy a generation publishes or a reader accepts.</summary>

@@ -421,7 +421,7 @@ internal sealed class FocusRows
         HashSet<int> owners = [];
         if (focus.OwnerProcesses.Count > 0)
         {
-            processes = derivation.Processes(segments, clock, fields, cancellationToken);
+            processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             var indexes = new Dictionary<ProcessInstanceId, int>(processes.Instances.Count);
             for (int index = 0; index < processes.Instances.Count; index++)
             {
@@ -445,7 +445,7 @@ internal sealed class FocusRows
         TransportRelation? relation = null;
         if (focus.ChannelKey is { } key)
         {
-            relations = derivation.Relations(segments, clock, fields, cancellationToken);
+            relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(candidate =>
                 candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == key
                 && SessionOverviewProjector.Admitted(candidate.Strength, policy))];

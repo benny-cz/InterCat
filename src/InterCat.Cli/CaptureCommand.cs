@@ -229,6 +229,12 @@ internal static class CaptureCommand
             Render(document);
         }
 
+        if (document.Finished && derived is not null)
+        {
+            // Ctrl+C is how a capture is stopped early, so it does not cancel the checkpoint of what the capture finished.
+            _ = CheckpointStep.Publish(derived, CancellationToken.None);
+        }
+
         return document.Finished ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
     }
 

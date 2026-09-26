@@ -559,7 +559,7 @@ public sealed class SessionStore
         DateTimeOffset committedUtc,
         long? expectedGeneration = null,
         CancellationToken cancellationToken = default) =>
-        CommitCore(staged, boundary, committedUtc, replaceDerived: false, cancellationToken,
+        CommitCore(staged, boundary, committedUtc, CommitScope.Additive, cancellationToken,
             expectedGeneration: expectedGeneration);
 
     /// <summary>
@@ -574,14 +574,50 @@ public sealed class SessionStore
         DateTimeOffset committedUtc,
         long? expectedGeneration = null,
         CancellationToken cancellationToken = default) =>
-        CommitCore(staged, boundary, committedUtc, replaceDerived: true, cancellationToken, sourceGeneration,
+        CommitCore(staged, boundary, committedUtc, CommitScope.ReplacingDerived, cancellationToken, sourceGeneration,
             expectedGeneration);
+
+    /// <summary>
+    /// Publishes an index of generation <paramref name="sourceGeneration"/> as the next generation
+    /// (`contracts/derivation-checkpoint-v1.md` §2). It names the same committed boundary, evidence and derived files,
+    /// the staged indexes, and no earlier index: an index describes the files of the generation it was derived from.
+    /// It is refused when that generation is no longer current, since a writer may have published since.
+    /// </summary>
+    public StoreCommitResult CommitIndex(
+        IReadOnlyList<StoreStagingFile> staged,
+        long sourceGeneration,
+        DateTimeOffset committedUtc,
+        long? expectedGeneration = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        if (staged.Count == 0 || staged.Any(file => file.Kind != StoreDependencyKind.Index))
+        {
+            throw new ArgumentException("An index publication publishes one or more indexes and nothing else.", nameof(staged));
+        }
+
+        return CommitCore(staged, CommittedBoundary.None, committedUtc, CommitScope.ReplacingIndexes, cancellationToken,
+            sourceGeneration, expectedGeneration);
+    }
+
+    /// <summary>What a commit carries from the generation before it.</summary>
+    private enum CommitScope
+    {
+        /// <summary>Every dependency but an index: the staged files are added.</summary>
+        Additive,
+
+        /// <summary>The evidence and what describes it; the staged files replace every derived file.</summary>
+        ReplacingDerived,
+
+        /// <summary>Every dependency but the indexes, which the staged indexes replace; the boundary is the source's.</summary>
+        ReplacingIndexes,
+    }
 
     private StoreCommitResult CommitCore(
         IReadOnlyList<StoreStagingFile> staged,
         CommittedBoundary boundary,
         DateTimeOffset committedUtc,
-        bool replaceDerived,
+        CommitScope scope,
         CancellationToken cancellationToken,
         long? sourceGeneration = null,
         long? expectedGeneration = null)
@@ -621,7 +657,23 @@ public sealed class SessionStore
                     + "with its manifest.");
             }
             List<StoreDependency> carried;
-            if (replaceDerived)
+            if (scope == CommitScope.ReplacingIndexes)
+            {
+                SessionManifestV1 previous = current
+                    ?? throw new InvalidOperationException("No published generation exists to index.");
+                if (previous.Generation != sourceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        $"Generation {sourceGeneration} is no longer current: generation {previous.Generation} was "
+                        + "published while its index was being derived. Derive the index of the current generation.");
+                }
+
+                // An index describes the files of the generation it was derived from, so an earlier one describes an
+                // earlier set of files and is not carried; everything else is, under the same committed boundary.
+                boundary = previous.Boundary;
+                carried = [.. previous.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Index)];
+            }
+            else if (scope == CommitScope.ReplacingDerived)
             {
                 SessionManifestV1 previous = current
                     ?? throw new InvalidOperationException("No published generation exists to re-derive.");
@@ -663,7 +715,10 @@ public sealed class SessionStore
             }
             else
             {
-                carried = [.. current?.Dependencies ?? []];
+                // An index describes the files of the generation it was published for and is not carried: a generation
+                // that adds segments has no index until its writer publishes one, and a damaged index can then cost at
+                // most a rollback to the generation before it, never every later generation (derivation-checkpoint-v1).
+                carried = [.. current?.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Index) ?? []];
             }
 
             var names = new HashSet<string>(
@@ -888,10 +943,12 @@ public sealed class SessionStore
     /// <summary>
     /// Whether a dependency's readers check every byte they interpret against checksums the file carries, so it can be
     /// read before its file is hashed: a segment (segment-v1 §9), a dictionary, whose decoder checks its own digest,
-    /// and a journal, whose frames and records carry theirs (journal-v1).
+    /// a journal, whose frames and records carry theirs (journal-v1), and an index, which its reader hashes against the
+    /// digest its generation records before interpreting a byte (derivation-checkpoint-v1 §4).
     /// </summary>
     private static bool ChecksItself(StoreDependencyKind kind) =>
-        kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Journal;
+        kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Journal
+            or StoreDependencyKind.Index;
 
     /// <summary>Why a dependency's bytes are not the ones its generation recorded, or null when they are.</summary>
     private static string? DigestProblem(
@@ -1013,6 +1070,7 @@ public sealed class SessionStore
                 released.Add(dependency);
             }
 
+            ReleaseIndexesWithSegments(manifest, released);
             return Publish(
                 manifest,
                 [.. manifest.Dependencies.Except(released)],
@@ -1245,6 +1303,7 @@ public sealed class SessionStore
                 throw new ArgumentException("A compaction replaces at least one derived file.", nameof(replaced));
             }
 
+            ReleaseIndexesWithSegments(previous, released);
             long nextGeneration = NextAvailableGeneration();
             if (expectedGeneration is { } expected && expected != nextGeneration)
             {
@@ -1630,6 +1689,22 @@ public sealed class SessionStore
 
     private bool IsLeased(string name, DateTimeOffset now) =>
         leases.Values.Any(lease => lease.Holds(name, now));
+
+    /// <summary>
+    /// An index describes the segments of the generation it was derived from, so a publication that stops naming a
+    /// segment stops naming every index as well, in the same retention record. No index outlives what it describes
+    /// (§20.2, derivation-checkpoint-v1 §2).
+    /// </summary>
+    private static void ReleaseIndexesWithSegments(SessionManifestV1 manifest, List<StoreDependency> released)
+    {
+        if (!released.Any(dependency => dependency.Kind == StoreDependencyKind.Segment))
+        {
+            return;
+        }
+
+        released.AddRange(manifest.Dependencies.Where(dependency =>
+            dependency.Kind == StoreDependencyKind.Index && !released.Contains(dependency)));
+    }
 
     private StagingCleanupReport InspectStaging(
         bool remove,

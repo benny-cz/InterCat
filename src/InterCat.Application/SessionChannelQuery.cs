@@ -60,11 +60,11 @@ public static class SessionChannelQuery
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation has no source clock for channel binding.");
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        ProcessInstanceIndex processes = derivation.Processes(segments, clock, fields, cancellationToken);
+        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
         if (processScope is { } scope && !processes.Instances.Any(instance => instance.Id == scope))
             throw new InvalidOperationException("The selected process instance is not in this generation. "
                 + "Return to the overview and select it again.");
-        TransportRelationIndex relations = derivation.Relations(segments, clock, fields, cancellationToken);
+        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
         TransportRelation[] admitted = [.. relations.Relations.Where(relation =>
                 relation.Mechanism == Mechanism.Tcp
                 && SessionOverviewProjector.Admitted(relation.Strength, policy)

@@ -84,6 +84,7 @@ internal static class CompactCommand
         }
 
         CompactionDocument document;
+        SessionStore? compacted = null;
         if (check)
         {
             ConsoleUi.Progress("Measuring the session's publications; nothing is written.");
@@ -101,6 +102,7 @@ internal static class CompactCommand
             try
             {
                 result = SegmentCompaction.Compact(writable, DateTimeOffset.UtcNow, cancellationToken: cancellationToken);
+                compacted = result is null ? null : writable;
             }
             catch (InvalidOperationException exception)
             {
@@ -128,6 +130,12 @@ internal static class CompactCommand
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             await File.WriteAllTextAsync(output, payload, cancellationToken).ConfigureAwait(false);
             ConsoleUi.Success($"Compaction report written to {output}.");
+        }
+
+        // A compaction releases the checkpoint of the segments it replaced (store-v1 §8), so one of the new ones is published.
+        if (compacted is not null)
+        {
+            _ = CheckpointStep.Publish(compacted, cancellationToken);
         }
 
         return InterCatExitCode.Success;

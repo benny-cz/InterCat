@@ -42,6 +42,12 @@ internal sealed class LiveDerivation(
     /// <summary>The last follow step, or null before the first.</summary>
     public FollowStep? Last { get; private set; }
 
+    /// <summary>
+    /// What publishing the session's derivation checkpoint did once the follow finished, so the session reopens without
+    /// reading every record (derivation-checkpoint-v1); null until then.
+    /// </summary>
+    public CheckpointPublication? Checkpoint { get; private set; }
+
     /// <summary>Whether the user's session holds a derived generation.</summary>
     public bool HasSession => derived?.Current is not null;
 
@@ -101,6 +107,13 @@ internal sealed class LiveDerivation(
         FollowStep step = follower.CatchUp(cancellationToken: cancellationToken);
         TimeSpan derivation = Stopwatch.GetElapsedTime(followStarted);
         Last = step;
+        if (step.Finished && Checkpoint is null)
+        {
+            // The session holds everything the capture published, compacted, so nothing will replace its segments. The
+            // generation it adds names the same evidence and is shown as the next one, taken from the same derivation.
+            Checkpoint = SessionCheckpoints.Publish(derived!, DateTimeOffset.UtcNow, cancellationToken);
+        }
+
         if (derived!.Current is not { } current || current.Generation == shownGeneration)
         {
             return new(step, null, null, null, derivation, TimeSpan.Zero, null);

@@ -42,7 +42,7 @@ public static class SessionIntervalQuery
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
             .Select(name => SessionSegments.Open(store, manifest, name))];
         TransportRelationIndex relations = SessionDerivationCache.For(manifest)
-            .Relations(segments, clock, fields, cancellationToken);
+            .Relations(store.Root, segments, clock, fields, cancellationToken);
 
         // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits.
         var channels = new Dictionary<int, (string Edge, string Channel)>();

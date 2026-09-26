@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "description": "Traceability matrix of section 13.5: fixtures to contracts to tests to milestones. Two checks in InterCat.Architecture.Tests keep it honest.",
-  "updatedUtc": "2026-09-26",
+  "updatedUtc": "2026-09-27",
   "fixtures": [
     {
       "id": "FX-TCP-001",
@@ -506,6 +506,12 @@
       "I14": [
         "I14: a cancelled import leaves no spilled run behind",
         "I14: a canonical key changes with every field the envelope carries",
+        "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread",
+        "I14: a checkpoint that cannot be read is derived around, the overview says why, and publishing replaces it",
+        "I14: a derivation read back from its checkpoint answers and extends as the derivation it was written from",
+        "I14: a field a later chunk repeats is refused after a checkpoint, as by a derivation of every chunk",
+        "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
+        "I14: a session reopened from its derivation checkpoint projects exactly as a derivation of every segment",
         "I14: an extension declines, for a full derivation, whatever would change a decision already made",
         "I14: an import bound that would be exceeded is a refusal, not a partial import",
         "I14: an import option outside its declared range is refused before anything is read",
@@ -515,7 +521,9 @@
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: instance identities do not depend on how the evidence was split into segments",
         "I14: instances and relations extended chunk by chunk equal a derivation of every chunk at once",
+        "I14: nothing is published for a session with no generation or no records, and a stale writer is refused",
         "I14: one admitted record cannot satisfy two truth operations",
+        "I14: only instances and the relations derived with them are written, and a generation names one checkpoint",
         "I14: relations and peers do not depend on how records were split into segments or delivered"
       ],
       "I15": [
@@ -555,6 +563,7 @@
         "I15: a reopened session acquires the generation its pointer names",
         "I15: a retention generation publishes what it released and why",
         "I15: a retention record with no stated reason is refused",
+        "I15: a retention that releases a segment releases every index with it, and a journal release keeps them",
         "I15: a segment referencing a dictionary the generation does not name is refused",
         "I15: a segment round-trips every column, including its nulls and its names",
         "I15: a segment whose trailing digest does not cover its bytes is refused",
@@ -578,6 +587,7 @@
         "I15: an empty session is empty, not a refusal",
         "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an incomplete staged file is never published",
+        "I15: an index publication names what its generation named but an earlier index, and a stale one is refused",
         "I15: an original package refuses a file that changed after its generation recorded it, and leaves nothing",
         "I15: an original package reopens as the same session and generation, byte for byte, holding nothing else",
         "I15: an orphan is reported on open and removed only when that is asked for",

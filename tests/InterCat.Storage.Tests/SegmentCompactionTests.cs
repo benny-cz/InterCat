@@ -119,6 +119,104 @@ public sealed class SegmentCompactionTests
         Assert.Equal(manifest.Generation, session.Store.Current!.Generation);
     }
 
+    [Fact(DisplayName = "I15: an index publication names what its generation named but an earlier index, and a stale one is refused")]
+    public void IndexPublicationReplacesOnlyTheIndex()
+    {
+        using var session = new TemporarySession();
+        PublishChunk(session.Store, 1, 10);
+        PublishChunk(session.Store, 11, 10);
+        SessionManifestV1 source = session.Store.Current!;
+        using (StoreStagingFile segment = session.Store.Stage("seg-0000000003-0000.icats", StoreDependencyKind.Segment))
+        {
+            segment.Content.Write("not an index"u8);
+            _ = segment.Complete();
+            _ = Assert.Throws<ArgumentException>(() => session.Store.CommitIndex([segment], source.Generation, Committed));
+        }
+
+        StoreDependency first = PublishIndex(session.Store, "first index"u8);
+        SessionManifestV1 indexed = session.Store.Current!;
+        Assert.Equal(source.Generation + 1, indexed.Generation);
+        Assert.Equal(source.Boundary, indexed.Boundary);
+        Assert.Equal(source.Dependencies, indexed.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Index));
+        Assert.Equal(first, Assert.Single(indexed.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Index));
+
+        // A later index replaces the earlier one.
+        StoreDependency second = PublishIndex(session.Store, "second index"u8);
+        long generation = session.Store.Current!.Generation;
+        Assert.Equal([second], session.Store.Current!.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Index));
+
+        // A viewer reads an index before hashing it, as its reader hashes it; the hash after the first view finds a change.
+        // Only the generation that published the index names it, so a damaged one costs a rollback to the one before.
+        string path = Path.Combine(session.Path, second.Name);
+        byte[] bytes = File.ReadAllBytes(path);
+        bytes[0] ^= 0xFF;
+        File.WriteAllBytes(path, bytes);
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal((generation, false), (viewer.Current!.Generation, viewer.Recovery.RolledBackToLastKnownGood));
+        Assert.Contains(second.Name, Assert.Single(viewer.VerifyContents().Problems), StringComparison.Ordinal);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal((generation - 1, true), (reopened.Current!.Generation, reopened.Recovery.RolledBackToLastKnownGood));
+        bytes[0] ^= 0xFF;
+        File.WriteAllBytes(path, bytes);
+
+        // A generation that adds segments names no index: its writer publishes one of its own when it finishes.
+        PublishChunk(session.Store, 21, 10);
+        Assert.DoesNotContain(session.Store.Current!.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Index);
+
+        // An index of a generation another writer has since superseded describes files that may be gone.
+        using (StoreStagingFile stale = session.Store.Stage(IndexName(session.Store.NextGeneration), StoreDependencyKind.Index))
+        {
+            stale.Content.Write("stale"u8);
+            _ = stale.Complete();
+            _ = Assert.Throws<InvalidOperationException>(() => session.Store.CommitIndex(
+                [stale], session.Store.Current!.Generation - 1, Committed));
+        }
+    }
+
+    [Fact(DisplayName = "I15: a retention that releases a segment releases every index with it, and a journal release keeps them")]
+    public void IndexesGoWithTheSegmentsTheyDescribe()
+    {
+        using var session = new TemporarySession();
+        for (int chunk = 0; chunk < 3; chunk++)
+        {
+            PublishChunk(session.Store, 1 + ((ulong)chunk * 10), records: 10);
+        }
+
+        // Releasing the oldest journal chunk keeps every segment, so the index still describes them.
+        StoreDependency index = PublishIndex(session.Store, "an index"u8);
+        string oldest = session.Store.Current!.Dependencies.First(dependency => dependency.Kind == StoreDependencyKind.Journal).Name;
+        RetentionOutcome journal = session.Store.ReleaseJournalChunks([oldest], 10, "release the oldest chunk", Committed);
+        Assert.Equal([oldest], journal.Manifest.Retention!.ReleasedFiles);
+        Assert.Contains(index, session.Store.Current!.Dependencies);
+
+        // A compaction replaces segments: the index goes with them, in the same record, and its file with it.
+        CompactionResult compacted = SegmentCompaction.Compact(session.Store, Committed)!;
+        Assert.DoesNotContain(compacted.Generation.Manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Index);
+        Assert.Contains(index.Name, compacted.Generation.Manifest.Retention!.ReleasedFiles);
+        Assert.Contains(index.Name, compacted.Retention.RemovedFiles);
+        Assert.False(File.Exists(Path.Combine(session.Path, index.Name)));
+
+        // So does a release of a segment by name.
+        StoreDependency later = PublishIndex(session.Store, "a later index"u8);
+        string segment = SessionSegments.Names(session.Store.Current!)[0];
+        RetentionOutcome released = session.Store.ReleaseDependencies([segment], "release a segment", Committed);
+        Assert.Equal([segment, later.Name], released.Manifest.Retention!.ReleasedFiles);
+        Assert.DoesNotContain(released.Manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.Index);
+    }
+
+    private static string IndexName(long generation) => $"index-{generation:D10}.idx";
+
+    /// <summary>Publishes an index of the current generation, holding <paramref name="content"/>, as the next generation.</summary>
+    private static StoreDependency PublishIndex(SessionStore store, ReadOnlySpan<byte> content)
+    {
+        long next = store.NextGeneration;
+        using StoreStagingFile staged = store.Stage(IndexName(next), StoreDependencyKind.Index);
+        staged.Content.Write(content);
+        StoreDependency dependency = staged.Complete();
+        _ = store.CommitIndex([staged], store.Current!.Generation, Committed, next);
+        return dependency;
+    }
+
     /// <summary>Publishes one live-recording chunk: its journal, one row and one source field per record.</summary>
     private static void PublishChunk(SessionStore store, ulong firstOrdinal, int records)
     {

@@ -250,6 +250,7 @@ internal static class ImportCommand
                 cancellationToken);
             result = published.Import;
             generation = published.Generation;
+            _ = CheckpointStep.Publish(store, cancellationToken);
         }
 
         ImportSummaryDocument document = Describe(result, environment, sessionPath, generation);
