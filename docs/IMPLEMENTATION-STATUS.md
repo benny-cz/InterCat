@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-26 · Plan revision: 138 · Branch: `main`
+Updated: 2026-09-26 · Plan revision: 139 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,6 +61,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 139 — conditions and actions have tokens of their own (§6.6, R14, P24):**
+  - **Found:** the coverage hatch and the words of a warning were RPC's amber, and the summary was amber even when
+    coverage was complete. The live dot was ALPC's mint, and a paused one RPC's amber. The evidence-quality key
+    coloured *direct* in ALPC mint behind TCP's glyph and *candidate* in RPC amber behind UDP's.
+  - **Primary action (found):** the unused primary style put white text on the TCP fill, measuring 2.79:1 in dark and
+    4.18:1 in light.
+  - **Legend (found):** "outline = unmeasured" keyed an encoding nothing draws. The only outlined marks are L3
+    records with no data direction.
+  - **Tokens:** theme 1.1.0 adds a caution ink and an action fill (rest, pointer-over, pressed) with its ink, per
+    mode. The report measures them: the action ink clears at least 5.9:1 on every fill state (light pointer-over is
+    the lowest), and caution sits at least 39 CIE76 from every family's fill and ink.
+  - **Drawn:**
+    - The hatch and the warning words take caution. The coverage summary does only while coverage is limited.
+    - The live dot is the accent while the view follows, and caution while it is held, paused or unavailable.
+    - Start and Stop are primary, and keep their own pointer-over and pressed fills.
+    - The key draws each strength with the graph's own edge routine in body ink, and the legend keys the hatch with
+      a swatch drawn by the hatch routine.
+  - **Checked:** each test was run against the old behaviour and failed:
+    - hatch in RPC ink, a summary always caution, the old dot colours;
+    - theme's grey on hover, the old palette values;
+    - a correlated dash drawn dotted.
+  - **Tests:** two contract tests and three UI tests (+5); the pixel reader is shared with the theme-mode test.
 - **Revision 138 — the Desktop follows the operating system's light or dark setting (§6.1, §6.6, §26.2):**
   - **Runtime mode:** the app applies the platform's light or dark variant at start and again whenever the platform
     reports a change. Tests pin dark in code, not through an environment variable, which §26.3 would count as a hidden
@@ -598,10 +620,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138.
      - Define and verify a high-contrast token set, and follow the platform's high-contrast setting with it.
      - Store the mode as an application setting once §26.3's per-user configuration exists.
-     - Give coverage hatches and warnings a token of their own; they borrow the RPC family's amber ink today.
+   - §6.6's unmeasured encoding (an open cross-hatch outline) is drawn nowhere, because no pane plots a value that can
+     be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells).
 
 ## Verification and cautions
 
+- Revision 139 was built and tested in the same Linux container: Debug and Release both ran **1,010 tests: 922 passed, 2 skipped, 86 failed**, and the
+  failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 138 was built and tested in the same Linux container: Debug and Release both ran **1,005 tests: 917 passed, 2 skipped, 86 failed**, and the
   failures are again only the 86 CaptureBroker tests that need Windows.
 - Revision 137 was built and tested in the same Linux container: Debug and Release both ran **1,004 tests: 916 passed, 2 skipped, 86 failed**, and the

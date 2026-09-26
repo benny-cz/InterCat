@@ -13,12 +13,30 @@
       <Setter Property="CornerRadius" Value="7" />
       <Setter Property="Padding" Value="14,8" />
     </Style>
+    <!-- The primary action has tokens of its own, measured with the ink drawn on them (§6.6). The theme's pointer-over
+         and pressed looks would turn it back into an ordinary button with text of unmeasured contrast, so its states
+         are restated here; a disabled primary action keeps the theme's disabled look. -->
     <Style Selector="Button.primary">
-      <Setter Property="Background" Value="{DynamicResource Family.Tcp.Fill}" />
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="{DynamicResource Action.Fill}" />
+      <Setter Property="Foreground" Value="{DynamicResource Action.Ink}" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Action.FillHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Action.Ink}" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Action.FillPressed}" />
+      <Setter Property="Foreground" Value="{DynamicResource Action.Ink}" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="{DynamicResource Ink.Muted}" />
+    </Style>
+    <Style Selector="TextBlock.accent">
+      <Setter Property="Foreground" Value="{DynamicResource Ink.Accent}" />
+    </Style>
+    <!-- A warning in words: caution ink, never a mechanism's hue. Declared after muted, so it wins when both apply. -->
+    <Style Selector="TextBlock.caution">
+      <Setter Property="Foreground" Value="{DynamicResource Status.Caution}" />
     </Style>
     <Style Selector="TextBlock.columnHeader">
       <Setter Property="FontSize" Value="11" />

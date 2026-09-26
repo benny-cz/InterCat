@@ -737,6 +737,8 @@
       ],
       "P24": [
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
+        "P24: the caution ink that strokes the coverage hatch and words a warning keeps its distance from every family's fill and ink",
+        "P24: the coverage hatch and a warning's words draw in the caution ink, which no mechanism uses, in either mode",
         "P24: the unknown grey is never reused for a supported mechanism"
       ],
       "P26": [
@@ -803,7 +805,9 @@
       "R14": [
         "R14: adjacent families stay separable under every simulated vision model",
         "R14: every fill clears 3 to 1 against the ground it is drawn on",
-        "R14: every ink token clears 4.5 to 1 against every surface it can land on"
+        "R14: every ink token clears 4.5 to 1 against every surface it can land on",
+        "R14: the primary action draws in its own measured fill and ink at rest, under the pointer and pressed, in either mode",
+        "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"
       ],
       "R15": [
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",

@@ -114,6 +114,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             PinHeadPen = new(PlotBrush, 1.5);
             ContextPen = new(MutedTextBrush, 1.5) { DashStyle = new DashStyle([7, 4], 0) };
             ContextRimPen = new(MutedTextBrush, 1);
+            SampleRingPen = new(TextBrush, 2);
         }
 
         public IBrush NodeBrush { get; }
@@ -142,6 +143,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         public Dictionary<(Mechanism, RelationStrength, int), Pen> EdgePens { get; } = [];
 
+        /// <summary>The evidence key's pens: body ink in each strength's pattern, and the ring a weak relation carries.</summary>
+        public Dictionary<RelationStrength, Pen> SamplePens { get; } = [];
+
+        public Pen SampleRingPen { get; }
+
         private static SolidColorBrush Token(Srgb value) => new(ThemeResources.ToColor(value));
     }
 
@@ -163,19 +169,47 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         int quarter = (int)Math.Round(thickness * 4);
         if (!Current.EdgePens.TryGetValue((mechanism, strength, quarter), out Pen? pen))
         {
-            pen = new Pen(MechanismBrush(mechanism), quarter / 4d)
-            {
-                DashStyle = strength switch
-                {
-                    RelationStrength.Direct => null,
-                    RelationStrength.Correlated => new DashStyle([6, 3], 0),
-                    _ => new DashStyle([2, 3], 0),
-                },
-            };
+            pen = new Pen(MechanismBrush(mechanism), quarter / 4d) { DashStyle = EvidenceDash(strength) };
             Current.EdgePens[(mechanism, strength, quarter)] = pen;
         }
 
         return pen;
+    }
+
+    /// <summary>
+    /// Evidence quality's dash pattern (§6.6), in multiples of the pen's thickness: solid for a direct relation, dashed
+    /// for a correlated one, dotted for anything weaker. The inspector's key draws with this same pattern.
+    /// </summary>
+    internal static DashStyle? EvidenceDash(RelationStrength strength) => strength switch
+    {
+        RelationStrength.Direct => null,
+        RelationStrength.Correlated => new DashStyle([6, 3], 0),
+        _ => new DashStyle([2, 3], 0),
+    };
+
+    /// <summary>A candidate or unresolved relation also carries an open ring at its middle, so it is never read as asserted.</summary>
+    internal static bool RingsMiddle(RelationStrength strength) =>
+        strength is RelationStrength.Candidate or RelationStrength.Unresolved;
+
+    /// <summary>
+    /// One edge of <paramref name="strength"/> across <paramref name="bounds"/>, as the graph draws it but in body ink:
+    /// hue belongs to the mechanism, and a key to evidence quality must show only the pattern (§6.6).
+    /// </summary>
+    internal static void DrawEdgeSample(DrawingContext context, RelationStrength strength, Rect bounds)
+    {
+        if (!Current.SamplePens.TryGetValue(strength, out Pen? pen))
+        {
+            pen = new Pen(Current.TextBrush, 2) { DashStyle = EvidenceDash(strength) };
+            Current.SamplePens[strength] = pen;
+        }
+
+        Point start = new(bounds.Left + 1, bounds.Center.Y);
+        Point end = new(bounds.Right - 1, bounds.Center.Y);
+        context.DrawLine(pen, start, end);
+        if (RingsMiddle(strength))
+        {
+            context.DrawEllipse(Brushes.Transparent, Current.SampleRingPen, bounds.Center, 5, 5);
+        }
     }
 
     /// <summary>The usable pane height the layout's spacing is designed for (GraphLayout's pixels per unit).</summary>
@@ -266,7 +300,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 context.DrawLine(pen, source, target);
             }
 
-            if (edge.Strength is RelationStrength.Candidate or RelationStrength.Unresolved)
+            if (RingsMiddle(edge.Strength))
             {
                 Point middle = new((source.X + target.X) / 2, (source.Y + target.Y) / 2);
                 context.DrawEllipse(Brushes.Transparent, new Pen(MechanismBrush(edge.Mechanism), 2), middle, 5, 5);

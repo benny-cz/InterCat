@@ -40,6 +40,14 @@ public static class ThemeResources
             application.Resources[$"Family.{family.Family}.Ink"] = Brush(family.Ink);
         }
 
+        // A warning, the live state and the primary action have tokens of their own; none borrows a family's hue (§6.6).
+        StatusTokens status = ThemePalette.Status(mode);
+        application.Resources["Status.Caution"] = Brush(status.Caution);
+        application.Resources["Action.Fill"] = Brush(status.ActionFill);
+        application.Resources["Action.FillHover"] = Brush(status.ActionFillHover);
+        application.Resources["Action.FillPressed"] = Brush(status.ActionFillPressed);
+        application.Resources["Action.Ink"] = Brush(status.ActionInk);
+
         application.RequestedThemeVariant = mode == ThemeMode.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
         if (CurrentMode != mode)
         {

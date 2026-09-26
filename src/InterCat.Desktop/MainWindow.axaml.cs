@@ -814,9 +814,8 @@ public sealed partial class MainWindow : Window, IDisposable
         bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
         StartExploringButton.Content = unavailable ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
         ToolTip.SetTip(StartExploringButton, unavailable ? update.Detail : null);
-        CaptureStatus.Foreground = unavailable
-            ? (this.TryFindResource("Family.RemoteCall.Ink", out object? warning) ? warning : null) as Avalonia.Media.IBrush
-            : null;
+        // An unavailable capture is a warning in words: caution ink, never a mechanism's hue (§6.6).
+        CaptureStatus.Classes.Set("caution", unavailable);
 
         // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it.
         if (!string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
@@ -1044,9 +1043,12 @@ public sealed partial class MainWindow : Window, IDisposable
             _ => displayedOverview is null ? "Ready"
                 : displayedOverview.Redaction is null ? "Saved session" : "Redacted package",
         };
-        HealthDot.Foreground = (this.TryFindResource(
-            phase == CaptureUiPhase.Recording && !paused ? "Family.Alpc.Ink"
-                : IsLive ? "Family.RemoteCall.Ink" : "Ink.Muted", out object? brush) ? brush : null) as Avalonia.Media.IBrush;
+        // The dot restates the words beside it: the accent while the view follows a recording, caution while a live
+        // view is held or paused or the capture is unavailable, muted otherwise. It borrows no mechanism's hue (§6.6),
+        // and as classes over theme resources it follows a change of mode at once.
+        bool following = phase == CaptureUiPhase.Recording && !paused;
+        HealthDot.Classes.Set("accent", following);
+        HealthDot.Classes.Set("caution", (IsLive && !following) || phase == CaptureUiPhase.Unavailable);
         HealthLossText.Text = LossStatement();
         string admitted = IsLive && liveHealth is { } counters ? $"{counters.AdmittedRecords:N0} admitted · " : string.Empty;
         HealthFreshnessText.Text = IsLive && lastPublicationUtc is { } last

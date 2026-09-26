@@ -1899,6 +1899,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         LayoutReady = BuildLayoutAsync(layoutIdentity, wholeDisplay);
     }
 
+    /// <summary>
+    /// Whether any interval's coverage is limited. The summary then reads in the caution ink; complete coverage, or none
+    /// to report, is a plain statement and must not look like a warning (§6.6).
+    /// </summary>
+    public bool CoverageLimited => Snapshot.Timeline.Any(bucket => bucket.Coverage != CoverageState.Covered);
+
     /// <summary>Coverage is derived from the snapshot's intervals, never from a prototype constant.</summary>
     public string CoverageSummary
     {

@@ -19,8 +19,8 @@
       <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
         <StackPanel Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="9">
-            <Border Width="27" Height="27" CornerRadius="8" Background="{DynamicResource Family.Tcp.Fill}">
-              <TextBlock Text="I" FontSize="15" FontWeight="Bold" Foreground="White"
+            <Border Width="27" Height="27" CornerRadius="8" Background="{DynamicResource Action.Fill}">
+              <TextBlock Text="I" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Action.Ink}"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <TextBlock Text="InterCat" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -139,7 +139,7 @@
                        Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
-            <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13"
+            <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13" Classes="primary"
                     Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
             <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
@@ -149,7 +149,7 @@
               <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
                          Classes="muted" FontSize="11" TextWrapping="Wrap" />
             </ScrollViewer>
-            <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False"
+            <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False" Classes="primary"
                     Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
             <!-- Pausing the view is not pausing the capture: recording continues and the newest view is offered (§6.2). -->
             <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False" FontSize="13"
@@ -248,9 +248,14 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock x:Name="CoverageLegendText"
-                   Text="Hatching = coverage gap or unknown · outline = unmeasured"
-                   Classes="muted" FontSize="11" VerticalAlignment="Center" />
+        <!-- The hatch keyed by a swatch of itself. Only marks the panes draw are keyed: an unmeasured value has no
+             drawing of its own yet, and the outlined marks an L3 end draws are records with no data direction. -->
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                    AutomationProperties.Name="Hatching: a coverage gap, or coverage not yet known">
+          <local:CoverageKeySample x:Name="CoverageKeySwatch" VerticalAlignment="Center" />
+          <TextBlock x:Name="CoverageLegendText" Text="Coverage gap or unknown"
+                     Classes="muted" FontSize="11" VerticalAlignment="Center" />
+        </StackPanel>
         <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). The chips
              wrap within the bar, so a deep rung's last filter is never cut off at the window's edge. -->
         <DockPanel IsVisible="{Binding HasFilters}">
@@ -391,14 +396,36 @@
             </Border>
             <StackPanel Margin="0,20,0,0" Spacing="8">
               <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
-              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
-                      BorderBrush="{DynamicResource Family.Alpc.Ink}" BorderThickness="1">
-                <TextBlock Text="● Direct transport evidence" Foreground="{DynamicResource Family.Alpc.Ink}" />
-              </Border>
-              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}"
-                      BorderBrush="{DynamicResource Family.RemoteCall.Ink}" BorderThickness="1,1,1,1">
-                <TextBlock Text="◆ Candidate relationships stay qualified"
-                           Foreground="{DynamicResource Family.RemoteCall.Ink}" TextWrapping="Wrap" />
+              <!-- A key to what the graph draws: evidence quality owns the dash pattern, never a hue or a mechanism's
+                   glyph (§6.6), so each sample is the graph's own edge in body ink. -->
+              <Border Padding="10" CornerRadius="7" Background="{DynamicResource Surface.Elevated}">
+                <StackPanel x:Name="EvidenceQualityKey" Spacing="8">
+                  <Grid ColumnDefinitions="36,*" ColumnSpacing="10"
+                        AutomationProperties.Name="Solid line: direct, a source recorded the relationship">
+                    <local:EvidenceKeySample Strength="Direct" VerticalAlignment="Top" Margin="0,2,0,0" />
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Direct" />
+                      <TextBlock Text="a source recorded it" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
+                  <Grid ColumnDefinitions="36,*" ColumnSpacing="10"
+                        AutomationProperties.Name="Dashed line: correlated, linked by a documented rule">
+                    <local:EvidenceKeySample Strength="Correlated" VerticalAlignment="Top" Margin="0,2,0,0" />
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Correlated" />
+                      <TextBlock Text="linked by a documented rule" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
+                  <Grid ColumnDefinitions="36,*" ColumnSpacing="10"
+                        AutomationProperties.Name="Dotted line with a ring: candidate or unresolved, possible but not established">
+                    <local:EvidenceKeySample Strength="Candidate" VerticalAlignment="Top" Margin="0,2,0,0" />
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Candidate" />
+                      <TextBlock Text="or unresolved · possible, not established" Classes="muted" FontSize="11"
+                                 TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
               </Border>
               <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
                       Click="ShowSourceRecords"
@@ -537,15 +564,16 @@
       <!-- Health strip: capture state and whether the view follows it, the generation shown, coverage, the loss the
            capture has stated, and how recent its last publication is (§3.1 step 3, §20.6). -->
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
-        <TextBlock x:Name="HealthDot" Text="●" Foreground="{DynamicResource Ink.Muted}" />
+        <TextBlock x:Name="HealthDot" Text="●" Classes="muted" />
         <TextBlock x:Name="HealthStateText" Grid.Column="1" Margin="6,0,16,0" Text="Ready" FontSize="11"
                    Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Capture and view state" />
         <TextBlock x:Name="WorkspaceTitleText" Grid.Column="2" Margin="0,0,16,0" MaxWidth="220" TextTrimming="CharacterEllipsis"
                    Text="{Binding Title}" ToolTip.Tip="{Binding Title}"
                    Classes="muted" FontSize="11" />
+        <!-- Coverage reads as a warning only when it is limited; complete coverage is a plain statement. -->
         <TextBlock x:Name="CoverageSummaryText" Grid.Column="3" Text="{Binding CoverageSummary}"
                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CoverageSummary}"
-                   Foreground="{DynamicResource Family.RemoteCall.Ink}" FontSize="11" />
+                   Classes="muted" Classes.caution="{Binding CoverageLimited}" FontSize="11" />
         <TextBlock x:Name="HealthLossText" Grid.Column="4" Margin="16,0,0,0" FontSize="11"
                    Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Loss the capture has stated" />
         <TextBlock x:Name="HealthFreshnessText" Grid.Column="5" Margin="16,0,0,0" Classes="muted" FontSize="11"

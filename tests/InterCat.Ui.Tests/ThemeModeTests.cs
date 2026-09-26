@@ -1,11 +1,9 @@
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -55,8 +53,8 @@ public sealed class ThemeModeTests
                 SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
 
                 // The pane's ground comes from a bound resource; the node's fill from the graph's own brushes.
-                Assert.Equal(ThemeResources.ToColor(surfaces.Plot), PixelAt(frame, paneAt));
-                Assert.Equal(ThemeResources.ToColor(surfaces.Elevated), PixelAt(frame, nodeAt));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Plot), RenderedPixels.At(frame, paneAt));
+                Assert.Equal(ThemeResources.ToColor(surfaces.Elevated), RenderedPixels.At(frame, nodeAt));
 
                 // The legend keys each hue: its chip glyph in the family's fill, its name in the family's ink.
                 FamilyTokens tcp = ThemePalette.TokensFor(mode, MechanismFamily.Tcp);
@@ -74,20 +72,6 @@ public sealed class ThemeModeTests
             ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
             window.Close();
         }
-    }
-
-    /// <summary>One pixel of a rendered frame, whatever byte order the frame keeps.</summary>
-    private static Color PixelAt(WriteableBitmap frame, Point point)
-    {
-        using ILockedFramebuffer buffer = frame.Lock();
-        int value = Marshal.ReadInt32(buffer.Address, ((int)point.Y * buffer.RowBytes) + ((int)point.X * 4));
-        byte first = (byte)value;
-        byte second = (byte)(value >> 8);
-        byte third = (byte)(value >> 16);
-        byte alpha = (byte)(value >> 24);
-        return buffer.Format == PixelFormat.Rgba8888
-            ? Color.FromArgb(alpha, first, second, third)
-            : Color.FromArgb(alpha, third, second, first);
     }
 
     /// <summary>A client sending and a server receiving, <paramref name="count"/> times.</summary>

@@ -29,6 +29,14 @@ var tokens = new
             ink = ThemePalette.Surfaces(mode).Ink.ToHex(),
             mutedInk = ThemePalette.Surfaces(mode).MutedInk.ToHex(),
         },
+        status = new
+        {
+            caution = ThemePalette.Status(mode).Caution.ToHex(),
+            actionFill = ThemePalette.Status(mode).ActionFill.ToHex(),
+            actionFillHover = ThemePalette.Status(mode).ActionFillHover.ToHex(),
+            actionFillPressed = ThemePalette.Status(mode).ActionFillPressed.ToHex(),
+            actionInk = ThemePalette.Status(mode).ActionInk.ToHex(),
+        },
         families = ThemePalette.Families(mode).Select(family => new
         {
             family = family.Family.ToString(),
@@ -69,6 +77,7 @@ foreach (ThemeModeReport mode in report.Modes)
     AppendWorstContrast(summary, "Ink contrast", mode.InkContrast);
     AppendWorstContrast(summary, "Fill contrast", mode.FillContrast);
     AppendWorstSeparation(summary, mode.Separations);
+    AppendWorstSeparation(summary, mode.StatusSeparations, "Caution from every family");
 }
 
 await File.WriteAllTextAsync(Path.Combine(outputDirectory, "README.md"), summary.ToString()).ConfigureAwait(false);
@@ -85,12 +94,12 @@ static void AppendWorstContrast(StringBuilder builder, string label, IReadOnlyLi
         $"| {label} | {worst.Ratio:F2} to 1 ({worst.Token} on {worst.Surface}) | {worst.Required:F1} to 1 | {(worst.Satisfied ? "met" : "NOT MET")} |");
 }
 
-static void AppendWorstSeparation(StringBuilder builder, IReadOnlyList<SeparationResult> results)
+static void AppendWorstSeparation(StringBuilder builder, IReadOnlyList<SeparationResult> results, string? label = null)
 {
     foreach (IGrouping<string, SeparationResult> group in results.GroupBy(result => result.Model))
     {
         SeparationResult worst = group.OrderBy(result => result.Distance).First();
         builder.AppendLine(CultureInfo.InvariantCulture,
-            $"| Separation, {group.Key} | {worst.Distance:F1} ({worst.First} to {worst.Second}) | {worst.Required:F0} | {(worst.Satisfied ? "met" : "NOT MET")} |");
+            $"| {label ?? "Separation"}, {group.Key} | {worst.Distance:F1} ({worst.First} to {worst.Second}) | {worst.Required:F0} | {(worst.Satisfied ? "met" : "NOT MET")} |");
     }
 }

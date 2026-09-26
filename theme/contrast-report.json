@@ -1,6 +1,6 @@
 {
-  "themeVersion": "1.0.0",
-  "generatedUtc": "2026-09-21T08:58:43.4815553+00:00",
+  "themeVersion": "1.1.0",
+  "generatedUtc": "2026-09-26T01:11:20.8154215+00:00",
   "modes": [
     {
       "mode": "Dark",
@@ -436,6 +436,69 @@
           "ratio": 7.53,
           "required": 4.5,
           "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "canvas",
+          "tokenHex": "#FF7A5C",
+          "surfaceHex": "#0A1421",
+          "ratio": 7.22,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "panel",
+          "tokenHex": "#FF7A5C",
+          "surfaceHex": "#0D1927",
+          "ratio": 6.91,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "plot",
+          "tokenHex": "#FF7A5C",
+          "surfaceHex": "#0E1A29",
+          "ratio": 6.83,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "elevated",
+          "tokenHex": "#FF7A5C",
+          "surfaceHex": "#152B3D",
+          "ratio": 5.67,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill",
+          "tokenHex": "#0A1421",
+          "surfaceHex": "#7FC0FF",
+          "ratio": 9.59,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill hover",
+          "tokenHex": "#0A1421",
+          "surfaceHex": "#A3D3FF",
+          "ratio": 11.74,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill pressed",
+          "tokenHex": "#0A1421",
+          "surfaceHex": "#5FAEF7",
+          "ratio": 7.83,
+          "required": 4.5,
+          "satisfied": true
         }
       ],
       "fillContrast": [
@@ -517,6 +580,114 @@
           "tokenHex": "#868686",
           "surfaceHex": "#0E1A29",
           "ratio": 4.81,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "canvas",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 9.59,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "panel",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 9.18,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "plot",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 9.08,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "elevated",
+          "tokenHex": "#7FC0FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 7.53,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "canvas",
+          "tokenHex": "#A3D3FF",
+          "surfaceHex": "#0A1421",
+          "ratio": 11.74,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "panel",
+          "tokenHex": "#A3D3FF",
+          "surfaceHex": "#0D1927",
+          "ratio": 11.24,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "plot",
+          "tokenHex": "#A3D3FF",
+          "surfaceHex": "#0E1A29",
+          "ratio": 11.11,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "elevated",
+          "tokenHex": "#A3D3FF",
+          "surfaceHex": "#152B3D",
+          "ratio": 9.22,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "canvas",
+          "tokenHex": "#5FAEF7",
+          "surfaceHex": "#0A1421",
+          "ratio": 7.83,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "panel",
+          "tokenHex": "#5FAEF7",
+          "surfaceHex": "#0D1927",
+          "ratio": 7.49,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "plot",
+          "tokenHex": "#5FAEF7",
+          "surfaceHex": "#0E1A29",
+          "ratio": 7.41,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "elevated",
+          "tokenHex": "#5FAEF7",
+          "surfaceHex": "#152B3D",
+          "ratio": 6.15,
           "required": 3,
           "satisfied": true
         }
@@ -840,6 +1011,152 @@
           "model": "Greyscale",
           "distance": 9.89,
           "required": 6,
+          "satisfied": true
+        }
+      ],
+      "statusSeparations": [
+        {
+          "first": "Caution",
+          "second": "Tcp fill",
+          "model": "Normal",
+          "distance": 106.24,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Tcp ink",
+          "model": "Normal",
+          "distance": 86.07,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Udp fill",
+          "model": "Normal",
+          "distance": 92.37,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Udp ink",
+          "model": "Normal",
+          "distance": 100.38,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Pipe fill",
+          "model": "Normal",
+          "distance": 87.07,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Pipe ink",
+          "model": "Normal",
+          "distance": 75.28,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "RemoteCall fill",
+          "model": "Normal",
+          "distance": 43.33,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "RemoteCall ink",
+          "model": "Normal",
+          "distance": 39.34,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Alpc fill",
+          "model": "Normal",
+          "distance": 91.53,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Alpc ink",
+          "model": "Normal",
+          "distance": 90.91,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "SharedSection fill",
+          "model": "Normal",
+          "distance": 62.7,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "SharedSection ink",
+          "model": "Normal",
+          "distance": 54.82,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "OtherSocket fill",
+          "model": "Normal",
+          "distance": 94.59,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "OtherSocket ink",
+          "model": "Normal",
+          "distance": 82.97,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "LegacyIpc fill",
+          "model": "Normal",
+          "distance": 84.54,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "LegacyIpc ink",
+          "model": "Normal",
+          "distance": 82.02,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "UnknownMechanism fill",
+          "model": "Normal",
+          "distance": 63.88,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "UnknownMechanism ink",
+          "model": "Normal",
+          "distance": 63.09,
+          "required": 18,
           "satisfied": true
         }
       ],
@@ -1279,6 +1596,69 @@
           "ratio": 6.44,
           "required": 4.5,
           "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "canvas",
+          "tokenHex": "#B42318",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 6.57,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "panel",
+          "tokenHex": "#B42318",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 6.13,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "plot",
+          "tokenHex": "#B42318",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 6.4,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "caution",
+          "surface": "elevated",
+          "tokenHex": "#B42318",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 5.58,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill",
+          "tokenHex": "#FFFFFF",
+          "surfaceHex": "#14549B",
+          "ratio": 7.58,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill hover",
+          "tokenHex": "#FFFFFF",
+          "surfaceHex": "#1D64B3",
+          "ratio": 5.96,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "action ink",
+          "surface": "action fill pressed",
+          "tokenHex": "#FFFFFF",
+          "surfaceHex": "#0E4078",
+          "ratio": 10.38,
+          "required": 4.5,
+          "satisfied": true
         }
       ],
       "fillContrast": [
@@ -1360,6 +1740,114 @@
           "tokenHex": "#404040",
           "surfaceHex": "#FBFCFD",
           "ratio": 10.09,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "canvas",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 7.58,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "panel",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 7.06,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "plot",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 7.38,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill",
+          "surface": "elevated",
+          "tokenHex": "#14549B",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 6.44,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "canvas",
+          "tokenHex": "#1D64B3",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 5.96,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "panel",
+          "tokenHex": "#1D64B3",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 5.55,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "plot",
+          "tokenHex": "#1D64B3",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 5.8,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill hover",
+          "surface": "elevated",
+          "tokenHex": "#1D64B3",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 5.06,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "canvas",
+          "tokenHex": "#0E4078",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 10.38,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "panel",
+          "tokenHex": "#0E4078",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 9.67,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "plot",
+          "tokenHex": "#0E4078",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 10.1,
+          "required": 3,
+          "satisfied": true
+        },
+        {
+          "token": "action fill pressed",
+          "surface": "elevated",
+          "tokenHex": "#0E4078",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 8.82,
           "required": 3,
           "satisfied": true
         }
@@ -1686,6 +2174,152 @@
           "satisfied": true
         }
       ],
+      "statusSeparations": [
+        {
+          "first": "Caution",
+          "second": "Tcp fill",
+          "model": "Normal",
+          "distance": 107,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Tcp ink",
+          "model": "Normal",
+          "distance": 99.27,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Udp fill",
+          "model": "Normal",
+          "distance": 95.63,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Udp ink",
+          "model": "Normal",
+          "distance": 91.76,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Pipe fill",
+          "model": "Normal",
+          "distance": 92.76,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Pipe ink",
+          "model": "Normal",
+          "distance": 91.97,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "RemoteCall fill",
+          "model": "Normal",
+          "distance": 45.53,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "RemoteCall ink",
+          "model": "Normal",
+          "distance": 47.94,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Alpc fill",
+          "model": "Normal",
+          "distance": 100.71,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Alpc ink",
+          "model": "Normal",
+          "distance": 99.47,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "SharedSection fill",
+          "model": "Normal",
+          "distance": 62.66,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "SharedSection ink",
+          "model": "Normal",
+          "distance": 60.84,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "OtherSocket fill",
+          "model": "Normal",
+          "distance": 100.82,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "OtherSocket ink",
+          "model": "Normal",
+          "distance": 100.1,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "LegacyIpc fill",
+          "model": "Normal",
+          "distance": 89.65,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "LegacyIpc ink",
+          "model": "Normal",
+          "distance": 90.43,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "UnknownMechanism fill",
+          "model": "Normal",
+          "distance": 71.93,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "UnknownMechanism ink",
+          "model": "Normal",
+          "distance": 72.54,
+          "required": 18,
+          "satisfied": true
+        }
+      ],
       "satisfied": true
     }
   ],
@@ -1695,6 +2329,8 @@
     "Adjacent families in normal vision: at least 18 CIE76",
     "Adjacent families under each simulated deficiency: at least 10 CIE76",
     "Adjacent families in greyscale: at least 6 CIELAB lightness",
+    "Caution ink against every family\u0027s fill and ink in normal vision: at least 18 CIE76",
+    "Action ink on the action fill in each state: at least 4.5 to 1; the fill against every surface: at least 3.0 to 1",
     "Hatches and warning patterns are reserved for coverage and quality; no family may use one.",
     "The unknown grey is never reused for a supported mechanism."
   ],

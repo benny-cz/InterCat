@@ -21,12 +21,16 @@ public sealed record SeparationResult(
     double Required,
     bool Satisfied);
 
-/// <summary>The verification of one theme mode.</summary>
+/// <summary>
+/// The verification of one theme mode. Status separations measure the caution ink against every family, since a
+/// warning must not read as a mechanism (§6.6).
+/// </summary>
 public sealed record ThemeModeReport(
     string Mode,
     IReadOnlyList<ContrastResult> InkContrast,
     IReadOnlyList<ContrastResult> FillContrast,
     IReadOnlyList<SeparationResult> Separations,
+    IReadOnlyList<SeparationResult> StatusSeparations,
     bool Satisfied);
 
 /// <summary>The complete theme verification, written beside the theme definition (§21.2 item 9).</summary>
@@ -63,6 +67,8 @@ public static class ThemeVerification
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families in normal vision: at least {ThemePalette.MinimumAdjacentDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families under each simulated deficiency: at least {ThemePalette.MinimumSimulatedDistance:F0} CIE76"),
                 string.Create(CultureInfo.InvariantCulture, $"Adjacent families in greyscale: at least {ThemePalette.MinimumGreyscaleLightness:F0} CIELAB lightness"),
+                string.Create(CultureInfo.InvariantCulture, $"Caution ink against every family's fill and ink in normal vision: at least {ThemePalette.MinimumStatusDistance:F0} CIE76"),
+                string.Create(CultureInfo.InvariantCulture, $"Action ink on the action fill in each state: at least {ThemePalette.MinimumInkContrast:F1} to 1; the fill against every surface: at least {ThemePalette.MinimumFillContrast:F1} to 1"),
                 "Hatches and warning patterns are reserved for coverage and quality; no family may use one.",
                 "The unknown grey is never reused for a supported mechanism.",
             ],
@@ -107,6 +113,53 @@ public static class ThemeVerification
         AddSurfaceInk(inkResults, "body ink", surfaces.Ink, surfaces, surfaceNames);
         AddSurfaceInk(inkResults, "muted ink", surfaces.MutedInk, surfaces, surfaceNames);
         AddSurfaceInk(inkResults, "accent", surfaces.Accent, surfaces, surfaceNames);
+
+        // The caution ink words warnings on any surface and strokes the hatch on the plot; the action ink is read on
+        // the action fill in every state it can be drawn in, and that fill must stand out from the surface under it.
+        StatusTokens status = ThemePalette.Status(mode);
+        AddSurfaceInk(inkResults, "caution", status.Caution, surfaces, surfaceNames);
+        foreach ((string name, Srgb fill) in status.ActionStates)
+        {
+            double ratio = ColorMath.ContrastRatio(status.ActionInk, fill);
+            inkResults.Add(new(
+                "action ink",
+                name,
+                status.ActionInk.ToHex(),
+                fill.ToHex(),
+                Math.Round(ratio, 2),
+                ThemePalette.MinimumInkContrast,
+                ratio >= ThemePalette.MinimumInkContrast));
+
+            for (int index = 0; index < surfaces.All.Count; index++)
+            {
+                double against = ColorMath.ContrastRatio(fill, surfaces.All[index]);
+                fillResults.Add(new(
+                    name,
+                    surfaceNames[index],
+                    fill.ToHex(),
+                    surfaces.All[index].ToHex(),
+                    Math.Round(against, 2),
+                    ThemePalette.MinimumFillContrast,
+                    against >= ThemePalette.MinimumFillContrast));
+            }
+        }
+
+        var statusSeparations = new List<SeparationResult>();
+        foreach (FamilyTokens family in families)
+        {
+            (string Variant, Srgb Token)[] variants = [("fill", family.Fill), ("ink", family.Ink)];
+            foreach ((string variant, Srgb token) in variants)
+            {
+                double distance = ColorMath.PerceptualDistance(status.Caution, token);
+                statusSeparations.Add(new(
+                    "Caution",
+                    $"{family.Family} {variant}",
+                    VisionModel.Normal.ToString(),
+                    Math.Round(distance, 2),
+                    ThemePalette.MinimumStatusDistance,
+                    distance >= ThemePalette.MinimumStatusDistance));
+            }
+        }
 
         var separations = new List<SeparationResult>();
         IReadOnlyList<MechanismFamily> order = ThemePalette.Order;
@@ -167,7 +220,12 @@ public static class ThemeVerification
             satisfied &= result.Satisfied;
         }
 
-        return new(mode.ToString(), inkResults, fillResults, separations, satisfied);
+        foreach (SeparationResult result in statusSeparations)
+        {
+            satisfied &= result.Satisfied;
+        }
+
+        return new(mode.ToString(), inkResults, fillResults, separations, statusSeparations, satisfied);
     }
 
     private static void AddSurfaceInk(

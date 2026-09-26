@@ -78,6 +78,51 @@ public sealed class ThemeContractTests
         }
     }
 
+    [Fact(DisplayName = "P24: the caution ink that strokes the coverage hatch and words a warning keeps its distance from every family's fill and ink")]
+    public void CautionIsNoFamilysHue()
+    {
+        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        {
+            ThemeModeReport report = ThemeVerification.VerifyMode(mode);
+
+            // Both variants of every family are measured, so a family added later cannot slip past the check.
+            Assert.Equal(ThemePalette.Families(mode).Count * 2, report.StatusSeparations.Count);
+            foreach (SeparationResult result in report.StatusSeparations)
+            {
+                Assert.True(
+                    result.Satisfied,
+                    $"{mode}: caution to {result.Second} measured {result.Distance:F1}, required {result.Required:F0}");
+            }
+
+            // And the caution ink is legible as words on every surface a warning can sit on.
+            Assert.Equal(4, report.InkContrast.Count(result => result.Token == "caution" && result.Satisfied));
+        }
+    }
+
+    [Fact(DisplayName = "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's")]
+    public void PrimaryActionIsLegibleInEveryState()
+    {
+        foreach (ThemeMode mode in (ThemeMode[])[ThemeMode.Dark, ThemeMode.Light])
+        {
+            ThemeModeReport report = ThemeVerification.VerifyMode(mode);
+            foreach ((string name, Srgb fill) in ThemePalette.Status(mode).ActionStates)
+            {
+                ContrastResult ink = Assert.Single(report.InkContrast,
+                    result => result.Token == "action ink" && result.Surface == name);
+                Assert.True(ink.Satisfied, $"{mode}: the action ink on the {name} measured {ink.Ratio:F2} to 1");
+
+                // The button's edge is its fill against whatever surface holds it.
+                ContrastResult[] edges = [.. report.FillContrast.Where(result => result.Token == name)];
+                Assert.Equal(4, edges.Length);
+                Assert.All(edges, edge => Assert.True(edge.Satisfied,
+                    $"{mode}: the {name} on {edge.Surface} measured {edge.Ratio:F2} to 1"));
+
+                // The primary action once wore the TCP fill with white text: 2.79 to 1 in the dark mode.
+                Assert.DoesNotContain(ThemePalette.Families(mode), family => family.Fill == fill || family.Ink == fill);
+            }
+        }
+    }
+
     [Fact(DisplayName = "P24: every mechanism resolves to exactly one family, and every family has a glyph")]
     public void EveryMechanismHasOneFamilyAndAGlyph()
     {
@@ -123,17 +168,35 @@ public sealed class ThemeContractTests
                     2);
             }
 
-            foreach (JsonElement entry in mode.GetProperty("separations").EnumerateArray())
+            foreach (JsonElement entry in mode.GetProperty("fillContrast").EnumerateArray())
             {
-                SeparationResult match = live.Separations.Single(candidate =>
-                    candidate.First == entry.GetProperty("first").GetString()
-                    && candidate.Second == entry.GetProperty("second").GetString()
-                    && candidate.Model == entry.GetProperty("model").GetString());
-                Assert.Equal(
-                    entry.GetProperty("distance").GetDouble(),
-                    match.Distance,
-                    2);
+                ContrastResult match = live.FillContrast.Single(candidate =>
+                    candidate.Token == entry.GetProperty("token").GetString()
+                    && candidate.Surface == entry.GetProperty("surface").GetString());
+                Assert.Equal(entry.GetProperty("ratio").GetDouble(), match.Ratio, 2);
             }
+
+            (string Property, IReadOnlyList<SeparationResult> Results)[] measured =
+                [("separations", live.Separations), ("statusSeparations", live.StatusSeparations)];
+            foreach ((string property, IReadOnlyList<SeparationResult> results) in measured)
+            {
+                JsonElement[] entries = [.. mode.GetProperty(property).EnumerateArray()];
+                Assert.Equal(results.Count, entries.Length);
+                foreach (JsonElement entry in entries)
+                {
+                    SeparationResult match = results.Single(candidate =>
+                        candidate.First == entry.GetProperty("first").GetString()
+                        && candidate.Second == entry.GetProperty("second").GetString()
+                        && candidate.Model == entry.GetProperty("model").GetString());
+                    Assert.Equal(
+                        entry.GetProperty("distance").GetDouble(),
+                        match.Distance,
+                        2);
+                }
+            }
+
+            Assert.Equal(live.InkContrast.Count, mode.GetProperty("inkContrast").GetArrayLength());
+            Assert.Equal(live.FillContrast.Count, mode.GetProperty("fillContrast").GetArrayLength());
         }
     }
 

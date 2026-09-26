@@ -39,6 +39,19 @@ public sealed record SurfaceTokens(Srgb Canvas, Srgb Panel, Srgb Plot, Srgb Elev
 }
 
 /// <summary>
+/// Tokens that state a condition or an action rather than a mechanism (§6.6). The caution ink strokes the coverage
+/// hatch and words a warning; the action fill, in its resting, pointer-over and pressed states, carries the primary
+/// action with the action ink on it. None may be a family's hue: a warning must never read as RPC, nor the primary
+/// action as TCP, so each is measured like any other token.
+/// </summary>
+public sealed record StatusTokens(Srgb Caution, Srgb ActionFill, Srgb ActionFillHover, Srgb ActionFillPressed, Srgb ActionInk)
+{
+    /// <summary>Every state the action fill can be drawn in, so the ink on it is measured on each.</summary>
+    public IReadOnlyList<(string Name, Srgb Fill)> ActionStates =>
+        [("action fill", ActionFill), ("action fill hover", ActionFillHover), ("action fill pressed", ActionFillPressed)];
+}
+
+/// <summary>
 /// The InterCat theme. Values are the contract: the thresholds below are enforced by tests, and the
 /// measured results are written beside the definition so a palette change that breaks one fails a build
 /// rather than a review (§6.6, §21.2 item 9).
@@ -46,7 +59,7 @@ public sealed record SurfaceTokens(Srgb Canvas, Srgb Panel, Srgb Plot, Srgb Elev
 public static class ThemePalette
 {
     /// <summary>Bumps when tokens, thresholds or measured results change (§24 themeVersion).</summary>
-    public const string ThemeVersion = "1.0.0";
+    public const string ThemeVersion = "1.1.0";
 
     /// <summary>Ink must clear this against every surface token it can land on.</summary>
     public const double MinimumInkContrast = 4.5;
@@ -62,6 +75,12 @@ public static class ThemePalette
 
     /// <summary>And this much CIELAB lightness difference, which is what survives greyscale.</summary>
     public const double MinimumGreyscaleLightness = 6.0;
+
+    /// <summary>
+    /// The caution ink keeps this CIE76 distance from every family's fill and ink in normal vision, so a hatch or a
+    /// warning is never read as a mechanism. Under a simulated deficiency the words and the hatch pattern carry it (R14).
+    /// </summary>
+    public const double MinimumStatusDistance = 18.0;
 
     /// <summary>Palette order. Adjacency is a contract because only neighbours are separation-tested.</summary>
     public static IReadOnlyList<MechanismFamily> Order { get; } =
@@ -94,6 +113,24 @@ public static class ThemePalette
             Accent: Srgb.Parse("#14549B"),
             Ink: Srgb.Parse("#101922"),
             MutedInk: Srgb.Parse("#455565"));
+
+    /// <summary>
+    /// The status tokens of one mode. The action fill shares the accent's value, the application's own voice, and the
+    /// action ink is the canvas it stands out from; the caution ink is a coral or vermilion no family uses.
+    /// </summary>
+    public static StatusTokens Status(ThemeMode mode) => mode == ThemeMode.Dark
+        ? new(
+            Caution: Srgb.Parse("#FF7A5C"),
+            ActionFill: Srgb.Parse("#7FC0FF"),
+            ActionFillHover: Srgb.Parse("#A3D3FF"),
+            ActionFillPressed: Srgb.Parse("#5FAEF7"),
+            ActionInk: Srgb.Parse("#0A1421"))
+        : new(
+            Caution: Srgb.Parse("#B42318"),
+            ActionFill: Srgb.Parse("#14549B"),
+            ActionFillHover: Srgb.Parse("#1D64B3"),
+            ActionFillPressed: Srgb.Parse("#0E4078"),
+            ActionInk: Srgb.Parse("#FFFFFF"));
 
     public static IReadOnlyList<FamilyTokens> Families(ThemeMode mode) =>
         mode == ThemeMode.Dark ? DarkFamilies : LightFamilies;

@@ -22,7 +22,6 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     private static Ink Current => Inks.TryGetValue(Mode, out Ink? ink) ? ink : Inks[Mode] = new Ink(Mode);
 
-    private static IBrush GapBrush => Current.GapBrush;
     private static IBrush SelectedBrush => Current.SelectedBrush;
     private static IBrush GridBrush => Current.GridBrush;
     private static IBrush TextBrush => Current.TextBrush;
@@ -39,7 +38,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         public Ink(ThemeMode mode)
         {
             SurfaceTokens surfaces = ThemePalette.Surfaces(mode);
-            GapBrush = Token(ThemePalette.TokensFor(mode, MechanismFamily.RemoteCall).Ink);
+            // The hatch is caution ink: a coverage defect must never read as a mechanism's hue (§6.6).
+            GapPen = new(Token(ThemePalette.Status(mode).Caution), 1);
             SelectedBrush = Token(surfaces.Accent);
             GridBrush = Token(surfaces.Elevated);
             TextBrush = Token(surfaces.MutedInk);
@@ -48,7 +48,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             HoverPen = new(Token(surfaces.Ink), 1.5);
         }
 
-        public IBrush GapBrush { get; }
+        public Pen GapPen { get; }
         public IBrush SelectedBrush { get; }
         public IBrush GridBrush { get; }
         public IBrush TextBrush { get; }
@@ -1205,10 +1205,10 @@ public sealed class TimelineView : Control, IHoverCardSource
     internal static void DrawCoverageGap(DrawingContext context, Rect cell)
     {
         const double spacing = 7;
-        context.DrawRectangle(Brushes.Transparent, new Pen(GapBrush, 1), cell);
+        Pen pen = Current.GapPen;
+        context.DrawRectangle(Brushes.Transparent, pen, cell);
         using (context.PushClip(cell))
         {
-            var pen = new Pen(GapBrush, 1);
             for (double offset = -cell.Height; offset < cell.Width; offset += spacing)
             {
                 context.DrawLine(

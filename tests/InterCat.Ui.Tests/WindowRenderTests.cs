@@ -82,8 +82,7 @@ public sealed class WindowRenderTests
         Assert.Empty(viewModel.Snapshot.Timeline);
         Assert.True(start.IsFocused);
         Assert.Equal("Ready to explore", window.GetControl<TextBlock>("CaptureStatus").Text);
-        Assert.Equal("Hatching = coverage gap or unknown · outline = unmeasured",
-            window.GetControl<TextBlock>("CoverageLegendText").Text);
+        Assert.Equal("Coverage gap or unknown", window.GetControl<TextBlock>("CoverageLegendText").Text);
         Assert.False(window.GetControl<Button>("ShowRecordsButton").IsEnabled);
         Assert.False(window.GetControl<Button>("BrowseChannelsButton").IsEnabled);
         Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
