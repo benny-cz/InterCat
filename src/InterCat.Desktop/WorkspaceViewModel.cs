@@ -3452,6 +3452,39 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Whether Ctrl+click has built a multi-selection.</summary>
     public bool HasMultiSelection => chosenProcesses.Count > 0;
 
+    /// <summary>
+    /// How much of what a ranked row stands for is in §6.7's multi-selection: a process row its process, a group row its
+    /// processes, all of them or only some. Channel and record rows stand for no process of their own and are in none.
+    /// </summary>
+    public SelectionShare ShareOf(RungRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (chosenProcesses.Count == 0 || IsEvidenceRung)
+        {
+            return SelectionShare.None;
+        }
+
+        if (TryResolveProcess(row.Key, out ProcessNode? process))
+        {
+            return chosenProcesses.Contains(process!.Id) ? SelectionShare.All : SelectionShare.None;
+        }
+
+        if (ladder.Current.Level != DetailLevel.Machine)
+        {
+            return SelectionShare.None;
+        }
+
+        int members = 0, chosen = 0;
+        foreach (ProcessNode member in wholeSnapshot.Processes)
+        {
+            if (!string.Equals(member.GroupKey, row.Key, StringComparison.Ordinal)) continue;
+            members++;
+            if (chosenProcesses.Contains(member.Id)) chosen++;
+        }
+
+        return chosen == 0 ? SelectionShare.None : chosen == members ? SelectionShare.All : SelectionShare.Some;
+    }
+
     /// <summary>§6.7's Ctrl+click on a drawn node: adds its processes to the multi-selection, or removes them.</summary>
     public void ToggleGraphNodeInSelection(string key)
     {

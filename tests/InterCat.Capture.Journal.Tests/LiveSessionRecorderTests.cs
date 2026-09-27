@@ -795,7 +795,11 @@ public sealed class LiveSessionRecorderTests
         using var directory = new TemporaryDirectory();
         var volume = new SimulatedVolume(directory.Path, budgetBytes: 512 * 1024);
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "disk-rollover-test");
-        ScriptedHost host = ManyRecords(10_000, pauseEvery: 500);
+
+        // The first pause holds delivery until a chunk has been published, so a rollover happens however loaded the machine
+        // is: a 30 ms sleep once left a 10 ms publisher no turn under a full parallel suite. The final publication is the
+        // second.
+        ScriptedHost host = ManyRecords(10_000, pauseEvery: 500, firstPauseUntil: () => store.Current is not null);
 
         LiveCaptureResult result = await LiveRecorder.RecordAsync(
             Plan(), host, store,
@@ -804,9 +808,12 @@ public sealed class LiveSessionRecorderTests
             publishEvery: TimeSpan.FromMilliseconds(10),
             diskFloor: volume.Floor);
 
-        Assert.True(result.DiskReserveReached);
-        Assert.True(result.Publications >= 2, $"only {result.Publications} publication(s)");
-        Assert.InRange(volume.Available, SimulatedVolume.FloorBytes, long.MaxValue);
+        // Each assertion states what the recording did, so a failure under a loaded machine says which bound gave way.
+        string state = $"reserve reached {result.DiskReserveReached} ({result.DiskReserveReason}), {result.Publications} publication(s), "
+            + $"{result.JournaledRecords} records journaled, {volume.Available:N0} bytes available, floor {SimulatedVolume.FloorBytes:N0}";
+        Assert.True(result.DiskReserveReached, state);
+        Assert.True(result.Publications >= 2, state);
+        Assert.True(volume.Available >= SimulatedVolume.FloorBytes, state);
         Assert.NotNull(CaptureFinalizationV1.Read(store.Root, store.Current!));
     }
 
@@ -871,7 +878,7 @@ public sealed class LiveSessionRecorderTests
             diskFloor: floor));
     }
 
-    private static ScriptedHost ManyRecords(int count, int pauseEvery)
+    private static ScriptedHost ManyRecords(int count, int pauseEvery, Func<bool>? firstPauseUntil = null)
     {
         var host = new ScriptedHost();
         long now = Stopwatch.GetTimestamp();
@@ -879,7 +886,14 @@ public sealed class LiveSessionRecorderTests
         {
             if (pauseEvery > 0 && index > 0 && index % pauseEvery == 0)
             {
-                host.Pause(TimeSpan.FromMilliseconds(30));
+                if (index == pauseEvery && firstPauseUntil is not null)
+                {
+                    host.PauseUntil(firstPauseUntil, TimeSpan.FromSeconds(10));
+                }
+                else
+                {
+                    host.Pause(TimeSpan.FromMilliseconds(30));
+                }
             }
 
             host.Admit(new AdmittedEvent

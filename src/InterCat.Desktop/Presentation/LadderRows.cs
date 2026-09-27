@@ -345,3 +345,16 @@ public static class LadderRowBuilder
         _ => "unknown coverage",
     };
 }
+
+/// <summary>How much of what a ranked row stands for is in §6.7's multi-selection.</summary>
+public enum SelectionShare
+{
+    /// <summary>None of it, or a row that stands for no process of its own.</summary>
+    None = 0,
+
+    /// <summary>Some of a group's processes.</summary>
+    Some = 1,
+
+    /// <summary>The row's process, or every process of its group.</summary>
+    All = 2,
+}

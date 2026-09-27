@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -134,6 +135,10 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             Presentation.AccessibleItems.Name(items);
         }
+
+        // A ranked row in §6.7's multi-selection is marked where it is drawn, and says so to a screen reader; the rows are
+        // not rebuilt, so the keyboard focus a Ctrl+Space set out from stays where it was.
+        RungList.ContainerPrepared += (_, prepared) => MarkSelectionShare(prepared.Container);
 
         Opened += (_, _) => StartExploringButton.Focus();
         SizeChanged += (_, change) => FollowRailWidth(change.NewSize.Width);
@@ -1839,6 +1844,35 @@ public sealed partial class MainWindow : Window, IDisposable
         };
     }
 
+    /// <summary>Marks every ranked row drawn now by its share of the multi-selection.</summary>
+    private void MarkSelectionShares()
+    {
+        foreach (Control container in RungList.GetRealizedContainers())
+        {
+            MarkSelectionShare(container);
+        }
+    }
+
+    /// <summary>
+    /// Marks one ranked row by its share of the multi-selection: an accent bar at its edge, lighter for a group only some
+    /// of whose processes are in it, and an item status a screen reader announces with the row.
+    /// </summary>
+    private void MarkSelectionShare(Control container)
+    {
+        SelectionShare share = RungList.ItemFromContainer(container) is RungRow row ? workspace.ShareOf(row) : SelectionShare.None;
+        container.Classes.Set("chosen", share == SelectionShare.All);
+        container.Classes.Set("chosenPart", share == SelectionShare.Some);
+        if (share == SelectionShare.None)
+        {
+            container.ClearValue(AutomationProperties.ItemStatusProperty);
+        }
+        else
+        {
+            AutomationProperties.SetItemStatus(container,
+                share == SelectionShare.All ? "in the selection" : "partly in the selection");
+        }
+    }
+
     private void OnWorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs eventArgs)
     {
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ShowsMechanismLanes)
@@ -1854,6 +1888,10 @@ public sealed partial class MainWindow : Window, IDisposable
             or nameof(WorkspaceViewModel.ShowsProcessLanes))
         {
             Dispatcher.UIThread.Post(TimelineSurface.BringSelectedProcessLaneIntoView);
+        }
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection))
+        {
+            MarkSelectionShares();
         }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();

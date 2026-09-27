@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 204 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 205 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 205 — the multi-selection is marked in the ranked table (§6.7):**
+  - A row in the set (a process, or every process of a group) has an accent bar at its edge; a group only partly in it a
+    thinner one; a screen reader hears "in the selection" / "partly in the selection" (`WorkspaceViewModel.ShareOf`).
+  - Marked on the drawn rows, never by rebuilding them, so keyboard focus stays through Ctrl+Space.
+  - A disk-floor recorder test that flaked once under full-suite load now waits on a publication instead of a sleep.
 
 - **Revision 204 — metric queries reuse the session's derivation (§12.1 S1):**
   - `SessionMetrics.Evaluate` takes a caller's derivation of the generation (`MetricDerivations`) and uses it only for the
@@ -1869,7 +1875,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
-     - marking the set's rows in the ranked table itself, where today its members show in the graph and inspector.
+     - (done in revision 205: the set's rows are marked in the ranked table itself.)
      Indexed/progressive search belongs to the later M4 scale gate.
    - §6.2's minimum drawn width (5 px) and pointer snapping belong with the density regime, where a column is one
      device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
@@ -1897,6 +1903,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 205 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,289 tests: 1,285
+  passed, 4 skipped**, zero failures. `R16: live chunk rollover under a free-disk floor` failed once in revision 204's
+  clean-worktree run under heavy load and passed on rerun; its fixture now waits for a publication rather than sleeping
+  30 ms, and its assertions print the recording's state.
 - Revision 204 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,288 tests: 1,284
   passed, 4 skipped**, zero failures. Timings on a generated 1M-row session, Release CLI, this workstation.
 - Revision 203 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,287 tests: 1,283

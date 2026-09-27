@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -51,11 +52,19 @@ public sealed class MultiSelectionTests
         Dispatch();
         Assert.Equal(31 + 31, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
         Assert.Contains("selection highlighted: 2 selected processes", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // The chosen rows are marked where they are drawn, and say so to a screen reader; the third is not.
+        int third = Enumerable.Range(0, workspace.RungRows.Count).Single(index => index != client && index != server);
+        Assert.Equal([true, true, false], new[] { client, server, third }.Select(index => list.ContainerFromIndex(index)!.Classes.Contains("chosen")));
+        Assert.Equal("in the selection", AutomationProperties.GetItemStatus(list.ContainerFromIndex(client)!));
+        Assert.Null(AutomationProperties.GetItemStatus(list.ContainerFromIndex(third)!));
         Save(window, "multi-selection.png");
 
-        // Ctrl+click on a chosen row takes it out again.
+        // Ctrl+click on a chosen row takes it out again, and its mark with it.
         CtrlClick(window, list, client);
         Assert.Equal([200], workspace.ChosenProcesses.Select(process => process.ProcessId));
+        Assert.DoesNotContain("chosen", list.ContainerFromIndex(client)!.Classes);
+        Assert.Null(AutomationProperties.GetItemStatus(list.ContainerFromIndex(client)!));
 
         // From the keyboard, Ctrl+Down moves the focus without selecting, and Ctrl+Space adds the focused row.
         Assert.True(list.ContainerFromIndex(0)!.Focus());

@@ -149,6 +149,18 @@
                    IsVisible="{Binding ShowsRankedTable}"
                    DoubleTapped="DescendFromRow"
                    AutomationProperties.Name="Ranked table for the current level">
+            <!-- §6.7: a row in the multi-selection carries an accent bar at its edge, a group only partly in it a thinner
+                 one; the code-behind sets the classes and the item status a screen reader hears. -->
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem.chosen">
+                <Setter Property="BorderBrush" Value="{DynamicResource Ink.Accent}" />
+                <Setter Property="BorderThickness" Value="4,0,0,0" />
+              </Style>
+              <Style Selector="ListBoxItem.chosenPart">
+                <Setter Property="BorderBrush" Value="{DynamicResource Ink.Accent}" />
+                <Setter Property="BorderThickness" Value="2,0,0,0" />
+              </Style>
+            </ListBox.Styles>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:RungRow">
                 <!-- The name has the rail's width less the count; its detail and coverage share the line beneath. -->

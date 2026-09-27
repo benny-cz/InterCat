@@ -356,6 +356,32 @@ public sealed class RankingSelectorTests
         Assert.Contains("\"rankedBy\": \"active-peers\"", desktop.Content, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.7: a ranked row says how much of what it stands for the multi-selection holds: all, some or none")]
+    public void RowsStateTheirShareOfTheSelection() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Hub());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        ProcessNode[] clients = [.. workspace.Snapshot.Processes.Where(node => node.ProcessId is 200 or 201).OrderBy(node => node.ProcessId)];
+        RungRow group = workspace.RungRows.Single(row => row.Key == clients[0].GroupKey);
+        RungRow hub = workspace.RungRows.Single(row => row.Label == "hub.exe");
+        Assert.Equal(SelectionShare.None, workspace.ShareOf(group));
+
+        // One of client.exe's two instances, chosen from the graph: its group's row holds some of the selection.
+        string first = workspace.GraphDisplay.Nodes.Single(node => node.Members.SequenceEqual([clients[0].Id])).Key;
+        workspace.ToggleGraphNodeInSelection(first);
+        Assert.Equal((SelectionShare.Some, SelectionShare.None), (workspace.ShareOf(group), workspace.ShareOf(hub)));
+
+        // Both instances: the whole group.
+        workspace.ToggleGraphNodeInSelection(workspace.GraphDisplay.Nodes.Single(node => node.Members.SequenceEqual([clients[1].Id])).Key);
+        Assert.Equal(SelectionShare.All, workspace.ShareOf(group));
+
+        // A plain selection ends the set, and with it every row's share.
+        workspace.SelectProcess(clients[0].Id);
+        Assert.Equal(SelectionShare.None, workspace.ShareOf(group));
+    });
+
     /// <summary>
     /// hub.exe talks to three clients over paired TCP: two instances of client.exe and one of other.exe; lone.exe's one
     /// send reached no process the capture can name.
