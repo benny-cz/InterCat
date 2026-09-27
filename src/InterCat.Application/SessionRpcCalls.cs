@@ -239,9 +239,15 @@ public static class SessionRpcCalls
     /// The RPC channels of one process instance, each one side's calls to one interface, bound as strongly as
     /// <paramref name="policy"/> admits.
     /// </summary>
+    /// <remarks>
+    /// Within <paramref name="interval"/>, in 100-nanosecond presentation ticks, a channel counts the calls the interval
+    /// holds by the record that counts each (<see cref="CountedWithin"/>), and its call records by their own reading; a
+    /// channel with no call in it stays, counting none, as a paired channel does.
+    /// </remarks>
     public static RpcChannelList Channels(
         SessionStore store,
         ProcessInstanceId instance,
+        TimeRange? interval = null,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
@@ -254,24 +260,46 @@ public static class SessionRpcCalls
             return new(manifest.SessionId, manifest.Generation, []);
         }
 
+        TimeRange? native = Native(store, manifest, interval);
         return new(manifest.SessionId, manifest.Generation,
         [
             .. calls.Groups
                 .Where(group => group.Process.IsAdmittedUnder(policy) && calls.Processes.Instances[group.Process.Instance].Id == instance)
-                .Select(group => Summary(calls, group, instance))
+                .Select(group => interval is null ? Summary(calls, group, instance) : ScopedSummary(calls, group, instance, native))
                 .OrderByDescending(channel => channel.Records)
                 .ThenBy(channel => channel.Key, StringComparer.Ordinal),
         ]);
     }
 
     /// <summary>
+    /// Whether a call is in <paramref name="native"/> by the record that counts it (`metrics-v1` §8a): a completed call and
+    /// a stop whose start is not in the evidence by the stop, a call open at capture end by its start, and a record that
+    /// pairs with nothing by itself. Every call is so in exactly one place in time.
+    /// </summary>
+    public static bool CountedWithin(RpcCallOutcome call, TimeRange native)
+    {
+        RpcCallMark? counted = call.State switch
+        {
+            RpcCallState.Completed or RpcCallState.StartNotObserved => call.Stop,
+            RpcCallState.OpenAtCaptureEnd => call.Start,
+            _ => call.Stop ?? call.Start,
+        };
+        return counted is { } mark && native.Contains(mark.NativeTicks);
+    }
+
+    /// <summary>
     /// One channel's calls in reading order, from <paramref name="offset"/>, at most <paramref name="pageSize"/> of them.
     /// </summary>
+    /// <remarks>
+    /// Within <paramref name="interval"/>, in 100-nanosecond presentation ticks, the page holds only the calls the interval
+    /// holds by the record that counts each, in the same order, so the channel's count and its rows agree.
+    /// </remarks>
     public static RpcCallPage Calls(
         SessionStore store,
         string channelKey,
         int offset = 0,
         int pageSize = DefaultPageSize,
+        TimeRange? interval = null,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
@@ -295,6 +323,24 @@ public static class SessionRpcCalls
         }
 
         SegmentReaderV1[] segments = Segments(store, manifest, calls);
+        if (interval is not null)
+        {
+            TimeRange? native = Native(store, manifest, interval);
+            int[] held = native is { } range
+                ? [.. calls.OutcomesOf(group).Select((call, position) => (call, position))
+                    .Where(entry => CountedWithin(entry.call, range)).Select(entry => entry.position)]
+                : [];
+            IReadOnlyList<RpcCall> scoped = calls.CallsAt(group, segments, [.. held.Skip(offset).Take(pageSize)]);
+            return new(
+                manifest.SessionId,
+                manifest.Generation,
+                ScopedSummary(calls, group, instance, native),
+                offset,
+                [.. scoped.Select(call => new RpcCallRow(CallKey(channelKey, call), call))],
+                (long)offset + scoped.Count < held.Length,
+                null);
+        }
+
         IReadOnlyList<RpcCall> page = calls.CallsOf(group, segments, offset, pageSize);
         return new(
             manifest.SessionId,
@@ -357,6 +403,72 @@ public static class SessionRpcCalls
 
         return [.. calls.RecordsOf(group, position).Select(record => (calls.SegmentNames[record.Segment] ?? string.Empty, record.Row))];
     }
+
+    /// <summary>
+    /// A channel's summary within an interval: the calls it holds by the record that counts each, their durations when
+    /// completed, and the call records read within it. An interval no reading falls in holds none of either.
+    /// </summary>
+    private static RpcChannelSummary ScopedSummary(RpcCallIndex calls, RpcCallGroup group, ProcessInstanceId instance, TimeRange? native)
+    {
+        long all = 0, started = 0, completed = 0, failed = 0, open = 0, notObserved = 0, noActivity = 0, ambiguous = 0, records = 0;
+        var durations = new List<long>();
+        using IEnumerator<RpcCallSpan> spans = calls.SpansOf(group).GetEnumerator();
+        foreach (RpcCallOutcome call in calls.OutcomesOf(group))
+        {
+            spans.MoveNext();
+            if (native is not { } range) continue;
+            records += (call.Start is { } start && range.Contains(start.NativeTicks) ? 1 : 0)
+                + (call.Stop is { } stop && range.Contains(stop.NativeTicks) ? 1 : 0);
+            if (!CountedWithin(call, range)) continue;
+            all++;
+            started += call.Start is null ? 0 : 1;
+            switch (call.State)
+            {
+                case RpcCallState.Completed:
+                    completed++;
+                    failed += call.Status is { } status && status != 0 ? 1 : 0;
+                    if (spans.Current is { StartNanoseconds: { } from, StopNanoseconds: { } to }) durations.Add(to - from);
+                    break;
+                case RpcCallState.OpenAtCaptureEnd:
+                    open++;
+                    break;
+                case RpcCallState.StartNotObserved:
+                    notObserved++;
+                    break;
+                case RpcCallState.NoActivityId:
+                    noActivity++;
+                    break;
+                default:
+                    ambiguous++;
+                    break;
+            }
+        }
+
+        return new(
+            RpcChannelKeys.Channel(instance, group.Side, group.Interface),
+            instance,
+            group.Side,
+            group.Interface,
+            new RpcCallCounts
+            {
+                Calls = all,
+                Started = started,
+                Completed = completed,
+                Failed = failed,
+                OpenAtCaptureEnd = open,
+                StartNotObserved = notObserved,
+                NoActivityId = noActivity,
+                Ambiguous = ambiguous,
+            },
+            RpcCallDurations.Of(durations),
+            records);
+    }
+
+    /// <summary>A presentation interval on the generation's source clock; null when it names none or no reading can fall in it.</summary>
+    private static TimeRange? Native(SessionStore store, SessionManifestV1 manifest, TimeRange? interval) =>
+        interval is { } presentation && SessionSegments.SourceClock(store.Root, manifest) is { } clock
+            ? RankingScope.NativeInterval(clock, presentation)
+            : null;
 
     private static RpcChannelSummary Summary(RpcCallIndex calls, RpcCallGroup group, ProcessInstanceId instance) => new(
         RpcChannelKeys.Channel(instance, group.Side, group.Interface),

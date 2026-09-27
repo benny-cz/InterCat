@@ -99,6 +99,13 @@ failed calls are this contract's, so a metric, `icat operations` and the ladder 
 calls over the whole capture. A call counted in one interval is outside every other, and a stop with no start is stated
 with its state and status rather than counted (ADR-032).
 
+Revision 193: a reader answers an interval the same way. Within one, a channel holds the calls the interval holds by
+the record that counts each - a completed call and a stop with no start by the stop, a call open at capture end by its
+start, a record that pairs with nothing by itself - so every call is in exactly one place in time. Its failures,
+unpaired stops and durations are those calls', its call records are the ones read within the interval, and its page
+lists exactly those calls in the same order. A channel holding no call in the interval is still listed, counting none,
+as a paired channel is. An interval holding every reading answers exactly as the whole capture does.
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as

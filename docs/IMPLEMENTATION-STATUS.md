@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 192 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 193 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 193 — RPC channels and calls answer the rung's scope:**
+  - **Found:** under a brush or a zoomed view a process's paired channels counted the interval while its RPC channels
+    still counted the whole capture, unlabelled, and a process with no call in the brush lost its RPC rows (M2's
+    all-panes-agree gate).
+  - **Fixed:** `SessionRpcCalls.Channels` and `Calls` take the interval; a channel holds the calls the interval holds by
+    the record that counts each (`operations-v1` §5b, the operations metric's rule), with their failures, unpaired stops,
+    durations and the call records read within it, and the channel's rung lists exactly those calls. A channel with none
+    stays at zero; an interval holding every reading answers exactly as the whole capture (tested).
+  - **Desktop:** the process and channel rungs re-read their RPC rows when the scope changes, keeping the previous rows
+    until the new ones arrive; whether a process has RPC channels at all is decided from the whole session.
 
 - **Revision 192 — a process's channels rank by its own bytes on each:**
   - **The read:** the byte ranking's pass also sums each end of every drawn channel (admitted paired TCP): the records
@@ -1783,6 +1794,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 193 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,268 tests: 1,264
+  passed, 4 skipped**, zero failures.
 - Revision 192 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,266 tests: 1,262
   passed, 4 skipped**, zero failures. The 15-second TCP recording was made with `icat record` from the elevated shell
   into scratch and deleted afterwards; keys went to the InterCat window only.

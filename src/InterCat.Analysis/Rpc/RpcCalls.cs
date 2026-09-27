@@ -104,7 +104,15 @@ public sealed record RpcCallCounts
 /// The durations of a group's completed calls: each is a duration one of them took, by nearest rank, never an
 /// interpolation (`contracts/operations-v1.md` §5).
 /// </summary>
-public sealed record RpcCallDurations(long Count, long Minimum, long Median, long Percentile95, long Maximum);
+public sealed record RpcCallDurations(long Count, long Minimum, long Median, long Percentile95, long Maximum)
+{
+    /// <summary>The distribution of these durations by nearest rank, as a group's is taken; null when there are none.</summary>
+    public static RpcCallDurations? Of(IEnumerable<long> durations)
+    {
+        ArgumentNullException.ThrowIfNull(durations);
+        return RpcCallIndex.Distribution([.. durations]);
+    }
+}
 
 /// <summary>
 /// One call as a timeline draws it: when its records were read, in session nanoseconds, how it ended, and the first
@@ -285,6 +293,45 @@ public sealed class RpcCallIndex
     }
 
     /// <summary>
+    /// The calls of <paramref name="group"/> in reading order, as a count reads them: what <see cref="Outcomes"/> yields
+    /// for this group alone, position by position.
+    /// </summary>
+    public IEnumerable<RpcCallOutcome> OutcomesOf(RpcCallGroup group)
+    {
+        RequireGroup(group);
+        for (int index = group.First; index < group.First + group.Counts.Calls; index++)
+        {
+            Entry entry = entries[index];
+            yield return new(
+                entry.Process,
+                entry.Side,
+                entry.State,
+                entry.HasStatus ? entry.Status : null,
+                entry.StartSegment >= 0 ? new RpcCallMark(entry.StartTicks, entry.StartSegment, entry.StartRow) : null,
+                entry.StopSegment >= 0 ? new RpcCallMark(entry.StopTicks, entry.StopSegment, entry.StopRow) : null);
+        }
+    }
+
+    /// <summary>
+    /// The calls of <paramref name="group"/> at these positions in its reading order, described from
+    /// <paramref name="segments"/> as <see cref="CallsOf"/> describes them: a page of the calls a scope selects.
+    /// </summary>
+    public IReadOnlyList<RpcCall> CallsAt(RpcCallGroup group, IReadOnlyList<SegmentReaderV1> segments, IReadOnlyList<int> positions)
+    {
+        ArgumentNullException.ThrowIfNull(positions);
+        RequireSegments(group, segments);
+        var calls = new List<RpcCall>(positions.Count);
+        foreach (int position in positions)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(position);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(position, group.Counts.Calls);
+            calls.Add(Describe(entries[group.First + position], segments));
+        }
+
+        return calls;
+    }
+
+    /// <summary>
     /// Every call, group by group, each group's in reading order: what a count of operations reads, with no segment
     /// read. A record's segment is a position in <see cref="SegmentNames"/>.
     /// </summary>
@@ -343,6 +390,18 @@ public sealed class RpcCallIndex
         if (!Groups.Contains(group))
         {
             throw new ArgumentException("The group is not one of this index's.", nameof(group));
+        }
+    }
+
+    /// <summary>A call is described from the segments it was paired from, in the same order, and no others.</summary>
+    private void RequireSegments(RpcCallGroup group, IReadOnlyList<SegmentReaderV1> segments)
+    {
+        RequireGroup(group);
+        ArgumentNullException.ThrowIfNull(segments);
+        if (segments.Count != segmentNames.Length
+            || segments.Select(segment => segment.Published?.Name).Where((name, position) => name != segmentNames[position]).Any())
+        {
+            throw new ArgumentException("These are not the segments the calls were derived from.", nameof(segments));
         }
     }
 
@@ -411,17 +470,9 @@ public sealed class RpcCallIndex
     /// </summary>
     public IReadOnlyList<RpcCall> CallsOf(RpcCallGroup group, IReadOnlyList<SegmentReaderV1> segments, int offset, int limit)
     {
-        ArgumentNullException.ThrowIfNull(group);
-        ArgumentNullException.ThrowIfNull(segments);
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
-        RequireGroup(group);
-        if (segments.Count != segmentNames.Length
-            || segments.Select(segment => segment.Published?.Name).Where((name, position) => name != segmentNames[position]).Any())
-        {
-            throw new ArgumentException("These are not the segments the calls were derived from.", nameof(segments));
-        }
-
+        RequireSegments(group, segments);
         int from = group.First + (int)Math.Min(offset, group.Counts.Calls);
         int to = group.First + (int)Math.Min((long)offset + limit, group.Counts.Calls);
         var calls = new List<RpcCall>(Math.Max(0, to - from));
@@ -972,7 +1023,7 @@ public sealed class RpcCallIndex
             .ThenBy(group => group.Interface)], totals.Counts());
     }
 
-    private static RpcCallDurations? Distribution(List<long> durations)
+    internal static RpcCallDurations? Distribution(List<long> durations)
     {
         if (durations.Count == 0)
         {

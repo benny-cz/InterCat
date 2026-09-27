@@ -237,6 +237,58 @@ public sealed class SessionRpcCallsTests
     /// A client, PID 400, calls the Service Control Manager three times - one call failing - and an unnamed interface once,
     /// never answered; the service host, PID 1960, raised the served side of the first three.
     /// </summary>
+    [Fact(DisplayName = "§6.4: within an interval a process's RPC channels count the calls it holds by the record that counts each")]
+    public void ChannelsCountTheCallsAnIntervalHolds()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        (ProcessInstanceId client, ProcessInstanceId host) = Instances(session.Store);
+        string scm = RpcChannelKeys.Channel(client, RpcCallSide.Client, ServiceControl);
+        string unnamed = RpcChannelKeys.Channel(client, RpcCallSide.Client, Unnamed);
+
+        // [110, 250) holds the first two calls' stops, so both complete in it; the first call's start is before it, so
+        // three of the channel's call records are read in it. The open call's start is later: its channel counts none.
+        var early = new TimeRange(110, 250);
+        Dictionary<string, RpcChannelSummary> within = SessionRpcCalls.Channels(session.Store, client, early).Channels
+            .ToDictionary(channel => channel.Key);
+        Assert.Equal((2L, 2L, 0L, 3L), (within[scm].Counts.Calls, within[scm].Counts.Completed, within[scm].Counts.Failed, within[scm].Records));
+        Assert.Equal("2 calls · median 1.0 µs", within[scm].Outcome(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal((0L, 0L), (within[unnamed].Counts.Calls, within[unnamed].Records));
+
+        // Its page lists exactly those calls, in reading order.
+        RpcCallPage page = SessionRpcCalls.Calls(session.Store, scm, interval: early);
+        Assert.Equal([100L, 200L], page.Calls.Select(row => row.Call.Start!.NativeTicks));
+        Assert.False(page.More);
+        Assert.Equal(2L, page.Channel!.Counts.Calls);
+        RpcCallPage paged = SessionRpcCalls.Calls(session.Store, scm, 0, 1, early);
+        Assert.True(paged.More);
+        Assert.Equal([200L], SessionRpcCalls.Calls(session.Store, scm, 1, 1, early).Calls.Select(row => row.Call.Start!.NativeTicks));
+
+        // [250, 500) holds the failed call's stop and the open call's start.
+        Dictionary<string, RpcChannelSummary> late = SessionRpcCalls.Channels(session.Store, client, new TimeRange(250, 500)).Channels
+            .ToDictionary(channel => channel.Key);
+        Assert.Equal((1L, 1L), (late[scm].Counts.Calls, late[scm].Counts.Failed));
+        Assert.Equal((1L, 1L), (late[unnamed].Counts.Calls, late[unnamed].Counts.OpenAtCaptureEnd));
+
+        // The operations metric counts the same completed calls for the same interval (§8a).
+        MetricResult completed = SessionMetrics.Evaluate(session.Store, new MetricRequest
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            Metric = Metric.OperationsCompleted,
+            Owner = client,
+            Interval = early,
+        });
+        Assert.Equal(completed.Value, within.Values.Sum(channel => channel.Counts.Completed));
+
+        // An interval holding every reading is the whole session, channel by channel, for either process.
+        foreach (ProcessInstanceId instance in new[] { client, host })
+        {
+            Assert.Equal(
+                SessionRpcCalls.Channels(session.Store, instance).Channels,
+                SessionRpcCalls.Channels(session.Store, instance, new TimeRange(0, 10_000)).Channels);
+        }
+    }
+
     private static ObservationRowV1[] Calls() =>
     [
         Lifecycle(1, ObservationKind.Create, 400, 1),

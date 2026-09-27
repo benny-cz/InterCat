@@ -4237,13 +4237,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             string key = ladder.Current.Focus?.Key ?? string.Empty;
             CancelRpcChannels();
-            if (rpcCalls is { } current && current.ChannelKey == key)
+            if (rpcCalls is { } current && current.ChannelKey == key && current.Scope == CountedScope)
             {
                 return;
             }
 
             CancelRpcCalls();
-            var calls = new RpcCallsLoad(key);
+            var calls = new RpcCallsLoad(key, CountedScope);
             rpcCalls = calls;
             RpcReady = LoadRpcCallsAsync(calls);
             RequestRpcSpans(drawnTimeline?.Viewport ?? ladder.Current.Viewport);
@@ -4252,25 +4252,54 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         CancelRpcCalls();
         RequestRpcSpans(ladder.Current.Viewport);
+        // Whether the process has RPC channels at all is the whole session's fact: a brush in which it made no call keeps
+        // its channels, counting none, as its paired channels do.
         if (evidenceSource is not null
             && ladder.Current.Level == DetailLevel.ProcessInstance
             && ladder.Current.Focus is { } focus
-            && Snapshot.Processes.FirstOrDefault(process => process.Id.ToString() == focus.Key) is { } process
+            && wholeSnapshot.Processes.FirstOrDefault(process => process.Id.ToString() == focus.Key) is { } process
             && process.Activity.Any(count => count.Mechanism == Mechanism.Rpc && count.Records > 0))
         {
-            if (rpcChannels is { } known && known.Instance == process.Id)
+            if (rpcChannels is { } known && known.Instance == process.Id && known.Scope == CountedScope)
             {
                 return;
             }
 
+            // The previous scope's rows stay on screen until this scope's are read, rather than blinking empty (§6.4).
+            IReadOnlyList<RpcChannelSummary> previous = rpcChannels is { } shown && shown.Instance == process.Id ? shown.Channels : [];
             CancelRpcChannels();
-            var channels = new RpcChannelsLoad(process.Id);
+            var channels = new RpcChannelsLoad(process.Id, CountedScope) { Channels = previous };
             rpcChannels = channels;
+            RebuildRpcRows();
             RpcReady = LoadRpcChannelsAsync(channels);
             return;
         }
 
         CancelRpcChannels();
+    }
+
+    /// <summary>
+    /// Re-reads a process's RPC channels, or a channel's calls, when the scope the rung counts changed - a brush or the
+    /// visible range - so they count what the rows beside them count (§6.4). The previous scope's rows stay on screen until
+    /// the new scope's first page replaces them.
+    /// </summary>
+    private void SyncRpcScope()
+    {
+        if (IsRpcChannelRung && rpcCalls is { } calls && calls.Scope != CountedScope)
+        {
+            var reload = new RpcCallsLoad(calls.ChannelKey, CountedScope) { Channel = calls.Channel, ReplaceOnFirstPage = true };
+            reload.Calls.AddRange(calls.Calls);
+            calls.Cancellation.Cancel();
+            calls.Cancellation.Dispose();
+            rpcCalls = reload;
+            RebuildRpcRows();
+            RpcReady = LoadRpcCallsAsync(reload);
+        }
+        else if (!IsRpcChannelRung && ladder.Current.Level == DetailLevel.ProcessInstance
+            && rpcChannels is { } channels && channels.Scope != CountedScope)
+        {
+            SyncRpc();
+        }
     }
 
     private async Task LoadRpcChannelsAsync(RpcChannelsLoad load)
@@ -4279,7 +4308,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRpcChanged();
         try
         {
-            RpcChannelList list = await evidenceSource!.RpcChannelsAsync(load.Instance, load.Cancellation.Token);
+            RpcChannelList list = await evidenceSource!.RpcChannelsAsync(load.Instance, load.Scope, load.Cancellation.Token);
             if (disposed || !ReferenceEquals(rpcChannels, load)) return;
             load.Channels = list.Channels;
         }
@@ -4307,7 +4336,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRpcChanged();
         try
         {
-            RpcCallPage page = await evidenceSource!.RpcCallsAsync(load.ChannelKey, load.Calls.Count, load.Cancellation.Token);
+            int offset = load.ReplaceOnFirstPage ? 0 : load.Calls.Count;
+            RpcCallPage page = await evidenceSource!.RpcCallsAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token);
             if (disposed || !ReferenceEquals(rpcCalls, load)) return;
             if (page.Problem is not null)
             {
@@ -4317,6 +4347,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             else
             {
                 load.Channel = page.Channel;
+                if (load.ReplaceOnFirstPage)
+                {
+                    load.Calls.Clear();
+                    load.ReplaceOnFirstPage = false;
+                }
+
                 load.Calls.AddRange(page.Calls);
                 load.More = page.More;
             }
@@ -4468,9 +4504,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>One process's RPC channels as read for its rung.</summary>
-    private sealed class RpcChannelsLoad(ProcessInstanceId instance)
+    private sealed class RpcChannelsLoad(ProcessInstanceId instance, TimeRange? scope)
     {
         public ProcessInstanceId Instance { get; } = instance;
+
+        /// <summary>The interval the channels count, or the whole session (null): the scope the rung's rows count.</summary>
+        public TimeRange? Scope { get; } = scope;
 
         public IReadOnlyList<RpcChannelSummary> Channels { get; set; } = [];
 
@@ -4482,9 +4521,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>One RPC channel's calls as read for its rung, a page at a time.</summary>
-    private sealed class RpcCallsLoad(string channelKey)
+    private sealed class RpcCallsLoad(string channelKey, TimeRange? scope)
     {
         public string ChannelKey { get; } = channelKey;
+
+        /// <summary>The interval the calls are listed in, or the whole session (null).</summary>
+        public TimeRange? Scope { get; } = scope;
+
+        /// <summary>Whether the calls shown are the previous scope's, which this scope's first page replaces.</summary>
+        public bool ReplaceOnFirstPage { get; set; }
 
         public RpcChannelSummary? Channel { get; set; }
 
@@ -4649,9 +4694,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(EvidenceSummary));
 
-        // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts.
+        // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a
+        // process's RPC channels and a channel's calls.
         RaiseRankingChanged();
         RankingReady = FollowRankedMeasuresAsync();
+        SyncRpcScope();
     }
 
     /// <summary>
