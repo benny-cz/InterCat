@@ -56,6 +56,16 @@ three times 600 truth calls, gave 1,002 and 3,002 client calls each:
 - A lab tool now creates a system logger. It is elevated, owned and uniquely named like the capture-comparison harness's
   ETL sessions, and it writes counters only.
 
+## Addendum: what collecting ALPC costs (revision 188)
+
+`InterCat.AlpcProbe --impact` ran the RPC workload in seven alternating pairs, with and without the probe's system logger
+collecting the ALPC flag group and a consumer only counting its events (`bench/results/alpc-impact-20260927T171439Z`).
+The median cost was 1.86 CPU percentage points at about 1,160 ALPC events a second, with no event lost and no change in
+the paced workload's time. That is collection alone, a lower bound on a capture that admits and stores the records, and
+it is already Moderate (§12: above 1 point, at most 5). A second series ran while other work loaded the machine, 40 to
+98% busy with or without the session, and decides nothing. So ALPC cannot join Explore, which admits sources measured
+Low; when a capture admits it, it is an opt-in profile for resolving RPC peers, with its own measured class.
+
 ## Alternatives considered
 
 - **Pair a client call and a server call by interface, procedure and time.** Rejected: a peer guessed from timing (P7),

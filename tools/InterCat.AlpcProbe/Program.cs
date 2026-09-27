@@ -55,6 +55,20 @@ internal static class Program
             return 2;
         }
 
+        if (args.Contains("--impact"))
+        {
+            int pairs = int.Parse(Option(args, "--pairs") ?? "5", CultureInfo.InvariantCulture);
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload, calls, pairs).ConfigureAwait(false);
+            impact["schema"] = "intercat.alpc-impact.v1";
+            impact["measuredUtc"] = DateTimeOffset.UtcNow;
+            impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            impact["workload"] = new Dictionary<string, object> { ["scenario"] = "FX-RPC-001", ["callsPerTrial"] = calls };
+            Directory.CreateDirectory(output);
+            await File.WriteAllTextAsync(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json)).ConfigureAwait(false);
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
         string scratch = Path.Combine(Path.GetTempPath(), "InterCat-alpc-probe-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
         try

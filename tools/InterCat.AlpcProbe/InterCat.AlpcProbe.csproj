@@ -3,6 +3,10 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <!-- For the whole-machine processor clock the capture-impact harness reads (§12). -->
+    <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- A lab probe, not a product adapter: it reads the kernel's ALPC flag group, which no product capture enables. -->
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>

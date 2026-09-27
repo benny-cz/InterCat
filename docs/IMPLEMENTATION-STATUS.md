@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 187 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 188 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 188 — what collecting ALPC costs, measured before building its capture:**
+  - `InterCat.AlpcProbe --impact` runs the RPC workload in alternating pairs with and without the probe's ALPC system
+    logger, whose consumer only counts. Seven pairs: a median of **1.86 CPU percentage points** at about 1,160 ALPC events
+    a second, nothing lost - collection alone, a lower bound, already **Moderate**.
+  - A second series ran while other work loaded the workstation (40 to 98% busy with or without the session); it is
+    committed as a record and decides nothing (`bench/results/alpc-impact-20260927T171439Z`).
+  - **Consequence:** ALPC cannot join Explore, which admits Low sources; its capture, when built, is an opt-in profile
+    for resolving RPC peers (ADR-034's addendum).
 
 - **Revision 187 — ALPC measured: it links an RPC client call to the call that served it (ADR-034):**
   - **The spike (IC-006):** `tools/InterCat.AlpcProbe` owns a private system logger for one run - uniquely named, never
@@ -1667,11 +1676,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         milliseconds at this workstation's real rate), and a reopen's first RPC rung pairs them all (1.8 s there, 0.33 s
         at 200,000 calls). Exactness needs every key a late record touches re-paired, and the grouping still reads every
         call.
-     3. Resolve an RPC call's other end through ALPC (ADR-034), in order: an ADR amending ADR-002 for a private,
-        uniquely named, owned system logger in the broker's capture, with ALPC's capture cost measured (1,600 to 2,500
-        events a second on this workstation) and its class declared; the relation rule implementing ADR-034's chain,
-        with its contract; then RPC peers in the graph, ALPC as transport evidence beneath a call and never a second
-        count (§5.1, M3's exit gate).
+     3. Resolve an RPC call's other end through ALPC (ADR-034) as an opt-in profile - collection alone measured Moderate
+        in revision 188, so never Explore - in order: an ADR amending ADR-002 for a private, uniquely named, owned system
+        logger in the broker's capture; admission for ALPC's classic kernel events, which have no manifest (the admission
+        compiler reads manifests today), and its measured class through the product path; the relation rule implementing
+        ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence beneath a call and
+        never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
@@ -1710,6 +1720,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 188 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
+  passed, 4 skipped**, zero failures. The two ALPC cost series ran from the elevated shell on this workstation, which is
+  in use; no probe session was left running.
 - Revision 187 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
   passed, 4 skipped**, zero failures, with the ALPC probe in the solution. The probe ran four times from the elevated
   shell; `logman query -ets` showed no probe session left after each run.

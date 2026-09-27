@@ -1,0 +1,83 @@
+{
+  "pairs": [
+    {
+      "pair": 1,
+      "captureFirst": false,
+      "withoutBusyPercent": 8.725,
+      "withBusyPercent": 12.772,
+      "withoutSeconds": 28.268,
+      "withSeconds": 28.269,
+      "alpcEventsPerSecond": 2148
+    },
+    {
+      "pair": 2,
+      "captureFirst": true,
+      "withoutBusyPercent": 40.375,
+      "withBusyPercent": 12.85,
+      "withoutSeconds": 28.39,
+      "withSeconds": 28.268,
+      "alpcEventsPerSecond": 1256
+    },
+    {
+      "pair": 3,
+      "captureFirst": false,
+      "withoutBusyPercent": 48.714,
+      "withBusyPercent": 64.932,
+      "withoutSeconds": 28.262,
+      "withSeconds": 29.09,
+      "alpcEventsPerSecond": 1056
+    },
+    {
+      "pair": 4,
+      "captureFirst": true,
+      "withoutBusyPercent": 14.853,
+      "withBusyPercent": 98.389,
+      "withoutSeconds": 28.338,
+      "withSeconds": 32.382,
+      "alpcEventsPerSecond": 889
+    },
+    {
+      "pair": 5,
+      "captureFirst": false,
+      "withoutBusyPercent": 40.537,
+      "withBusyPercent": 25.39,
+      "withoutSeconds": 28.36,
+      "withSeconds": 28.398,
+      "alpcEventsPerSecond": 852
+    },
+    {
+      "pair": 6,
+      "captureFirst": true,
+      "withoutBusyPercent": 10.383,
+      "withBusyPercent": 7.713,
+      "withoutSeconds": 28.257,
+      "withSeconds": 28.229,
+      "alpcEventsPerSecond": 900
+    },
+    {
+      "pair": 7,
+      "captureFirst": false,
+      "withoutBusyPercent": 8.61,
+      "withBusyPercent": 9.455,
+      "withoutSeconds": 28.219,
+      "withSeconds": 28.276,
+      "alpcEventsPerSecond": 991
+    }
+  ],
+  "medianCaptureCpuPercentagePoints": 0.845,
+  "medianWorkloadSlowdownPercent": 0.13,
+  "medianAlpcEventsPerSecond": 991,
+  "eventsLost": 0,
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone; the session\u0027s start and stop are outside it.",
+    "The consumer only counts events, so this is the cost of collecting ALPC, not of admitting or storing it: a lower bound on a product capture.",
+    "Signed differences are kept; a pair can show a negative cost on a noisy machine."
+  ],
+  "schema": "intercat.alpc-impact.v1",
+  "measuredUtc": "2026-09-27T17:13:37.956585+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "workload": {
+    "scenario": "FX-RPC-001",
+    "callsPerTrial": 600
+  }
+}

@@ -128,6 +128,13 @@ dotnet run --project tools/InterCat.AlpcProbe -c Release -- --output <new scratc
 The records stay in memory; only `report.json`'s counters are written. `alpc-feasibility-20260927T165107Z` holds four runs:
 200 truth calls and three of 600.
 
+`--impact [--pairs n]` measures what collecting ALPC costs the machine: the same RPC workload in pairs, once with no
+session and once while the probe's system logger collects the ALPC flag group and a consumer counts the events, the
+order alternating. The consumer only counts, so the figure is a lower bound on any capture that admits and stores the
+records. `alpc-impact-20260927T171439Z` holds two series of seven pairs. The first gives a median of 1.86 CPU percentage
+points; the second was run while other work loaded the machine - trials with and without the session reached 40 to 98%
+busy - and is kept as the record of that, not as decision evidence.
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a
