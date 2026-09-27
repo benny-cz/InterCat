@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 202 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 203 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 203 — a TCP connection event measures no bytes (R3):**
+  - Connect, accept and disconnect events (12, 13, 15, 28, 29, 31) admitted the provider's `size` field, always zero, as
+    transport bytes, so each was a measured zero-byte transfer ("TCP accept · 0 B", counted by endpoint activity). The
+    provider's messages state bytes only for sends, receives and retransmissions; the catalog now admits no size there.
+  - Sessions keep the plan they were captured under. Real ETW: `icat measure tcp` still TrafficVisualization, 64/64
+    byte-measured, 37,313 B equal to truth; a recorded capture's connection records state no size.
 
 - **Revision 202 — a second live pass: search, evidence and the original record (R5, R15):**
   - A record raised by, rather than naming, its owner read "owned by raised by gateway.exe" to a screen reader; it
@@ -1878,12 +1885,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Each metric is listed under its basis, which stays beside the selector, since revision 201.
    - Found by revision 197's live pass, left open: a real session's interval table has no bytes per interval until the
      persisted overview sums them. (The relationship table's scope, the pass's other finding, is revision 198's.)
-   - Found by revision 202's live pass, left open: TCP connect and accept events carry the source's size field, always 0,
-     admitted as a byte count, so the evidence list says "TCP accept · 0 B" and endpoint activity counts them as measured
-     zeros. Deciding that the field measures nothing is a normalization change (a new normalizer contract version).
+   - Done in revision 203: TCP connection events no longer admit the source's always-zero size field as bytes.
 
 ## Verification and cautions
 
+- Revision 203 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,287 tests: 1,283
+  passed, 4 skipped**, zero failures. On real ETW, `icat measure tcp` computed TrafficVisualization with every criterion
+  met, and a 15-second recording's connection records stated no size.
 - Revision 202 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,286 tests: 1,282
   passed, 4 skipped**, zero failures. A keyboard-driven live pass covered search, the evidence rung and the original record.
 - Revision 201 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,286 tests: 1,282

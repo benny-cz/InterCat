@@ -23,6 +23,26 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains("bounded request", content.UnavailableReason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact(DisplayName = "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none")]
+    public void ConnectionEventsMeasureNoBytes()
+    {
+        // The provider's own messages state a byte count only for sends, receives and retransmissions; a connection event's
+        // size field reads zero, and admitted as bytes it would count each one as a measured zero-byte transfer.
+        WindowsSourceDefinition network = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelNetworkSourceId)!;
+        AdmittedEventIntent[] tcp = [.. network.AdmittedEvents.Where(intent => intent.Mechanism == Mechanism.Tcp)];
+        Assert.Equal(12, tcp.Length);
+        foreach (AdmittedEventIntent intent in tcp)
+        {
+            bool transfer = intent.Kind is ObservationKind.Send or ObservationKind.Receive;
+            Assert.True(transfer == intent.Fields.Any(field => field.Role == FieldRole.ByteCount), $"event {intent.EventId}, {intent.Name}");
+            Assert.Contains(intent.Fields, field => field.Role == FieldRole.ProcessAttribution);
+            Assert.Equal(4, intent.Fields.Count(field => field.Role is FieldRole.SourceEndpoint or FieldRole.DestinationEndpoint));
+        }
+
+        Assert.Equal([12, 13, 15, 28, 29, 31], tcp.Where(intent => intent.Fields.All(field => field.Role != FieldRole.ByteCount))
+            .Select(intent => intent.EventId).Order());
+    }
+
     [Fact(DisplayName = "IC-012: Content compiles complete boundaries without inventing an admission policy")]
     public void ContentRequestCompilesBoundariesButRemainsUnavailable()
     {

@@ -1239,6 +1239,7 @@
       "R3": [
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
         "R3: CRC-32C matches its published vectors",
+        "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",

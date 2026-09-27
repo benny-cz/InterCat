@@ -106,6 +106,15 @@ public static class WindowsSourceCatalog
         new("connid", FieldRole.CorrelationKey, Notes: "Reported as zero on several builds; never an identity by itself (R22).", SourceField: SourceField.ConnectionId),
     ];
 
+    /// <summary>
+    /// A connection event's fields: a transfer's, without its size. The provider's own messages state a byte count for a
+    /// send, a receive and a retransmission and none for a connection attempted, established or closed, whose size field
+    /// reads zero on every one observed. Admitted as bytes it counted each such event as a measured zero-byte transfer;
+    /// it now measures nothing, as its message says (revision 203).
+    /// </summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> TcpConnectionFields =
+        [.. TcpTransferFields.Where(field => field.Role != FieldRole.ByteCount)];
+
     private static readonly IReadOnlyList<AdmittedFieldIntent> UdpSendFields =
     [
         new("PID", FieldRole.ProcessAttribution, Notes: "Payload owner: the sending process. The event header PID may belong to an unrelated context (section 4.1)."),
@@ -128,6 +137,8 @@ public static class WindowsSourceCatalog
 
     // The IPv6 descriptors carry the IPv4 ones' fields in the same order, with each address 16 bytes in network order.
     private static readonly IReadOnlyList<AdmittedFieldIntent> TcpTransferFields6 = Ipv6(TcpTransferFields);
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> TcpConnectionFields6 = Ipv6(TcpConnectionFields);
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> UdpSendFields6 = Ipv6(UdpSendFields);
 
@@ -267,18 +278,18 @@ public static class WindowsSourceCatalog
             [
                 new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
                 new(11, 0, "TCPv4 data received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, TcpTransferFields),
-                new(12, 0, "TCPv4 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpTransferFields),
-                new(13, 0, "TCPv4 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields),
+                new(12, 0, "TCPv4 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpConnectionFields),
+                new(13, 0, "TCPv4 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpConnectionFields),
                 new(14, 0, "TCPv4 data retransmitted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
-                new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields),
+                new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpConnectionFields),
                 new(42, 0, "UDPv4 datagram sent", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, UdpSendFields),
                 new(43, 0, "UDPv4 datagram received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, UdpReceiveFields),
                 new(26, 0, "TCPv6 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields6),
                 new(27, 0, "TCPv6 data received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, TcpTransferFields6),
-                new(28, 0, "TCPv6 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpTransferFields6),
-                new(29, 0, "TCPv6 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields6),
+                new(28, 0, "TCPv6 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpConnectionFields6),
+                new(29, 0, "TCPv6 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpConnectionFields6),
                 new(30, 0, "TCPv6 data retransmitted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields6),
-                new(31, 0, "TCPv6 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields6),
+                new(31, 0, "TCPv6 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpConnectionFields6),
                 new(58, 0, "UDPv6 datagram sent", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, UdpSendFields6),
                 new(59, 0, "UDPv6 datagram received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, UdpReceiveFields6),
             ],
