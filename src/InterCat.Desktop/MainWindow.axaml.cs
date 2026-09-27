@@ -1109,12 +1109,15 @@ public sealed partial class MainWindow : Window, IDisposable
         if (closed || !await ConfirmOriginalPackageAsync(preview)) return;
         IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
         {
-            Title = "Choose where to save the original, unredacted session",
+            Title = preview.Redacted
+                ? "Choose where to save a copy of this redacted package"
+                : "Choose where to save the original, unredacted session",
             AllowMultiple = false,
         });
         if (folders.Count == 0 || closed) return;
-        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now, "intercat-original-session");
-        OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, destination);
+        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now,
+            preview.Redacted ? "intercat-redacted-session" : "intercat-original-session");
+        OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, destination, preview.Redacted);
         if (result is not null && !closed && await ShowOriginalResultAsync(result))
         {
             _ = await OpenSessionAsync(result.Directory);
@@ -1125,7 +1128,8 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Makes the original package off the UI thread, stating its progress on the capture card, and returns null when it
     /// was cancelled or refused - the card then says which, and the source session is unchanged either way.
     /// </summary>
-    internal async Task<OriginalEvidencePackageResult?> WriteOriginalPackageAsync(string source, string destination)
+    internal async Task<OriginalEvidencePackageResult?> WriteOriginalPackageAsync(string source, string destination,
+        bool redacted = false)
     {
         if (packaging is not null) return null;
         using var cancellation = new CancellationTokenSource();
@@ -1133,7 +1137,7 @@ public sealed partial class MainWindow : Window, IDisposable
         packagingOriginal = true;
         UpdateEvidenceAction();
         string headline = CaptureStatus.Text ?? string.Empty;
-        CaptureStatus.Text = "Saving the original session";
+        CaptureStatus.Text = redacted ? "Copying this redacted package" : "Saving the original session";
         CaptureDetail.Text = "Copying and checking the session's files…";
         var progress = new Progress<OriginalPackageProgress>(update =>
         {
@@ -1150,9 +1154,12 @@ public sealed partial class MainWindow : Window, IDisposable
                 SharedSessionStores.Open(source), destination, progress, cancellation.Token), cancellation.Token);
             if (!closed)
             {
-                CaptureStatus.Text = "Original session saved";
+                CaptureStatus.Text = result.Source.Redacted ? "Package copy saved" : "Original session saved";
                 CaptureDetail.Text = $"Saved an exact copy of generation {result.Source.Generation:N0} to {result.Directory}. "
-                    + "It was reopened and checked before it was published. It is unredacted.";
+                    + "It was reopened and checked before it was published. "
+                    + (result.Source.Redacted
+                        ? "It is the redacted package as it was: its pseudonyms, never the original values."
+                        : "It is unredacted.");
             }
 
             return result;
@@ -1173,7 +1180,8 @@ public sealed partial class MainWindow : Window, IDisposable
             if (!closed)
             {
                 CaptureStatus.Text = headline;
-                CaptureDetail.Text = "Could not save the original session: " + exception.Message;
+                CaptureDetail.Text = (redacted ? "Could not copy the package: " : "Could not save the original session: ")
+                    + exception.Message;
             }
 
             return null;
@@ -1197,13 +1205,13 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         var prompt = new Window
         {
-            Title = "Share the original, unredacted session?", Width = 600,
+            Title = preview.Redacted ? "Share this redacted package?" : "Share the original, unredacted session?", Width = 600,
             SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
         var cancel = new Button { Name = "CancelOriginalPackage", Content = "Cancel" };
-        var proceed = new Button { Name = "SaveOriginalPackage", Content = "Save unredacted copy…" };
+        var proceed = new Button { Name = "SaveOriginalPackage", Content = preview.Redacted ? "Save a copy…" : "Save unredacted copy…" };
         cancel.Click += (_, _) => prompt.Close(false);
         proceed.Click += (_, _) => prompt.Close(true);
         prompt.Opened += (_, _) => cancel.Focus();
@@ -1219,7 +1227,7 @@ public sealed partial class MainWindow : Window, IDisposable
         foreach (string text in OriginalPackageDisclosure(preview))
         {
             TextBlock paragraph = Paragraph(text);
-            if (text == OriginalEvidencePackage.Warning)
+            if (text == OriginalEvidencePackage.WarningFor(preview))
             {
                 paragraph.FontWeight = Avalonia.Media.FontWeight.SemiBold;
             }
@@ -1240,25 +1248,29 @@ public sealed partial class MainWindow : Window, IDisposable
     internal static IReadOnlyList<string> OriginalPackageDisclosure(OriginalEvidencePackagePreview preview)
     {
         int journals = preview.Journals.Count;
+        string journalKind = preview.Redacted ? "journal" : "raw journal";
+        string recordKind = preview.Redacted ? "synthetic records" : "admitted records";
+
+        // A redacted package's copy is that package as it is: it is never called original or unredacted.
         var paragraphs = new List<string>
         {
-            "This saves an exact copy of this session's evidence in a new folder, which opens in InterCat as the same "
-                + "session. The session you have open is not changed.",
+            preview.Redacted
+                ? "This saves an exact copy of this redacted package in a new folder, which opens in InterCat as the same "
+                    + "package. The package you have open is not changed."
+                : "This saves an exact copy of this session's evidence in a new folder, which opens in InterCat as the same "
+                    + "session. The session you have open is not changed.",
             string.Create(CultureInfo.CurrentCulture,
-                $"It holds generation {preview.Generation:N0}: {preview.Rows:N0} records, {journals:N0} raw journal "
-                + $"{(journals == 1 ? "file" : "files")} of admitted records, and {preview.Files.Count:N0} files in all "
+                $"It holds generation {preview.Generation:N0}: {preview.Rows:N0} records, {journals:N0} {journalKind} "
+                + $"{(journals == 1 ? "file" : "files")} of {recordKind}, and {preview.Files.Count:N0} files in all "
                 + $"({RecentSessions.Size(preview.Bytes, CultureInfo.CurrentCulture)})."),
-            "Unredacted: " + OriginalEvidencePackage.Contents,
+            preview.Redacted ? OriginalEvidencePackage.RedactedContents : "Unredacted: " + OriginalEvidencePackage.Contents,
             preview.HostId is { } host
-                ? $"Hosts: one, the capture's own, identified as {host:N}."
+                ? preview.Redacted
+                    ? $"Hosts: one, the package's own pseudonymous host, identified as {host:N}."
+                    : $"Hosts: one, the capture's own, identified as {host:N}."
                 : "Hosts: no journal names the capture's host.",
+            OriginalEvidencePackage.WarningFor(preview),
         };
-        if (preview.Redacted)
-        {
-            paragraphs.Add("This session is itself a redacted package, so its copy holds pseudonyms, not the original values.");
-        }
-
-        paragraphs.Add(OriginalEvidencePackage.Warning);
         return paragraphs;
     }
 
@@ -1267,7 +1279,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         var prompt = new Window
         {
-            Title = "Original session saved", Width = 580, Height = 300,
+            Title = result.Source.Redacted ? "Package copy saved" : "Original session saved", Width = 580, Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
@@ -1294,7 +1306,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     + $"{RecentSessions.Size(result.Source.Bytes, CultureInfo.CurrentCulture)}) to {result.Directory}.")),
                 Paragraph("Each file was checked against the digest its generation recorded as it was copied, and the "
                     + "package was reopened and hashed as a recipient would open it before it was saved."),
-                Paragraph(OriginalEvidencePackage.Warning),
+                Paragraph(OriginalEvidencePackage.WarningFor(result.Source)),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
             },
@@ -1971,21 +1983,35 @@ public sealed partial class MainWindow : Window, IDisposable
         bool packagingRedacted = packaging is not null && !packagingOriginal;
         bool packagingCopy = packaging is not null && packagingOriginal;
         bool canPackage = packaging is null && session && !IsLive && !openingSession;
+
+        // A redacted package is shared as it is (§11.3): a package is not built from a package, and its exact copy is that
+        // package, pseudonymized, never an original or unredacted one.
+        bool redactedPackage = displayedOverview?.Redaction is not null;
         SharePackageButton.Content = packagingRedacted ? "Cancel packaging" : "Share redacted session…";
-        SharePackageButton.IsEnabled = packagingRedacted || canPackage;
+        SharePackageButton.IsEnabled = packagingRedacted || (canPackage && !redactedPackage);
         ToolTip.SetTip(SharePackageButton, packagingRedacted
             ? "Stop making the package. Nothing is saved, and the session is unchanged."
+            : redactedPackage
+                ? "This session is already a redacted package, and a package is not built from a package. Share it as it "
+                    + "is: Share this package… saves an exact copy."
             : canPackage
                 ? "Save a new session folder with pseudonymous names, IDs and addresses and no original journal, "
                     + "that opens in InterCat. What it keeps and leaves out is shown first."
                 : PackageUnavailable(session));
-        ShareOriginalButton.Content = packagingCopy ? "Cancel packaging" : "Share original session…";
+        ShareOriginalButton.Content = packagingCopy ? "Cancel packaging"
+            : redactedPackage ? "Share this package…" : "Share original session…";
+        AutomationProperties.SetName(ShareOriginalButton, redactedPackage
+            ? "Save an exact copy of this redacted package to share"
+            : "Save an exact, unredacted copy of this session's evidence to share");
         ShareOriginalButton.IsEnabled = packagingCopy || canPackage;
         ToolTip.SetTip(ShareOriginalButton, packagingCopy
             ? "Stop copying. Nothing is saved, and the session is unchanged."
             : canPackage
-                ? "Save an exact, unredacted copy of this session's evidence that opens in InterCat as the same "
-                    + "session. What it holds is shown first."
+                ? redactedPackage
+                    ? "Save an exact copy of this redacted package that opens in InterCat as the same package. It holds "
+                        + "its pseudonyms, never the original values. What it holds is shown first."
+                    : "Save an exact, unredacted copy of this session's evidence that opens in InterCat as the same "
+                        + "session. What it holds is shown first."
                 : PackageUnavailable(session));
     }
 

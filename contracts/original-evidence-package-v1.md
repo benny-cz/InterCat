@@ -50,8 +50,13 @@ written:
   start and exit times; local and remote addresses and ports; resource names, kernel object values and RPC procedures;
   timestamps as recorded, with the capture's clock and host identities; and every admitted record;
 - that InterCat records metadata only, so no message content is included;
-- the host identity the journal names;
-- whether the session is itself a redacted package, whose copy holds pseudonyms rather than the original values.
+- the host identity the journal names.
+
+A session that is itself a redacted package (`contracts/redacted-session-v1.md`) is copied the same way, and its copy is
+that package as it is. Revision 208 makes what is stated say so: in place of the unredacted contents and warning, the
+copy is described as the package's pseudonyms and synthetic records, never the original values, under the redacted
+package's own warning, and neither the command line nor the Desktop calls it original or unredacted. The Desktop offers
+it as "Share this package…", and does not offer to build a redacted package from one, which §9 of that contract refuses.
 
 The Desktop's confirmation starts on Cancel, and nothing is written until the user chooses where the new folder goes.
 

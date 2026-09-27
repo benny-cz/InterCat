@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 207 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 208 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 208 — a redacted package is shared as it is, never called unredacted (§11.3):**
+  - Found by a live pass over the sharing paths on a real capture, which otherwise held: the package reproduced the
+    source's byte totals, the original copy reopened as the same generation, and the report leaked no name or path.
+  - On an open package, "Share redacted session…" is unavailable and says why; the copy action reads "Share this
+    package…", and every step of it calls the copy the package's pseudonyms under the redacted warning
+    (`OriginalEvidencePackage.ContentsFor`/`WarningFor`); `icat package --original` heads it "Copy of a redacted
+    package".
+  - original-evidence-package-v1 §4 no longer states "unredacted" for a copy of a package.
 
 - **Revision 207 — §6.6's unmeasured value is drawn where the graph plots bytes (R3):**
   - Under a byte ranking, a relationship whose sends recorded no size is an open cross-hatched band, never the
@@ -1921,6 +1930,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 208 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,297 tests: 1,293
+  passed, 4 skipped**, zero failures. The live pass recorded a 20-second dense capture with `icat record` from the
+  elevated shell into scratch, made every sharing preset and a ranked export from it, opened the redacted package in the
+  Release window, and deleted all of it afterwards.
 - Revision 207 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,296 tests: 1,292
   passed, 4 skipped**, zero failures. The headless render `unmeasured-graph.png` shows the band beside a measured edge
   and a relationship with no sends.

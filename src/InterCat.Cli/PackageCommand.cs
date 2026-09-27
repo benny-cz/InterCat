@@ -47,6 +47,10 @@ internal sealed record OriginalPackageDocument
     public required long SourceFieldRows { get; init; }
     public required IReadOnlyList<OriginalPackageFileDocument> Files { get; init; }
     public required long Bytes { get; init; }
+
+    /// <summary>Whether the session is itself a redacted package, whose copy is that package as it is.</summary>
+    public required bool Redacted { get; init; }
+
     public required string Contents { get; init; }
     public required OriginalPackageVerificationDocument? Verification { get; init; }
     public required string Warning { get; init; }
@@ -373,11 +377,6 @@ internal static class PackageCommand
                 : "The package is the same session: icat session, overview and evidence open it, as does the Desktop's "
                     + "Open saved session. It holds this generation only, with no earlier one to fall back to.",
         };
-        if (source.Redacted)
-        {
-            notes.Add("This session is itself a redacted package, so its copy holds pseudonyms, not the original values.");
-        }
-
         if (!source.CoverageLedger)
         {
             notes.Add("The session published no coverage ledger, so the package's coverage and loss are unknown, as its are.");
@@ -404,7 +403,8 @@ internal static class PackageCommand
                 Bytes = file.LengthBytes,
             })],
             Bytes = source.Bytes,
-            Contents = OriginalEvidencePackage.Contents,
+            Redacted = source.Redacted,
+            Contents = OriginalEvidencePackage.ContentsFor(source),
             Verification = result is null ? null : new()
             {
                 FilesVerified = result.FilesVerified,
@@ -413,14 +413,16 @@ internal static class PackageCommand
                     $"Each file checked against its generation's digest as it was copied, then {result.FilesVerified:N0} "
                     + $"files reopened and hashed as a recipient would."),
             },
-            Warning = OriginalEvidencePackage.Warning,
+            Warning = OriginalEvidencePackage.WarningFor(source),
             Notes = notes,
         };
     }
 
     private static void RenderOriginal(OriginalPackageDocument document)
     {
-        ConsoleUi.Heading(document.Performed ? "Original evidence package, unredacted" : "Original evidence package, measured only");
+        ConsoleUi.Heading(document.Redacted
+            ? document.Performed ? "Copy of a redacted package" : "Copy of a redacted package, measured only"
+            : document.Performed ? "Original evidence package, unredacted" : "Original evidence package, measured only");
         ConsoleUi.Field("Source", $"{document.Source} · generation {ConsoleUi.Count(document.Generation)}");
         if (document.Directory is { } directory) ConsoleUi.Field("Written to", directory);
         ConsoleUi.Field("Rows", ConsoleUi.Count(document.Rows)
@@ -444,6 +446,7 @@ internal static class PackageCommand
         ConsoleUi.Line("  Copies the session's current generation byte for byte into a new directory, where it reopens");
         ConsoleUi.Line("  as the same session. It is unredacted: names, IDs, addresses, times and every admitted record");
         ConsoleUi.Line("  as captured. Each file is checked as it is copied and the package reopened before it appears.");
+        ConsoleUi.Line("  A redacted package is copied as it is, pseudonymized: never an original or unredacted copy.");
         ConsoleUi.Line("icat package <session-directory> --redacted --output <new-directory> [--check] [--json]");
         ConsoleUi.Line("             [--report <path>] [--overwrite]");
         ConsoleUi.Line("  Writes a reopenable redacted session: a new session directory with fresh identities, whose");

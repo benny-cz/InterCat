@@ -75,6 +75,31 @@ public static class OriginalEvidencePackage
         + "values and RPC procedures; timestamps as recorded, with the capture's clock and host identities; and every "
         + "admitted record in the journal. InterCat records metadata only, so no message content is included.";
 
+    /// <summary>
+    /// What a copy of a session that is itself a redacted package holds, stated in place of <see cref="Contents"/>: that
+    /// package as it is, whose names, IDs, addresses and records are its pseudonyms and synthetic records (§11.3).
+    /// </summary>
+    public const string RedactedContents = "This session is itself a redacted package, so its copy is that package as it "
+        + "is: pseudonymous names, process and thread IDs, addresses, ports and identifiers, synthetic metadata records and "
+        + "relative times, never the original values. InterCat records metadata only, so no message content is included.";
+
+    /// <summary>What a copy of this session holds: <see cref="Contents"/>, or a redacted package's own.</summary>
+    public static string ContentsFor(OriginalEvidencePackagePreview preview)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        return preview.Redacted ? RedactedContents : Contents;
+    }
+
+    /// <summary>
+    /// The warning a copy states: <see cref="Warning"/>, or, for a redacted package, the redacted package's own - its copy
+    /// is pseudonymized, not anonymous, and never unredacted.
+    /// </summary>
+    public static string WarningFor(OriginalEvidencePackagePreview preview)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        return preview.Redacted ? RedactedSessionPackage.Warning : Warning;
+    }
+
     private const int CopyBufferBytes = 1024 * 1024;
 
     /// <summary>Measures what a package of this session would hold, reading headers and the manifest only.</summary>

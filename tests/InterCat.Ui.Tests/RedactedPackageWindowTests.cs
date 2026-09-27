@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -63,6 +64,21 @@ public sealed class RedactedPackageWindowTests
             Assert.StartsWith(OverviewWorkspace.RedactedDisclosure, package.WorkspaceDisclosure, StringComparison.Ordinal);
             Assert.Equal("Redacted session package open", window.GetControl<TextBlock>("CaptureStatus").Text);
             Assert.Contains("pseudonyms", window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+
+            // A package is shared as it is: none is built from a package, and its exact copy is never called unredacted.
+            Assert.False(share.IsEnabled);
+            Assert.Contains("already a redacted package", Assert.IsType<string>(ToolTip.GetTip(share)), StringComparison.Ordinal);
+            Button copy = window.GetControl<Button>("ShareOriginalButton");
+            Assert.True(copy.IsEnabled);
+            Assert.Equal("Share this package…", copy.Content);
+            Assert.Equal("Save an exact copy of this redacted package to share", AutomationProperties.GetName(copy));
+            OriginalEvidencePackagePreview preview = OriginalEvidencePackage.Preview(
+                SessionStore.OpenExisting(LocalOwnedDirectory.Open(destination)));
+            IReadOnlyList<string> disclosure = MainWindow.OriginalPackageDisclosure(preview);
+            Assert.DoesNotContain(disclosure, paragraph => paragraph.Contains("nredacted", StringComparison.Ordinal));
+            Assert.Contains(OriginalEvidencePackage.RedactedContents, disclosure);
+            Assert.Equal(RedactedSessionPackage.Warning, disclosure[^1]);
+            Assert.Equal("Share this redacted package?", MainWindow.OriginalPackagePrompt(preview).Title);
             await package.LayoutReady;
             Dispatch();
             Save(window, "redacted-package-1456x939.png");

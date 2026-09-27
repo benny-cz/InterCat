@@ -135,6 +135,37 @@ public sealed class OriginalEvidencePackageTests
         Assert.Single(preview.Journals);
         Assert.Equal(TestClock.HostId.Value, preview.HostId);
         Assert.False(preview.Redacted);
+        Assert.Equal(OriginalEvidencePackage.Contents, OriginalEvidencePackage.ContentsFor(preview));
+        Assert.Equal(OriginalEvidencePackage.Warning, OriginalEvidencePackage.WarningFor(preview));
+    }
+
+    [Fact(DisplayName = "§11.3: a redacted package's copy is that package as it is, stated as pseudonymized and never unredacted")]
+    public void ARedactedPackagesCopyIsNeverCalledUnredacted()
+    {
+        using var source = new TemporarySession();
+        Publish(source.Store,
+        [
+            Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 64, 10, 1) with { SessionRelativeTicks = 100 },
+            Transfer(2, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 20, 2) with { SessionRelativeTicks = 200 },
+        ]);
+        using var redacted = new PackageDirectory();
+        _ = RedactedSessionPackage.Create(source.Store, redacted.Path, DateTimeOffset.UnixEpoch);
+        SessionStore package = SessionStore.OpenExisting(LocalOwnedDirectory.Open(redacted.Path));
+
+        // Its copy holds the package's pseudonyms and synthetic records, under the redacted package's own warning.
+        OriginalEvidencePackagePreview preview = OriginalEvidencePackage.Preview(package);
+        Assert.True(preview.Redacted);
+        Assert.Equal(OriginalEvidencePackage.RedactedContents, OriginalEvidencePackage.ContentsFor(preview));
+        Assert.Equal(RedactedSessionPackage.Warning, OriginalEvidencePackage.WarningFor(preview));
+        Assert.DoesNotContain("Unredacted", OriginalEvidencePackage.WarningFor(preview), StringComparison.OrdinalIgnoreCase);
+
+        // The copy is the same package, which reopens as one.
+        using var copy = new PackageDirectory();
+        OriginalEvidencePackageResult result = OriginalEvidencePackage.Create(package, copy.Path);
+        Assert.True(result.Source.Redacted);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(copy.Path));
+        Assert.True(OriginalEvidencePackage.Preview(reopened).Redacted);
+        Assert.Equal(preview.SessionId, OriginalEvidencePackage.Preview(reopened).SessionId);
     }
 
     private sealed class SynchronousProgress(Action<OriginalPackageProgress> report) : IProgress<OriginalPackageProgress>
