@@ -63,6 +63,39 @@ public sealed class NetworkObservationBuilderTests
             kind => Assert.Equal(EndpointOrientation.OwnerFirst, TransportEndpoints.OrientationOf(Mechanism.Tcp, kind)));
     }
 
+    [Fact(DisplayName = "R1: an IPv6 receive keeps its 128-bit endpoints as delivered and is read as its owner's own flow")]
+    public void Ipv6ReceivesAreReadThroughTheirMeasuredOrientation()
+    {
+        string manifest = Manifest
+            .Replace("<data name=\"daddr\" inType=\"win:UInt32\" />",
+                "<data name=\"daddr\" inType=\"win:Binary\" outType=\"win:IPv6\" length=\"16\" />", StringComparison.Ordinal)
+            .Replace("<data name=\"saddr\" inType=\"win:UInt32\" />",
+                "<data name=\"saddr\" inType=\"win:Binary\" outType=\"win:IPv6\" length=\"16\" />", StringComparison.Ordinal);
+        SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(Definition(Ipv6Fields()), ManifestParser.Parse(manifest), 0);
+        AdmittedEventPlan tcpReceive = plan.Events.Single(descriptor => descriptor.EventId == 11);
+        AdmittedEventPlan udpReceive = plan.Events.Single(descriptor => descriptor.EventId == 43);
+        Assert.All(tcpReceive.FieldReport, field => Assert.Equal(FieldAvailability.Present, field.Availability));
+
+        // The sender 2001:db8::5 names itself and port 50000 first; the receiver is ::1 port 40000.
+        UInt128 sender = ((UInt128)0x2001_0DB8 << 96) | 5;
+        AdmittedEvent admitted = default;
+        admitted.SetSlot(0, 42);
+        admitted.SetSlot(1, 100);
+        admitted.SetAddress(0, sender);
+        admitted.SetSlot(3, BinaryPrimitives.ReverseEndianness((ushort)50_000));
+        admitted.SetAddress(1, UInt128.One);
+        admitted.SetSlot(5, BinaryPrimitives.ReverseEndianness((ushort)40_000));
+        var capture = new CaptureId(Guid.Parse("08ccf60c-4c45-4793-b646-b1cf26fe691a"));
+
+        NetworkTransferObservation udp = NetworkObservationBuilder.TryBuild(admitted, udpReceive, capture, 1, 1)!;
+        NetworkTransferObservation tcp = NetworkObservationBuilder.TryBuild(admitted, tcpReceive, capture, 1, 1)!;
+
+        Assert.Equal((sender, UInt128.One, 0u, 0u), (udp.SourceAddress6, udp.DestinationAddress6, udp.SourceAddress, udp.DestinationAddress));
+        Assert.Equal(new FlowKey(0, 40_000, 0, 50_000, UInt128.One, sender), udp.Flow);
+        Assert.Equal(new FlowKey(0, 50_000, 0, 40_000, sender, UInt128.One), tcp.Flow);
+        Assert.Equal(udp.Flow, tcp.Flow.Mirror());
+    }
+
     private static AdmittedEvent Record(int sourcePort, int destinationPort)
     {
         AdmittedEvent admitted = default;
@@ -85,7 +118,17 @@ public sealed class NetworkObservationBuilderTests
         new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort),
     ];
 
-    private static WindowsSourceDefinition Definition() => new()
+    private static IReadOnlyList<AdmittedFieldIntent> Ipv6Fields() =>
+    [
+        new("PID", FieldRole.ProcessAttribution),
+        new("size", FieldRole.ByteCount, MeasurementUnit.Bytes, ByteDomain.TransportObserved),
+        new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+        new("sport", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderPort),
+        new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+        new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort),
+    ];
+
+    private static WindowsSourceDefinition Definition(IReadOnlyList<AdmittedFieldIntent>? fields = null) => new()
     {
         SourceId = "etw/manifest/Sample-Network",
         DisplayName = "Sample network",
@@ -101,8 +144,8 @@ public sealed class NetworkObservationBuilderTests
         ContractStatus = SourceContractStatus.Documented,
         AdmittedEvents =
         [
-            new(11, 0, "TCP received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, Fields()),
-            new(43, 0, "UDP received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, Fields()),
+            new(11, 0, "TCP received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, fields ?? Fields()),
+            new(43, 0, "UDP received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, fields ?? Fields()),
         ],
     };
 }

@@ -70,7 +70,8 @@ public static class ManifestParser
                 string? inType = data.Attribute("inType")?.Value;
                 if (fieldName is not null && inType is not null)
                 {
-                    fields.Add(ProviderSchemaField.Create(fieldName, inType));
+                    fields.Add(ProviderSchemaField.Create(
+                        fieldName, inType, data.Attribute("length")?.Value, data.Attribute("outType")?.Value));
                 }
             }
 

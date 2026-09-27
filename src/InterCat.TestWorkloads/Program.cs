@@ -50,6 +50,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         DatagramsPerSocket = Integer(args, "--messages") ?? 8,
         MaximumDatagramBytes = Integer(args, "--bytes") ?? 1_400,
         InterDatagramDelayMilliseconds = Integer(args, "--delay") ?? 15,
+        Ipv6 = args.Contains("--ipv6", StringComparer.Ordinal),
         Port = Integer(args, "--port") ?? 0,
     };
 
@@ -62,6 +63,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         MaximumMessageBytes = Integer(args, "--bytes") ?? 4_096,
         InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 15,
         Concurrency = Integer(args, "--concurrency") ?? 1,
+        Ipv6 = args.Contains("--ipv6", StringComparer.Ordinal),
         Port = Integer(args, "--port") ?? 0,
     };
 
@@ -139,17 +141,18 @@ static void PrintHelp()
     Console.WriteLine("InterCat truth workloads (M0)");
     Console.WriteLine();
     Console.WriteLine("  tcp-loopback --truth <dir> [--seed n] [--connections n] [--messages n] [--bytes n]");
-    Console.WriteLine("                             [--delay milliseconds] [--concurrency n]");
+    Console.WriteLine("                             [--delay milliseconds] [--concurrency n] [--ipv6]");
     Console.WriteLine("      FX-TCP-001: a seeded two-process loopback exchange. Each process writes its own");
     Console.WriteLine("      independent truth log; neither reads InterCat state. --delay 0 removes the");
     Console.WriteLine("      default 15 ms pacing so the exchange runs as fast as the sockets allow, and");
     Console.WriteLine("      --concurrency runs that many connections at once so the machine rather than");
-    Console.WriteLine("      the fixture decides the rate.");
+    Console.WriteLine("      the fixture decides the rate. --ipv6 runs it over IPv6 loopback (::1) as FX-TCP-002.");
     Console.WriteLine();
-    Console.WriteLine("  udp-loopback --truth <dir> [--seed n] [--sockets n] [--messages n] [--bytes n] [--delay ms]");
+    Console.WriteLine("  udp-loopback --truth <dir> [--seed n] [--sockets n] [--messages n] [--bytes n] [--delay ms] [--ipv6]");
     Console.WriteLine("      FX-UDP-001: a seeded two-process UDP loopback exchange. The client sends datagrams from");
     Console.WriteLine("      several bound sockets and the server acknowledges each to the endpoint it came from, so");
-    Console.WriteLine("      both directions carry data and every truth record names both ports.");
+    Console.WriteLine("      both directions carry data and every truth record names both ports. --ipv6 runs it over");
+    Console.WriteLine("      IPv6 loopback (::1) as FX-UDP-002.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

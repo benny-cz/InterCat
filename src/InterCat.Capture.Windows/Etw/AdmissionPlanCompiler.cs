@@ -150,6 +150,7 @@ public static class AdmissionPlanCompiler
         int minimumLength = 0;
         bool nameSlotTaken = false;
         bool identifierSlotTaken = false;
+        int addressSlots = 0;
 
         foreach (AdmittedFieldIntent fieldIntent in intent.Fields)
         {
@@ -221,6 +222,15 @@ public static class AdmissionPlanCompiler
                 || (isVariableName && string.Equals(resolved.Field.InType, "win:UnicodeString", StringComparison.Ordinal));
             bool isIdentifier = string.Equals(resolved.Field.InType, "win:GUID", StringComparison.Ordinal)
                 && fieldIntent.Role is FieldRole.CorrelationKey or FieldRole.ResourceName;
+
+            // An IPv6 endpoint address: 16 bytes the manifest itself declares binary, of that fixed length, read as IPv6.
+            // Anything else under an IPv6 intent falls through to the width check below and is refused, not guessed.
+            bool isAddress = fieldIntent.Transform == SlotTransform.NetworkOrderIpv6Address
+                && fieldIntent.Role is FieldRole.SourceEndpoint or FieldRole.DestinationEndpoint
+                && resolved.Field.WidthKind == FieldWidthKind.Fixed
+                && resolved.Field.FixedWidth == 16
+                && string.Equals(resolved.Field.InType, "win:Binary", StringComparison.Ordinal)
+                && string.Equals(resolved.Field.OutType, "win:IPv6", StringComparison.Ordinal);
             int resolvedWidth = resolved.Field.WidthKind switch
             {
                 FieldWidthKind.Fixed => resolved.Field.FixedWidth,
@@ -241,6 +251,19 @@ public static class AdmissionPlanCompiler
                 continue;
             }
 
+            if (isAddress && addressSlots == AdmittedEvent.MaximumAddresses)
+            {
+                report.Add(new(
+                    fieldIntent.FieldName,
+                    FieldAvailability.ProfileDisabled,
+                    fieldIntent.Role,
+                    resolved.Field.InType,
+                    fieldIntent.Unit,
+                    fieldIntent.ByteDomain,
+                    $"A bounded admission copies at most {AdmittedEvent.MaximumAddresses} addresses per descriptor."));
+                continue;
+            }
+
             if (isName && nameSlotTaken)
             {
                 report.Add(new(
@@ -254,7 +277,8 @@ public static class AdmissionPlanCompiler
                 continue;
             }
 
-            if (!isName && !isIdentifier && (resolved.Field.WidthKind == FieldWidthKind.Variable || resolvedWidth > MaximumSlotWidth))
+            if (!isName && !isIdentifier && !isAddress
+                && (resolved.Field.WidthKind == FieldWidthKind.Variable || resolvedWidth > MaximumSlotWidth))
             {
                 report.Add(new(
                     fieldIntent.FieldName,
@@ -292,12 +316,15 @@ public static class AdmissionPlanCompiler
                     ? AdmittedSlotKind.AnsiResourceName
                     : isName
                         ? AdmittedSlotKind.ResourceName
-                        : isIdentifier ? AdmittedSlotKind.Identifier : AdmittedSlotKind.Numeric)
+                        : isIdentifier
+                            ? AdmittedSlotKind.Identifier
+                            : isAddress ? AdmittedSlotKind.Address128 : AdmittedSlotKind.Numeric)
             {
                 SourceField = fieldIntent.SourceField,
             });
             nameSlotTaken |= isName;
             identifierSlotTaken |= isIdentifier;
+            addressSlots += isAddress ? 1 : 0;
             minimumLength = Math.Max(
                 minimumLength,
                 resolved.Offset + (isAnsiName ? 1 : isName ? 2 : isIdentifier ? 16 : resolvedWidth));

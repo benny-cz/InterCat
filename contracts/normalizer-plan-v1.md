@@ -37,3 +37,16 @@ normalizes each observation and source field, and compares the total with the co
 stages no files and publishes no generation. Passing means this evidence can be read and normalized by
 the current implementation; it does not guarantee a later segment write or commit will succeed. Plain
 `icat rederive` uses the same replay path before publishing a replacement generation.
+
+## IPv6 address slots (revision 174)
+
+A descriptor may admit up to two IPv6 endpoint addresses (ADR-029). Such a slot has kind 6, `Address128`, width 16, and
+transform 4, `NetworkOrderIpv6Address`: the callback copies the address's 16 bytes whole, in network order, into one
+of the record's two address slots, numbered in the order the plan lists its address slots. A plan whose descriptor
+names more than two address slots is refused, here and by the broker, because a record holds two.
+
+The approved metadata projection of a record holding an address is `IAP2`. It is `IAP1` with one addition after the
+identifier: a mask byte of the addresses the record holds, then each one's 16 bytes in network order. Any other record
+is projected as `IAP1`, byte for byte as before, so a journal of IPv4 records is unchanged. A decoder refuses an
+`IAP2` mask that names no address or one a record cannot hold. A build before revision 174 refuses an `IAP2` record
+as a projection with the wrong marker, rather than replaying it without its addresses.

@@ -12,6 +12,12 @@ public enum SlotTransform
 
     /// <summary>A 32-bit IPv4 address delivered in network byte order.</summary>
     NetworkOrderIpv4Address = 3,
+
+    /// <summary>
+    /// A 128-bit IPv6 address delivered as its 16 bytes in network order, which a row keeps as the number those bytes
+    /// are when read big-endian (`segment-v1` §5).
+    /// </summary>
+    NetworkOrderIpv6Address = 4,
 }
 
 /// <summary>A field the adapter intends to admit, with the semantics it would carry (R2).</summary>
@@ -120,6 +126,13 @@ public static class WindowsSourceCatalog
         new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort, Notes: "Network-order port of the receiving process's own endpoint."),
     ];
 
+    // The IPv6 descriptors carry the IPv4 ones' fields in the same order, with each address 16 bytes in network order.
+    private static readonly IReadOnlyList<AdmittedFieldIntent> TcpTransferFields6 = Ipv6(TcpTransferFields);
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> UdpSendFields6 = Ipv6(UdpSendFields);
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> UdpReceiveFields6 = Ipv6(UdpReceiveFields);
+
     private static readonly IReadOnlyList<AdmittedFieldIntent> FileCreateFields =
     [
         new("Irp", FieldRole.CorrelationKey, Notes: "Pairs this operation with its OperationEnd completion.", SourceField: SourceField.IoRequestPacket),
@@ -207,19 +220,38 @@ public static class WindowsSourceCatalog
         return null;
     }
 
+    /// <summary>
+    /// An IPv4 descriptor's fields as its IPv6 counterpart names them: the same names and meanings, each address read as
+    /// the 16 bytes an IPv6 template declares. A template that disagrees is refused field by field when it is compiled.
+    /// FX-TCP-002 and FX-UDP-002 measured over IPv6 loopback what FX-TCP-001 and FX-UDP-001 measured over IPv4, so each
+    /// note names the fixture of its own family.
+    /// </summary>
+    private static IReadOnlyList<AdmittedFieldIntent> Ipv6(IReadOnlyList<AdmittedFieldIntent> ipv4) =>
+    [
+        .. ipv4.Select(field => field with
+        {
+            Transform = field.Transform == SlotTransform.NetworkOrderIpv4Address
+                ? SlotTransform.NetworkOrderIpv6Address
+                : field.Transform,
+            Notes = field.Notes?
+                .Replace("FX-TCP-001", "FX-TCP-002", StringComparison.Ordinal)
+                .Replace("FX-UDP-001", "FX-UDP-002", StringComparison.Ordinal),
+        }),
+    ];
+
     private static IReadOnlyList<WindowsSourceDefinition> Build()
     {
         var kernelNetwork = new WindowsSourceDefinition
         {
             SourceId = KernelNetworkSourceId,
-            DisplayName = "Kernel network (TCP and UDP transfer events)",
+            DisplayName = "Kernel network (TCP and UDP transfer events over IPv4 and IPv6)",
             Kind = SourceKind.ManifestProvider,
             ProviderName = "Microsoft-Windows-Kernel-Network",
             Mechanisms = [Mechanism.Tcp, Mechanism.Udp],
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
-            MatchAnyKeyword = 0x10,
-            RequestedKeywords = ["KERNEL_NETWORK_KEYWORD_IPV4"],
+            MatchAnyKeyword = 0x30,
+            RequestedKeywords = ["KERNEL_NETWORK_KEYWORD_IPV4", "KERNEL_NETWORK_KEYWORD_IPV6"],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
                 "Scope is limited by keyword and event id. The provider exposes no capture-side process filter, "
@@ -230,7 +262,7 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
             Overhead = OverheadClass.Moderate,
-            OverheadEvidence = "bench/results/capture-impact-20260923T095313Z/impact.json",
+            OverheadEvidence = "bench/results/capture-impact-20260927T115356Z/impact.json",
             AdmittedEvents =
             [
                 new(10, 0, "TCPv4 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields),
@@ -241,6 +273,14 @@ public static class WindowsSourceCatalog
                 new(15, 0, "TCPv4 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields),
                 new(42, 0, "UDPv4 datagram sent", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, UdpSendFields),
                 new(43, 0, "UDPv4 datagram received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, UdpReceiveFields),
+                new(26, 0, "TCPv6 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields6),
+                new(27, 0, "TCPv6 data received", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, TcpTransferFields6),
+                new(28, 0, "TCPv6 connection attempted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, TcpTransferFields6),
+                new(29, 0, "TCPv6 disconnect issued", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Disconnect, Direction.DirectionNotApplicable, TcpTransferFields6),
+                new(30, 0, "TCPv6 data retransmitted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, TcpTransferFields6),
+                new(31, 0, "TCPv6 connection accepted", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, TcpTransferFields6),
+                new(58, 0, "UDPv6 datagram sent", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, UdpSendFields6),
+                new(59, 0, "UDPv6 datagram received", Mechanism.Udp, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, UdpReceiveFields6),
             ],
             Notes =
             [
@@ -249,6 +289,12 @@ public static class WindowsSourceCatalog
                 + "pair names the owning process's own endpoint on both send and receive descriptors.",
                 "Measured on FX-UDP-001: a UDP send names the sender's own endpoint first, and a UDP receive names the "
                 + "datagram's sender first, so the receiver's own endpoint is its destination. Records keep both as delivered.",
+                "Measured on FX-TCP-002 and FX-UDP-002 over IPv6 loopback: the TCPv6 and UDPv6 descriptors name their "
+                + "endpoints as their IPv4 counterparts do, and deliver each address as its 16 bytes in network order. "
+                + "The manifest TraceEvent rebuilds omits those fields' length, which TDH reports and the adapter restores.",
+                "Capture impact with both keywords, seven pairs on 2026-09-27: a median of 0.00 CPU pp (observed -1.45) "
+                + "and no throughput regression, where the IPv4 keyword alone measured 1.61 pp on 2026-09-23. The "
+                + "difference is within this machine's noise, so the class stays Moderate, the higher of the two runs.",
                 "Loopback traffic is observed on both endpoints; the canonical owner rule of section 5.3 decides the total.",
             ],
         };
@@ -275,7 +321,7 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = true,
             ContractStatus = SourceContractStatus.Documented,
             Overhead = OverheadClass.Moderate,
-            OverheadEvidence = "bench/results/capture-impact-20260923T095313Z/impact.json",
+            OverheadEvidence = "bench/results/capture-impact-20260927T115356Z/impact.json",
             AdmittedEvents =
             [
                 new(1, 4, "Process start", Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create, Direction.DirectionNotApplicable, ProcessStartFields),

@@ -27,18 +27,39 @@ public static class NetworkObservationBuilder
         ByteDomain? byteDomain = null;
         uint sourceAddress = 0;
         uint destinationAddress = 0;
+        UInt128 sourceAddress6 = 0;
+        UInt128 destinationAddress6 = 0;
         int sourcePort = 0;
         int destinationPort = 0;
 
         IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
+        int addressOrdinal = 0;
         for (int index = 0; index < slots.Count; index++)
         {
+            AdmittedSlotPlan slot = slots[index];
+            if (slot.Kind == AdmittedSlotKind.Address128)
+            {
+                // An IPv6 address is its delivered bytes read big-endian; nothing further is applied to it.
+                if (admitted.TryGetAddress(addressOrdinal++, out UInt128 address))
+                {
+                    if (slot.Role == FieldRole.SourceEndpoint)
+                    {
+                        sourceAddress6 = address;
+                    }
+                    else if (slot.Role == FieldRole.DestinationEndpoint)
+                    {
+                        destinationAddress6 = address;
+                    }
+                }
+
+                continue;
+            }
+
             if (!admitted.TryGetSlot(index, out long raw))
             {
                 continue;
             }
 
-            AdmittedSlotPlan slot = slots[index];
             switch (slot.Role)
             {
                 case FieldRole.ProcessAttribution:
@@ -69,8 +90,8 @@ public static class NetworkObservationBuilder
         // the descriptor's measured orientation: every TCP descriptor names the owner first (FX-TCP-001), while a UDP
         // receive names the datagram's sender first (FX-UDP-001).
         FlowKey flow = TransportEndpoints.OrientationOf(plan.Mechanism, plan.Kind) == EndpointOrientation.OwnerFirst
-            ? new(sourceAddress, sourcePort, destinationAddress, destinationPort)
-            : new(destinationAddress, destinationPort, sourceAddress, sourcePort);
+            ? new(sourceAddress, sourcePort, destinationAddress, destinationPort, sourceAddress6, destinationAddress6)
+            : new(destinationAddress, destinationPort, sourceAddress, sourcePort, destinationAddress6, sourceAddress6);
 
         return new()
         {
@@ -89,6 +110,8 @@ public static class NetworkObservationBuilder
             SourcePort = sourcePort,
             DestinationAddress = destinationAddress,
             DestinationPort = destinationPort,
+            SourceAddress6 = sourceAddress6,
+            DestinationAddress6 = destinationAddress6,
             Flow = flow,
 
             // Null stays unknown: a descriptor without a size field never reports a zero transfer (R3).

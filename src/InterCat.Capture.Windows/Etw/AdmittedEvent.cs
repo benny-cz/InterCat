@@ -20,6 +20,15 @@ public struct AdmittedSlotBuffer
 #pragma warning restore IDE0044, IDE0051, CS0169
 }
 
+/// <summary>Fixed storage for the bounded set of admitted 128-bit addresses. No heap allocation (R9, R11).</summary>
+[InlineArray(AdmittedEvent.MaximumAddresses)]
+public struct AdmittedAddressBuffer
+{
+#pragma warning disable IDE0044, IDE0051, CS0169 // An inline array is declared by exactly one field.
+    private UInt128 element0;
+#pragma warning restore IDE0044, IDE0051, CS0169
+}
+
 /// <summary>
 /// Whether this record carries copies of the source record's extended-data items, and if not, why.
 /// An adapter that cannot reach the items reports that instead of reporting none (R3, R21).
@@ -82,7 +91,12 @@ public struct AdmittedEvent
     /// <summary>Longest bounded copy of one extended-data item. A longer item is copied as a flagged prefix.</summary>
     public const int MaximumExtendedItemBytes = 64;
 
+    /// <summary>How many 128-bit addresses one record copies: an IPv6 source and destination.</summary>
+    public const int MaximumAddresses = 2;
+
     private AdmittedSlotBuffer slots;
+    private AdmittedAddressBuffer addresses;
+    private byte addressMask;
     private AdmittedNameBuffer name;
     private AdmittedExtendedHeaderBuffer extendedHeaders;
     private AdmittedExtendedByteBuffer extendedBytes;
@@ -146,6 +160,56 @@ public struct AdmittedEvent
         return true;
     }
 
+    /// <summary>Which of the record's address slots hold a copied address, one bit per ordinal.</summary>
+    public readonly byte KnownAddressMask => addressMask;
+
+    /// <summary>
+    /// Sets the record's <paramref name="ordinal"/>th 128-bit address: its descriptor's address slots are numbered in the
+    /// order its plan lists them. The value is the address's 16 bytes read big-endian, as they were delivered.
+    /// </summary>
+    public void SetAddress(int ordinal, UInt128 value)
+    {
+        addresses[ordinal] = value;
+        addressMask |= (byte)(1 << ordinal);
+    }
+
+    /// <summary>The record's <paramref name="ordinal"/>th address; false when none was copied, which is not zero (R3).</summary>
+    public readonly bool TryGetAddress(int ordinal, out UInt128 value)
+    {
+        if ((addressMask & (1 << ordinal)) == 0)
+        {
+            value = UInt128.Zero;
+            return false;
+        }
+
+        value = addresses[ordinal];
+        return true;
+    }
+
+    /// <summary>
+    /// The ordinal of the address slot at <paramref name="slot"/> among a plan's address slots, or -1 when that slot
+    /// holds no address.
+    /// </summary>
+    public static int AddressOrdinal(IReadOnlyList<AdmittedSlotPlan> slots, int slot)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+        if (slots[slot].Kind != AdmittedSlotKind.Address128)
+        {
+            return -1;
+        }
+
+        int ordinal = 0;
+        for (int index = 0; index < slot; index++)
+        {
+            if (slots[index].Kind == AdmittedSlotKind.Address128)
+            {
+                ordinal++;
+            }
+        }
+
+        return ordinal;
+    }
+
     /// <summary>True when a bounded resource name was copied for this record.</summary>
     public readonly bool HasName => nameLength > 0;
 
@@ -197,6 +261,7 @@ public struct AdmittedEvent
     public void Clear()
     {
         knownMask = 0;
+        addressMask = 0;
         nameLength = 0;
         nameTruncated = false;
         identifierKnown = false;

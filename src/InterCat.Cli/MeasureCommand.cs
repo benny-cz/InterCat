@@ -59,13 +59,29 @@ internal sealed record TransportScenario(
     string CountOption,
     string CountNoun,
     int DefaultSeed,
-    int DefaultBytes)
+    int DefaultBytes,
+    bool Ipv6 = false)
 {
     public static TransportScenario Tcp { get; } =
         new("FX-TCP-001", "tcp-loopback", Mechanism.Tcp, "m0tcp", "--connections", "connections", 20_260_920, 4_096);
 
     public static TransportScenario Udp { get; } =
         new("FX-UDP-001", "udp-loopback", Mechanism.Udp, "m1udp", "--sockets", "sockets", 20_260_923, 1_400);
+
+    /// <summary>The same exchanges over IPv6 loopback (::1): the workloads' --ipv6, measured as fixtures of their own.</summary>
+    public static TransportScenario Tcp6 { get; } =
+        new("FX-TCP-002", "tcp-loopback", Mechanism.Tcp, "m1tcp6", "--connections", "connections", 20_260_927, 4_096, Ipv6: true);
+
+    public static TransportScenario Udp6 { get; } =
+        new("FX-UDP-002", "udp-loopback", Mechanism.Udp, "m1udp6", "--sockets", "sockets", 20_260_927, 1_400, Ipv6: true);
+
+    public static IReadOnlyList<TransportScenario> All { get; } = [Tcp, Udp, Tcp6, Udp6];
+
+    /// <summary>This scenario's counterpart over IPv6 loopback.</summary>
+    public TransportScenario OverIpv6 => Mechanism == Mechanism.Tcp ? Tcp6 : Udp6;
+
+    /// <summary>The IPv6 loopback address the evaluator reads this scenario's flows over, or null over IPv4.</summary>
+    public UInt128? LoopbackAddress6 => Ipv6 ? UInt128.One : null;
 }
 
 /// <summary>
@@ -106,6 +122,11 @@ internal static partial class MeasureCommand
             ConsoleUi.Failure(
                 $"Only 'tcp', 'udp', 'pipe' and 'rpc' are measurable in this milestone. Unknown mechanism: {mechanism}");
             return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (command.TryTakeFlag("--ipv6"))
+        {
+            scenario = scenario.OverIpv6;
         }
 
         string? outputOption = command.TakeOption("--output");
@@ -277,6 +298,7 @@ internal static partial class MeasureCommand
             BuildId = environment.BuildId,
             BuildIsSupported = environment.IsSupportedBuild,
             Reproduced = false,
+            LoopbackAddress6 = scenario.LoopbackAddress6,
         };
         TcpCoverageResult coverage = TcpCoverageEvaluator.Evaluate(truth, networkObservations, settings);
         IReadOnlyList<ProcessEvidence> processes = BuildProcessEvidence(truth, processObservations);
@@ -559,6 +581,10 @@ internal static partial class MeasureCommand
         start.ArgumentList.Add(messages.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--bytes");
         start.ArgumentList.Add(maximumBytes.ToString(CultureInfo.InvariantCulture));
+        if (scenario.Ipv6)
+        {
+            start.ArgumentList.Add("--ipv6");
+        }
 
         using Process? process = Process.Start(start);
         if (process is null)
@@ -666,11 +692,12 @@ internal static partial class MeasureCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat measure tcp [--output <dir>] [--seed <n>] [--connections <n>] [--messages <n>]");
-        ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--ipv6] [--overwrite] [--json]");
         ConsoleUi.Line("icat measure udp [--output <dir>] [--seed <n>] [--sockets <n>] [--messages <n>]");
-        ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--ipv6] [--overwrite] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("  Starts one uniquely named ETW session, runs FX-TCP-001 or FX-UDP-001, stops the session it");
+        ConsoleUi.Line("  Starts one uniquely named ETW session, runs FX-TCP-001 or FX-UDP-001 - or, with --ipv6, the same");
+        ConsoleUi.Line("  exchange over IPv6 loopback as FX-TCP-002 or FX-UDP-002 - stops the session it");
         ConsoleUi.Line("  created, and measures the section 14.2 thresholds against the workload's independent truth log.");
         ConsoleUi.Line("  Other ETW sessions on the machine are never stopped or adopted.");
     }

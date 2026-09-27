@@ -85,6 +85,158 @@ public sealed class ManifestSchemaTests
         </instrumentationManifest>
         """;
 
+    // The TCPv6 send template of Microsoft-Windows-Kernel-Network on 10.0.26220 (event 26), a binary whose length another
+    // field states, and a 16-byte binary that does not say it is an address.
+    private const string Ipv6Manifest = """
+        <instrumentationManifest xmlns="http://schemas.microsoft.com/win/2004/08/events">
+         <instrumentation><events>
+          <provider name="Sample-Network" guid="{7dd42a49-5329-4832-8dfd-43d979153a88}">
+           <templates>
+            <template tid="SentV6">
+             <data name="PID" inType="win:UInt32" outType="xs:unsignedInt" />
+             <data name="size" inType="win:UInt32" outType="xs:unsignedInt" />
+             <data name="daddr" inType="win:Binary" outType="win:IPv6" length="16" />
+             <data name="saddr" inType="win:Binary" outType="win:IPv6" length="16" />
+             <data name="dport" inType="win:UInt16" outType="win:Port" />
+             <data name="sport" inType="win:UInt16" outType="win:Port" />
+             <data name="seqnum" inType="win:UInt32" outType="xs:unsignedInt" />
+             <data name="connid" inType="win:UInt32" outType="xs:unsignedInt" />
+            </template>
+            <template tid="Blob">
+             <data name="length" inType="win:UInt16" />
+             <data name="payload" inType="win:Binary" length="length" />
+             <data name="after" inType="win:UInt32" />
+            </template>
+            <template tid="Unlabelled">
+             <data name="blob" inType="win:Binary" length="16" />
+             <data name="port" inType="win:UInt16" />
+            </template>
+           </templates>
+           <events>
+            <event value="26" version="0" template="SentV6" />
+            <event value="30" version="0" template="Blob" />
+            <event value="31" version="0" template="Unlabelled" />
+           </events>
+          </provider>
+         </events></instrumentation>
+        </instrumentationManifest>
+        """;
+
+    [Fact(DisplayName = "R9: a 16-byte IPv6 address compiles to an address slot at a fixed offset, and the fields after it stay reachable")]
+    public void AnIpv6AddressCompilesToAnAddressSlot()
+    {
+        ProviderSchema schema = ManifestParser.Parse(Ipv6Manifest);
+        ProviderSchemaField daddr = schema.FindEvent(26)!.Fields[2];
+        Assert.Equal((FieldWidthKind.Fixed, 16, "win:IPv6"), (daddr.WidthKind, daddr.FixedWidth, daddr.OutType));
+
+        AdmittedEventPlan descriptor = Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition([Ipv6Send()]), schema, 0).Events);
+
+        Assert.Equal(
+            [("PID", 0, 4, AdmittedSlotKind.Numeric), ("size", 4, 4, AdmittedSlotKind.Numeric),
+                ("saddr", 24, 16, AdmittedSlotKind.Address128), ("sport", 42, 2, AdmittedSlotKind.Numeric),
+                ("daddr", 8, 16, AdmittedSlotKind.Address128), ("dport", 40, 2, AdmittedSlotKind.Numeric),
+                ("connid", 48, 4, AdmittedSlotKind.Numeric)],
+            descriptor.Slots.Select(slot => (slot.FieldName, slot.Offset, slot.Width, slot.Kind)));
+        Assert.Equal(52, descriptor.MinimumBodyLength);
+        Assert.All(descriptor.FieldReport, field => Assert.Equal(FieldAvailability.Present, field.Availability));
+
+        // The record's two address slots are numbered in the order the plan lists them.
+        Assert.Equal([-1, -1, 0, -1, 1, -1, -1],
+            Enumerable.Range(0, descriptor.Slots.Count).Select(slot => AdmittedEvent.AddressOrdinal(descriptor.Slots, slot)));
+    }
+
+    [Fact(DisplayName = "R21: a binary field is fixed only by a stated length, and no bytes are read as an address unless the manifest says so")]
+    public void OnlyADeclaredIpv6AddressIsReadAsOne()
+    {
+        ProviderSchema schema = ManifestParser.Parse(Ipv6Manifest);
+
+        // A length another field states varies per record, so the field after it has no knowable offset.
+        AdmittedEventPlan blob = Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition(
+        [
+            new(30, 0, "blob", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
+                [new("after", FieldRole.Status)]),
+        ]), schema, 0).Events);
+        Assert.Equal(FieldAvailability.SchemaUnknown, Assert.Single(blob.FieldReport).Availability);
+
+        // Sixteen bytes the manifest does not call IPv6, and an IPv6 address read as IPv4, are refused, never guessed.
+        AdmittedEventPlan unlabelled = Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition(
+        [
+            new(31, 0, "unlabelled", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
+                [new("blob", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address)]),
+        ]), schema, 0).Events);
+        Assert.Equal(FieldAvailability.SchemaUnknown, Assert.Single(unlabelled.FieldReport).Availability);
+        Assert.Empty(unlabelled.Slots);
+        AdmittedEventPlan narrowed = Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition(
+        [
+            new(26, 0, "narrowed", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
+                [new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv4Address)]),
+        ]), schema, 0).Events);
+        Assert.Equal(FieldAvailability.SchemaUnknown, Assert.Single(narrowed.FieldReport).Availability);
+
+        // A record holds two addresses; a third is refused with the reason.
+        AdmittedEventPlan crowded = Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition(
+        [
+            new(26, 0, "crowded", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
+            [
+                new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+                new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+                new("saddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+            ]),
+        ]), schema, 0).Events);
+        Assert.Equal(2, crowded.Slots.Count);
+        Assert.Contains("at most 2 addresses", crowded.FieldReport[2].Notes, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: a fixed binary length TDH reports is restored to a rebuilt manifest, and nothing else is changed")]
+    public void FixedBinaryLengthsAreRestoredFromTdh()
+    {
+        // As TraceEvent rebuilds the provider from TDH: binaries with neither length nor out type, one template two events use.
+        string rebuilt = Ipv6Manifest
+            .Replace(" outType=\"win:IPv6\" length=\"16\"", string.Empty, StringComparison.Ordinal)
+            .Replace("<event value=\"31\" version=\"0\" template=\"Unlabelled\" />",
+                "<event value=\"31\" version=\"0\" template=\"Unlabelled\" /><event value=\"59\" version=\"0\" template=\"SentV6\" />",
+                StringComparison.Ordinal);
+        Assert.Equal(FieldWidthKind.Variable, ManifestParser.Parse(rebuilt).FindEvent(26)!.Fields[2].WidthKind);
+
+        ManifestFieldShape[] tdh =
+        [
+            new(26, 0, "daddr", 16, "win:IPv6"), new(26, 0, "saddr", 16, "win:IPv6"),
+            new(59, 0, "daddr", 16, "win:IPv6"), new(59, 0, "saddr", 16, "win:IPv6"),
+            new(31, 0, "port", 16, null),
+        ];
+        ProviderSchema restored = ManifestParser.Parse(ManifestFieldShapes.Apply(rebuilt, tdh));
+        Assert.All(restored.FindEvent(26)!.Fields.Where(field => field.InType == "win:Binary"), field =>
+            Assert.Equal((FieldWidthKind.Fixed, 16, "win:IPv6"), (field.WidthKind, field.FixedWidth, field.OutType)));
+        Assert.Equal(52, Assert.Single(AdmissionPlanCompiler.Compile(BuildDefinition([Ipv6Send()]), restored, 0).Events).MinimumBodyLength);
+        Assert.NotEqual(ManifestParser.Parse(rebuilt).SchemaFingerprint, restored.SchemaFingerprint);
+
+        // Only an unsized binary is given a length: a UInt16 is not, and a field no shape names keeps what it had.
+        Assert.Equal(FieldWidthKind.Fixed, restored.FindEvent(31)!.Fields[1].WidthKind);
+        Assert.Equal(2, restored.FindEvent(31)!.Fields[1].FixedWidth);
+
+        // Two events that describe one template's field differently leave it unsized, and a manifest nothing is restored
+        // to is the same text, so its fingerprint is unchanged.
+        ManifestFieldShape[] disagreeing = [new(26, 0, "daddr", 16, "win:IPv6"), new(59, 0, "daddr", 4, null)];
+        Assert.Equal(FieldWidthKind.Variable,
+            ManifestParser.Parse(ManifestFieldShapes.Apply(rebuilt, disagreeing)).FindEvent(26)!.Fields[2].WidthKind);
+        Assert.Same(rebuilt, ManifestFieldShapes.Apply(rebuilt, disagreeing));
+        Assert.Same(SampleManifest, ManifestFieldShapes.Apply(SampleManifest, tdh));
+        Assert.Same(SampleManifest, ManifestFieldShapes.Apply(SampleManifest, []));
+    }
+
+    /// <summary>The admission a TCPv6 send is compiled from: the IPv4 send's fields, with 16-byte addresses.</summary>
+    private static AdmittedEventIntent Ipv6Send() =>
+        new(26, 0, "TCPv6 data sent", Mechanism.Tcp, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound,
+        [
+            new("PID", FieldRole.ProcessAttribution),
+            new("size", FieldRole.ByteCount, MeasurementUnit.Bytes, ByteDomain.TransportObserved),
+            new("saddr", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+            new("sport", FieldRole.SourceEndpoint, Transform: SlotTransform.NetworkOrderPort),
+            new("daddr", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderIpv6Address),
+            new("dport", FieldRole.DestinationEndpoint, Transform: SlotTransform.NetworkOrderPort),
+            new("connid", FieldRole.CorrelationKey, SourceField: SourceField.ConnectionId),
+        ]);
+
     [Fact(DisplayName = "R5: the manifest parser resolves descriptors, keyword masks and template fields")]
     public void ParsesDescriptorsAndFields()
     {

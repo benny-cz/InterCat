@@ -85,6 +85,63 @@ public sealed class AdmittedEventEnvelopeMapperTests
         Assert.Equal(AdmittedEvent.MaximumExtendedItemBytes, eventKey.CopiedLength);
     }
 
+    [Fact(DisplayName = "IC-011: a record's IPv6 addresses survive journal-v1 mapping, and a record without one keeps its bytes")]
+    public void AddressesRoundTripAndAnAddresslessRecordKeepsItsBytes()
+    {
+        AdmittedEventPlan plan = BuildEventPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        AdmittedEvent plain = BuildAdmitted();
+        plain.SetSlot(0, 123);
+        plain.SetIdentifier(Guid.Parse("33333333-3333-4333-8333-333333333333"));
+        AdmittedEvent addressed = plain;
+        UInt128 documentation = ((UInt128)0x2001_0DB8 << 96) | 0x05EC;
+        addressed.SetAddress(0, UInt128.One);
+        addressed.SetAddress(1, documentation);
+        AdmittedEvent destinationOnly = plain;
+        destinationOnly.SetAddress(1, documentation);
+        CaptureId capture = CaptureId.New();
+
+        using RecordEnvelopeV1 withoutAddress = mapper.ToEnvelope(plain, plan, capture);
+        using RecordEnvelopeV1 withAddresses = mapper.ToEnvelope(addressed, plan, capture);
+        using RecordEnvelopeV1 withOne = mapper.ToEnvelope(destinationOnly, plan, capture);
+
+        // A record with no address is written as every earlier build wrote it; one with addresses carries a mask and each
+        // address's 16 bytes, in network order, right after its identifier.
+        byte[] plainBytes = withoutAddress.Body.Bytes.ToArray();
+        byte[] addressedBytes = withAddresses.Body.Bytes.ToArray();
+        Assert.Equal("IAP1"u8.ToArray(), plainBytes[..4]);
+        Assert.Equal("IAP2"u8.ToArray(), addressedBytes[..4]);
+        int afterIdentifier = 4 + 8 + 1 + (8 * AdmissionPlanCompiler.MaximumSlots) + 1 + 16;
+        Assert.Equal(plainBytes[4..afterIdentifier], addressedBytes[4..afterIdentifier]);
+        Assert.Equal(3, addressedBytes[afterIdentifier]);
+        Assert.Equal([.. new byte[15], 1], addressedBytes[(afterIdentifier + 1)..(afterIdentifier + 17)]);
+        Assert.Equal(new byte[] { 0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05, 0xEC },
+            addressedBytes[(afterIdentifier + 17)..(afterIdentifier + 33)]);
+        Assert.Equal(plainBytes[afterIdentifier..], addressedBytes[(afterIdentifier + 33)..]);
+
+        Assert.Equal(0, AdmittedEventEnvelopeMapper.FromEnvelope(withoutAddress, plan).KnownAddressMask);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(withAddresses, plan);
+        Assert.True(replayed.TryGetAddress(0, out UInt128 source));
+        Assert.True(replayed.TryGetAddress(1, out UInt128 destination));
+        Assert.Equal((UInt128.One, documentation), (source, destination));
+        Assert.Equal(plain.Identifier, replayed.Identifier);
+        AdmittedEvent one = AdmittedEventEnvelopeMapper.FromEnvelope(withOne, plan);
+        Assert.False(one.TryGetAddress(0, out _));
+        Assert.True(one.TryGetAddress(1, out UInt128 only) && only == documentation);
+
+        // A mask naming no address, or one a record cannot hold, is refused rather than read.
+        foreach (byte mask in new byte[] { 0, 4 })
+        {
+            byte[] forged = [.. addressedBytes];
+            forged[afterIdentifier] = mask;
+            RecordEnvelopeV1 refused = withAddresses with
+            {
+                Body = withAddresses.Body with { Bytes = EnvelopeBuffer.CopyOf(forged), OriginalLength = forged.Length },
+            };
+            Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(refused, plan));
+        }
+    }
+
     [Fact(DisplayName = "R17: an extended item the policy denies keeps its type and loses its bytes")]
     public void DeniedExtendedTypeIsCountedNotPersisted()
     {

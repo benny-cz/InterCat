@@ -145,10 +145,9 @@ identity: another relation rule can number channels differently.
 ## 7. Assumptions
 
 The orientations of §2 hold for the six admitted TCPv4 descriptors and the two admitted UDPv4 descriptors on the
-measured build. A descriptor whose orientation is not measured is not one this rule reads correctly, and admitting one
-is a catalog change that requires measuring it (P27). No IPv6 descriptor is admitted yet. v4 reads an IPv6 record
-through the orientation its mechanism and kind state, so admitting the TCPv6 and UDPv6 descriptors requires measuring
-that they name their endpoints as their IPv4 counterparts do. A UDP datagram sent to a broadcast or multicast address, or to a
+measured build, and for their IPv6 counterparts, TCPv6 26-31 and UDPv6 58-59, which FX-TCP-002 and FX-UDP-002 measured
+over IPv6 loopback (ADR-029). A descriptor whose orientation is not measured is not one this rule reads correctly, and
+admitting one is a catalog change that requires measuring it (P27). A UDP datagram sent to a broadcast or multicast address, or to a
 port no local process held, has no mirrored end and is `PeerNotObserved`; a UDP flow's lifetime is only the span of
 its records, because nothing marks when a socket was bound or closed. Imported sessions publish an aggregate coverage ledger, but it cannot locate a lost
 record at one end, and live captures do not yet publish one. An other end that is `PeerNotObserved` may therefore be

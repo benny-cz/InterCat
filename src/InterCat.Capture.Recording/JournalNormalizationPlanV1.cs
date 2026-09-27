@@ -158,6 +158,7 @@ public sealed record JournalNormalizationPlanV1
                 || descriptor.Version is < 0 or > byte.MaxValue
                 || string.IsNullOrWhiteSpace(descriptor.SchemaFingerprint)
                 || descriptor.Slots is null or { Count: > AdmissionPlanCompiler.MaximumSlots }
+                || descriptor.Slots.Count(slot => slot?.Kind == AdmittedSlotKind.Address128) > AdmittedEvent.MaximumAddresses
                 || descriptor.FieldReport is null
                 || descriptor.BodyPolicy is null
                 || !keys.Add((descriptor.SourceIndex, descriptor.EventId, descriptor.Version))

@@ -339,6 +339,45 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Null(row.Validate());
     }
 
+    [Fact(DisplayName = "R1: an IPv6 record keeps its addresses as delivered, in the row's IPv6 columns under family 6")]
+    public void AnIpv6RecordKeepsItsAddresses()
+    {
+        AdmittedEventPlan plan = Ipv6TransferPlan();
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(plan)], clock.Id);
+        UInt128 documentation = ((UInt128)0x2001_0DB8 << 96) | 1;
+        AdmittedEvent admitted = Admitted(plan);
+        admitted.SetSlot(0, 4_242);
+        admitted.SetSlot(1, 1_460);
+        admitted.SetAddress(0, UInt128.One);
+        admitted.SetSlot(3, 0x44CB);
+        admitted.SetAddress(1, documentation);
+        admitted.SetSlot(5, 0xBB01);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+
+        ObservationRowV1 row = normalizer.ToRow(envelope, plan, journalRecordIndex: 3);
+
+        Assert.Equal<byte?>(6, row.EndpointAddressFamily);
+        Assert.Equal((UInt128?)UInt128.One, row.SourceEndpointAddressV6);
+        Assert.Equal((UInt128?)documentation, row.DestinationEndpointAddressV6);
+        Assert.Null(row.SourceEndpointAddress);
+        Assert.Null(row.DestinationEndpointAddress);
+        Assert.Equal<ushort?>(52_036, row.SourceEndpointPort);
+        Assert.Equal<ushort?>(443, row.DestinationEndpointPort);
+        Assert.Equal(4_242, row.OwnerProcessId);
+        Assert.Equal(1_460, row.ByteValue);
+        Assert.Null(row.Validate());
+
+        // A record whose addresses were not copied names no family, as an IPv4 one without its addresses does.
+        AdmittedEvent unaddressed = Admitted(plan);
+        unaddressed.SetSlot(3, 0x44CB);
+        using RecordEnvelopeV1 bare = mapper.ToEnvelope(unaddressed, plan, CaptureId.New());
+        ObservationRowV1 partial = normalizer.ToRow(bare, plan, journalRecordIndex: 4);
+        Assert.Null(partial.EndpointAddressFamily);
+        Assert.Equal<ushort?>(52_036, partial.SourceEndpointPort);
+        Assert.Null(partial.Validate());
+    }
+
     [Fact(DisplayName = "R3: a descriptor with no byte field reports it inapplicable, not zero")]
     public void ADescriptorWithNoByteFieldReportsItInapplicable()
     {
@@ -595,6 +634,24 @@ public sealed class ObservationNormalizerV1Tests
                 FieldRole.ByteCount,
                 Unit: MeasurementUnit.Bytes,
                 ByteDomain: ByteDomain.TransportObserved),
+        ],
+    };
+
+    /// <summary>A TCPv6 send as the catalog compiles it against event 26's template: addresses 16 bytes at 8 and 24.</summary>
+    private static AdmittedEventPlan Ipv6TransferPlan() => TransferPlan() with
+    {
+        EventId = 26,
+        Name = "TCPv6 data sent",
+        MinimumBodyLength = 44,
+        SchemaFingerprint = "sha256:fixture-transfer-v6",
+        Slots =
+        [
+            new("PID", FieldRole.ProcessAttribution, 0, 4, null, null, SlotTransform.None),
+            new("size", FieldRole.ByteCount, 4, 4, MeasurementUnit.Bytes, ByteDomain.TransportObserved, SlotTransform.None),
+            new("saddr", FieldRole.SourceEndpoint, 24, 16, null, null, SlotTransform.NetworkOrderIpv6Address, AdmittedSlotKind.Address128),
+            new("sport", FieldRole.SourceEndpoint, 42, 2, null, null, SlotTransform.NetworkOrderPort),
+            new("daddr", FieldRole.DestinationEndpoint, 8, 16, null, null, SlotTransform.NetworkOrderIpv6Address, AdmittedSlotKind.Address128),
+            new("dport", FieldRole.DestinationEndpoint, 40, 2, null, null, SlotTransform.NetworkOrderPort),
         ],
     };
 

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using InterCat.Domain;
@@ -131,6 +132,7 @@ internal sealed class TraceEventRecordAdmitter
         }
 
         IReadOnlyList<AdmittedSlotPlan> slots = descriptorPlan.Slots;
+        int addressOrdinal = 0;
         for (int index = 0; index < slots.Count; index++)
         {
             AdmittedSlotPlan slot = slots[index];
@@ -164,6 +166,12 @@ internal sealed class TraceEventRecordAdmitter
             if (slot.Kind == AdmittedSlotKind.Identifier)
             {
                 ReadIdentifier(body, slot.Offset, ref admitted);
+                continue;
+            }
+
+            if (slot.Kind == AdmittedSlotKind.Address128)
+            {
+                ReadAddress(body, slot.Offset, addressOrdinal++, ref admitted);
                 continue;
             }
 
@@ -327,6 +335,21 @@ internal sealed class TraceEventRecordAdmitter
         }
 
         admitted.SetIdentifier(new Guid(buffer));
+    }
+
+    /// <summary>
+    /// An IPv6 address: its 16 bytes as delivered, in network order, read big-endian into one number. The body was
+    /// checked to hold the slot's whole width before any slot is read.
+    /// </summary>
+    private static void ReadAddress(IntPtr body, int offset, int ordinal, ref AdmittedEvent admitted)
+    {
+        Span<byte> buffer = stackalloc byte[16];
+        for (int index = 0; index < buffer.Length; index++)
+        {
+            buffer[index] = Marshal.ReadByte(body, offset + index);
+        }
+
+        admitted.SetAddress(ordinal, BinaryPrimitives.ReadUInt128BigEndian(buffer));
     }
 
     private readonly record struct DeniedKey(Guid ProviderGuid, int EventId);

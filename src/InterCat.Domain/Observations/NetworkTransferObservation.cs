@@ -2,12 +2,20 @@ namespace InterCat.Domain;
 
 /// <summary>
 /// The connection instance an observation belongs to, built from the endpoint pair rather than from a
-/// reusable number alone (R22). Two independently proven connections never collapse into one (I12).
+/// reusable number alone (R22). Two independently proven connections never collapse into one (I12). An IPv6 flow
+/// keeps its addresses in the 128-bit members and leaves the IPv4 ones zero; an IPv4 flow leaves the 128-bit ones zero,
+/// which is what evidence recorded before they existed reads back as.
 /// </summary>
-public readonly record struct FlowKey(uint LocalAddress, int LocalPort, uint RemoteAddress, int RemotePort)
+public readonly record struct FlowKey(
+    uint LocalAddress,
+    int LocalPort,
+    uint RemoteAddress,
+    int RemotePort,
+    UInt128 LocalAddress6 = default,
+    UInt128 RemoteAddress6 = default)
 {
     /// <summary>The same connection seen from the other endpoint.</summary>
-    public FlowKey Mirror() => new(RemoteAddress, RemotePort, LocalAddress, LocalPort);
+    public FlowKey Mirror() => new(RemoteAddress, RemotePort, LocalAddress, LocalPort, RemoteAddress6, LocalAddress6);
 }
 
 /// <summary>
@@ -35,6 +43,11 @@ public sealed record NetworkTransferObservation
     public int SourcePort { get; init; }
     public uint DestinationAddress { get; init; }
     public int DestinationPort { get; init; }
+
+    /// <summary>The source-named IPv6 addresses, when the descriptor carries IPv6 endpoints; zero otherwise.</summary>
+    public UInt128 SourceAddress6 { get; init; }
+
+    public UInt128 DestinationAddress6 { get; init; }
 
     /// <summary>The connection instance with the observing side first, derived from <see cref="Direction"/>.</summary>
     public FlowKey Flow { get; init; }

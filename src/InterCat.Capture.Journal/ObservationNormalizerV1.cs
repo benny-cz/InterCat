@@ -106,6 +106,8 @@ public sealed class ObservationNormalizerV1
             SourceEndpointPort = slots.SourcePort,
             DestinationEndpointAddress = slots.DestinationAddress,
             DestinationEndpointPort = slots.DestinationPort,
+            SourceEndpointAddressV6 = slots.SourceAddress6,
+            DestinationEndpointAddressV6 = slots.DestinationAddress6,
             ByteValue = measurement.Value,
             ByteDomain = measurement.Domain,
             AccountingSide = measurement.Side,
@@ -272,9 +274,30 @@ public sealed class ObservationNormalizerV1
     {
         var values = new SlotValues();
         IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
+        int addressOrdinal = 0;
         for (int index = 0; index < slots.Count; index++)
         {
             AdmittedSlotPlan slot = slots[index];
+            if (slot.Kind == AdmittedSlotKind.Address128)
+            {
+                // An IPv6 endpoint address is its delivered bytes read big-endian, which is what a row keeps; the family
+                // is declared whenever a descriptor has one, whether or not this record's copy is known.
+                values.AddressFamily ??= 6;
+                if (admitted.TryGetAddress(addressOrdinal++, out UInt128 address))
+                {
+                    if (slot.Role == FieldRole.SourceEndpoint)
+                    {
+                        values.SourceAddress6 ??= address;
+                    }
+                    else if (slot.Role == FieldRole.DestinationEndpoint)
+                    {
+                        values.DestinationAddress6 ??= address;
+                    }
+                }
+
+                continue;
+            }
+
             bool known = admitted.TryGetSlot(index, out long raw);
             switch (slot.Role)
             {
@@ -329,7 +352,8 @@ public sealed class ObservationNormalizerV1
         // An address with no port, or a port with no address, is still an endpoint the source named in part.
         // The family is declared whenever an address column carries a value, because 32 bits alone do not say
         // what they are.
-        if (values.SourceAddress is null && values.DestinationAddress is null)
+        if (values.SourceAddress is null && values.DestinationAddress is null
+            && values.SourceAddress6 is null && values.DestinationAddress6 is null)
         {
             values.AddressFamily = null;
         }
@@ -381,5 +405,9 @@ public sealed class ObservationNormalizerV1
         public uint? DestinationAddress { get; set; }
 
         public ushort? DestinationPort { get; set; }
+
+        public UInt128? SourceAddress6 { get; set; }
+
+        public UInt128? DestinationAddress6 { get; set; }
     }
 }

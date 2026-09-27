@@ -1,6 +1,6 @@
 {
   "reportVersion": "2",
-  "probedAtUtc": "2026-09-23T09:47:49.1209316+00:00",
+  "probedAtUtc": "2026-09-27T11:55:44.6985323+00:00",
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26220",
     "buildId": "10.0.26220.0-x64",
@@ -15,12 +15,12 @@
       "isSupported": true
     }
   },
-  "adapterVersion": "windows-etw-inventory-0.6.0",
+  "adapterVersion": "windows-etw-inventory-0.7.0",
   "probeOnly": true,
   "sources": [
     {
       "sourceId": "etw/manifest/Microsoft-Windows-Kernel-Network",
-      "displayName": "Kernel network (TCP and UDP transfer events)",
+      "displayName": "Kernel network (TCP and UDP transfer events over IPv4 and IPv6)",
       "kind": "ManifestProvider",
       "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
       "mechanisms": [
@@ -33,17 +33,18 @@
       "admission": "MetadataOnly",
       "enablement": {
         "level": "win:Informational",
-        "matchAnyKeyword": "0x0000000000000010",
+        "matchAnyKeyword": "0x0000000000000030",
         "matchAllKeyword": "0x0000000000000000",
         "requestedKeywords": [
-          "KERNEL_NETWORK_KEYWORD_IPV4"
+          "KERNEL_NETWORK_KEYWORD_IPV4",
+          "KERNEL_NETWORK_KEYWORD_IPV6"
         ],
         "supportsCaptureSideProcessFilter": false,
         "filteringNotes": "Scope is limited by keyword and event id. The provider exposes no capture-side process filter, so a process-focused view still pays whole-machine capture cost (section 9.4)."
       },
       "schema": {
         "providerName": "Microsoft-Windows-Kernel-Network",
-        "schemaFingerprint": "cff901c4b210c4cb5d17891e4010487a65eb7e4659e73f83c62360f572da2b77",
+        "schemaFingerprint": "39adef124d055fe770d9160debec3cf801ca26db4db6e837001735a3a5329058",
         "declaredEventCount": 22,
         "eventVersions": [
           "0"
@@ -623,6 +624,580 @@
               "notes": "Network-order port of the receiving process\u0027s own endpoint."
             }
           ]
+        },
+        {
+          "eventId": 26,
+          "version": 0,
+          "opcode": 10,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 27,
+          "version": 0,
+          "opcode": 11,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 28,
+          "version": 0,
+          "opcode": 12,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 29,
+          "version": 0,
+          "opcode": 13,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 30,
+          "version": 0,
+          "opcode": 14,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 31,
+          "version": 0,
+          "opcode": 15,
+          "taskName": "KERNEL_NETWORK_TASK_TCPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": null
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the owning process\u0027s own endpoint, measured on FX-TCP-002 for send and receive alike."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the owning process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the peer endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the peer endpoint."
+            },
+            {
+              "name": "connid",
+              "availability": "Present",
+              "role": "CorrelationKey",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Reported as zero on several builds; never an identity by itself (R22)."
+            }
+          ]
+        },
+        {
+          "eventId": 58,
+          "version": 0,
+          "opcode": 42,
+          "taskName": "KERNEL_NETWORK_TASK_UDPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner: the sending process. The event header PID may belong to an unrelated context (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": "The datagram\u0027s payload bytes, equal to the truth log\u0027s on FX-UDP-002."
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the sending process\u0027s own endpoint, measured on FX-UDP-002."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the sending process\u0027s own endpoint."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address the datagram was sent to."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port the datagram was sent to."
+            }
+          ]
+        },
+        {
+          "eventId": 59,
+          "version": 0,
+          "opcode": 43,
+          "taskName": "KERNEL_NETWORK_TASK_UDPIP",
+          "keywords": [
+            "KERNEL_NETWORK_KEYWORD_IPV6"
+          ],
+          "fields": [
+            {
+              "name": "PID",
+              "availability": "Present",
+              "role": "ProcessAttribution",
+              "schemaType": "win:UInt32",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Payload owner: the receiving process. On FX-UDP-002 the event header PID differed from it on every receive (section 4.1)."
+            },
+            {
+              "name": "size",
+              "availability": "Present",
+              "role": "ByteCount",
+              "schemaType": "win:UInt32",
+              "unit": "Bytes",
+              "byteDomain": "TransportObserved",
+              "notes": "The datagram\u0027s payload bytes, equal to the truth log\u0027s on FX-UDP-002."
+            },
+            {
+              "name": "saddr",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the datagram\u0027s sender. Unlike a TCP receive, a UDP receive names the origin first: measured on FX-UDP-002."
+            },
+            {
+              "name": "sport",
+              "availability": "Present",
+              "role": "SourceEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the datagram\u0027s sender."
+            },
+            {
+              "name": "daddr",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:Binary",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order address of the receiving process\u0027s own endpoint."
+            },
+            {
+              "name": "dport",
+              "availability": "Present",
+              "role": "DestinationEndpoint",
+              "schemaType": "win:UInt16",
+              "unit": null,
+              "byteDomain": null,
+              "notes": "Network-order port of the receiving process\u0027s own endpoint."
+            }
+          ]
         }
       ],
       "checks": [
@@ -653,13 +1228,15 @@
       ],
       "startupBehaviour": "No rundown of established connections. A flow already open when capture starts is observed only from its next transfer, so its lifetime stays uncertain (section 18.5).",
       "contractStatus": "Documented",
-      "overhead": "Low",
-      "overheadEvidence": "bench/results/capture-impact-20260922T234102Z/impact.json",
+      "overhead": "Moderate",
+      "overheadEvidence": "bench/results/capture-impact-20260927T115356Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "Retransmissions stay separate observations and are never folded into delivered payload (P5).",
         "Measured on FX-TCP-001: addresses and ports arrive in network byte order, and the saddr and sport pair names the owning process\u0027s own endpoint on both send and receive descriptors.",
         "Measured on FX-UDP-001: a UDP send names the sender\u0027s own endpoint first, and a UDP receive names the datagram\u0027s sender first, so the receiver\u0027s own endpoint is its destination. Records keep both as delivered.",
+        "Measured on FX-TCP-002 and FX-UDP-002 over IPv6 loopback: the TCPv6 and UDPv6 descriptors name their endpoints as their IPv4 counterparts do, and deliver each address as its 16 bytes in network order. The manifest TraceEvent rebuilds omits those fields\u0027 length, which TDH reports and the adapter restores.",
+        "Capture impact with both keywords, seven pairs on 2026-09-27: a median of 0.00 CPU pp (observed -1.45) and no throughput regression, where the IPv4 keyword alone measured 1.61 pp on 2026-09-23. The difference is within this machine\u0027s noise, so the class stays Moderate, the higher of the two runs.",
         "Loopback traffic is observed on both endpoints; the canonical owner rule of section 5.3 decides the total."
       ]
     },
@@ -1514,8 +2091,8 @@
       ],
       "startupBehaviour": "Processes started before the session are delivered only when the capture requests provider capture state, which yields ProcessRundown as witnessed presence, not a creation time (section 18.5).",
       "contractStatus": "Documented",
-      "overhead": "Low",
-      "overheadEvidence": "bench/results/capture-impact-20260922T234102Z/impact.json",
+      "overhead": "Moderate",
+      "overheadEvidence": "bench/results/capture-impact-20260927T115356Z/impact.json",
       "fixtureIds": [],
       "notes": [
         "ProcessSequenceNumber with CreateTime forms the start key that keeps reused PIDs from merging (I12, R22).",

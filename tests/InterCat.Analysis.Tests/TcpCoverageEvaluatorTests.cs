@@ -62,6 +62,24 @@ public sealed class TcpCoverageEvaluatorTests
         Assert.Equal(0, result.Measurement.ByteMeasuredOperations);
     }
 
+    [Fact(DisplayName = "P27: an IPv6 loopback workload is matched on its own flows, never on the same ports over IPv4")]
+    public void AnIpv6WorkloadMatchesOnlyIpv6Flows()
+    {
+        TruthRecord[] truth = [Truth(1, recordedTicks: 10_000, callId: 1)];
+        TcpCoverageSettings ipv6 = Settings() with { LoopbackAddress6 = UInt128.One };
+        NetworkTransferObservation overIpv6 = Observation(1, timestampTicks: 10_000, flow: new(0, 50_000, 0, 40_000, UInt128.One, UInt128.One));
+        NetworkTransferObservation overIpv4 = Observation(2, timestampTicks: 10_000);
+
+        TcpCoverageResult matched = TcpCoverageEvaluator.Evaluate(truth, [overIpv6, overIpv4], ipv6);
+
+        Assert.Equal(1, Assert.Single(matched.Operations).MatchedObservations);
+        Assert.Equal(1, matched.ObservationsOutsideScope);
+        Assert.Equal(overIpv6, Assert.Single(TcpCoverageEvaluator.SelectFixtureEvidence(truth, [overIpv6, overIpv4], ipv6)));
+
+        // Evidence recorded before IPv6 read back with its 128-bit members zero, so an IPv4 workload still matches it.
+        Assert.Equal(overIpv4, Assert.Single(TcpCoverageEvaluator.SelectFixtureEvidence(truth, [overIpv6, overIpv4], Settings())));
+    }
+
     [Fact(DisplayName = "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss")]
     public void MirroredObservationsNameTheOrientationAsTheGap()
     {
@@ -80,9 +98,11 @@ public sealed class TcpCoverageEvaluatorTests
     /// with: a change to matching or orientation that would move a tier fails here rather than in the next capture.
     /// </summary>
     [Theory(DisplayName = "P27: committed transport fixture evidence reproduces its measured tier")]
-    [InlineData("FX-TCP-001", 48, 4)]
-    [InlineData("FX-UDP-001", 64, 4)]
-    public void CommittedEvidenceReproducesItsTier(string fixture, int operations, int peers)
+    [InlineData("FX-TCP-001", 48, 4, false)]
+    [InlineData("FX-UDP-001", 64, 4, false)]
+    [InlineData("FX-TCP-002", 64, 4, true)]
+    [InlineData("FX-UDP-002", 64, 4, true)]
+    public void CommittedEvidenceReproducesItsTier(string fixture, int operations, int peers, bool ipv6)
     {
         string evidence = Path.Combine(RepositoryRoot(), "fixtures", fixture, "evidence");
         TruthRecord[] truth = ReadLines<TruthRecord>(Path.Combine(evidence, "truth.jsonl"));
@@ -94,6 +114,7 @@ public sealed class TcpCoverageEvaluatorTests
             BuildId = "10.0.26220.0-x64",
             BuildIsSupported = true,
             Reproduced = true,
+            LoopbackAddress6 = ipv6 ? UInt128.One : null,
         });
 
         Assert.Equal(operations, result.Measurement.TruthOperations);

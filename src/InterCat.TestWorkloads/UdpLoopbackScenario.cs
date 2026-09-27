@@ -11,7 +11,22 @@ namespace InterCat.TestWorkloads;
 /// <summary>Parameters of one seeded run. The same seed and counts reproduce the same datagram sizes (I14).</summary>
 internal sealed record UdpLoopbackOptions
 {
-    public const string ScenarioId = "FX-UDP-001";
+    public const string Ipv4ScenarioId = "FX-UDP-001";
+
+    public const string Ipv6ScenarioId = "FX-UDP-002";
+
+    /// <summary>The fixture this run is: FX-UDP-001 over IPv4 loopback, FX-UDP-002 over IPv6 loopback.</summary>
+    public string ScenarioId => Ipv6 ? Ipv6ScenarioId : Ipv4ScenarioId;
+
+    /// <summary>Whether both processes use IPv6 loopback (::1) instead of 127.0.0.1.</summary>
+    public bool Ipv6 { get; init; }
+
+    /// <summary>The address family and addresses the run's sockets use.</summary>
+    public AddressFamily Family => Ipv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork;
+
+    public IPAddress Loopback => Ipv6 ? IPAddress.IPv6Loopback : IPAddress.Loopback;
+
+    public IPAddress Any => Ipv6 ? IPAddress.IPv6Any : IPAddress.Any;
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_923;
@@ -80,13 +95,14 @@ internal static class UdpLoopbackScenario
 
         var summary = new
         {
-            scenarioId = UdpLoopbackOptions.ScenarioId,
+            scenarioId = options.ScenarioId,
             options.Seed,
             options.Sockets,
             options.DatagramsPerSocket,
             options.MinimumDatagramBytes,
             options.MaximumDatagramBytes,
             options.InterDatagramDelayMilliseconds,
+            options.Ipv6,
             port,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -109,12 +125,12 @@ internal static class UdpLoopbackScenario
     {
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-server.jsonl"),
-            UdpLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "server");
         truth.Write(TruthEventKind.ProcessStarted);
 
-        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        using var socket = new Socket(options.Family, SocketType.Dgram, ProtocolType.Udp);
+        socket.Bind(new IPEndPoint(options.Loopback, 0));
         int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
         truth.Write(TruthEventKind.ListenerBound, localPort: port);
 
@@ -135,7 +151,7 @@ internal static class UdpLoopbackScenario
                 try
                 {
                     received = await socket
-                        .ReceiveFromAsync(buffer, SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), timeout.Token)
+                        .ReceiveFromAsync(buffer, SocketFlags.None, new IPEndPoint(options.Any, 0), timeout.Token)
                         .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -184,7 +200,7 @@ internal static class UdpLoopbackScenario
     {
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-client.jsonl"),
-            UdpLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "client");
         truth.Write(TruthEventKind.ProcessStarted);
         if (options.MinimumDatagramBytes < HeaderBytes || options.MaximumDatagramBytes < options.MinimumDatagramBytes)
@@ -195,16 +211,16 @@ internal static class UdpLoopbackScenario
             return 2;
         }
 
-        var server = new IPEndPoint(IPAddress.Loopback, options.Port);
+        var server = new IPEndPoint(options.Loopback, options.Port);
         byte[] ack = new byte[AckBytes];
         int exitCode = 0;
         for (int index = 0; index < options.Sockets && exitCode == 0; index++)
         {
             var sizes = new Random(options.Seed + index);
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            using var socket = new Socket(options.Family, SocketType.Dgram, ProtocolType.Udp);
 
             // Bound before the first send, so the port the truth log names is the one every datagram leaves from.
-            socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            socket.Bind(new IPEndPoint(options.Loopback, 0));
             int local = ((IPEndPoint)socket.LocalEndPoint!).Port;
             truth.Write(TruthEventKind.ListenerBound, callId: index, localPort: local);
 
@@ -236,7 +252,7 @@ internal static class UdpLoopbackScenario
                     try
                     {
                         SocketReceiveFromResult received = await socket
-                            .ReceiveFromAsync(ack, SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), timeout.Token)
+                            .ReceiveFromAsync(ack, SocketFlags.None, new IPEndPoint(options.Any, 0), timeout.Token)
                             .ConfigureAwait(false);
                         truth.Write(
                             TruthEventKind.MessageReceived,
@@ -296,6 +312,11 @@ internal static class UdpLoopbackScenario
         start.ArgumentList.Add(options.MaximumDatagramBytes.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--delay");
         start.ArgumentList.Add(options.InterDatagramDelayMilliseconds.ToString(CultureInfo.InvariantCulture));
+        if (options.Ipv6)
+        {
+            start.ArgumentList.Add("--ipv6");
+        }
+
         if (port > 0)
         {
             start.ArgumentList.Add("--port");

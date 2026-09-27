@@ -436,6 +436,12 @@ public static class BrokerPrepareCompiler
                     return $"Source '{source.SourceId}' contains an invalid admitted descriptor.";
                 }
 
+                // A record holds two addresses; a plan asking the callback to copy a third would write past them.
+                if (item.Slots.Count(slot => slot.Kind == AdmittedSlotKind.Address128) > AdmittedEvent.MaximumAddresses)
+                {
+                    return $"Descriptor {source.ProviderGuid:D}/{item.EventId}/v{item.Version} admits more addresses than a record holds.";
+                }
+
                 foreach (AdmittedSlotPlan slot in item.Slots)
                 {
                     int minimumWidth = slot.Kind switch
@@ -443,7 +449,7 @@ public static class BrokerPrepareCompiler
                         AdmittedSlotKind.ResourceName => 2,
                         AdmittedSlotKind.AnsiResourceName => 1,
                         AdmittedSlotKind.ResourceNameAfterSid => AdmissionPlanCompiler.MinimumSidLength,
-                        AdmittedSlotKind.Identifier => 16,
+                        AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => 16,
                         _ => slot.Width,
                     };
                     bool widthValid = slot.Kind switch
@@ -452,7 +458,7 @@ public static class BrokerPrepareCompiler
                         AdmittedSlotKind.ResourceName
                             or AdmittedSlotKind.AnsiResourceName
                             or AdmittedSlotKind.ResourceNameAfterSid => slot.Width == 0,
-                        AdmittedSlotKind.Identifier => slot.Width == 16,
+                        AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => slot.Width == 16,
                         _ => false,
                     };
                     if (string.IsNullOrWhiteSpace(slot.FieldName)

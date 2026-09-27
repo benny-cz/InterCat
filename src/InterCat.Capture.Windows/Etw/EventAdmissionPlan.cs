@@ -47,6 +47,12 @@ public enum AdmittedSlotKind
     /// bounded by the record's length (R9).
     /// </summary>
     ResourceNameAfterSid = 5,
+
+    /// <summary>
+    /// A 16-byte IPv6 endpoint address, copied whole into one of the record's two address slots, in the order the
+    /// descriptor's address slots are listed (revision 174).
+    /// </summary>
+    Address128 = 6,
 }
 
 /// <summary>A compiled admission plan for exactly one event descriptor version.</summary>

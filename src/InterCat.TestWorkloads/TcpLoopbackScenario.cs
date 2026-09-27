@@ -11,7 +11,20 @@ namespace InterCat.TestWorkloads;
 /// <summary>Parameters of one seeded run. The same seed and counts reproduce the same declared sizes (I14).</summary>
 internal sealed record TcpLoopbackOptions
 {
-    public const string ScenarioId = "FX-TCP-001";
+    public const string Ipv4ScenarioId = "FX-TCP-001";
+
+    public const string Ipv6ScenarioId = "FX-TCP-002";
+
+    /// <summary>The fixture this run is: FX-TCP-001 over IPv4 loopback, FX-TCP-002 over IPv6 loopback.</summary>
+    public string ScenarioId => Ipv6 ? Ipv6ScenarioId : Ipv4ScenarioId;
+
+    /// <summary>Whether both processes use IPv6 loopback (::1) instead of 127.0.0.1.</summary>
+    public bool Ipv6 { get; init; }
+
+    /// <summary>The address family and loopback address the run's sockets use.</summary>
+    public AddressFamily Family => Ipv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork;
+
+    public IPAddress Loopback => Ipv6 ? IPAddress.IPv6Loopback : IPAddress.Loopback;
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_920;
@@ -83,7 +96,7 @@ internal static class TcpLoopbackScenario
 
         var summary = new
         {
-            scenarioId = TcpLoopbackOptions.ScenarioId,
+            scenarioId = options.ScenarioId,
             options.Seed,
             options.Connections,
             options.MessagesPerConnection,
@@ -91,6 +104,7 @@ internal static class TcpLoopbackScenario
             options.MaximumMessageBytes,
             options.InterMessageDelayMilliseconds,
             options.Concurrency,
+            options.Ipv6,
             port,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -109,12 +123,12 @@ internal static class TcpLoopbackScenario
     {
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-server.jsonl"),
-            TcpLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "server");
         truth.Write(TruthEventKind.ProcessStarted);
 
-        using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        using var listener = new Socket(options.Family, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new IPEndPoint(options.Loopback, 0));
         listener.Listen(options.Connections + 1);
         int port = ((IPEndPoint)listener.LocalEndPoint!).Port;
         truth.Write(TruthEventKind.ListenerBound, localPort: port);
@@ -215,7 +229,7 @@ internal static class TcpLoopbackScenario
     {
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-client.jsonl"),
-            TcpLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "client");
         truth.Write(TruthEventKind.ProcessStarted);
 
@@ -252,8 +266,8 @@ internal static class TcpLoopbackScenario
         var sizes = new Random(options.Seed + connection);
         byte[] ack = new byte[AckBytes];
         {
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            await socket.ConnectAsync(new IPEndPoint(IPAddress.Loopback, options.Port), cancellationToken)
+            using var socket = new Socket(options.Family, SocketType.Stream, ProtocolType.Tcp);
+            await socket.ConnectAsync(new IPEndPoint(options.Loopback, options.Port), cancellationToken)
                 .ConfigureAwait(false);
             socket.NoDelay = true;
             var local = (IPEndPoint)socket.LocalEndPoint!;
@@ -336,6 +350,11 @@ internal static class TcpLoopbackScenario
         start.ArgumentList.Add(options.InterMessageDelayMilliseconds.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--concurrency");
         start.ArgumentList.Add(options.Concurrency.ToString(CultureInfo.InvariantCulture));
+        if (options.Ipv6)
+        {
+            start.ArgumentList.Add("--ipv6");
+        }
+
         if (port > 0)
         {
             start.ArgumentList.Add("--port");

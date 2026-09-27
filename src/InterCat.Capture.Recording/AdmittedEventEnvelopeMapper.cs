@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using InterCat.Capture.Windows;
@@ -17,6 +18,13 @@ public sealed class AdmittedEventEnvelopeMapper
 {
     public const string PolicyId = CaptureBodyAdmissionPolicies.MetadataOnlyPolicyId;
     private const uint ProjectionMagic = 0x31504149; // "IAP1" little-endian.
+
+    /// <summary>
+    /// "IAP2" little-endian: an IAP1 projection that also carries the record's 128-bit addresses after its identifier - a
+    /// mask of which it holds, then each one's 16 bytes in network order (revision 174). A record with no address is
+    /// written as IAP1, so a journal of IPv4 records keeps its bytes.
+    /// </summary>
+    private const uint AddressedProjectionMagic = 0x32504149;
 
     private readonly JournalV1SchemaTable schemas = new();
     private readonly ClockId clockId;
@@ -208,7 +216,8 @@ public sealed class AdmittedEventEnvelopeMapper
 
         using var stream = new MemoryStream(envelope.Body.Bytes.ToArray(), writable: false);
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
-        if (reader.ReadUInt32() != ProjectionMagic)
+        uint magic = reader.ReadUInt32();
+        if (magic is not (ProjectionMagic or AddressedProjectionMagic))
         {
             throw new InvalidDataException("A journal-v1 projection body has the wrong marker.");
         }
@@ -242,6 +251,24 @@ public sealed class AdmittedEventEnvelopeMapper
         if (reader.ReadBoolean())
         {
             admitted.SetIdentifier(new Guid(ReadExactly(reader, 16), bigEndian: true));
+        }
+
+        if (magic == AddressedProjectionMagic)
+        {
+            // IAP2 is written only for a record that holds an address, and a record holds at most two.
+            byte addresses = reader.ReadByte();
+            if (addresses == 0 || (addresses >> AdmittedEvent.MaximumAddresses) != 0)
+            {
+                throw new InvalidDataException("A journal-v1 projection declares addresses a record cannot hold.");
+            }
+
+            for (int ordinal = 0; ordinal < AdmittedEvent.MaximumAddresses; ordinal++)
+            {
+                if ((addresses & (1 << ordinal)) != 0)
+                {
+                    admitted.SetAddress(ordinal, BinaryPrimitives.ReadUInt128BigEndian(ReadExactly(reader, 16)));
+                }
+            }
         }
 
         bool nameTruncated = reader.ReadBoolean();
@@ -349,7 +376,8 @@ public sealed class AdmittedEventEnvelopeMapper
         using var stream = new MemoryStream(512);
         using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
         {
-            writer.Write(ProjectionMagic);
+            byte addresses = admitted.KnownAddressMask;
+            writer.Write(addresses == 0 ? ProjectionMagic : AddressedProjectionMagic);
             writer.Write(admitted.TimestampUtcTicks);
             writer.Write(admitted.KnownSlotMask);
             for (int index = 0; index < AdmissionPlanCompiler.MaximumSlots; index++)
@@ -362,6 +390,20 @@ public sealed class AdmittedEventEnvelopeMapper
             if (admitted.HasIdentifier)
             {
                 writer.Write(admitted.Identifier.ToByteArray(bigEndian: true));
+            }
+
+            if (addresses != 0)
+            {
+                writer.Write(addresses);
+                Span<byte> address = stackalloc byte[16];
+                for (int ordinal = 0; ordinal < AdmittedEvent.MaximumAddresses; ordinal++)
+                {
+                    if (admitted.TryGetAddress(ordinal, out UInt128 value))
+                    {
+                        BinaryPrimitives.WriteUInt128BigEndian(address, value);
+                        writer.Write(address);
+                    }
+                }
             }
 
             Span<char> chars = stackalloc char[AdmittedEvent.MaximumNameLength];

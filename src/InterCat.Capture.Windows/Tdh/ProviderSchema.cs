@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace InterCat.Capture.Windows;
 
 /// <summary>How wide a manifest field is in the event body, which decides whether a bounded
@@ -17,13 +19,21 @@ public enum FieldWidthKind
 /// <summary>One declared field of an event template.</summary>
 public sealed record ProviderSchemaField(string Name, string InType, FieldWidthKind WidthKind, int FixedWidth)
 {
-    public static ProviderSchemaField Create(string name, string inType)
+    /// <summary>How the manifest says the value reads, such as <c>win:IPv6</c>; null when it declares none.</summary>
+    public string? OutType { get; init; }
+
+    /// <summary>
+    /// A field as a manifest declares it. <paramref name="length"/> is the manifest's own length attribute: a number
+    /// fixes a binary field's width, as a 16-byte IPv6 address has, while the name of another field, or none, leaves
+    /// it data dependent.
+    /// </summary>
+    public static ProviderSchemaField Create(string name, string inType, string? length = null, string? outType = null)
     {
-        (FieldWidthKind kind, int width) = WidthOf(inType);
-        return new(name, inType, kind, width);
+        (FieldWidthKind kind, int width) = WidthOf(inType, length);
+        return new(name, inType, kind, width) { OutType = outType };
     }
 
-    private static (FieldWidthKind Kind, int Width) WidthOf(string inType) => inType switch
+    private static (FieldWidthKind Kind, int Width) WidthOf(string inType, string? length) => inType switch
     {
         "win:UInt8" or "win:Int8" or "win:Boolean8" => (FieldWidthKind.Fixed, 1),
         "win:UInt16" or "win:Int16" or "win:HexInt16" => (FieldWidthKind.Fixed, 2),
@@ -31,6 +41,8 @@ public sealed record ProviderSchemaField(string Name, string InType, FieldWidthK
         "win:UInt64" or "win:Int64" or "win:HexInt64" or "win:Double" or "win:FILETIME" => (FieldWidthKind.Fixed, 8),
         "win:GUID" or "win:SYSTEMTIME" => (FieldWidthKind.Fixed, 16),
         "win:Pointer" => (FieldWidthKind.PointerSized, 0),
+        "win:Binary" when int.TryParse(length, NumberStyles.None, CultureInfo.InvariantCulture, out int bytes) && bytes > 0
+            => (FieldWidthKind.Fixed, bytes),
         _ => (FieldWidthKind.Variable, 0),
     };
 }

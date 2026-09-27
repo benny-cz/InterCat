@@ -11,6 +11,17 @@ public sealed record TcpCoverageSettings
     /// <summary>The loopback address both processes used, as a host-order IPv4 value.</summary>
     public uint LoopbackAddress { get; init; } = 0x7F00_0001;
 
+    /// <summary>
+    /// The IPv6 loopback address both processes used, when the workload ran over IPv6 (::1 is 1); the IPv4 address is
+    /// then not used. Null for an IPv4 workload.
+    /// </summary>
+    public UInt128? LoopbackAddress6 { get; init; }
+
+    /// <summary>The flow a truth record's ports name, over the loopback address of the workload's family.</summary>
+    internal FlowKey LoopbackFlow(int localPort, int remotePort) => LoopbackAddress6 is { } loopback6
+        ? new(0, localPort, 0, remotePort, loopback6, loopback6)
+        : new(LoopbackAddress, localPort, LoopbackAddress, remotePort);
+
     public required string FixtureId { get; init; }
     public required string BuildId { get; init; }
     public required bool BuildIsSupported { get; init; }
@@ -111,11 +122,7 @@ public static class TcpCoverageEvaluator
                 continue;
             }
 
-            var flow = new FlowKey(
-                settings.LoopbackAddress,
-                record.LocalPort.Value,
-                settings.LoopbackAddress,
-                record.RemotePort.Value);
+            FlowKey flow = settings.LoopbackFlow(record.LocalPort.Value, record.RemotePort.Value);
             truthFlows.Add(flow);
             truthProcesses.Add(record.ProcessId);
             truthFlowOwner[flow] = record.ProcessId;
@@ -345,11 +352,7 @@ public static class TcpCoverageEvaluator
                 continue;
             }
 
-            truthFlows.Add(new(
-                settings.LoopbackAddress,
-                record.LocalPort.Value,
-                settings.LoopbackAddress,
-                record.RemotePort.Value));
+            truthFlows.Add(settings.LoopbackFlow(record.LocalPort.Value, record.RemotePort.Value));
         }
 
         var scoped = new List<NetworkTransferObservation>();

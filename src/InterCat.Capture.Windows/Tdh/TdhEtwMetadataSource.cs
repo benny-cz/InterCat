@@ -68,7 +68,9 @@ public sealed class TdhEtwMetadataSource : IEtwMetadataSource
             string manifest = RegisteredTraceEventParser.GetManifestForRegisteredProvider(providerGuid);
             return string.IsNullOrWhiteSpace(manifest)
                 ? ManifestReadResult.Failure("TDH returned an empty manifest for this provider.")
-                : ManifestReadResult.Success(manifest);
+                : ManifestReadResult.Success(ManifestFieldShapes.Apply(
+                    manifest,
+                    OperatingSystem.IsWindows() ? TdhFieldShapeReader.Read(providerGuid) : []));
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {

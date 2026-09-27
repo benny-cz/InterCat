@@ -46,13 +46,13 @@ internal static class VerifyCommand
         }
 
         string mechanism = command.TakePositional() ?? "tcp";
-        string? expectedFixture = mechanism.ToUpperInvariant() switch
+        Mechanism? expectedMechanism = mechanism.ToUpperInvariant() switch
         {
-            "TCP" => TransportScenario.Tcp.FixtureId,
-            "UDP" => TransportScenario.Udp.FixtureId,
+            "TCP" => Mechanism.Tcp,
+            "UDP" => Mechanism.Udp,
             _ => null,
         };
-        if (expectedFixture is null)
+        if (expectedMechanism is null)
         {
             ConsoleUi.Failure($"Only 'tcp' and 'udp' verification exist in this milestone. Unknown mechanism: {mechanism}");
             return InterCatExitCode.InvalidInvocation;
@@ -103,10 +103,14 @@ internal static class VerifyCommand
             await File.ReadAllTextAsync(measurementPath, cancellationToken).ConfigureAwait(false),
             JsonContracts.Compact)
             ?? throw new InvalidDataException("measurement.json has no run header.");
-        if (!string.Equals(header.FixtureId, expectedFixture, StringComparison.Ordinal))
+        // The run's own fixture says which family its loopback flows are in.
+        TransportScenario? scenario = TransportScenario.All.FirstOrDefault(
+            candidate => string.Equals(candidate.FixtureId, header.FixtureId, StringComparison.Ordinal));
+        if (scenario is null || scenario.Mechanism != expectedMechanism)
         {
             ConsoleUi.Failure(
-                $"The run measured {header.FixtureId}, not {expectedFixture}. Verify it as the mechanism it measured.");
+                $"The run measured {header.FixtureId}, not a {mechanism.ToUpperInvariant()} fixture. Verify it as the "
+                + "mechanism it measured.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -134,6 +138,7 @@ internal static class VerifyCommand
             BuildId = header.Environment.BuildId,
             BuildIsSupported = header.Environment.IsSupportedBuild,
             Reproduced = true,
+            LoopbackAddress6 = scenario.LoopbackAddress6,
         };
         TcpCoverageResult coverage = TcpCoverageEvaluator.Evaluate(truth, observations, settings);
         IReadOnlyList<NetworkTransferObservation> scoped =

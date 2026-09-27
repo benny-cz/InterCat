@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 173 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 174 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -52,7 +52,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | Item | Current state | Remaining acceptance gap |
 |---|---|---|
 | IC-001–004, 007–010a (M0) | Complete for measured M0 scope | Qualify other supported retail builds and mechanisms as their gates require. |
-| IC-005/006 feasibility | Measured: TCP `TrafficVisualization`; pipe `Unsupported`; RPC `ExperimentalEvidence` | Sections/ALPC and wider mechanisms are unqualified; no inferred peer or RPC byte claims. |
+| IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence` | Sections/ALPC and wider mechanisms are unqualified; no inferred peer or RPC byte claims. |
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
@@ -67,6 +67,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 174 — IPv6 traffic is captured, measured on real ETW (ADR-029):**
+  - **Admitted by measurement:** TCPv6 26-31 and UDPv6 58-59 under both keywords (0x30). FX-TCP-002 and FX-UDP-002
+    ran the loopback truth workloads over `::1` (`--ipv6`) and met every applicable §14.2 criterion at 100%, reproduced
+    by a second run. TCP measured 64 of 64 operations, 0 false peers of 4, and 25,403 B both sides; UDP 64 of 64 and
+    9,166 B. Each IPv6 descriptor names its endpoints as its IPv4 counterpart does, and every UDPv6 receive's header
+    PID differed from its owner, as over IPv4.
+  - **The schema had hidden the fields:** TraceEvent rebuilds a manifest from TDH without a 16-byte address's `length`
+    or `win:IPv6` out type, so every field after one was unreachable. The adapter reads each fixed binary length from
+    TDH (`TdhGetManifestEventInformation`) and writes it back before parsing. The kernel network schema fingerprint
+    covers it, and a manifest with nothing restored keeps its text.
+  - **Whole addresses end to end:** an `Address128` slot copies 16 bytes into one of a record's two address slots. The
+    journal projects such a record as `IAP2`, and an IPv4 one stays `IAP1` byte for byte. The normalizer fills
+    `observation-v2`'s columns. A recorded IPv6 session paired its channels (`[::1]:60413 ↔ [::1]:60414`), attributed
+    a UDP client's 11,674 B to its server on 16 of 16 records, and replayed its journal through `icat rederive --check`.
+  - **Adapter 0.7.0**; `icat measure|verify tcp|udp --ipv6`; the M0 flow key and evaluator carry IPv6 loopback, and
+    the committed IPv4 evidence reads back unchanged.
+  - **Impact of the wider keyword:** seven pairs per source measured the network source at a median 0.00 CPU pp
+    (observed −1.45), with no throughput regression and loss-free, where the IPv4 keyword alone measured 1.61 pp. That
+    is within this machine's noise, so the catalog keeps it Moderate, the higher of the two.
 
 - **Revision 173 — an IPv6 record finds its other end:**
   - **128-bit ends:** `transport-endpoint-relation-v4` keys an end by its family and its addresses in 128 bits, read from
@@ -1425,13 +1445,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-   - **IPv6.** The capture admits the kernel network provider's IPv4 descriptors only (TCPv4 10–15, UDPv4 42). A
-     service listening on `::1`, which is where many `localhost` servers listen on Windows, is invisible, though §13.1's
-     first scenario and M2's "known loopback client/server" both name IPv6 loopback. Revision 172 stores an IPv6
-     endpoint (`observation-v2`) and redacts, shares and shows it; revision 173 relates IPv6 ends
-     (`transport-endpoint-relation-v4`). Next, admit the TCPv6 and UDPv6 descriptors with the normalizer's 16-byte
-     address slots. Measure that each names its endpoints as its IPv4 counterpart does (`relations-v1` §7), qualify an
-     IPv6 loopback fixture on real ETW, and teach the TCP coverage evaluator its IPv6 loopback address.
+   - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
+     `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
+     interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
+     IPv6 multicast.
    - **IC-016a** waits on a retention that releases observation segments: today only a journal prefix is released, and
      every derived segment, with every identity, stays.
 4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
@@ -1461,6 +1478,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 174 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,197 tests: 1,194
+  passed, 3 skipped**, zero failures. FX-TCP-002 and FX-UDP-002 were measured on real ETW with adapter 0.7.0, twice each,
+  and a focused TCP and a focused UDP recording over `::1` were checked end to end; the capture-impact harness ran
+  seven pairs per source (`bench/results/capture-impact-20260927T115356Z`).
 - Revision 173 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,188 tests: 1,185
   passed, 3 skipped**, zero failures. The scale-gate benchmark ran three times in Release at 1M and 10M rows with
   `DOTNET_PROCESSOR_COUNT=16`, and three times with revision 171's build from a worktree, over the same sessions.
