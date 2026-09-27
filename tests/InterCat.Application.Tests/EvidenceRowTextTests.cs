@@ -106,6 +106,14 @@ public sealed class EvidenceRowTextTests
             new(new ProcessInstanceId(Guid.NewGuid()), 1_960, "services.exe", RelationStrength.Correlated,
                 ProcessBindingReason.Bound, true)), Invariant));
 
+        // As a clause, the owner reads as what it is: raised by, owned by, or no owner named - never "owned by raised by".
+        Assert.Equal("raised by PID 1960", EvidenceRowText.Ownership(Record(call), Invariant));
+        Assert.Equal("owned by PID 100", EvidenceRowText.Ownership(
+            Record(Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, 100)), Invariant));
+        Assert.Equal("with no owner process named", EvidenceRowText.Ownership(Record(
+            Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null),
+            new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.NoOwner, false)), Invariant));
+
         // A kernel record is raised in whatever process the kernel was in, so its header names no owner (§4.1).
         ObservationRowV1 kernel = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null) with { HeaderProcessId = 1_960 };
         Assert.Null(EvidenceRowText.OwnerProcessId(kernel));

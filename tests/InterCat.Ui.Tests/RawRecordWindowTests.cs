@@ -46,6 +46,11 @@ public sealed class RawRecordWindowTests
             detail, StringComparison.Ordinal);
         Assert.DoesNotContain("{ ", detail, StringComparison.Ordinal);
         Assert.DoesNotContain("RawRecordId", detail, StringComparison.Ordinal);
+
+        // A public provider is named beside its identity, and the envelope's codes read as words, not enumeration names.
+        Assert.Contains($"Provider Microsoft-Windows-Kernel-Network ({NetworkProvider:N}) · event ", detail, StringComparison.Ordinal);
+        string body = detail.Split(Environment.NewLine).Single(line => line.StartsWith("Body: ", StringComparison.Ordinal));
+        Assert.Matches("^Body: [a-z ]+, [a-z ]+ · original ", body);
         window.Close();
     }
 }

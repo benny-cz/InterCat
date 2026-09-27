@@ -112,6 +112,18 @@ public static class EvidenceRowText
         return named + qualifier + admitted;
     }
 
+    /// <summary>
+    /// The owner as a clause of a sentence about the record: "owned by client.exe · PID 100", or, where the payload names
+    /// no owner, "raised by …" or "with no owner process named", which "owned by" would misstate.
+    /// </summary>
+    public static string Ownership(SessionEvidenceRecord record, IFormatProvider? culture = null)
+    {
+        string owner = Owner(record, culture);
+        return owner.StartsWith("raised by ", StringComparison.Ordinal) ? owner
+            : owner.StartsWith("no owner", StringComparison.Ordinal) ? "with " + owner
+            : "owned by " + owner;
+    }
+
     /// <summary>One line for a list: time, what happened, size and endpoints where the record has them.</summary>
     public static string Summary(SessionEvidenceRecord record, IFormatProvider? culture = null)
     {

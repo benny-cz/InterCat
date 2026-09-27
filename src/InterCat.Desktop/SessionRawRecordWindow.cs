@@ -153,13 +153,15 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         {
             // The raw identity in words: a record's generated ToString would show its type and field names instead.
             $"Raw record: capture {raw.CaptureId} · stream {raw.StreamId} · source epoch {raw.SourceEpoch} · ordinal {raw.RecordOrdinal}",
-            $"Provider {header.ProviderId:N} · event {header.EventId} · version {header.Version} · opcode {header.Opcode} · task {header.Task}",
+            // A public provider is named beside its identity, and every code is said in words (R5).
+            $"Provider {(KnownProviders.NameOf(header.ProviderId) is { } name ? $"{name} ({header.ProviderId:N})" : header.ProviderId.ToString("N"))}"
+                + $" · event {header.EventId} · version {header.Version} · opcode {header.Opcode} · task {header.Task}",
             $"Header PID/TID {header.ProcessId}/{header.ThreadId} · activity {header.ActivityId} · related {header.RelatedActivityId}",
-            $"Clock {result.ClockId} · encoding {result.TimestampEncoding} · native reading {result.NativeTicks}",
+            $"Clock {result.ClockId} · encoding {Encoding(result.TimestampEncoding)} · native reading {result.NativeTicks}",
             $"Processor {buffer.ProcessorNumber} · logger {buffer.LoggerId} · pointer size {result.PointerSize} bytes",
             $"Schema reference {result.SchemaReference?.ToString(CultureInfo.InvariantCulture) ?? "none"} · fingerprint {result.SchemaFingerprint ?? "unavailable"}",
             $"Admission policy reference {result.AdmissionPolicyReference} · {result.AdmissionPolicyId}",
-            $"Body: {result.BodyClassification} / {result.BodyDisposition} · original {result.OriginalBodyLength:N0} bytes · retained {result.RetainedBodyLength:N0} bytes",
+            $"Body: {Words(result.BodyClassification)}, {Words(result.BodyDisposition)} · original {result.OriginalBodyLength:N0} bytes · retained {result.RetainedBodyLength:N0} bytes",
             $"Extended items retained {result.ExtendedItems.Count:N0} · omitted {result.OmittedExtendedItemCount:N0}",
         };
         foreach (RawExtendedItemSummary item in result.ExtendedItems)
@@ -181,4 +183,30 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             lines.Add("No body bytes were retained; the disposition above gives the recorded reason.");
         return string.Join(Environment.NewLine, lines);
     }
+
+    /// <summary>A code's name in lower-case words: "ApprovedMetadata" reads "approved metadata".</summary>
+    private static string Words<T>(T? value)
+        where T : struct, Enum
+    {
+        if (value is not { } known) return "not recorded";
+        string name = known.ToString();
+        var words = new System.Text.StringBuilder(name.Length + 4);
+        for (int index = 0; index < name.Length; index++)
+        {
+            if (index > 0 && char.IsUpper(name[index])) words.Append(' ');
+            words.Append(char.ToLowerInvariant(name[index]));
+        }
+
+        return words.ToString();
+    }
+
+    /// <summary>How the record's native reading is encoded, in words.</summary>
+    private static string Encoding(TimestampEncoding? encoding) => encoding switch
+    {
+        TimestampEncoding.Qpc => "QPC (performance counter)",
+        TimestampEncoding.FileTimeUtc => "UTC file time",
+        TimestampEncoding.EtwSystemTimeConverted => "ETW system time, converted",
+        TimestampEncoding.CpuCycleCounter => "CPU cycle counter",
+        _ => "unknown",
+    };
 }

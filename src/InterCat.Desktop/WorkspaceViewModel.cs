@@ -4084,7 +4084,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         FamilyTokens tokens = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(row.Mechanism));
         string title = EvidenceRowText.Title(row);
         string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
-        string owner = EvidenceRowText.Owner(record, CultureInfo.CurrentCulture);
+        string ownership = EvidenceRowText.Ownership(record, CultureInfo.CurrentCulture);
         string when = EvidenceRowText.When(row, CultureInfo.CurrentCulture);
         string pid = EvidenceRowText.OwnerProcessId(row) is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
         // The rail is narrow: what happened and its size on the first line, when and whose on the second. Endpoints
@@ -4096,7 +4096,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return new(EvidenceKey(record), size is null ? title : title + " · " + size, detail, string.Empty,
             size ?? string.Empty, tokens.Label, tokens.Glyph, string.Empty, recordNoun, source)
         {
-            SpokenName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, owned by {owner}. "
+            SpokenName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, {ownership}. "
                 + $"Press Enter to open the {recordNoun}.",
         };
     }

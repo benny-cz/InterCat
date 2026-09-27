@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 201 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 202 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 202 — a second live pass: search, evidence and the original record (R5, R15):**
+  - A record raised by, rather than naming, its owner read "owned by raised by gateway.exe" to a screen reader; it
+    now says "raised by", "owned by" or "with no owner process named" (`EvidenceRowText.Ownership`).
+  - The original-record window names a public provider beside its identity (`KnownProviders`) and says its envelope's
+    codes in words ("approved metadata, retained", "QPC (performance counter)").
+  - Left open: connect/accept events admit the source's always-zero size field as bytes ("TCP accept · 0 B").
 
 - **Revision 201 — the basis and metric selector (§6.1, §3.2):**
   - The ten metrics are listed by basis under a heading each: **source observations** (records, bytes, peers) and
@@ -1871,9 +1878,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Each metric is listed under its basis, which stays beside the selector, since revision 201.
    - Found by revision 197's live pass, left open: a real session's interval table has no bytes per interval until the
      persisted overview sums them. (The relationship table's scope, the pass's other finding, is revision 198's.)
+   - Found by revision 202's live pass, left open: TCP connect and accept events carry the source's size field, always 0,
+     admitted as a byte count, so the evidence list says "TCP accept · 0 B" and endpoint activity counts them as measured
+     zeros. Deciding that the field measures nothing is a normalization change (a new normalizer contract version).
 
 ## Verification and cautions
 
+- Revision 202 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,286 tests: 1,282
+  passed, 4 skipped**, zero failures. A keyboard-driven live pass covered search, the evidence rung and the original record.
 - Revision 201 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,286 tests: 1,282
   passed, 4 skipped**, zero failures.
 - Revision 200 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,285 tests: 1,281
