@@ -178,8 +178,10 @@ public sealed class StatusTokenTests
         var window = new MainWindow(viewModel) { Width = 1456, Height = 939 };
         window.Show();
         await viewModel.LayoutReady;
-        EvidenceKeySample[] samples =
-            [.. window.GetControl<StackPanel>("EvidenceQualityKey").GetVisualDescendants().OfType<EvidenceKeySample>()];
+        // The key is reference below the inspector's actions; it is scrolled to, as a reader would.
+        StackPanel key = window.GetControl<StackPanel>("EvidenceQualityKey");
+        key.BringIntoView();
+        EvidenceKeySample[] samples = [.. key.GetVisualDescendants().OfType<EvidenceKeySample>()];
         Assert.Equal([RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate],
             samples.Select(sample => sample.Strength));
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 170 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 171 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 171 — the inspector ordered by use, from revision 165's live test:**
+  - **Actions before reference:** the selection and its summary come first, then what can be done with it, then the
+    evidence-quality key. At an ordinary height the eight actions stood below the key, under a scroll bar a hairline
+    wide, and read as one clipped button; at 1456×939 all of them are now in view.
+  - **Name above value:** the time scope is stated as the other facts in its card are, so "No time recorded yet" or a
+    long range no longer wraps a word at a time beside its name. The scrolled content keeps clear of the overlay scroll
+    bar.
+  - **A test that fails instead of crashing:** two UI tests sampled pixels of the key where it used to be; off screen,
+    the unchecked read crashed the test host with an access violation. A point outside the rendered frame is now
+    refused with the control named, the high-contrast test samples the summary card, and the key's test scrolls to it.
+  - **Planned:** IPv6 capture, found missing while choosing this slice, is written into open work item 3.
 
 - **Revision 170 — one name, one contract:** the persisted overview's contract is now `overview-index-v1`
   (`contracts/overview-index-v1.md`). Revision 163 had named it `overview-v1`, the name the JSON bundle of
@@ -1377,6 +1389,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
+   - **IPv6.** The capture admits the kernel network provider's IPv4 descriptors only (TCPv4 10–15, UDPv4 42), and
+     `observation-v1`'s address columns are 32 bits. A service listening on `::1`, which is where many `localhost`
+     servers listen on Windows, is invisible, though §13.1's first scenario and M2's "known loopback client/server" both
+     name IPv6 loopback. A segment's column set is frozen per table, so the addresses need a table version
+     (`observation-v2`, with 16-byte address columns) or a dictionary-coded form; decide which by what it costs a row
+     that has none. Then admit the TCPv6 and UDPv6 descriptors, relate 128-bit ends, pseudonymize and display them, and
+     qualify an IPv6 loopback fixture on real ETW.
+   - **IC-016a** waits on a retention that releases observation segments: today only a journal prefix is released, and
+     every derived segment, with every identity, stays.
 4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
    three presets exist since revision 154.
 5. Interaction follow-ups with no dependents:
@@ -1404,6 +1425,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 171 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154
+  passed, 3 skipped**, zero failures. The inspector was checked in headless renders at 1080×700 and 1456×939.
 - Revision 170 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154
   passed, 3 skipped**, zero failures.
 - Revision 169 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154

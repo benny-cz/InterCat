@@ -45,7 +45,9 @@ public sealed class HighContrastTests
         Border rail = window.GetControl<Border>("Rail");
         Button open = window.GetControl<Button>("OpenSavedSessionButton");
         TextBox search = window.GetControl<TextBox>("SearchBox");
-        Border card = Assert.IsType<Border>(window.GetControl<StackPanel>("EvidenceQualityKey").Parent);
+        // The inspector's summary card, the first on screen: the time scope, the evidence and the level's total.
+        Border card = window.GetControl<TextBlock>("TimeScopeValue").GetVisualAncestors().OfType<Border>()
+            .First(border => border.Classes.Contains("card"));
 
         try
         {

@@ -404,7 +404,8 @@
         <TextBlock Text="INSPECTOR" Classes="eyebrow" />
         <ScrollViewer Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Spacing="0">
+          <!-- Clear of the scroll bar, which overlays what it scrolls: the cards' edges no longer run beneath it. -->
+          <StackPanel Spacing="0" Margin="0,0,10,0">
             <!-- At the evidence rung the inspector describes the selected record in words, with its original one step on. -->
             <StackPanel Spacing="8" Margin="0,0,0,18" IsVisible="{Binding IsEvidenceRung}">
               <TextBlock Text="SOURCE RECORD" Classes="eyebrow" />
@@ -437,11 +438,11 @@
             <Border Classes="card" Margin="0,18,0,0" Padding="11" CornerRadius="8"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="10">
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                  <TextBlock Text="Time scope" Classes="muted" VerticalAlignment="Center" />
-                  <TextBlock Grid.Column="1" Text="{Binding IntervalLabel}" HorizontalAlignment="Right"
-                             TextWrapping="Wrap" TextAlignment="Right" />
-                </Grid>
+                <!-- Stated as the facts below it are, name above value: beside its name a long range wrapped a word at a time. -->
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Time scope" Classes="muted" />
+                  <TextBlock x:Name="TimeScopeValue" Text="{Binding IntervalLabel}" TextWrapping="Wrap" />
+                </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
@@ -453,6 +454,34 @@
                 </StackPanel>
               </StackPanel>
             </Border>
+            <!-- What can be done with the selection comes before the key to what the graph draws: at an ordinary window
+                 height the actions were below the fold, under a scroll bar a hairline wide. -->
+            <StackPanel Margin="0,18,0,0" Spacing="8">
+              <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
+                      Click="ShowSourceRecords"
+                      AutomationProperties.Name="Show this rung's source records in the ladder" />
+              <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
+              <WrapPanel>
+                <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"
+                        Click="TogglePinNode" Margin="0,0,8,0"
+                        AutomationProperties.Name="Pin the selected graph node where it is drawn, or release its pin" />
+                <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
+                        AutomationProperties.Name="Lay the graph out afresh, keeping pinned nodes where they are" />
+              </WrapPanel>
+              <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
+                      Click="BrowseChannels"
+                      AutomationProperties.Name="Browse all admitted paired TCP channels" />
+              <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
+                      AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
+              <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
+                      AutomationProperties.Name="Share a pseudonymized metadata report without original sources or raw record locators" />
+              <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
+              <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
+                      AutomationProperties.Name="Save a reopenable, pseudonymized copy of this session to share" />
+              <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
+              <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
+                      AutomationProperties.Name="Save an exact, unredacted copy of this session's evidence to share" />
+            </StackPanel>
             <StackPanel Margin="0,20,0,0" Spacing="8">
               <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
               <!-- A key to what the graph draws: evidence quality owns the dash pattern, never a hue or a mechanism's
@@ -486,30 +515,6 @@
                   </Grid>
                 </StackPanel>
               </Border>
-              <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
-                      Click="ShowSourceRecords"
-                      AutomationProperties.Name="Show this rung's source records in the ladder" />
-              <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
-              <WrapPanel>
-                <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"
-                        Click="TogglePinNode" Margin="0,0,8,0"
-                        AutomationProperties.Name="Pin the selected graph node where it is drawn, or release its pin" />
-                <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
-                        AutomationProperties.Name="Lay the graph out afresh, keeping pinned nodes where they are" />
-              </WrapPanel>
-              <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
-                      Click="BrowseChannels"
-                      AutomationProperties.Name="Browse all admitted paired TCP channels" />
-              <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
-                      AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
-              <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
-                      AutomationProperties.Name="Share a pseudonymized metadata report without original sources or raw record locators" />
-              <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
-              <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
-                      AutomationProperties.Name="Save a reopenable, pseudonymized copy of this session to share" />
-              <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
-              <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
-                      AutomationProperties.Name="Save an exact, unredacted copy of this session's evidence to share" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>
