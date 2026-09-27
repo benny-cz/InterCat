@@ -989,6 +989,74 @@ public sealed class SegmentV1Tests
         }
     }
 
+    [Fact(DisplayName = "Values derived from a reader's rows are charged, outlast a trim of its columns, and go only when that is not enough")]
+    public void DerivedRowsOutlastTheColumnsInATrim()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, [Row(100, bytes: 1), Row(110, bytes: 4)]);
+        _ = Publish(session.Store, [Row(200, bytes: 2), Row(210, bytes: 5)]);
+        DerivedGenerationResult last = Publish(session.Store, [Row(300, bytes: 3), Row(310, bytes: 6)]);
+        string[] names = [.. SessionSegments.Names(last.Manifest)];
+        long dictionaries = last.Manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Dictionary)
+            .Sum(dependency => dependency.LengthBytes);
+        static long Kept(SegmentReaderV1 reader) => reader.Columns
+            .Where(column => column.Id is SegmentColumnId.SessionRelativeTicks or SegmentColumnId.Mechanism)
+            .Sum(column => (long)column.ValueLength + column.NullBitmapLength);
+        static long Derived(SegmentReaderV1 reader) => reader.RowCount * (long)sizeof(long);
+
+        // Room for every reader's kept columns and one derived value a row, and not for every column.
+        SegmentReaderV1[] measured = [.. names.Select(name => SessionSegments.Open(session.Store.Root, last.Manifest, name))];
+        session.Store.UseSegmentReaderBudget(dictionaries + measured.Sum(reader => Kept(reader) + Derived(reader)));
+
+        var derivation = new object();
+        var another = new object();
+        SegmentReaderV1[] readers;
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            readers = [.. names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name))];
+
+            // A value is charged as a column is, derived once under its source, and replaced, charged once, under another.
+            long before = readers[0].ResidentBytes;
+            long[] first = readers[0].DerivedRows("test-rows", derivation, reader => new long[reader.RowCount]);
+            Assert.Equal(before + Derived(readers[0]), readers[0].ResidentBytes);
+            Assert.Same(first, readers[0].DerivedRows<long>("test-rows", derivation, _ => throw new InvalidOperationException("derived twice")));
+            long[] replaced = readers[0].DerivedRows("test-rows", another, reader => new long[reader.RowCount]);
+            Assert.NotSame(first, replaced);
+            Assert.Equal(before + Derived(readers[0]), readers[0].ResidentBytes);
+            _ = Assert.Throws<InvalidOperationException>(() => readers[1].DerivedRows("test-rows", derivation, _ => new long[1]));
+
+            // Every reader reads every column and keeps one value a row under the derivation.
+            foreach (SegmentReaderV1 reader in readers)
+            {
+                _ = Enumerable.Range(0, reader.RowCount).Select(reader.Row).ToList();
+                _ = reader.DerivedRows("test-rows", derivation, source => new long[source.RowCount]);
+            }
+
+            Assert.True(session.Store.SegmentReaderCache.AdmittedPayloadBytes > session.Store.SegmentReaderCache.BudgetBytes);
+        }
+
+        // Giving back the columns was enough, so every derived value stayed: none is derived again.
+        Assert.Equal(3, session.Store.SegmentReaderCache.Entries);
+        Assert.All(readers, reader => Assert.Equal(Kept(reader) + Derived(reader), reader.ResidentBytes));
+        Assert.All(readers, reader =>
+            reader.DerivedRows<long>("test-rows", derivation, _ => throw new InvalidOperationException("derived again")));
+
+        // A second kind leaves no column to give back, so derived values go, one reader at a time until the charge fits.
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            foreach (SegmentReaderV1 reader in names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name)))
+            {
+                _ = reader.DerivedRows("more-rows", derivation, source => new long[source.RowCount]);
+            }
+        }
+
+        Assert.True(session.Store.SegmentReaderCache.AdmittedPayloadBytes <= session.Store.SegmentReaderCache.BudgetBytes);
+        int emptied = readers.Count(reader => reader.ResidentBytes == Kept(reader));
+        Assert.InRange(emptied, 1, readers.Length - 1);
+        Assert.All(readers, reader => Assert.True(
+            reader.ResidentBytes == Kept(reader) || reader.ResidentBytes == Kept(reader) + (2 * Derived(reader))));
+    }
+
     [Fact(DisplayName = "A reopened store starts with an empty segment reader cache")]
     public void AReopenedStoreStartsWithAnEmptyReaderCache()
     {

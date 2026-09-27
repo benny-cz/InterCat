@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 168 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 169 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 169 — every §12 query gate met at 10M observations on the reference machine's 16 threads:**
+  - **Side by side:** a brushed count and a focused timeline count each segment in a worker of its own, into dense
+    tallies summed after (`SegmentPasses`); a count is the same sum in any order, and a failure surfaces unwrapped.
+  - **Bindings kept with the reader:** each row's owner and channel binding, packed four bytes each, is derived once
+    per segment and derivation and kept by its reader, charged as columns are and given back only after them
+    (`SegmentReaderV1.DerivedRows`, `SegmentBindings`).
+  - **Fewer columns read:** binding an owner reads a lifecycle record's five identity columns only in a segment holding
+    one, and binding a channel reads a row's position only for an end a cut divides.
+  - **Evidence pages:** a segment joins the merge only once its earliest reading could come next, so a first page
+    reads the first chunk's keys, and a later page skips every segment that ends before its cursor.
+  - **Measured** (`bench/results/scale-gates-*`, `DOTNET_PROCESSOR_COUNT=16`): at 10M rows, warm p95, a brushed
+    ranking 197 ms (was 1,226, budget 250), a group's 40 lanes 20 ms (223), its timeline at 2,000 columns 13 ms (238),
+    first evidence pages 35 and 32 ms (144 and 193). The working set ends at 1.2 GB, down from 2.3 GB; the retained
+    heap is 284 MiB.
+  - **Tested:** over random captures published in chunks with late records, a brushed count, a group's lanes, a
+    process's directions, a channel's ends and every evidence page equal a count of every row; packed bindings read
+    back as they were; derived rows outlast a trim of the columns. Six mutations were each caught, ignoring cuts
+    by the relation tests.
 
 - **Revision 168 — §12's query gates measured at 1M and 10M observations:**
   - **The benchmark:** the opt-in `ScaleGateTests` (`bench/README.md`) builds finished synthetic sessions of 1M and 10M
@@ -1318,14 +1337,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      out.
    - Revision 168 measured §12's query gates at 1M and 10M rows (`ScaleGateTests`). The reopen, the L0 timeline and
      the whole-session ranking meet them with room; the window opens a 10M-row session in 57 ms to laid out.
-   - **Next, from those measurements:**
-     1. Tiles that also count each tile's records per owner instance and per channel, so a brushed ranking (1,226 ms
-        at 10M, budget 250) and a group's timeline and lanes (223–238 ms, budget 100) add whole tiles and read rows only
-        where a boundary crosses one (§10.3).
-     2. The first evidence page of a channel (193 ms at 10M, budget 150) and of a process (144 ms), which resolve every
-        row's owner or channel in a segment before the page's first rows.
-     3. Reconcile §12's 2,000 × 40 lane query with the 20,000-cell lane bound.
-     4. The transient allocation that lifts the working set near 2.3 GB at 10M rows, where 290 MiB stays reachable.
+   - Revision 169 met every one of them at 10M rows on 16 threads: a brushed ranking in 197 ms, a group's lanes in
+     20 ms, first evidence pages in 35 ms. **Next:**
+     1. A brush's first touch of a segment derives its bindings: most of what remains of its p95. Publishing the
+        bindings, or per-tile owner and channel counts, with the checkpoint would take it away, and is what 100M rows,
+        the scale tier, needs anyway (S4's pyramid).
+     2. §12's 2,000 × 40 lane query waits on the 20,000-cell lane bound, which §6.2's density regime must raise.
+     3. The working set still ends near 1.2 GB at 10M rows, where 284 MiB stays reachable.
    - A live session still counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
@@ -1381,6 +1399,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 169 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154
+  passed, 3 skipped**, zero failures. The scale-gate benchmark ran in Release at 1M and 10M rows with
+  `DOTNET_PROCESSOR_COUNT=16` for the committed report.
 - Revision 168 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,146 tests: 1,143
   passed, 3 skipped**, zero failures; the third skipped test is the opt-in scale-gate benchmark, which ran in Release
   at 1M and 10M rows for the committed report.

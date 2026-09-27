@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -112,6 +113,7 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
     }
 
     /// <summary><see cref="OwnersOf(ProcessInstanceIndex, SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void OwnersOf(ProcessInstanceIndex index, SegmentReaderV1 segment, Span<ProcessBinding> bindings)
     {
         ArgumentNullException.ThrowIfNull(index);
@@ -126,26 +128,43 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
         SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
-        SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
-        SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
-        SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
-        SegmentColumnSlice factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
-        SegmentColumnSlice factLow = segment.Slice(SegmentColumnId.FactKeyLow);
+
+        // Only a lifecycle record needs its exact identity, so its five columns are read when the segment's first one is
+        // met: a segment of transfers alone never reads them, which at 10M records is most of what a bound pass reads.
+        SegmentColumnSlice streams = default;
+        SegmentColumnSlice epochs = default;
+        SegmentColumnSlice ordinals = default;
+        SegmentColumnSlice factHigh = default;
+        SegmentColumnSlice factLow = default;
+        bool keyed = false;
         for (int row = 0; row < segment.RowCount; row++)
         {
             bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(
                 (Mechanism)mechanisms.UnsignedAt(row)!.Value,
                 (ObservationKind)kinds.UnsignedAt(row)!.Value);
             long? owner = owners.SignedAt(row);
-            ObservationId? exact = lifecycle && owner is not null
-                ? new ObservationId(
+            ObservationId? exact = null;
+            if (lifecycle && owner is not null)
+            {
+                if (!keyed)
+                {
+                    streams = segment.Slice(SegmentColumnId.RawStreamId);
+                    epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
+                    ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+                    factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
+                    factLow = segment.Slice(SegmentColumnId.FactKeyLow);
+                    keyed = true;
+                }
+
+                exact = new ObservationId(
                     new RawRecordId(segment.CaptureId,
                         (uint)streams.UnsignedAt(row)!.Value,
                         (uint)epochs.UnsignedAt(row)!.Value,
                         ordinals.UnsignedAt(row)!.Value),
                     segment.Derivation,
-                    new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value))
-                : null;
+                    new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
+            }
+
             bindings[row] = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle, exact);
         }
     }

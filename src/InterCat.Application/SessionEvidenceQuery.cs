@@ -206,16 +206,32 @@ public static class SessionEvidenceQuery
             selectedChannel = matching[0].Channel;
         }
 
+        // Segments join the merge in order of their earliest reading, and only once that reading could come next: every
+        // row of a segment not yet opened reads later than the head of the merge, so its keys are not read at all. A first
+        // page of a session published in chunks reads the first chunk's keys, where it read every segment's (revision
+        // 169), and a later page skips every segment that ends before its cursor.
         var cursors = new SegmentCursor[segments.Length];
         var queue = new PriorityQueue<int, RowKey>(segments.Length, RowKeyComparer.Instance);
-        for (int index = 0; index < segments.Length; index++)
+        int[] joining = [.. Enumerable.Range(0, segments.Length)
+            .OrderBy(index => segments[index].MinNativeTicks)
+            .ThenBy(index => index)];
+        int joined = 0;
+        void Join()
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var segmentCursor = new SegmentCursor(segments[index], names[index]);
-            int first = position is null ? 0 : segmentCursor.FirstAfter(position.Key);
-            cursors[index] = segmentCursor;
-            if (segmentCursor.Seek(first))
-                queue.Enqueue(index, segmentCursor.Key);
+            while (joined < joining.Length
+                && (!queue.TryPeek(out _, out RowKey head) || segments[joining[joined]].MinNativeTicks <= head.NativeTicks))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int index = joining[joined++];
+                var segmentCursor = new SegmentCursor(segments[index], names[index]);
+                int first = position is null ? 0
+                    : segments[index].MaxNativeTicks < position.Key.NativeTicks ? segments[index].RowCount
+                    : segments[index].MinNativeTicks > position.Key.NativeTicks ? 0
+                    : segmentCursor.FirstAfter(position.Key);
+                cursors[index] = segmentCursor;
+                if (segmentCursor.Seek(first))
+                    queue.Enqueue(index, segmentCursor.Key);
+            }
         }
 
         var records = new List<SessionEvidenceRecord>(Math.Min(maximum, 4_096));
@@ -224,8 +240,14 @@ public static class SessionEvidenceQuery
         RowKey? previous = null;
         bool more = false;
         long visited = 0;
-        while (queue.TryDequeue(out int index, out RowKey key))
+        while (true)
         {
+            Join();
+            if (!queue.TryDequeue(out int index, out RowKey key))
+            {
+                break;
+            }
+
             if ((++visited & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
             if (previous is { } prior && RowKeyComparer.Instance.Compare(prior, key) == 0)
                 throw new InvalidDataException("Two published rows share one canonical row identity. Refusing to "
@@ -352,8 +374,8 @@ public static class SessionEvidenceQuery
     /// </summary>
     private sealed class SegmentCursor(SegmentReaderV1 reader, string name)
     {
-        private ChannelBinding[]? channels;
-        private ProcessBinding[]? owners;
+        private PackedChannels? channels;
+        private PackedOwners? owners;
 
         public SegmentReaderV1 Reader { get; } = reader;
 
@@ -386,10 +408,10 @@ public static class SessionEvidenceQuery
         }
 
         public int ChannelOf(int row, TransportRelationIndex relations) =>
-            (channels ??= relations.ChannelsOf(Reader))[row].Channel;
+            (channels ??= SegmentBindings.ChannelsOf(Reader, relations))[row].Channel;
 
         public ProcessBinding OwnerOf(int row, ProcessInstanceIndex processes) =>
-            (owners ??= processes.OwnersOf(Reader))[row];
+            (owners ??= SegmentBindings.OwnersOf(Reader, processes))[row];
 
         private RowKey KeyAt(int row) => new(
             Reader.SignedValue(SegmentColumnId.NativeTicks, row)!.Value,

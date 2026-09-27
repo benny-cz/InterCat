@@ -233,7 +233,6 @@ public static class SessionTimelineQuery
             .Select(name => SessionSegments.Open(store, manifest, name))];
         FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
-        TimelineColumns? focused = rows is null ? null : new TimelineColumns(interval, columns, tallyMechanisms: true);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         long laneCells = focus is null ? 0 : (long)focus.OwnerProcesses.Count * Math.Min(columns, interval.SpanTicks);
         string? laneProblem = !groupFocus ? null
@@ -243,85 +242,35 @@ public static class SessionTimelineQuery
                     + "Its aggregate timeline remains exact. A bounded grouping or paging control is required "
                     + "to inspect these process rows; the query does not silently drop them."
                 : null;
-        Dictionary<ProcessInstanceId, TimelineColumns>? processColumns = groupFocus && laneProblem is null
-            ? focus!.OwnerProcesses.ToDictionary(owner => owner, _ => new TimelineColumns(interval, columns, tallyMechanisms: true))
-            : null;
+        ProcessInstanceId[] laneOwners = groupFocus && laneProblem is null ? [.. focus!.OwnerProcesses] : [];
+
         // At most five direction codes and 2,000 columns: no extra segment pass or unbounded owner-by-peer matrix.
-        Dictionary<Direction, TimelineColumns>? directionColumns = focus is { ChannelKey: null, OwnerProcesses.Count: 1 }
-            ? LaneDirections.ToDictionary(direction => direction,
-                _ => new TimelineColumns(interval, columns, tallyMechanisms: true)) : null;
+        bool directionLanes = focus is { ChannelKey: null, OwnerProcesses.Count: 1 };
 
         // A channel has exactly two ends, each with its total and two directional bands: six series at most.
-        ChannelEndColumns[]? endColumns = focus is { OwnerProcesses.Count: 0 } && rows?.Relation is { } relation
-            ?
-            [
-                new(0, relation.First.Id, relation.FirstEndpoint, relation.Mechanism, interval, columns),
-                new(1, relation.Second.Id, relation.SecondEndpoint, relation.Mechanism, interval, columns),
-            ]
-            : null;
+        TransportRelation? endRelation = focus is { OwnerProcesses.Count: 0 } ? rows?.Relation : null;
+
+        // The whole timeline comes from each segment's tiles (S4), focused or not: only a tile a column boundary crosses
+        // has its rows read.
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (rows is null)
-            {
-                // Without a focus the whole timeline is all a count needs, and the segment's tiles hold it (S4): only a
-                // tile a column boundary crosses has its rows read.
-                SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
-                continue;
-            }
+            SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
+        }
 
-            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
-            FocusRows.SegmentRows? inFocus = null;
-            try
-            {
-                for (int row = 0; row < segment.RowCount; row++)
-                {
-                    if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                    if (times.SignedAt(row) is not { } nanoseconds || counted.ColumnOf(nanoseconds / 100) is not { } column)
-                    {
-                        continue;
-                    }
-
-                    var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                    counted.Add(column, mechanism);
-                    if (rows is not null)
-                    {
-                        // Bindings are derived only for a segment that has a row inside the interval.
-                        inFocus ??= rows.Of(segment);
-                        if (inFocus.Includes(row))
-                        {
-                            focused!.Add(column, mechanism);
-                            if (processColumns is not null && inFocus.OwnerId(row) is { } owner)
-                            {
-                                processColumns[owner].Add(column, mechanism);
-                            }
-
-                            if (directionColumns is not null)
-                            {
-                                directionColumns[DirectionAt(directions, row)].Add(column, mechanism);
-                            }
-
-                            if (endColumns is not null)
-                            {
-                                int end = inFocus.EndOf(row);
-                                if (end is not (0 or 1))
-                                {
-                                    throw new InvalidDataException("A record of the focused channel names no end of it.");
-                                }
-
-                                endColumns[end].Add(column, mechanism, DirectionAt(directions, row));
-                            }
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                // The bindings were rented for this segment's pass.
-                inFocus?.Dispose();
-            }
+        // A focus reads its rows. Each segment is counted by one worker into columns of its own, and the workers' columns
+        // are summed (SegmentPasses): at 10M records a group's lanes answer within §12's budget only side by side.
+        FocusTally? total = null;
+        if (rows is not null)
+        {
+            int[]? laneOf = laneOwners.Length == 0 ? null : rows.LanesOf(laneOwners);
+            total = new FocusTally(interval, columns, laneOwners.Length, directionLanes, endRelation);
+            SegmentPasses.Run(
+                segments,
+                () => new FocusTally(interval, columns, laneOwners.Length, directionLanes, endRelation),
+                (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
+                total.Add,
+                cancellationToken);
         }
 
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
@@ -332,18 +281,141 @@ public static class SessionTimelineQuery
         };
 
         // Every process lane shares the columns, and so the capture's coverage over each: it is judged once.
-        CoverageState[]? capture = processColumns is null ? null : counted.CaptureCoverage(coverage, clock);
-        return new(whole, focused is null ? [] : Array.AsReadOnly(focused.Buckets(coverage, clock)))
+        CoverageState[]? capture = laneOwners.Length == 0 ? null : counted.CaptureCoverage(coverage, clock);
+        return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock)))
         {
-            FocusLanes = focused is null ? [] : Array.AsReadOnly(focused.MechanismLanes(coverage, clock)),
-            ProcessLanes = processColumns is null ? [] : Array.AsReadOnly([.. focus!.OwnerProcesses.Select(owner =>
-                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(capture!))))]),
-            DirectionLanes = directionColumns is null ? [] : Array.AsReadOnly([.. LaneDirections.Select(direction =>
-                new DirectionTimelineLane(direction, Array.AsReadOnly(directionColumns[direction].Buckets(coverage, clock))))]),
-            ChannelEndLanes = endColumns is null ? []
-                : Array.AsReadOnly([.. endColumns.Select(end => end.Lane(coverage, clock))]),
+            FocusLanes = total is null ? [] : Array.AsReadOnly(total.Focused.MechanismLanes(coverage, clock)),
+            ProcessLanes = total?.Lanes is not { } lanes ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
+                new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(capture!))))]),
+            DirectionLanes = total?.Directions is not { } directions ? [] : Array.AsReadOnly([.. LaneDirections.Select(
+                (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(coverage, clock))))]),
+            ChannelEndLanes = total?.Ends is not { } ends ? []
+                : Array.AsReadOnly([.. ends.Select(end => end.Lane(coverage, clock))]),
             ProcessLaneProblem = laneProblem,
         };
+    }
+
+    /// <summary>
+    /// Counts one segment's focused records into a worker's columns: each into the focus, and into its owner's lane, its
+    /// source direction's row or its channel end, as the focus has them.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void CountFocus(
+        SegmentReaderV1 segment,
+        FocusRows rows,
+        int[]? laneOf,
+        FocusTally tally,
+        CancellationToken cancellationToken)
+    {
+        // A segment whose timed readings all lie outside the interval has nothing to count, and its tiles say so without
+        // a row, or a binding, being read.
+        TimeRange interval = tally.Focused.Interval;
+        SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+        if (tiles.First is not { } first || tiles.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return;
+        }
+
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice directions = tally.Directions is not null || tally.Ends is not null
+            ? segment.Slice(SegmentColumnId.Direction)
+            : default;
+        using FocusRows.SegmentRows inFocus = rows.Of(segment);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (times.SignedAt(row) is not { } nanoseconds || tally.Focused.ColumnOf(nanoseconds / 100) is not { } column
+                || !inFocus.Includes(row))
+            {
+                continue;
+            }
+
+            var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+            tally.Focused.Add(column, mechanism);
+            if (laneOf is not null && inFocus.OwnerPosition(row) is { } position && laneOf[position] is >= 0 and int lane)
+            {
+                tally.Lanes![lane].Add(column, mechanism);
+            }
+
+            if (tally.Directions is not null)
+            {
+                tally.Directions[DirectionSlot(DirectionAt(directions, row))].Add(column, mechanism);
+            }
+
+            if (tally.Ends is not null)
+            {
+                int end = inFocus.EndOf(row);
+                if (end is not (0 or 1))
+                {
+                    throw new InvalidDataException("A record of the focused channel names no end of it.");
+                }
+
+                tally.Ends[end].Add(column, mechanism, DirectionAt(directions, row));
+            }
+        }
+    }
+
+    /// <summary>A direction's row among <see cref="LaneDirections"/>, which name every direction code.</summary>
+    private static int DirectionSlot(Direction direction)
+    {
+        for (int slot = 0; slot < LaneDirections.Count; slot++)
+        {
+            if (LaneDirections[slot] == direction)
+            {
+                return slot;
+            }
+        }
+
+        throw new InvalidDataException($"The focused record has an unknown direction code: {(int)direction}.");
+    }
+
+    /// <summary>One worker's focused counts: the focus, and its process, direction or channel-end lanes.</summary>
+    private sealed class FocusTally
+    {
+        public FocusTally(TimeRange interval, int columns, int lanes, bool directions, TransportRelation? ends)
+        {
+            Focused = new(interval, columns, tallyMechanisms: true);
+            Lanes = lanes == 0 ? null
+                : [.. Enumerable.Range(0, lanes).Select(_ => new TimelineColumns(interval, columns, tallyMechanisms: true))];
+            Directions = directions
+                ? [.. LaneDirections.Select(_ => new TimelineColumns(interval, columns, tallyMechanisms: true))]
+                : null;
+            Ends = ends is null ? null :
+            [
+                new(0, ends.First.Id, ends.FirstEndpoint, ends.Mechanism, interval, columns),
+                new(1, ends.Second.Id, ends.SecondEndpoint, ends.Mechanism, interval, columns),
+            ];
+        }
+
+        public TimelineColumns Focused { get; }
+
+        public TimelineColumns[]? Lanes { get; }
+
+        public TimelineColumns[]? Directions { get; }
+
+        public ChannelEndColumns[]? Ends { get; }
+
+        /// <summary>Sums another worker's counts into these.</summary>
+        public void Add(FocusTally other)
+        {
+            Focused.MergeFrom(other.Focused);
+            for (int lane = 0; lane < (Lanes?.Length ?? 0); lane++)
+            {
+                Lanes![lane].MergeFrom(other.Lanes![lane]);
+            }
+
+            for (int slot = 0; slot < (Directions?.Length ?? 0); slot++)
+            {
+                Directions![slot].MergeFrom(other.Directions![slot]);
+            }
+
+            for (int end = 0; end < (Ends?.Length ?? 0); end++)
+            {
+                Ends![end].MergeFrom(other.Ends![end]);
+            }
+        }
     }
 
     /// <summary>A focused record's `EN-Direction`; a code outside the enumeration is corrupt evidence, never a direction.</summary>
@@ -373,6 +445,14 @@ public static class SessionTimelineQuery
             else if (direction == Direction.Inbound) inbound.Add(column, mechanism);
         }
 
+        /// <summary>Sums another worker's counts of the same end into these.</summary>
+        public void MergeFrom(ChannelEndColumns other)
+        {
+            total.MergeFrom(other.total);
+            outbound.MergeFrom(other.outbound);
+            inbound.MergeFrom(other.inbound);
+        }
+
         public ChannelEndTimelineLane Lane(CoverageLedgerV1? coverage, SourceClockDescriptor clock) => new(
             end, holder, endpoint,
             Array.AsReadOnly(total.Buckets(coverage, clock, mechanism)),
@@ -394,6 +474,9 @@ internal sealed class FocusRows
     private readonly int? channel;
     private readonly EvidencePolicy policy;
 
+    /// <summary>Whether each instance position is a focused owner; null when the focus names no owner.</summary>
+    private readonly bool[]? members;
+
     private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
         TransportRelation? relation, EvidencePolicy policy)
     {
@@ -403,6 +486,35 @@ internal sealed class FocusRows
         Relation = relation;
         channel = relation?.Channel;
         this.policy = policy;
+
+        // Membership by position: a row's test is an index, never a hash, since it is asked of every row (R11).
+        if (processes is not null && owners.Count > 0)
+        {
+            members = new bool[processes.Instances.Count];
+            foreach (int owner in owners)
+            {
+                members[owner] = true;
+            }
+        }
+    }
+
+    /// <summary>For each instance position, the lane of <paramref name="lanes"/> its records are drawn in, or -1.</summary>
+    public int[] LanesOf(IReadOnlyList<ProcessInstanceId> lanes)
+    {
+        ArgumentNullException.ThrowIfNull(lanes);
+        var laneOf = new Dictionary<ProcessInstanceId, int>(lanes.Count);
+        for (int lane = 0; lane < lanes.Count; lane++)
+        {
+            laneOf[lanes[lane]] = lane;
+        }
+
+        int[] positions = new int[processes?.Instances.Count ?? 0];
+        for (int position = 0; position < positions.Length; position++)
+        {
+            positions[position] = laneOf.TryGetValue(processes!.Instances[position].Id, out int lane) ? lane : -1;
+        }
+
+        return positions;
     }
 
     /// <summary>The one admitted paired incarnation a channel focus reads; null for an owner-only focus.</summary>
@@ -465,74 +577,56 @@ internal sealed class FocusRows
     }
 
     /// <summary>
-    /// The row test for one segment, with the bindings it needs derived once into buffers rented for the segment's pass
-    /// (R11). The caller disposes it when that pass ends.
+    /// The row test for one segment: the derivation's bindings of its rows, kept with its reader, and for a channel the
+    /// ends of its rows, rented for the segment's pass (R11). The caller disposes it when that pass ends.
     /// </summary>
     public SegmentRows Of(SegmentReaderV1 segment)
     {
-        RentedRows<ChannelBinding>? channels = null;
-        RentedRows<ProcessBinding>? bindings = null;
+        // The bindings are the derivation's, kept with the reader (SegmentBindings); only a channel's ends are rented for
+        // the segment's pass.
         RentedRows<sbyte>? ends = null;
-        try
+        if (channel is not null)
         {
-            if (channel is not null)
-            {
-                channels = RentedRows<ChannelBinding>.For(segment);
-                relations!.ChannelsOf(segment, channels.Value.Span);
-                ends = RentedRows<sbyte>.For(segment);
-                TransportRelationIndex.EndsOf(segment, ends.Value.Span);
-            }
-
-            if (owners.Count > 0)
-            {
-                bindings = RentedRows<ProcessBinding>.For(segment);
-                processes!.OwnersOf(segment, bindings.Value.Span);
-            }
-
-            return new(this, channels, bindings, ends);
+            ends = RentedRows<sbyte>.For(segment);
+            TransportRelationIndex.EndsOf(segment, ends.Value.Span);
         }
-        catch
-        {
-            channels?.Dispose();
-            bindings?.Dispose();
-            ends?.Dispose();
-            throw;
-        }
+
+        return new(
+            this,
+            channel is null ? null : SegmentBindings.ChannelsOf(segment, relations!),
+            owners.Count > 0 ? SegmentBindings.OwnersOf(segment, processes!) : null,
+            ends);
     }
 
     internal sealed class SegmentRows : IDisposable
     {
         private readonly FocusRows scope;
-        private readonly RentedRows<ChannelBinding>? channelRows;
-        private readonly RentedRows<ProcessBinding>? bindingRows;
         private readonly RentedRows<sbyte>? endRows;
-        private readonly ChannelBinding[]? channels;
-        private readonly ProcessBinding[]? bindings;
+        private readonly PackedChannels channels;
+        private readonly bool hasChannels;
+        private readonly PackedOwners bindings;
+        private readonly bool hasOwners;
         private readonly sbyte[]? ends;
         private bool disposed;
 
         public SegmentRows(
             FocusRows scope,
-            RentedRows<ChannelBinding>? channelRows,
-            RentedRows<ProcessBinding>? bindingRows,
+            PackedChannels? channels,
+            PackedOwners? bindings,
             RentedRows<sbyte>? endRows)
         {
             this.scope = scope;
-            this.channelRows = channelRows;
-            this.bindingRows = bindingRows;
             this.endRows = endRows;
-            channels = channelRows?.Buffer;
-            bindings = bindingRows?.Buffer;
+            (this.channels, hasChannels) = channels is { } known ? (known, true) : (default, false);
+            (this.bindings, hasOwners) = bindings is { } owned ? (owned, true) : (default, false);
             ends = endRows?.Buffer;
         }
 
-        /// <summary>Gives the rented buffers back, once.</summary>
+        /// <summary>Gives the rented buffer back, once.</summary>
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
-            channelRows?.Dispose();
-            bindingRows?.Dispose();
             endRows?.Dispose();
         }
 
@@ -543,21 +637,32 @@ internal sealed class FocusRows
 
         public bool Includes(int row)
         {
-            if (channels is not null && channels[row].Channel != scope.channel)
+            if (hasChannels && channels[row].Channel != scope.channel)
             {
                 return false;
             }
 
-            return bindings is null
-                || (scope.owners.Contains(bindings[row].Instance) && bindings[row].IsAdmittedUnder(scope.policy));
+            return !hasOwners || OwnerPosition(row) is not null;
+        }
+
+        /// <summary>The position of an included row's canonical admitted owner, for an L1 group partition.</summary>
+        public int? OwnerPosition(int row)
+        {
+            if (!hasOwners)
+            {
+                return null;
+            }
+
+            ProcessBinding binding = bindings[row];
+            return binding.IsAdmittedUnder(scope.policy) && scope.members is { } members && members[binding.Instance]
+                ? binding.Instance
+                : null;
         }
 
         /// <summary>The canonical admitted owner of an included row, for an L1 group partition.</summary>
-        public ProcessInstanceId? OwnerId(int row) => bindings is not null
-            && scope.owners.Contains(bindings[row].Instance)
-            && bindings[row].IsAdmittedUnder(scope.policy)
-                ? scope.processes!.Instances[bindings[row].Instance].Id
-                : null;
+        public ProcessInstanceId? OwnerId(int row) => OwnerPosition(row) is { } position
+            ? scope.processes!.Instances[position].Id
+            : null;
     }
 }
 
@@ -676,6 +781,54 @@ internal sealed class TimelineColumns
             tally++;
         }
     }
+
+    /// <summary>
+    /// Adds every count of <paramref name="other"/>, columns of the same interval counted elsewhere, as a worker's share of
+    /// a count is summed into the whole. The bounds are the same as a row's.
+    /// </summary>
+    public void MergeFrom(TimelineColumns other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (other.interval != interval || other.counts.Length != counts.Length
+            || (other.mechanisms is null) != (mechanisms is null))
+        {
+            throw new ArgumentException("Only columns of the same interval, width and tallies merge.", nameof(other));
+        }
+
+        for (int column = 0; column < counts.Length; column++)
+        {
+            if (counts[column] > int.MaxValue - other.counts[column])
+            {
+                throw new InvalidOperationException(
+                    "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                    + "represent it without compaction, so it is refused rather than wrapped to a false value.");
+            }
+
+            counts[column] += other.counts[column];
+        }
+
+        if (mechanisms is not null)
+        {
+            for (int slot = 0; slot < mechanisms.Length; slot++)
+            {
+                if (mechanisms[slot] > int.MaxValue - other.mechanisms![slot])
+                {
+                    throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+                }
+
+                mechanisms[slot] += other.mechanisms[slot];
+            }
+        }
+    }
+
+    /// <summary>How many mechanism slots a per-mechanism table needs: one per defined mechanism.</summary>
+    internal static int SlotCount => Slots.Length;
+
+    /// <summary>The mechanism of a slot of <see cref="SlotOfMechanism"/>.</summary>
+    internal static Mechanism MechanismAt(int slot) => Slots[slot];
+
+    /// <summary>A defined mechanism's slot, dense from 0; an undefined one is refused.</summary>
+    internal static int SlotOfMechanism(Mechanism mechanism) => SlotOf(mechanism);
 
     /// <summary>Adds <paramref name="count"/> records of one mechanism to a column at once, as a tile holds them.</summary>
     public void Add(int column, Mechanism mechanism, int count)

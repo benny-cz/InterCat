@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -418,7 +419,7 @@ public sealed partial class TransportRelationIndex
             peers[row] = !Relates(columns.MechanismAt(row))
                 ? ProcessBinding.Unresolved(ProcessBindingReason.NoRelationRule)
                 : columns.KeyAt(row) is { } key
-                    ? PeerOf(ends[key].At(columns.PositionAt(row)))
+                    ? PeerOf(IncarnationOf(ends[key], ref columns, row))
                     : ProcessBinding.Unresolved(ProcessBindingReason.PeerEndpointIncomplete);
         }
 
@@ -464,7 +465,7 @@ public sealed partial class TransportRelationIndex
                 continue;
             }
 
-            Incarnation incarnation = ends[key].At(columns.PositionAt(row));
+            Incarnation incarnation = IncarnationOf(ends[key], ref columns, row);
             peers[row] = PeerOf(incarnation);
             channels[row] = ChannelOf(incarnation);
         }
@@ -483,6 +484,7 @@ public sealed partial class TransportRelationIndex
     }
 
     /// <summary><see cref="ChannelsOf(SegmentReaderV1)"/> into a buffer the caller owns, one slot per row (R11).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ChannelsOf(SegmentReaderV1 segment, Span<ChannelBinding> channels)
     {
         ArgumentNullException.ThrowIfNull(segment);
@@ -493,7 +495,7 @@ public sealed partial class TransportRelationIndex
             channels[row] = !Relates(columns.MechanismAt(row))
                 ? ChannelBinding.Unknown(ProcessBindingReason.NoRelationRule)
                 : columns.KeyAt(row) is { } key
-                    ? ChannelOf(ends[key].At(columns.PositionAt(row)))
+                    ? ChannelOf(IncarnationOf(ends[key], ref columns, row))
                     : ChannelBinding.Unknown(ProcessBindingReason.PeerEndpointIncomplete);
         }
     }
@@ -599,11 +601,21 @@ public sealed partial class TransportRelationIndex
     }
 
     /// <summary>
-    /// The columns a row's end and canonical position are read from, resolved once per segment. A row's end and its
-    /// position are read only when asked for, so a pass that needs them for a few rows does not decode them for all.
+    /// The incarnation of <paramref name="end"/> a row belongs to. An end no cut divides has one, and the row's position,
+    /// six columns, is not read for it.
     /// </summary>
-    private readonly ref struct EndColumns
+    private static Incarnation IncarnationOf(EndTimeline end, ref EndColumns columns, int row) =>
+        end.Whole ?? end.At(columns.PositionAt(row));
+
+    /// <summary>
+    /// The columns a row's end and canonical position are read from, resolved once per segment. A row's end and its
+    /// position are read only when asked for, so a pass that needs them for a few rows does not decode them for all. The
+    /// six columns of a position are sliced when the first position is asked for: an end with one incarnation needs none,
+    /// and at 10M records they are most of what a pass binding rows to channels would otherwise read (revision 169).
+    /// </summary>
+    private ref struct EndColumns
     {
+        private readonly SegmentReaderV1 segment;
         private readonly SegmentColumnSlice mechanisms;
         private readonly SegmentColumnSlice kinds;
         private readonly SegmentColumnSlice families;
@@ -611,15 +623,17 @@ public sealed partial class TransportRelationIndex
         private readonly SegmentColumnSlice localPorts;
         private readonly SegmentColumnSlice remoteAddresses;
         private readonly SegmentColumnSlice remotePorts;
-        private readonly SegmentColumnSlice ticks;
-        private readonly SegmentColumnSlice streams;
-        private readonly SegmentColumnSlice epochs;
-        private readonly SegmentColumnSlice ordinals;
-        private readonly SegmentColumnSlice factHigh;
-        private readonly SegmentColumnSlice factLow;
+        private SegmentColumnSlice ticks;
+        private SegmentColumnSlice streams;
+        private SegmentColumnSlice epochs;
+        private SegmentColumnSlice ordinals;
+        private SegmentColumnSlice factHigh;
+        private SegmentColumnSlice factLow;
+        private bool positioned;
 
         public EndColumns(SegmentReaderV1 segment)
         {
+            this.segment = segment;
             mechanisms = segment.Slice(SegmentColumnId.Mechanism);
             kinds = segment.Slice(SegmentColumnId.ObservationKind);
             families = segment.Slice(SegmentColumnId.EndpointAddressFamily);
@@ -627,17 +641,11 @@ public sealed partial class TransportRelationIndex
             localPorts = segment.Slice(SegmentColumnId.SourceEndpointPort);
             remoteAddresses = segment.Slice(SegmentColumnId.DestinationEndpointAddress);
             remotePorts = segment.Slice(SegmentColumnId.DestinationEndpointPort);
-            ticks = segment.Slice(SegmentColumnId.NativeTicks);
-            streams = segment.Slice(SegmentColumnId.RawStreamId);
-            epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
-            ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
-            factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
-            factLow = segment.Slice(SegmentColumnId.FactKeyLow);
         }
 
-        public Mechanism MechanismAt(int row) => (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+        public readonly Mechanism MechanismAt(int row) => (Mechanism)mechanisms.UnsignedAt(row)!.Value;
 
-        public ObservationKind KindAt(int row) => (ObservationKind)kinds.UnsignedAt(row)!.Value;
+        public readonly ObservationKind KindAt(int row) => (ObservationKind)kinds.UnsignedAt(row)!.Value;
 
         /// <summary>
         /// The end a row describes: its protocol, its own endpoint and the remote one. The endpoints are read through
@@ -645,7 +653,7 @@ public sealed partial class TransportRelationIndex
         /// other admitted transport descriptor names the owner's own endpoint first. A row of another mechanism, or with
         /// a missing or zero address or port, has none.
         /// </summary>
-        public EndKey? KeyAt(int row)
+        public readonly EndKey? KeyAt(int row)
         {
             // An unavailable address is not zero, and a zero one names no endpoint: neither can find the other end.
             Mechanism mechanism = MechanismAt(row);
@@ -666,13 +674,27 @@ public sealed partial class TransportRelationIndex
         }
 
         /// <summary>A row's place in the canonical order: native reading, raw locator, fact key (`entities-v1` §3).</summary>
-        public Position PositionAt(int row) => new(
-            ticks.SignedAt(row)!.Value,
-            (uint)streams.UnsignedAt(row)!.Value,
-            (uint)epochs.UnsignedAt(row)!.Value,
-            ordinals.UnsignedAt(row)!.Value,
-            factHigh.UnsignedAt(row)!.Value,
-            factLow.UnsignedAt(row)!.Value);
+        public Position PositionAt(int row)
+        {
+            if (!positioned)
+            {
+                ticks = segment.Slice(SegmentColumnId.NativeTicks);
+                streams = segment.Slice(SegmentColumnId.RawStreamId);
+                epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
+                ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+                factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
+                factLow = segment.Slice(SegmentColumnId.FactKeyLow);
+                positioned = true;
+            }
+
+            return new(
+                ticks.SignedAt(row)!.Value,
+                (uint)streams.UnsignedAt(row)!.Value,
+                (uint)epochs.UnsignedAt(row)!.Value,
+                ordinals.UnsignedAt(row)!.Value,
+                factHigh.UnsignedAt(row)!.Value,
+                factLow.UnsignedAt(row)!.Value);
+        }
     }
 
     private static List<TransportRelation> BuildRelations(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
@@ -894,6 +916,9 @@ public sealed partial class TransportRelationIndex
                 OpenWitnessed: opening is { AfterClose: false },
                 CloseWitnessed: closing is { AfterClose: true });
         }
+
+        /// <summary>The one incarnation of an end no cut divides, which every row of it belongs to; null when one does.</summary>
+        public Incarnation? Whole => cuts.Count == 0 ? Incarnations[0] : null;
 
         /// <summary>The incarnation a row at this position belongs to: the one after the last cut at or before it.</summary>
         public Incarnation At(Position row)

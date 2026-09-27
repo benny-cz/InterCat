@@ -848,7 +848,10 @@
         "R12: related processes are drawn together, separate components apart, and none is omitted"
       ],
       "R13": [
+        "R13: a brushed count over many segments equals a count of every row, under every policy",
+        "R13: a focused timeline over many segments equals a count of every row, lane by lane",
         "R13: a timeline hit resolves by time to the bucket holding the instant under the pointer, not to the bar drawn nearest",
+        "R13: evidence pages over overlapping segments list a scope's records once each, in canonical order",
         "R13: groups and processes rank by their own records, so a process with no paired peer is ranked, not zero",
         "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do"
       ],
@@ -1054,6 +1057,7 @@
       ],
       "R22": [
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
+        "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a brushed count admits a later instance's records only as the evidence policy does, as the whole count does",
         "R22: a call to another interface is scope, not a match",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",

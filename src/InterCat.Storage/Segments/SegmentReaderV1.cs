@@ -107,6 +107,17 @@ public sealed class SegmentReaderV1
     /// <summary>The variable chunk and its checksum once a chunk-encoded column needed it; published as the columns are.</summary>
     private ChunkBytes? chunk;
 
+    /// <summary>
+    /// Values derived from each row under something outside the segment, such as a derivation's bindings, one per kind,
+    /// with the source they were derived under (<see cref="DerivedRows{T}"/>).
+    /// </summary>
+    private readonly Dictionary<string, (object Source, Array Rows, long Bytes)> derived = new(StringComparer.Ordinal);
+
+    private readonly Lock derivedGate = new();
+
+    /// <summary>The bytes <see cref="derived"/> holds.</summary>
+    private long derivedBytes;
+
     /// <summary>The bytes a reader that reads its file in pieces holds: the columns and chunk it has read.</summary>
     private long residentBytes;
 
@@ -193,9 +204,11 @@ public sealed class SegmentReaderV1
 
     /// <summary>
     /// The segment bytes this reader holds: the whole file when it was opened from memory or read whole at minor 0,
-    /// else the columns and variable chunk it has read so far. Decoded dictionaries are not counted.
+    /// else the columns and variable chunk it has read so far, and the values derived from its rows that it keeps.
+    /// Decoded dictionaries are not counted.
     /// </summary>
-    public long ResidentBytes => source.Whole is { } whole ? whole.Length : Interlocked.Read(ref residentBytes);
+    public long ResidentBytes =>
+        (source.Whole is { } whole ? whole.Length : Interlocked.Read(ref residentBytes)) + Interlocked.Read(ref derivedBytes);
 
     /// <summary>
     /// Opens a segment, with the dictionaries its columns reference. A column whose dictionary was not
@@ -1074,6 +1087,63 @@ public sealed class SegmentReaderV1
                 nameof(row),
                 row,
                 $"This segment has {RowCount} rows.");
+        }
+    }
+
+    /// <summary>
+    /// One value per row derived from this segment under <paramref name="source"/>, such as each row's binding under one
+    /// derivation: derived once and kept with the reader, charged as its columns are, so the cache's budget bounds it.
+    /// A kind holds one value; asked for under another source, it is derived again and replaces the one kept. A query
+    /// that reads every row of an interval reads these rather than the columns they were derived from (revision 169).
+    /// </summary>
+    /// <remarks>
+    /// Two threads may both derive a value; the first to publish it is the one every later caller gets. A trim gives
+    /// the values back only after the columns (<see cref="ReleaseDerived"/>): they are small, and costly to derive again.
+    /// </remarks>
+    public T[] DerivedRows<T>(string kind, object source, Func<SegmentReaderV1, T[]> derive)
+        where T : unmanaged
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(derive);
+        lock (derivedGate)
+        {
+            if (derived.TryGetValue(kind, out (object Source, Array Rows, long Bytes) known)
+                && ReferenceEquals(known.Source, source) && known.Rows is T[] kept)
+            {
+                return kept;
+            }
+        }
+
+        T[] rows = derive(this);
+        if (rows.Length != RowCount)
+        {
+            throw new InvalidOperationException($"A value derived per row has {rows.Length:N0} values for {RowCount:N0} rows.");
+        }
+
+        long bytes = (long)rows.Length * System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        lock (derivedGate)
+        {
+            if (derived.TryGetValue(kind, out (object Source, Array Rows, long Bytes) raced)
+                && ReferenceEquals(raced.Source, source) && raced.Rows is T[] first)
+            {
+                return first;
+            }
+
+            _ = Interlocked.Add(ref derivedBytes, bytes - (derived.TryGetValue(kind, out var replaced) ? replaced.Bytes : 0));
+            derived[kind] = (source, rows, bytes);
+            return rows;
+        }
+    }
+
+    /// <summary>Gives back every value derived from this reader's rows, and returns how many bytes that released.</summary>
+    internal long ReleaseDerived()
+    {
+        lock (derivedGate)
+        {
+            long released = Interlocked.Exchange(ref derivedBytes, 0);
+            derived.Clear();
+            return released;
         }
     }
 

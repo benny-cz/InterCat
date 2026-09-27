@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -54,89 +55,143 @@ public static class SessionIntervalQuery
         ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
         TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
 
-        // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits.
-        var channels = new Dictionary<int, (string Edge, string Channel)>();
+        // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits. Each
+        // gets a dense slot, so a row's count is an array index rather than a key hashed per row (R11).
+        int[] slotOfChannel = new int[relations.Channels];
+        Array.Fill(slotOfChannel, -1);
+        var drawn = new List<(string Edge, string Channel)>();
         foreach (TransportRelation relation in relations.Relations)
         {
-            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy))
+            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy)
+                && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
             {
-                channels[relation.Channel] = (SessionOverviewProjector.EdgeKeyOf(relation), relation.StableKey);
+                slotOfChannel[relation.Channel] = drawn.Count;
+                drawn.Add((SessionOverviewProjector.EdgeKeyOf(relation), relation.StableKey));
             }
         }
+
+        // Each segment is counted by one worker into tallies of its own, and the workers' tallies are summed: the same
+        // counts a serial pass makes, side by side (SegmentPasses).
+        int instances = processes.Instances.Count;
+        int slots = TimelineColumns.SlotCount;
+        var total = new IntervalTally(instances * slots, drawn.Count);
+        SegmentPasses.Run(
+            segments,
+            () => new IntervalTally(instances * slots, drawn.Count),
+            (segment, tally) => CountSegment(segment, interval, policy, processes, relations, slotOfChannel, slots, tally,
+                cancellationToken),
+            total.Add,
+            cancellationToken);
 
         var edgeRecords = new Dictionary<string, long>(StringComparer.Ordinal);
         var channelRecords = new Dictionary<string, long>(StringComparer.Ordinal);
-        var processRecords = new Dictionary<int, Dictionary<Mechanism, long>>();
-        long observed = 0;
-        long graph = 0;
-        foreach (SegmentReaderV1 segment in segments)
+        for (int slot = 0; slot < drawn.Count; slot++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
-            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-            RentedRows<ChannelBinding>? rented = null;
-            RentedRows<ProcessBinding>? owners = null;
-            try
+            if (total.Channels[slot] > 0)
             {
-                for (int row = 0; row < segment.RowCount; row++)
-                {
-                    if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                    if (times.SignedAt(row) is not { } nanoseconds || !interval.Contains(nanoseconds / 100)) continue;
-                    observed++;
-
-                    // Bindings are derived only for a segment that has a row inside the interval. A row's owner binds as
-                    // the whole-session count binds it, so the policy admits the same rows here as there.
-                    if (owners is null)
-                    {
-                        owners = RentedRows<ProcessBinding>.For(segment);
-                        processes.OwnersOf(segment, owners.Value.Span);
-                    }
-
-                    ProcessBinding owner = owners.Value.Buffer[row];
-                    if (owner.IsAdmittedUnder(policy))
-                    {
-                        if (!processRecords.TryGetValue(owner.Instance, out Dictionary<Mechanism, long>? tally))
-                        {
-                            tally = [];
-                            processRecords[owner.Instance] = tally;
-                        }
-
-                        var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                        tally[mechanism] = tally.GetValueOrDefault(mechanism) + 1;
-                    }
-
-                    if (rented is null)
-                    {
-                        rented = RentedRows<ChannelBinding>.For(segment);
-                        relations.ChannelsOf(segment, rented.Value.Span);
-                    }
-
-                    ChannelBinding binding = rented.Value.Buffer[row];
-                    if (!binding.IsKnown || !channels.TryGetValue(binding.Channel, out (string Edge, string Channel) keys))
-                    {
-                        continue;
-                    }
-
-                    graph++;
-                    edgeRecords[keys.Edge] = edgeRecords.GetValueOrDefault(keys.Edge) + 1;
-                    channelRecords[keys.Channel] = channelRecords.GetValueOrDefault(keys.Channel) + 1;
-                }
-            }
-            finally
-            {
-                rented?.Dispose();
-                owners?.Dispose();
+                (string edge, string channel) = drawn[slot];
+                edgeRecords[edge] = edgeRecords.GetValueOrDefault(edge) + total.Channels[slot];
+                channelRecords[channel] = total.Channels[slot];
             }
         }
 
-        return new(manifest.SessionId, manifest.Generation, interval, edgeRecords, channelRecords, observed, graph)
+        var processRecords = new Dictionary<ProcessInstanceId, IReadOnlyList<MechanismCount>>();
+        for (int instance = 0; instance < instances; instance++)
         {
-            ProcessRecords = processRecords.ToDictionary(
-                entry => processes.Instances[entry.Key].Id,
-                entry => (IReadOnlyList<MechanismCount>)Array.AsReadOnly([.. entry.Value
-                    .OrderByDescending(count => count.Value)
-                    .ThenBy(count => count.Key)
-                    .Select(count => new MechanismCount(count.Key, count.Value))])),
+            MechanismCount[] made = [.. Enumerable.Range(0, slots)
+                .Where(slot => total.Processes[(instance * slots) + slot] > 0)
+                .Select(slot => new MechanismCount(TimelineColumns.MechanismAt(slot), total.Processes[(instance * slots) + slot]))
+                .OrderByDescending(count => count.Records)
+                .ThenBy(count => count.Mechanism)];
+            if (made.Length > 0)
+            {
+                processRecords[processes.Instances[instance].Id] = Array.AsReadOnly(made);
+            }
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, edgeRecords, channelRecords, total.Observed, total.Graph)
+        {
+            ProcessRecords = processRecords,
         };
+    }
+
+    /// <summary>
+    /// Counts one segment's records inside the interval: every one observed, each by the instance its owner binds to as
+    /// the policy admits it, and each of a drawn channel by that channel.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void CountSegment(
+        SegmentReaderV1 segment,
+        TimeRange interval,
+        EvidencePolicy policy,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        int slots,
+        IntervalTally tally,
+        CancellationToken cancellationToken)
+    {
+        // A segment whose timed readings all lie outside the interval has nothing to count, and its tiles say so without
+        // a row being read.
+        SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+        if (tiles.First is not { } first || tiles.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return;
+        }
+
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        // The derivation's bindings of every row, kept with the reader, so a later brush reads them again rather than the
+        // columns they come from (SegmentBindings).
+        PackedOwners ownerRows = SegmentBindings.OwnersOf(segment, processes);
+        PackedChannels channelRows = SegmentBindings.ChannelsOf(segment, relations);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (times.SignedAt(row) is not { } nanoseconds || !interval.Contains(nanoseconds / 100)) continue;
+            tally.Observed++;
+            ProcessBinding owner = ownerRows[row];
+            if (owner.IsAdmittedUnder(policy))
+            {
+                tally.Processes[(owner.Instance * slots)
+                    + TimelineColumns.SlotOfMechanism((Mechanism)mechanisms.UnsignedAt(row)!.Value)]++;
+            }
+
+            ChannelBinding binding = channelRows[row];
+            if (binding.IsKnown && binding.Channel < slotOfChannel.Length && slotOfChannel[binding.Channel] is >= 0 and int slot)
+            {
+                tally.Graph++;
+                tally.Channels[slot]++;
+            }
+        }
+    }
+
+    /// <summary>One worker's counts: per instance and mechanism slot, flat, and per drawn channel.</summary>
+    private sealed class IntervalTally(int processCells, int channels)
+    {
+        public long Observed { get; set; }
+
+        public long Graph { get; set; }
+
+        public long[] Processes { get; } = new long[processCells];
+
+        public long[] Channels { get; } = new long[channels];
+
+        /// <summary>Sums another worker's counts into these.</summary>
+        public void Add(IntervalTally other)
+        {
+            Observed += other.Observed;
+            Graph += other.Graph;
+            for (int cell = 0; cell < Processes.Length; cell++)
+            {
+                Processes[cell] += other.Processes[cell];
+            }
+
+            for (int slot = 0; slot < Channels.Length; slot++)
+            {
+                Channels[slot] += other.Channels[slot];
+            }
+        }
     }
 }

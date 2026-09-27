@@ -86,7 +86,11 @@ public sealed class ScaleGateTests
         {
             ["schema"] = "intercat.scale-gates.v1",
             ["measuredUtc"] = DateTimeOffset.UtcNow,
-            ["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}",
+            ["machine"] = $"{Environment.GetEnvironmentVariable("NUMBER_OF_PROCESSORS") ?? "?"} logical processors · {Environment.OSVersion}",
+
+            // What the runtime schedules on, which DOTNET_PROCESSOR_COUNT lowers to stand in for §12's reference machine
+            // of 8 cores and 16 threads on a larger one.
+            ["processorsUsed"] = Environment.ProcessorCount,
             ["configuration"] =
 #if DEBUG
                 "Debug",

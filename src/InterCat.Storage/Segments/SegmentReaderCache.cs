@@ -21,8 +21,9 @@ public sealed record SegmentReaderCacheSnapshot(
 /// projection. Since revision 161 a reader is charged what it holds - the columns and chunk it has read, and the
 /// dictionaries it decoded - not its file's length. What a reader holds grows as queries read more of it, so when the
 /// cache holds more than its budget, <see cref="Trim"/> gives back every column but the few every projection reads.
-/// Pruning drops only the cache's reference: a query already holding a reader remains valid for the generation it
-/// leased.
+/// Since revision 169 a reader also keeps values derived from its rows, such as a derivation's bindings, charged as
+/// columns are; a trim gives them back only when giving back the columns was not enough. Pruning drops only the cache's
+/// reference: a query already holding a reader remains valid for the generation it leased.
 /// </summary>
 /// <remarks>
 /// Readers are admitted while they fit and served uncached once the cache is full; a reachable reader is never evicted
@@ -179,6 +180,18 @@ internal sealed class SegmentReaderCache
                 }
 
                 released += entry.Reader.Release(kept);
+            }
+
+            // Values derived from rows go only after every column: they are a fraction of the columns they spare a query
+            // from reading, and derived again only at that cost (SegmentReaderV1.DerivedRows).
+            foreach (Entry entry in entries.Values)
+            {
+                if (charge - released <= budgetBytes)
+                {
+                    break;
+                }
+
+                released += entry.Reader.ReleaseDerived();
             }
 
             return released;
