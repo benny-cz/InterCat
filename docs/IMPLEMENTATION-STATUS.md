@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 166 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 167 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 167 — process and thread lifecycle wear a family of their own (§6.6, theme 1.3.0):**
+  - **The finding:** every capture collects process lifecycle, and it was drawn in the unknown grey and keyed
+    "Unknown", which §6.6 reserves for what is not supported.
+  - **The family:** **Lifecycle**, glyph ▼, a neutral slate in each mode, searched rather than picked. Among blue-grey,
+    low-chroma candidates inside the lightness band the mode's other fills span, it takes the one with the largest
+    worst margin over every measured threshold. It sits between RPC and ALPC in palette order, where the worst margin
+    across the four modes is largest. High-contrast light needed a darker navy slate to stand apart from both the
+    unknown grey and Legacy IPC's steel. The regenerated `theme/` report meets every threshold; the tightest new margin
+    is light mode's greyscale step from RPC, 6.9 against 6.
+  - **The test the plan asked for:** every mechanism a Windows source can collect, including those a profile omits,
+    maps to a family other than unknown. Removing the lifecycle mapping fails it.
+  - **Found by rendering a real session in all four modes:** the legend keyed "Unknown" for every session, because an
+    empty timeline column carries the unknown mechanism as a placeholder and draws nothing. The legend now keys only
+    columns and lanes that draw records, including a lane's mechanism that never dominates a column.
 
 - **Revision 166 — the ranked table counts what each process did:**
   - **The finding:** L0 and L1 ranked by paired-TCP records only. A real capture's traffic mostly leaves the machine,
@@ -1271,9 +1286,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-0. Finish what revision 165's live test found. Revision 166 ranks L0 and L1 by each process's own records. Left:
-   - **Give process and thread lifecycle a palette family of its own.** It is supported and must not wear the unknown
-     grey (§6.6). A contract test must hold every supported mechanism to a family other than unknown.
+0. Done: what revision 165's live test found. Revision 166 ranks L0 and L1 by each process's own records, and revision
+   167 gives process and thread lifecycle a palette family of their own.
 1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
    - Revision 156 took the per-row relation lookups out of the overview.
    - Revision 157 extends each live generation's derivation from the previous one's.
@@ -1344,6 +1358,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 167 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,145 tests: 1,143
+  passed, 2 skipped**, zero failures. The theme report was regenerated and meets every threshold, and the real sparse
+  session was rendered headlessly in all four theme modes.
 - Revision 166 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,143 tests: 1,141
   passed, 2 skipped**, zero failures. `icat overview` and `icat checkpoint` ran on the real sparse ETL session, whose
   format-1.0 checkpoint was republished as 1.1 with an identical overview.

@@ -177,6 +177,26 @@ public sealed class ThemeContractTests
         }
     }
 
+    [Fact(DisplayName = "P24: every mechanism a capture source can collect wears a family of its own, never the unknown grey")]
+    public void EveryCollectableMechanismHasAFamilyOfItsOwn()
+    {
+        // Revision 165 found process lifecycle, which every capture collects, drawn and keyed as Unknown. The families'
+        // colours were all measured, and none of those measurements asked which mechanisms reach the grey.
+        Mechanism[] collectable = [.. InterCat.Capture.Windows.WindowsSourceCatalog.All
+            .SelectMany(source => source.Mechanisms.Concat(source.MechanismsOmittedByProfile))
+            .Distinct()
+            .Order()];
+        Assert.Contains(Mechanism.ProcessLifecycle, collectable);
+        Assert.Contains(Mechanism.ThreadLifecycle, collectable);
+        Assert.All(collectable, mechanism => Assert.NotEqual(MechanismFamily.UnknownMechanism, ThemePalette.FamilyOf(mechanism)));
+        Assert.Equal(MechanismFamily.UnknownMechanism, ThemePalette.FamilyOf(Mechanism.UnknownMechanism));
+
+        // Lifecycle is its own neutral family, keyed by name in every mode, rather than borrowing an IPC hue.
+        Assert.Equal(MechanismFamily.Lifecycle, ThemePalette.FamilyOf(Mechanism.ProcessLifecycle));
+        Assert.Equal(MechanismFamily.Lifecycle, ThemePalette.FamilyOf(Mechanism.ThreadLifecycle));
+        Assert.All(ThemePalette.Modes, mode => Assert.Equal("Lifecycle", ThemePalette.TokensFor(mode, MechanismFamily.Lifecycle).Label));
+    }
+
     [Fact(DisplayName = "R20: the committed theme report matches what the palette computes today")]
     public void CommittedReportMatchesTheCode()
     {

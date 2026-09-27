@@ -87,11 +87,22 @@ public static class WorkspaceRowBuilder
             }
         }
 
+        // An empty bucket draws no mark, so the placeholder mechanism it carries keys nothing (§6.6: a key shows only
+        // marks a pane draws). Revision 167 found every session keyed "Unknown" for its empty columns.
         foreach (TimelineBucket bucket in snapshot.Timeline)
         {
-            if (!seen.Contains(bucket.DominantMechanism))
+            if (bucket.ObservationCount > 0 && !seen.Contains(bucket.DominantMechanism))
             {
                 seen.Add(bucket.DominantMechanism);
+            }
+        }
+
+        // A mechanism lane draws its records in its family's colour whether or not they dominate any column.
+        foreach (MechanismTimelineLane lane in snapshot.MechanismLanes)
+        {
+            if (!seen.Contains(lane.Mechanism) && lane.Buckets.Any(bucket => bucket.ObservationCount > 0))
+            {
+                seen.Add(lane.Mechanism);
             }
         }
 

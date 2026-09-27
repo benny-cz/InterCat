@@ -779,6 +779,7 @@
         "P23: while a count is in flight the view stays populated, says it is pending, and the ladder still answers"
       ],
       "P24": [
+        "P24: every mechanism a capture source can collect wears a family of its own, never the unknown grey",
         "P24: every mechanism resolves to exactly one family, and every family has a glyph",
         "P24: the caution ink that strokes the coverage hatch and words a warning keeps its distance from every family's fill and ink",
         "P24: the coverage hatch and a warning's words draw in the caution ink, which no mechanism uses, in every mode",

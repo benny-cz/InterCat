@@ -1,6 +1,6 @@
 {
-  "themeVersion": "1.2.0",
-  "generatedUtc": "2026-09-26T01:39:46.7052625+00:00",
+  "themeVersion": "1.3.0",
+  "generatedUtc": "2026-09-27T09:02:36.3349658+00:00",
   "modes": [
     {
       "mode": "Dark",
@@ -146,6 +146,42 @@
           "tokenHex": "#D9A85F",
           "surfaceHex": "#152B3D",
           "ratio": 6.73,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "canvas",
+          "tokenHex": "#B6C6D8",
+          "surfaceHex": "#0A1421",
+          "ratio": 10.62,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "panel",
+          "tokenHex": "#B6C6D8",
+          "surfaceHex": "#0D1927",
+          "ratio": 10.17,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "plot",
+          "tokenHex": "#B6C6D8",
+          "surfaceHex": "#0E1A29",
+          "ratio": 10.06,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "elevated",
+          "tokenHex": "#B6C6D8",
+          "surfaceHex": "#152B3D",
+          "ratio": 8.35,
           "required": 4.5,
           "satisfied": true
         },
@@ -539,6 +575,15 @@
           "satisfied": true
         },
         {
+          "token": "Lifecycle fill",
+          "surface": "plot",
+          "tokenHex": "#9CB2C8",
+          "surfaceHex": "#0E1A29",
+          "ratio": 8.02,
+          "required": 3,
+          "satisfied": true
+        },
+        {
           "token": "Alpc fill",
           "surface": "plot",
           "tokenHex": "#4EAA6C",
@@ -815,41 +860,81 @@
         },
         {
           "first": "RemoteCall",
-          "second": "Alpc",
+          "second": "Lifecycle",
           "model": "Normal",
-          "distance": 64.03,
+          "distance": 74.77,
           "required": 18,
           "satisfied": true
         },
         {
           "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Protanopia",
+          "distance": 70.96,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Deuteranopia",
+          "distance": 74.94,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Tritanopia",
+          "distance": 103.11,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Greyscale",
+          "distance": 22.63,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 54.69,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Protanopia",
-          "distance": 30.27,
+          "distance": 43.5,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Deuteranopia",
-          "distance": 36.37,
+          "distance": 38.82,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Tritanopia",
-          "distance": 126.59,
+          "distance": 27.3,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Greyscale",
-          "distance": 14,
+          "distance": 8.62,
           "required": 6,
           "satisfied": true
         },
@@ -1031,6 +1116,14 @@
         },
         {
           "first": "Tcp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 39.01,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 84.39,
@@ -1079,6 +1172,14 @@
         },
         {
           "first": "Udp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 37.33,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 38.16,
@@ -1114,6 +1215,14 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 30.85,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 47.54,
           "required": 15,
           "satisfied": true
         },
@@ -1159,6 +1268,14 @@
         },
         {
           "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "AnyPair",
+          "distance": 64.03,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
           "second": "SharedSection",
           "model": "AnyPair",
           "distance": 88.86,
@@ -1186,6 +1303,38 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 57.73,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "SharedSection",
+          "model": "AnyPair",
+          "distance": 65.94,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "OtherSocket",
+          "model": "AnyPair",
+          "distance": 40.31,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "LegacyIpc",
+          "model": "AnyPair",
+          "distance": 26.92,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "UnknownMechanism",
+          "model": "AnyPair",
+          "distance": 20.99,
           "required": 15,
           "satisfied": true
         },
@@ -1300,6 +1449,22 @@
           "second": "RemoteCall ink",
           "model": "Normal",
           "distance": 39.34,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle fill",
+          "model": "Normal",
+          "distance": 74.56,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle ink",
+          "model": "Normal",
+          "distance": 72.74,
           "required": 18,
           "satisfied": true
         },
@@ -1530,6 +1695,42 @@
           "tokenHex": "#644300",
           "surfaceHex": "#E8EDF3",
           "ratio": 7.61,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "canvas",
+          "tokenHex": "#4A5663",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 7.49,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "panel",
+          "tokenHex": "#4A5663",
+          "surfaceHex": "#F5F7FA",
+          "ratio": 6.98,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "plot",
+          "tokenHex": "#4A5663",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 7.3,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "elevated",
+          "tokenHex": "#4A5663",
+          "surfaceHex": "#E8EDF3",
+          "ratio": 6.37,
           "required": 4.5,
           "satisfied": true
         },
@@ -1923,6 +2124,15 @@
           "satisfied": true
         },
         {
+          "token": "Lifecycle fill",
+          "surface": "plot",
+          "tokenHex": "#6A7680",
+          "surfaceHex": "#FBFCFD",
+          "ratio": 4.53,
+          "required": 3,
+          "satisfied": true
+        },
+        {
           "token": "Alpc fill",
           "surface": "plot",
           "tokenHex": "#3A975B",
@@ -2199,41 +2409,81 @@
         },
         {
           "first": "RemoteCall",
-          "second": "Alpc",
+          "second": "Lifecycle",
           "model": "Normal",
-          "distance": 60.3,
+          "distance": 58.99,
           "required": 18,
           "satisfied": true
         },
         {
           "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Protanopia",
+          "distance": 54.47,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Deuteranopia",
+          "distance": 58.65,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Tritanopia",
+          "distance": 78.88,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Greyscale",
+          "distance": 6.88,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 50.26,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Protanopia",
-          "distance": 26.03,
+          "distance": 37.01,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Deuteranopia",
-          "distance": 30.8,
+          "distance": 30.26,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Tritanopia",
-          "distance": 126.06,
+          "distance": 48.27,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Greyscale",
-          "distance": 13.96,
+          "distance": 7.09,
           "required": 6,
           "satisfied": true
         },
@@ -2415,6 +2665,14 @@
         },
         {
           "first": "Tcp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 37.64,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 77.97,
@@ -2463,6 +2721,14 @@
         },
         {
           "first": "Udp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 25.51,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 36.71,
@@ -2498,6 +2764,14 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 29.68,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 50.99,
           "required": 15,
           "satisfied": true
         },
@@ -2543,6 +2817,14 @@
         },
         {
           "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "AnyPair",
+          "distance": 60.3,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
           "second": "SharedSection",
           "model": "AnyPair",
           "distance": 84.17,
@@ -2570,6 +2852,38 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 53.42,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "SharedSection",
+          "model": "AnyPair",
+          "distance": 62.8,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "OtherSocket",
+          "model": "AnyPair",
+          "distance": 44.58,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "LegacyIpc",
+          "model": "AnyPair",
+          "distance": 17.55,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "UnknownMechanism",
+          "model": "AnyPair",
+          "distance": 23.08,
           "required": 15,
           "satisfied": true
         },
@@ -2684,6 +2998,22 @@
           "second": "RemoteCall ink",
           "model": "Normal",
           "distance": 47.94,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle fill",
+          "model": "Normal",
+          "distance": 77.56,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle ink",
+          "model": "Normal",
+          "distance": 77.86,
           "required": 18,
           "satisfied": true
         },
@@ -2914,6 +3244,42 @@
           "tokenHex": "#F6AB06",
           "surfaceHex": "#1A1A1A",
           "ratio": 8.91,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "canvas",
+          "tokenHex": "#A8B0BA",
+          "surfaceHex": "#000000",
+          "ratio": 9.58,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "panel",
+          "tokenHex": "#A8B0BA",
+          "surfaceHex": "#0A0A0A",
+          "ratio": 9.04,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "plot",
+          "tokenHex": "#A8B0BA",
+          "surfaceHex": "#000000",
+          "ratio": 9.58,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "elevated",
+          "tokenHex": "#A8B0BA",
+          "surfaceHex": "#1A1A1A",
+          "ratio": 7.94,
           "required": 7,
           "satisfied": true
         },
@@ -3307,6 +3673,15 @@
           "satisfied": true
         },
         {
+          "token": "Lifecycle fill",
+          "surface": "plot",
+          "tokenHex": "#8A909A",
+          "surfaceHex": "#000000",
+          "ratio": 6.54,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
           "token": "Alpc fill",
           "surface": "plot",
           "tokenHex": "#92F781",
@@ -3619,41 +3994,81 @@
         },
         {
           "first": "RemoteCall",
-          "second": "Alpc",
+          "second": "Lifecycle",
           "model": "Normal",
-          "distance": 76.37,
+          "distance": 87.21,
           "required": 18,
           "satisfied": true
         },
         {
           "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Protanopia",
+          "distance": 80.84,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Deuteranopia",
+          "distance": 88.35,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Tritanopia",
+          "distance": 102.59,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Greyscale",
+          "distance": 15.36,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 79.82,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Protanopia",
-          "distance": 27.8,
+          "distance": 69.18,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Deuteranopia",
-          "distance": 35.19,
+          "distance": 60.06,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Tritanopia",
-          "distance": 110.45,
+          "distance": 26.57,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Greyscale",
-          "distance": 14.03,
+          "distance": 29.39,
           "required": 6,
           "satisfied": true
         },
@@ -3835,6 +4250,14 @@
         },
         {
           "first": "Tcp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 44.06,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 109,
@@ -3883,6 +4306,14 @@
         },
         {
           "first": "Udp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 52.79,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 45.38,
@@ -3918,6 +4349,14 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 49.25,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 63.13,
           "required": 15,
           "satisfied": true
         },
@@ -3963,6 +4402,14 @@
         },
         {
           "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "AnyPair",
+          "distance": 76.37,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
           "second": "SharedSection",
           "model": "AnyPair",
           "distance": 111.94,
@@ -3990,6 +4437,38 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 80.57,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "SharedSection",
+          "model": "AnyPair",
+          "distance": 62.17,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "OtherSocket",
+          "model": "AnyPair",
+          "distance": 49.52,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "LegacyIpc",
+          "model": "AnyPair",
+          "distance": 21.45,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "UnknownMechanism",
+          "model": "AnyPair",
+          "distance": 27.06,
           "required": 15,
           "satisfied": true
         },
@@ -4104,6 +4583,22 @@
           "second": "RemoteCall ink",
           "model": "Normal",
           "distance": 46.2,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle fill",
+          "model": "Normal",
+          "distance": 59.71,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle ink",
+          "model": "Normal",
+          "distance": 59.14,
           "required": 18,
           "satisfied": true
         },
@@ -4334,6 +4829,42 @@
           "tokenHex": "#664400",
           "surfaceHex": "#EBEBEB",
           "ratio": 7.36,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "canvas",
+          "tokenHex": "#1A364E",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 12.49,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "panel",
+          "tokenHex": "#1A364E",
+          "surfaceHex": "#F5F5F5",
+          "ratio": 11.45,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "plot",
+          "tokenHex": "#1A364E",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 12.49,
+          "required": 7,
+          "satisfied": true
+        },
+        {
+          "token": "Lifecycle ink",
+          "surface": "elevated",
+          "tokenHex": "#1A364E",
+          "surfaceHex": "#EBEBEB",
+          "ratio": 10.48,
           "required": 7,
           "satisfied": true
         },
@@ -4727,6 +5258,15 @@
           "satisfied": true
         },
         {
+          "token": "Lifecycle fill",
+          "surface": "plot",
+          "tokenHex": "#1A364E",
+          "surfaceHex": "#FFFFFF",
+          "ratio": 12.49,
+          "required": 4.5,
+          "satisfied": true
+        },
+        {
           "token": "Alpc fill",
           "surface": "plot",
           "tokenHex": "#006115",
@@ -5039,41 +5579,81 @@
         },
         {
           "first": "RemoteCall",
-          "second": "Alpc",
+          "second": "Lifecycle",
           "model": "Normal",
-          "distance": 57.03,
+          "distance": 77.28,
           "required": 18,
           "satisfied": true
         },
         {
           "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Protanopia",
+          "distance": 71.43,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Deuteranopia",
+          "distance": 79.47,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Tritanopia",
+          "distance": 105.85,
+          "required": 10,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
+          "second": "Lifecycle",
+          "model": "Greyscale",
+          "distance": 25.13,
+          "required": 6,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "Alpc",
+          "model": "Normal",
+          "distance": 66.6,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Protanopia",
-          "distance": 12.81,
+          "distance": 59.04,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Deuteranopia",
-          "distance": 26.26,
+          "distance": 54.36,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Tritanopia",
-          "distance": 115.56,
+          "distance": 18.47,
           "required": 10,
           "satisfied": true
         },
         {
-          "first": "RemoteCall",
+          "first": "Lifecycle",
           "second": "Alpc",
           "model": "Greyscale",
-          "distance": 11.54,
+          "distance": 13.6,
           "required": 6,
           "satisfied": true
         },
@@ -5255,6 +5835,14 @@
         },
         {
           "first": "Tcp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 32.4,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Tcp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 88.05,
@@ -5303,6 +5891,14 @@
         },
         {
           "first": "Udp",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 29.9,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Udp",
           "second": "Alpc",
           "model": "AnyPair",
           "distance": 38.23,
@@ -5338,6 +5934,14 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 24.57,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Pipe",
+          "second": "Lifecycle",
+          "model": "AnyPair",
+          "distance": 69.18,
           "required": 15,
           "satisfied": true
         },
@@ -5383,6 +5987,14 @@
         },
         {
           "first": "RemoteCall",
+          "second": "Alpc",
+          "model": "AnyPair",
+          "distance": 57.03,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "RemoteCall",
           "second": "SharedSection",
           "model": "AnyPair",
           "distance": 94.72,
@@ -5410,6 +6022,38 @@
           "second": "UnknownMechanism",
           "model": "AnyPair",
           "distance": 59.01,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "SharedSection",
+          "model": "AnyPair",
+          "distance": 78.04,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "OtherSocket",
+          "model": "AnyPair",
+          "distance": 45.38,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "LegacyIpc",
+          "model": "AnyPair",
+          "distance": 21.31,
+          "required": 15,
+          "satisfied": true
+        },
+        {
+          "first": "Lifecycle",
+          "second": "UnknownMechanism",
+          "model": "AnyPair",
+          "distance": 18.45,
           "required": 15,
           "satisfied": true
         },
@@ -5524,6 +6168,22 @@
           "second": "RemoteCall ink",
           "model": "Normal",
           "distance": 42.51,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle fill",
+          "model": "Normal",
+          "distance": 80.24,
+          "required": 18,
+          "satisfied": true
+        },
+        {
+          "first": "Caution",
+          "second": "Lifecycle ink",
+          "model": "Normal",
+          "distance": 80.24,
           "required": 18,
           "satisfied": true
         },

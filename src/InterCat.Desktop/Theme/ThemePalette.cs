@@ -29,6 +29,12 @@ public enum MechanismFamily
     OtherSocket = 7,
     LegacyIpc = 8,
     UnknownMechanism = 9,
+
+    /// <summary>
+    /// Process and thread lifecycle: a neutral slate. Every capture collects it, so it is a supported mechanism and must
+    /// never wear the unknown grey (§6.6, revision 167).
+    /// </summary>
+    Lifecycle = 10,
 }
 
 /// <summary>
@@ -68,7 +74,7 @@ public sealed record StatusTokens(Srgb Caution, Srgb ActionFill, Srgb ActionFill
 public static class ThemePalette
 {
     /// <summary>Bumps when tokens, thresholds or measured results change (§24 themeVersion).</summary>
-    public const string ThemeVersion = "1.2.0";
+    public const string ThemeVersion = "1.3.0";
 
     /// <summary>Ink must clear this against every surface token it can land on.</summary>
     public const double MinimumInkContrast = 4.5;
@@ -130,6 +136,7 @@ public static class ThemePalette
         MechanismFamily.Udp,
         MechanismFamily.Pipe,
         MechanismFamily.RemoteCall,
+        MechanismFamily.Lifecycle,
         MechanismFamily.Alpc,
         MechanismFamily.SharedSection,
         MechanismFamily.OtherSocket,
@@ -239,6 +246,7 @@ public static class ThemePalette
     /// </summary>
     public static MechanismFamily FamilyOf(Mechanism mechanism) => mechanism switch
     {
+        Mechanism.ProcessLifecycle or Mechanism.ThreadLifecycle => MechanismFamily.Lifecycle,
         Mechanism.Tcp => MechanismFamily.Tcp,
         Mechanism.Udp => MechanismFamily.Udp,
         Mechanism.NamedPipe or Mechanism.AnonymousPipe => MechanismFamily.Pipe,
@@ -257,6 +265,7 @@ public static class ThemePalette
         new(MechanismFamily.Udp, "UDP", "◆", Srgb.Parse("#017775"), Srgb.Parse("#01B9B5")),
         new(MechanismFamily.Pipe, "Pipes", "■", Srgb.Parse("#A083E3"), Srgb.Parse("#D7C2FF")),
         new(MechanismFamily.RemoteCall, "RPC and COM", "▲", Srgb.Parse("#9C6B00"), Srgb.Parse("#D9A85F")),
+        new(MechanismFamily.Lifecycle, "Lifecycle", "▼", Srgb.Parse("#9CB2C8"), Srgb.Parse("#B6C6D8")),
         new(MechanismFamily.Alpc, "ALPC", "◗", Srgb.Parse("#4EAA6C"), Srgb.Parse("#8EE4A6")),
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#C54599"), Srgb.Parse("#F698D0")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#6F8AE2"), Srgb.Parse("#B5C0FF")),
@@ -270,6 +279,7 @@ public static class ThemePalette
         new(MechanismFamily.Udp, "UDP", "◆", Srgb.Parse("#026A67"), Srgb.Parse("#00504E")),
         new(MechanismFamily.Pipe, "Pipes", "■", Srgb.Parse("#8D71CF"), Srgb.Parse("#6C53AE")),
         new(MechanismFamily.RemoteCall, "RPC and COM", "▲", Srgb.Parse("#865B00"), Srgb.Parse("#644300")),
+        new(MechanismFamily.Lifecycle, "Lifecycle", "▼", Srgb.Parse("#6A7680"), Srgb.Parse("#4A5663")),
         new(MechanismFamily.Alpc, "ALPC", "◗", Srgb.Parse("#3A975B"), Srgb.Parse("#0A753C")),
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#AA2A81"), Srgb.Parse("#8A1A67")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#5573C9"), Srgb.Parse("#3259AA")),
@@ -287,6 +297,7 @@ public static class ThemePalette
         new(MechanismFamily.Udp, "UDP", "◆", Srgb.Parse("#31D9BA"), Srgb.Parse("#31D9BA")),
         new(MechanismFamily.Pipe, "Pipes", "■", Srgb.Parse("#B079EE"), Srgb.Parse("#C794FE")),
         new(MechanismFamily.RemoteCall, "RPC and COM", "▲", Srgb.Parse("#F6AB06"), Srgb.Parse("#F6AB06")),
+        new(MechanismFamily.Lifecycle, "Lifecycle", "▼", Srgb.Parse("#8A909A"), Srgb.Parse("#A8B0BA")),
         new(MechanismFamily.Alpc, "ALPC", "◗", Srgb.Parse("#92F781"), Srgb.Parse("#92F781")),
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#FE85E1"), Srgb.Parse("#FE85E1")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#6C86E7"), Srgb.Parse("#91A3FE")),
@@ -300,6 +311,7 @@ public static class ThemePalette
         new(MechanismFamily.Udp, "UDP", "◆", Srgb.Parse("#004F44"), Srgb.Parse("#004F44")),
         new(MechanismFamily.Pipe, "Pipes", "■", Srgb.Parse("#5444C9"), Srgb.Parse("#3D34B5")),
         new(MechanismFamily.RemoteCall, "RPC and COM", "▲", Srgb.Parse("#946600"), Srgb.Parse("#664400")),
+        new(MechanismFamily.Lifecycle, "Lifecycle", "▼", Srgb.Parse("#1A364E"), Srgb.Parse("#1A364E")),
         new(MechanismFamily.Alpc, "ALPC", "◗", Srgb.Parse("#006115"), Srgb.Parse("#005611")),
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#C60788"), Srgb.Parse("#900061")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#00419F"), Srgb.Parse("#00419F")),
