@@ -149,7 +149,8 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal([processes[0].Id.ToString(), processes[1].Id.ToString()], viewModel.SelectedGraphNodeKeys.Order());
         Assert.Equal([quiet], viewModel.PartlySelectedGraphNodeKeys);
         Assert.Equal("Selected group", viewModel.EvidenceHeading);
-        Assert.Equal("10 paired TCP observations on 1 relationship · bytes unknown", viewModel.EvidenceSummary);
+        Assert.Equal("10 own records, all TCP · 10 paired TCP observations on 1 relationship · bytes unknown",
+            viewModel.EvidenceSummary);
 
         Assert.True(viewModel.ShowEvidence());
         Assert.Contains(viewModel.Filters, filter => filter.Label == busy.Name
@@ -508,7 +509,8 @@ public sealed class GraphLayoutIntegrationTests
 
         // The tour's cache talks over a pipe and a shared section, neither of which measured a byte.
         viewModel.SelectProcess(new ProcessInstanceId(Guid.Parse("25ecf72c-7d72-4421-943e-eb6d66cd2fe8")));
-        Assert.Equal("188 observations · bytes unknown", viewModel.EvidenceSummary);
+        Assert.Equal("95 own records, mostly Named pipe · 188 observations on 2 relationships · bytes unknown",
+            viewModel.EvidenceSummary);
     }
 
     /// <summary>
@@ -521,7 +523,9 @@ public sealed class GraphLayoutIntegrationTests
         ProcessGroup idle = new("idle", "idle.exe", LaneGrouping.Executable, @"C:\Tools\idle.exe");
         ProcessNode[] processes =
         [
-            Process(1, busy.Key), Process(2, busy.Key), Process(3, busy.Key), Process(4, idle.Key), Process(5, idle.Key),
+            Process(1, busy.Key) with { Activity = [new(Mechanism.Tcp, 5)] },
+            Process(2, busy.Key) with { Activity = [new(Mechanism.Tcp, 5)] },
+            Process(3, busy.Key), Process(4, idle.Key), Process(5, idle.Key),
         ];
         return (Snapshot([busy, idle], processes, [Edge("pair", processes[0], processes[1])]), busy, processes);
     }

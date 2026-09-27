@@ -8,7 +8,8 @@ namespace InterCat.Application;
 /// One immutable, evidence-bounded overview. Its edges are only paired TCP relationships whose two process instances
 /// are admitted under the requested policy; they are not a total of all traffic. The timeline counts all observations
 /// with a usable session time and projects capture coverage only when this generation publishes a ledger. The graph's
-/// own counts are the displayed relations' records, a narrower scope that never stands in for the timeline's.
+/// own counts are the displayed relations' records, a narrower scope that never stands in for the timeline's. Each node
+/// carries its own records (`process-activity-v1`), which rank the groups and processes of the ladder's table.
 /// </summary>
 public sealed record SessionOverviewBundle(
     string GraphIdentity,
@@ -40,6 +41,12 @@ public sealed record SessionOverviewBundle(
     /// bins - on the same presentation axis as the timeline.
     /// </summary>
     public SourceClockDescriptor? Clock { get; init; }
+
+    /// <summary>
+    /// Rows no process instance holds: they name no owner, name a PID at a reading no instance of it held, or bind only
+    /// as strongly as the evidence policy withholds. The timeline counts them; the ranked table's processes cannot.
+    /// </summary>
+    public long RowsNoProcessHolds { get; init; }
 }
 
 /// <summary>
@@ -79,14 +86,19 @@ public static class SessionOverviewProjector
         // its first view opens no segment (§12.1 S1, S4). A segment is opened only for what neither holds.
         SegmentReaderV1[]? opened = null;
         SegmentReaderV1[]? openedFields = null;
-        (ProcessInstanceIndex processes, TransportRelationIndex relations) = derivation.FromCheckpoint(store.Root, clock)
+        (ProcessInstanceIndex processes, TransportRelationIndex relations, ProcessActivityIndex? saved) =
+            derivation.FromCheckpoint(store.Root, clock)
             ?? (derivation.Processes(store.Root, Segments(), clock, Fields(), cancellationToken),
-                derivation.Relations(store.Root, Segments(), clock, Fields(), cancellationToken));
+                derivation.Relations(store.Root, Segments(), clock, Fields(), cancellationToken),
+                null);
+        ProcessActivityIndex activity = saved ?? derivation.Activity(store.Root, Segments(), clock, Fields(), cancellationToken);
         OverviewCounts counted = derivation.PersistedOverview(store.Root) ?? Count(Segments(), cancellationToken);
 
         // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
         // display projection's bound (GraphProjection, §6.3): it clusters rather than omitting anyone.
-        ProcessInstance[] ordered = [.. processes.Instances.OrderBy(instance => instance.Id.ToString(), StringComparer.Ordinal)];
+        int[] positions = [.. Enumerable.Range(0, processes.Instances.Count)
+            .OrderBy(position => processes.Instances[position].Id.ToString(), StringComparer.Ordinal)];
+        ProcessInstance[] ordered = [.. positions.Select(position => processes.Instances[position])];
         IGrouping<string, ProcessInstance>[] executables = [.. ordered
             .GroupBy(GroupKey, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)];
@@ -102,7 +114,15 @@ public static class SessionOverviewProjector
             GroupKey(instance),
             0.5 + 0.38 * Math.Cos(2 * Math.PI * index / Math.Max(1, ordered.Length)),
             0.5 + 0.38 * Math.Sin(2 * Math.PI * index / Math.Max(1, ordered.Length)),
-            CoverageState.UnknownCoverage))];
+            CoverageState.UnknownCoverage)
+        {
+            Activity = ActivityOf(activity, positions[index], policy),
+        })];
+
+        // Every row is held by at most one instance, so what no instance holds is the rest: rows naming no owner, naming
+        // a PID at a reading none of its instances held, or bound only as strongly as the policy withholds.
+        long heldByProcesses = nodes.Sum(node => node.Records);
+        long heldByNone = counted.Rows - heldByProcesses;
 
         // The overview graph shows TCP relationships; UDP datagram flows are related too, and join the graph when its edges
         // and timeline carry a mechanism of their own rather than a TCP label.
@@ -165,6 +185,11 @@ public static class SessionOverviewProjector
                 + "were withheld by the evidence policy.",
             $"{graphRows:N0} rows belong to displayed graph edges; {graphWithoutTime:N0} of them have no usable "
                 + "session time and are among the rows absent from the timeline.",
+            $"The ranked table orders groups and processes by their own records ({ProcessActivityIndex.CountRule}): "
+                + $"{heldByProcesses:N0} rows bind to a process instance the evidence policy admits. The other "
+                + $"{heldByNone:N0} name no owner ({activity.RecordsWithoutOwner:N0}), name a PID at a reading no "
+                + $"instance of it held ({activity.RecordsNotBound:N0}), or bind only as strongly as the policy "
+                + "withholds; the timeline counts them and no process does.",
             "Byte totals, logical operations and exact-record drill-down are not in this overview bundle. "
                 + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
                 + "remains in the all-observations timeline, not a guessed channel.",
@@ -223,6 +248,7 @@ public static class SessionOverviewProjector
         {
             MechanismLanes = Array.AsReadOnly(lanes),
             Clock = clock,
+            RowsNoProcessHolds = heldByNone,
         };
 
         SegmentReaderV1[] Segments() => opened ??=
@@ -301,6 +327,10 @@ public static class SessionOverviewProjector
         return (extent, main.Buckets(coverage, clock), main.MechanismLanes(coverage, clock), overviewMinimap,
             counts.Rows, counts.WithoutTime);
     }
+
+    /// <summary>An instance's own records the policy admits, by mechanism, most first (`process-activity-v1`).</summary>
+    internal static IReadOnlyList<MechanismCount> ActivityOf(ProcessActivityIndex activity, int position, EvidencePolicy policy) =>
+        Array.AsReadOnly([.. activity.MechanismsOf(position, policy).Select(entry => new MechanismCount(entry.Mechanism, entry.Records))]);
 
     internal static bool Admitted(RelationStrength strength, EvidencePolicy policy) => strength switch
     {

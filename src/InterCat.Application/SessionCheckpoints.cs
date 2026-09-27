@@ -91,10 +91,12 @@ public static class SessionCheckpoints
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
             OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
             long next = store.NextGeneration;
             using StoreStagingFile checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
-            long bytes = DerivationCheckpoint.Write(checkpoint.Content, manifest.SessionId, manifest.Generation, processes, relations);
+            long bytes = DerivationCheckpoint.Write(
+                checkpoint.Content, manifest.SessionId, manifest.Generation, processes, relations, activity);
             _ = checkpoint.Complete();
             using StoreStagingFile overview = store.Stage(SessionOverviewIndex.FileNameFor(next), StoreDependencyKind.Index);
             bytes += SessionOverviewIndex.Write(
@@ -135,8 +137,9 @@ public static class SessionCheckpoints
         (DerivationCheckpoint.NamedBy(manifest), SessionOverviewIndex.NamedBy(manifest));
 
     /// <summary>
-    /// Whether the generation names a readable checkpoint and a readable persisted overview, each covering exactly the
-    /// segments it names.
+    /// Whether the generation names a readable checkpoint holding every derivation and a readable persisted overview,
+    /// each covering exactly the segments it names. A checkpoint written before revision 166 holds no activity, which a
+    /// reopen would count from every segment, so it is replaced.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -151,8 +154,8 @@ public static class SessionCheckpoints
                 && DerivationCheckpoint.Read(
                         SessionSegments.ReadVerified(directory, checkpoint, DerivationCheckpoint.MaximumBytes),
                         manifest.SessionId,
-                        clock)
-                    .Covers(segments, fields)
+                        clock) is { Activity: not null } saved
+                && saved.Covers(segments, fields)
                 && SessionOverviewIndex.NamedBy(manifest) is { } overview
                 && SessionOverviewIndex.Covers(
                     SessionOverviewIndex.Read(

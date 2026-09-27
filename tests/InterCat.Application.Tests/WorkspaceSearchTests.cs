@@ -68,4 +68,36 @@ public sealed class WorkspaceSearchTests
         Assert.Equal(["other", "tools"], result.Hits.Select(hit => hit.Key));
         Assert.EndsWith(@"C:\Tools\run.exe", result.Hits[1].Detail, StringComparison.Ordinal);
     }
+
+    [Fact(DisplayName = "§6.7: a name that is the query and an extension matches exactly, and hits rank and read by their own records")]
+    public void AnExecutableNamedByTheQueryIsExact()
+    {
+        // As in a live session: searching "chrome" meant chrome.exe, not the helper whose name merely begins with it.
+        ProcessGroup helper = new("helper", "chrome-native-host.exe", LaneGrouping.Executable, @"C:\Users\x\chrome-native-host.exe");
+        ProcessGroup chrome = new("chrome", @"chrome.exe (Google\Chrome\Application)", LaneGrouping.Executable,
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe");
+        ProcessNode quiet = Process(1, 101, "chrome.exe", chrome.Key, (Mechanism.ProcessLifecycle, 1));
+        ProcessNode busy = Process(2, 102, "chrome.exe", chrome.Key, (Mechanism.Udp, 900), (Mechanism.Tcp, 40));
+        ProcessNode host = Process(3, 103, "chrome-native-host.exe", helper.Key, (Mechanism.Tcp, 5_000));
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [helper, chrome], [quiet, busy, host], [], [], [], [], []);
+
+        SearchResult result = WorkspaceSearch.Find(snapshot, "chrome");
+        Assert.Equal(
+            [(SearchHitKind.Group, chrome.Key, 941L), (SearchHitKind.Process, busy.Id.ToString(), 940L),
+                (SearchHitKind.Process, quiet.Id.ToString(), 1L), (SearchHitKind.Group, helper.Key, 5_000L),
+                (SearchHitKind.Process, host.Id.ToString(), 5_000L)],
+            result.Hits.Select(hit => (hit.Kind, hit.Key, hit.ObservationCount)));
+
+        // The whole file name, in any case, is exact too; a folder in the group's label is not part of its name.
+        Assert.Equal(chrome.Key, WorkspaceSearch.Find(snapshot, "CHROME.EXE").Hits[0].Key);
+        Assert.Equal(helper.Key, WorkspaceSearch.Find(snapshot, "chrome-native-host").Hits[0].Key);
+        Assert.Equal(chrome.Key, Assert.Single(WorkspaceSearch.Find(snapshot, "Application").Hits).Key);
+    }
+
+    private static ProcessNode Process(int index, int processId, string name, string group, params (Mechanism, long)[] made) =>
+        new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), processId, name, "test", group, 0.5, 0.5,
+            CoverageState.Covered)
+        {
+            Activity = [.. made.Select(entry => new MechanismCount(entry.Item1, entry.Item2))],
+        };
 }

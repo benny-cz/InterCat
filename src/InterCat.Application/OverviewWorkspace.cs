@@ -38,6 +38,7 @@ public static class OverviewWorkspace
             MechanismLanes = overview.MechanismLanes,
             Clock = overview.Clock,
             CoverageLedgerPublished = overview.CoverageLedgerPublished,
+            RowsNoProcessHolds = overview.RowsNoProcessHolds,
         };
     }
 
@@ -51,9 +52,10 @@ public static class OverviewWorkspace
         + "no payload. Times, sizes, counts and relationships are the source's.";
 
     /// <summary>
-    /// The same workspace ranked within an analysis interval: every edge and channel keeps its identity and position and
-    /// carries only the records inside the interval, so the ladder's totals and ranking follow the brush while the graph
-    /// and timeline keep their shape (plan §6.4). An edge with nothing in the interval counts zero, not "absent".
+    /// The same workspace ranked within an analysis interval: every process, edge and channel keeps its identity and
+    /// position and carries only the records inside the interval, so the ladder's totals and ranking follow the brush
+    /// while the graph and timeline keep their shape (plan §6.4). One with nothing in the interval counts zero, not
+    /// "absent".
     /// </summary>
     public static WorkspaceSnapshot WithinInterval(WorkspaceSnapshot snapshot, SessionIntervalCounts counts)
     {
@@ -61,6 +63,10 @@ public static class OverviewWorkspace
         ArgumentNullException.ThrowIfNull(counts);
         return snapshot with
         {
+            Processes = [.. snapshot.Processes.Select(process => process with
+            {
+                Activity = counts.ProcessRecords.GetValueOrDefault(process.Id) ?? [],
+            })],
             Edges = [.. snapshot.Edges.Select(edge => edge with
             {
                 ObservationCount = counts.EdgeRecords.GetValueOrDefault(edge.Key),
@@ -69,6 +75,9 @@ public static class OverviewWorkspace
             {
                 ObservationCount = counts.ChannelRecords.GetValueOrDefault(channel.Key),
             })],
+            RowsNoProcessHolds = snapshot.RowsNoProcessHolds is null
+                ? null
+                : counts.ObservedRows - counts.ProcessRecords.Values.Sum(records => records.Sum(entry => entry.Records)),
         };
     }
 }

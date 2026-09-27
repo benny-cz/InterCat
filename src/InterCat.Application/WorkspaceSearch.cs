@@ -50,20 +50,12 @@ public static class WorkspaceSearch
         Dictionary<string, int> memberCounts = snapshot.Processes.GroupBy(process => process.GroupKey, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
-        // Observations on each entity's relationships order hits that match equally well: the busier first.
-        var processObservations = new Dictionary<ProcessInstanceId, long>();
+        // Hits that match equally well are ordered by the records the ranked table counts for them, the busier first: a
+        // process's own records and a group's members' (process-activity-v1).
         var groupObservations = new Dictionary<string, long>(StringComparer.Ordinal);
-        foreach (CommunicationEdge edge in snapshot.Edges)
+        foreach (ProcessNode process in snapshot.Processes)
         {
-            processObservations[edge.SourceId] = processObservations.GetValueOrDefault(edge.SourceId) + edge.ObservationCount;
-            processObservations[edge.TargetId] = processObservations.GetValueOrDefault(edge.TargetId) + edge.ObservationCount;
-            foreach (string group in new[] { edge.SourceId, edge.TargetId }
-                .Select(id => processes.TryGetValue(id, out ProcessNode? node) ? node.GroupKey : null)
-                .OfType<string>()
-                .Distinct(StringComparer.Ordinal))
-            {
-                groupObservations[group] = groupObservations.GetValueOrDefault(group) + edge.ObservationCount;
-            }
+            groupObservations[process.GroupKey] = groupObservations.GetValueOrDefault(process.GroupKey) + process.Records;
         }
 
         // A number is also a PID: an exact PID ranks first, then PIDs that start with it.
@@ -90,7 +82,7 @@ public static class WorkspaceSearch
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
             candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
                 $"Process instance of {groupName}",
-                processObservations.GetValueOrDefault(process.Id),
+                process.Records,
                 [process.GroupKey, process.Id.ToString()])));
         }
 
@@ -142,9 +134,24 @@ public static class WorkspaceSearch
     /// </summary>
     private static int Rank(string query, string name, string? detail)
     {
-        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return 0;
+        if (NamesExactly(name, query)) return 0;
         if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
         if (name.Contains(query, StringComparison.OrdinalIgnoreCase)) return 2;
         return detail is not null && detail.Contains(query, StringComparison.OrdinalIgnoreCase) ? 3 : -1;
+    }
+
+    /// <summary>
+    /// Whether a name is the query, as its file is named: "chrome" and "chrome.exe" both name "chrome.exe" and the group
+    /// labelled "chrome.exe (Google\Chrome\Application)" exactly, while "chrome" only begins "chrome-native-host.exe".
+    /// A group's label adds its folders in parentheses when two executables share a file name.
+    /// </summary>
+    private static bool NamesExactly(string name, string query)
+    {
+        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return true;
+        int folders = name.IndexOf(" (", StringComparison.Ordinal);
+        ReadOnlySpan<char> file = folders < 0 ? name : name.AsSpan(0, folders);
+        int extension = file.LastIndexOf('.');
+        return file.Equals(query, StringComparison.OrdinalIgnoreCase)
+            || (extension > 0 && file[..extension].Equals(query, StringComparison.OrdinalIgnoreCase));
     }
 }

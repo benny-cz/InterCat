@@ -37,7 +37,19 @@ public sealed record ProcessNode(
     /// <summary>The name an instance gets when no executable was witnessed for it.</summary>
     public static string PidName(int processId) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PID {processId}");
+
+    /// <summary>
+    /// What the process was observed doing: its own records by mechanism, most first, as the evidence policy admits them
+    /// (`process-activity-v1`). Empty when it made none, and for a node not projected from a session.
+    /// </summary>
+    public IReadOnlyList<MechanismCount> Activity { get; init; } = [];
+
+    /// <summary>The records <see cref="Activity"/> counts.</summary>
+    public long Records => Activity.Sum(entry => entry.Records);
 }
+
+/// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>
+public sealed record MechanismCount(Mechanism Mechanism, long Records);
 
 public sealed record CommunicationEdge(
     string Key,
@@ -197,4 +209,10 @@ public sealed record WorkspaceSnapshot(
     /// coverage is unknown because nothing has judged it yet, which is a different statement from a gap.
     /// </summary>
     public bool CoverageLedgerPublished { get; init; } = true;
+
+    /// <summary>
+    /// Observed rows in scope that no process instance holds, which the ranked table's groups and processes therefore
+    /// cannot count and the timeline does; null for a snapshot not projected from a session.
+    /// </summary>
+    public long? RowsNoProcessHolds { get; init; }
 }

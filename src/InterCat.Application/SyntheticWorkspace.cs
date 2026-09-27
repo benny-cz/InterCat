@@ -19,11 +19,18 @@ public static class SyntheticWorkspace
             new ProcessGroup("group.platform", "Platform services", LaneGrouping.ServiceContainer),
         };
 
-        ProcessNode browser = Node("5eb7465f-3dd6-4df8-8577-472fa43aab10", 8204, "Browser", "Client", "group.app", 0.16, 0.28);
-        ProcessNode api = Node("76447f1d-1cfc-4815-b775-cbdb8327f624", 5120, "API host", "Service", "group.app", 0.49, 0.18);
-        ProcessNode cache = Node("25ecf72c-7d72-4421-943e-eb6d66cd2fe8", 4056, "Cache", "Worker", "group.app", 0.78, 0.38);
-        ProcessNode indexer = Node("d7ab57e0-f196-4cd8-b22a-6a9ca0c4439b", 9132, "Indexer", "Worker", "group.platform", 0.35, 0.72);
-        ProcessNode broker = Node("fc8f5d21-315a-49f8-992d-f99f15f28292", 1180, "Service broker", "System", "group.platform", 0.72, 0.76);
+        ProcessNode browser = Node("5eb7465f-3dd6-4df8-8577-472fa43aab10", 8204, "Browser", "Client", "group.app", 0.16, 0.28)
+            with { Activity = Made((Mechanism.Tcp, 156), (Mechanism.ProcessLifecycle, 1)) };
+        ProcessNode api = Node("76447f1d-1cfc-4815-b775-cbdb8327f624", 5120, "API host", "Service", "group.app", 0.49, 0.18) with
+        {
+            Activity = Made((Mechanism.Tcp, 156), (Mechanism.NamedPipe, 93), (Mechanism.Rpc, 47), (Mechanism.ProcessLifecycle, 1)),
+        };
+        ProcessNode cache = Node("25ecf72c-7d72-4421-943e-eb6d66cd2fe8", 4056, "Cache", "Worker", "group.app", 0.78, 0.38)
+            with { Activity = Made((Mechanism.NamedPipe, 93), (Mechanism.SharedSection, 1), (Mechanism.ProcessLifecycle, 1)) };
+        ProcessNode indexer = Node("d7ab57e0-f196-4cd8-b22a-6a9ca0c4439b", 9132, "Indexer", "Worker", "group.platform", 0.35, 0.72)
+            with { Activity = Made((Mechanism.Rpc, 47), (Mechanism.Alpc, 110), (Mechanism.ProcessLifecycle, 1)) };
+        ProcessNode broker = Node("fc8f5d21-315a-49f8-992d-f99f15f28292", 1180, "Service broker", "System", "group.platform", 0.72, 0.76)
+            with { Activity = Made((Mechanism.Alpc, 111), (Mechanism.SharedSection, 1), (Mechanism.ProcessLifecycle, 1)) };
 
         var processes = new[] { browser, api, cache, indexer, broker };
         var edges = new[]
@@ -127,6 +134,16 @@ public static class SyntheticWorkspace
         double x,
         double y) =>
         new(new(Guid.Parse(id)), processId, name, role, groupKey, x, y, CoverageState.Covered);
+
+    /// <summary>
+    /// A synthetic process's own records, most first, as a projected node lists them. Each end of a relationship made
+    /// about half of its records, and each process has its one creation record.
+    /// </summary>
+    private static IReadOnlyList<MechanismCount> Made(params (Mechanism Mechanism, long Records)[] counts) =>
+        [.. counts
+            .OrderByDescending(count => count.Records)
+            .ThenBy(count => count.Mechanism)
+            .Select(count => new MechanismCount(count.Mechanism, count.Records))];
 
     private static ChannelOperation Operation(
         string key,

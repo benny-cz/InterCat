@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 165 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 166 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -25,6 +25,8 @@ extends the previous one's, and since revision 158 the overview and minimap come
 S4's first level. Since revision 162 a finished session reopens from its derivation checkpoint instead of deriving
 its processes and relationships from every record. Since revision 163 its first view comes from a persisted overview
 too, and opens no segment: 4M and 10M rows both reopen in about 0.17 s, down from 1.1 s and 2.2–2.4 s.
+Since revision 166 the ranked table ranks groups and processes by each process's own records, kept in the checkpoint,
+where it ranked by paired TCP alone and showed a real capture as zeros.
 L4 lanes wait on derived operations, and the operation view is open.
 M3–M5 are not complete. All three of §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
@@ -55,7 +57,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
-| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-v1`), so a reopen opens no segment | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
+| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
@@ -65,6 +67,30 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 166 — the ranked table counts what each process did:**
+  - **The finding:** L0 and L1 ranked by paired-TCP records only. A real capture's traffic mostly leaves the machine,
+    so its groups and processes ranked as zeros, search listed "0 records", and L1's lanes stood in PID order.
+  - **Own records** (`process-activity-v1`, `contracts/entities-v1.md` §4a): every record whose owner binds to an
+    instance and that the evidence policy admits, per mechanism. A lifecycle record is its instance's under every
+    policy; a later instance's other records count only when candidates are admitted, as their binding says. Every
+    record is counted once, so a group's total is its members' and the machine's its groups'.
+  - **Derived like the relations:** counted with them, extended from one live generation to the next when every PID's
+    counted readings bind alike under the new instances (else counted in full), and kept in the derivation checkpoint.
+    Its format 1.1 adds the counts and their rule. A 1.0 checkpoint still opens, counting from the segments, and a
+    writer or `icat checkpoint` replaces it.
+  - **In the window:** the machine and group rungs count own records, their dominant mechanism is what the count counts,
+    and the summary says so, with how many rows no process holds. A brush ranks by the same counts inside the interval.
+    L1's lanes sit in the table's order. The inspector leads with a selection's own records, then what its
+    relationships carry.
+  - **Search:** a name that is the query plus an extension is exact, so "chrome" finds `chrome.exe` before
+    `chrome-native-host.exe`, and hits are ordered and labelled by own records.
+  - **CLI:** `icat overview` lists the five busiest processes and the rows no process holds.
+  - **Tested:** counts equal a recount from each row's owner binding under every policy; extension equals a full count
+    chunk by chunk; a checkpoint round-trips, extends as written, and refuses another count rule; a 1.0 checkpoint is
+    counted around and replaced; ranking, brushed counts, search, lane order and the summary. Eight deliberate
+    mutations were each caught. On the real sparse ETL session 851 of 852 rows belong to a process, and its
+    republished checkpoint gives an identical overview.
 
 - **Revision 165 — fixes from a live test of the whole product:**
   - **Tested live:** the CLI end to end on real ETW and real data:
@@ -1245,11 +1271,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
-0. Finish what revision 165's live test found:
-   - **Rank L0 and L1 by what each process was observed doing.** Today the rows count paired-TCP records only, so a
-     real capture ranks zeros. Per-instance record counts are to be derived with the relations, extended between live
-     generations and held in the checkpoint (S3: ranking from persisted summaries). L1's lanes and search results
-     should follow that ranking.
+0. Finish what revision 165's live test found. Revision 166 ranks L0 and L1 by each process's own records. Left:
    - **Give process and thread lifecycle a palette family of its own.** It is supported and must not wear the unknown
      grey (§6.6). A contract test must hold every supported mechanism to a family other than unknown.
 1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
@@ -1322,6 +1344,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 166 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,143 tests: 1,141
+  passed, 2 skipped**, zero failures. `icat overview` and `icat checkpoint` ran on the real sparse ETL session, whose
+  format-1.0 checkpoint was republished as 1.1 with an identical overview.
 - Revision 165 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,129 tests: 1,127
   passed, 2 skipped**, zero failures, after the ledger gained its new names (the first pass caught them missing).
   Every CLI command, the broker qualification suite and the Desktop were exercised live, on real ETW.

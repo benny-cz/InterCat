@@ -505,6 +505,43 @@ public sealed class EvidenceRungTests
         Assert.False(workspace.CanLoadMoreEvidence);
     }
 
+    [Fact(DisplayName = "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do")]
+    public async Task OwnRecordsRankTheRungsAndOrderTheLanes()
+    {
+        // The one-sided sender, PID 300, is the busiest process though it has no paired peer; one record names no owner.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            .. Enumerable.Range(0, 2 * Exchanges).Select(index => Timed(
+                Transfer(4_001 + index, ObservationKind.Send, AccountingSide.SendSide, 3, 300, (ulong)(8_001 + index))
+                    .Between("127.0.0.1:50001", "127.0.0.1:9090"))),
+            Timed(Transfer(9_000, ObservationKind.Send, AccountingSide.SendSide, 3, null, 20_000).Between(ClientEnd, ServerEnd)),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.EndsWith(" · each process's own records; 1 more row no process holds, in the timeline only",
+            workspace.LevelSummary, StringComparison.Ordinal);
+        Assert.EndsWith(" · own records", workspace.LevelSummaryShort, StringComparison.Ordinal);
+
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        await workspace.TimelineDetailReady;
+        ProcessNode sender = workspace.Snapshot.Processes.Single(node => node.ProcessId == 300);
+        DescendTo(workspace, sender.GroupKey);
+        await workspace.TimelineDetailReady;
+        Assert.EndsWith(" · each process's own records", workspace.LevelSummary, StringComparison.Ordinal);
+        Assert.Equal(sender.Id.ToString(), workspace.RungRows[0].Key);
+        Assert.Equal((2 * Exchanges) + 1, sender.Records);
+
+        // Each lane sits where its row does, so the busiest process's lane is on top rather than the lowest PID's.
+        Assert.True(workspace.ShowsProcessLanes);
+        Assert.Equal(workspace.RungRows.Select(row => row.Key), workspace.ProcessLaneDisplay.Select(lane => lane.ProcessId.ToString()));
+
+        // A process's channel rung counts admitted paired TCP, and says so.
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.Id.ToString());
+        Assert.EndsWith(" · admitted paired TCP only; not all session observations", workspace.LevelSummary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
     {
@@ -525,7 +562,12 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.IsRankedWithinInterval);
         Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
         Assert.Equal("40", workspace.RungRows.Single().Observations);
-        Assert.Equal(whole, workspace.WholeSnapshot.Edges.Sum(edge => edge.ObservationCount));
+
+        // The whole session's machine rung counts each process's own records: both creations, every exchange and the
+        // unpaired send, which no edge carries.
+        Assert.Equal(whole, workspace.WholeSnapshot.Processes.Sum(node => node.Records));
+        Assert.Equal(rows.Length, whole);
+        Assert.Equal(2 * Exchanges, workspace.WholeSnapshot.Edges.Sum(edge => edge.ObservationCount));
 
         // The channel rung and the relationship table count the same interval.
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);

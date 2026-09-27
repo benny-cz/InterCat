@@ -73,7 +73,23 @@ internal static class OverviewCommand
             ? ConsoleUi.Count(overview.Channels.Count) : "unavailable above overview bound");
         ConsoleUi.Field("Observed rows", ConsoleUi.Count(overview.ObservationRows));
         ConsoleUi.Field("Graph-eligible rows", ConsoleUi.Count(overview.GraphEligibleRows));
+        ConsoleUi.Field("Rows held by none", ConsoleUi.Count(overview.RowsNoProcessHolds));
         ConsoleUi.Field("Coverage ledger", overview.CoverageLedgerPublished ? "published" : "not published");
+
+        // The Desktop's ranked table in brief: the busiest instances by their own records (process-activity-v1).
+        ProcessNode[] busiest = [.. overview.Nodes
+            .Where(node => node.Records > 0)
+            .OrderByDescending(node => node.Records)
+            .ThenBy(node => node.Id.ToString(), StringComparer.Ordinal)
+            .Take(5)];
+        if (busiest.Length > 0)
+        {
+            ConsoleUi.Table(
+                ["Busiest process", "Own records", "Mostly"],
+                [.. busiest.Select(node => (IReadOnlyList<string>)
+                    [node.NameWithPid, ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
+        }
+
         foreach (string caveat in overview.Caveats) ConsoleUi.Note(caveat);
         ConsoleUi.Note("icat overview <directory> --json returns the exact bundle the Desktop projects.");
         return InterCatExitCode.Success;

@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/InterCat.Application/InterCat.Application.csproj" />
     <Compile Include="../InterCat.Analysis.Tests/TestSessions.cs" Link="TestSessions.cs" />
+    <Compile Include="../InterCat.Analysis.Tests/EarlierCheckpoints.cs" Link="EarlierCheckpoints.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />

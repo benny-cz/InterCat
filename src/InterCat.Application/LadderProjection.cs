@@ -209,10 +209,12 @@ public static class LadderProjection
             rows.Add(new(
                 group.Key,
                 group.Name,
-                string.Create(CultureInfo.InvariantCulture, $"{members.Length} process instances"),
-                edges.Sum(edge => edge.ObservationCount),
+                members.Length == 1
+                    ? "1 process instance"
+                    : string.Create(CultureInfo.InvariantCulture, $"{members.Length:N0} process instances"),
+                members.Sum(member => member.Records),
                 KnownBytes(edges),
-                Dominant(edges),
+                Dominant(members),
                 Worst(members.Select(member => member.Coverage)),
                 DetailLevel.Group,
                 AccountingSide.CanonicalOwner));
@@ -236,9 +238,9 @@ public static class LadderProjection
                 process.Id.ToString(),
                 process.Name,
                 string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId} · {process.Role}"),
-                edges.Sum(edge => edge.ObservationCount),
+                process.Records,
                 KnownBytes(edges),
-                Dominant(edges),
+                Dominant([process]),
                 process.Coverage,
                 DetailLevel.ProcessInstance,
                 AccountingSide.CanonicalOwner));
@@ -458,9 +460,10 @@ public static class LadderProjection
     };
 
     /// <summary>
-    /// Relationships this set canonically owns: the initiating side owns the relationship. Rows built from
-    /// this partition the machine, which is what makes a parent total the sum of its children
-    /// (<c>EN-AccountingSide</c>, section 3.2).
+    /// Relationships this set canonically owns: the initiating side owns the relationship. A group's and a process's
+    /// known bytes are those of the relationships they own, so the rows partition the machine's bytes as their own
+    /// records partition its records, and a parent total is the sum of its children (<c>EN-AccountingSide</c>, section
+    /// 3.2). A record carries no byte total of its own to rank by.
     /// </summary>
     private static IEnumerable<CommunicationEdge> OwnedBy(
         WorkspaceSnapshot snapshot,
@@ -487,10 +490,25 @@ public static class LadderProjection
             ? edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value)
             : null;
 
-    private static Mechanism Dominant(CommunicationEdge[] edges) => edges.Length == 0
-        ? Mechanism.UnknownMechanism
-        : edges.OrderByDescending(edge => edge.ObservationCount).ThenBy(edge => edge.Key, StringComparer.Ordinal)
-            .First().Mechanism;
+    /// <summary>
+    /// The mechanism the members made most records of, the lowest code on a tie; unknown when they made none. It is what
+    /// the row's own count counts, never the mechanism of a relationship the count leaves out.
+    /// </summary>
+    private static Mechanism Dominant(IEnumerable<ProcessNode> members)
+    {
+        var totals = new Dictionary<Mechanism, long>();
+        foreach (MechanismCount count in members.SelectMany(member => member.Activity))
+        {
+            totals[count.Mechanism] = totals.GetValueOrDefault(count.Mechanism) + count.Records;
+        }
+
+        return totals.Where(entry => entry.Value > 0)
+            .OrderByDescending(entry => entry.Value)
+            .ThenBy(entry => entry.Key)
+            .Select(entry => entry.Key)
+            .DefaultIfEmpty(Mechanism.UnknownMechanism)
+            .First();
+    }
 
     /// <summary>Coverage rolls up to its worst member, never to an average (<c>EN-CoverageState</c>).</summary>
     private static CoverageState Worst(IEnumerable<CoverageState> states)

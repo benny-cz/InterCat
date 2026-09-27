@@ -41,8 +41,11 @@ public sealed class DerivationCheckpointOverviewTests
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
         SessionDerivation slot = SessionDerivationCache.For(reopened.Current!);
-        Assert.Equal((true, true, null, null), (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.CheckpointProblem, slot.OverviewProblem));
+        Assert.Equal((true, true, true, null, null),
+            (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.ActivityFromCheckpoint, slot.CheckpointProblem, slot.OverviewProblem));
         Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Contains(overview.Nodes, node => node.Records > 0);
+        Assert.Equal(full.Nodes.Select(node => (node.Id, node.Records)), overview.Nodes.Select(node => (node.Id, node.Records)));
         Assert.Equal(written + 1, overview.Generation);
         Assert.Equal(derived, Comparable(overview));
         Assert.Equal(full.Caveats, overview.Caveats);
@@ -177,6 +180,48 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.NotNull(SessionOverviewIndex.NamedBy(session.Store.Current!));
     }
 
+    [Fact(DisplayName = "I14: a checkpoint written before process counts gives its derivations, the counts come from the segments, and publishing replaces it")]
+    public void AMinorZeroCheckpointIsCountedAroundAndReplaced()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionOverviewBundle full = SessionOverviewProjector.Project(session.Store);
+
+        // As revisions 163 to 165 published: a checkpoint without the counts, beside a persisted overview.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        byte[] persisted = SessionSegments.ReadVerified(
+            session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!, SessionOverviewIndex.MaximumBytes);
+        PublishIndexes(session.Store, withCheckpoint: true, overview: persisted, minorZero: true);
+
+        // The instances and relations come from the checkpoint, and the counts, which it does not hold, from every
+        // segment: the same answer, without a caveat, since a checkpoint older than the counts is not damaged.
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
+        SessionDerivation slot = SessionDerivationCache.For(reopened.Current!);
+        Assert.Equal((true, true, false, false, null),
+            (slot.ProcessesFromCheckpoint, slot.RelationsFromCheckpoint, slot.ActivityFromCheckpoint, slot.ActivityExtended, slot.CheckpointProblem));
+        Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(Comparable(full), Comparable(overview));
+        Assert.Equal(full.Caveats, overview.Caveats);
+
+        // Publishing replaces it with one that holds the counts, and the next open reads no segment.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        overview = SessionOverviewProjector.Project(reopened);
+        slot = SessionDerivationCache.For(reopened.Current!);
+        Assert.True(slot.ActivityFromCheckpoint);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(Comparable(full), Comparable(overview));
+    }
+
     [Fact(DisplayName = "I15: publishing a checkpoint removes the manifests no pointer names, as every publication does")]
     public void PublishingACheckpointRemovesSupersededManifests()
     {
@@ -253,9 +298,10 @@ public sealed class DerivationCheckpointOverviewTests
 
     /// <summary>
     /// Publishes, as the next generation, a checkpoint of the current one when asked and an overview holding
-    /// <paramref name="overview"/> when given.
+    /// <paramref name="overview"/> when given. The checkpoint is in the format revisions 162 to 165 wrote, without the
+    /// process counts, when <paramref name="minorZero"/> asks for that.
     /// </summary>
-    private static void PublishIndexes(SessionStore store, bool withCheckpoint, byte[]? overview)
+    private static void PublishIndexes(SessionStore store, bool withCheckpoint, byte[]? overview, bool minorZero = false)
     {
         SessionManifestV1 manifest = store.Current!;
         long next = store.NextGeneration;
@@ -267,10 +313,15 @@ public sealed class DerivationCheckpointOverviewTests
                 SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
                 SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
                 ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, SessionSegments.SourceClock(store.Root, manifest)!.Value, fields);
+                ProcessActivityIndex activity = ProcessActivityIndex.Derive(segments, processes);
+                using var written = new MemoryStream();
+                _ = DerivationCheckpoint.Write(written, manifest.SessionId, manifest.Generation, processes,
+                    TransportRelationIndex.Derive(segments, processes), activity);
                 StoreStagingFile checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
                 staged.Add(checkpoint);
-                _ = DerivationCheckpoint.Write(checkpoint.Content, manifest.SessionId, manifest.Generation, processes,
-                    TransportRelationIndex.Derive(segments, processes));
+                checkpoint.Content.Write(minorZero
+                    ? EarlierCheckpoints.MinorZero(written.ToArray(), segments, processes, activity)
+                    : written.ToArray());
                 _ = checkpoint.Complete();
             }
 

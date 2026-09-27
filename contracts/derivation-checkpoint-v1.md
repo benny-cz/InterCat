@@ -8,6 +8,9 @@ gives. Without one, opening a session reads every record's owner, endpoints and 
 view, so reopening takes longer as the session grows. That breaks §12.1 S1. This contract gives the format, what it
 covers, when a reader may use it, and who publishes it.
 
+Format 1.1 (plan revision 166) adds each instance's own records under `process-activity-v1`, which rank the ranked
+table's groups and processes. A checkpoint of format 1.0 is still read, without them (§4).
+
 A checkpoint is a derived index. It holds no evidence and changes no observation (R1). It can always be rebuilt from
 the segments it covers (R20). A missing, stale or unreadable checkpoint costs time and never changes an answer.
 
@@ -33,8 +36,14 @@ set**. That state is what they need to answer any query and to extend to further
 
   It also holds how many related records of each mechanism name no end. Pairing and channel numbers are recomputed
   from these (relations-v1 §3a, §5a).
+- **Activity** (format 1.1). How many records name no owner; for each PID any record names, the earliest and latest
+  reading of those records and how many of them bind to no instance; and for each instance and mechanism, its
+  lifecycle records, which bind directly, and its other records, which bind as strongly as the instance's place among
+  its PID's instances allows (entities-v1 §4). What an evidence policy admits of each instance is a function of these,
+  and the PID spans are what an extension checks (§4).
 - **Identity.** The session, the generation the state was derived at, the clock and host, the capture and normalizer
-  derivation every covered segment belongs to, and both rule identities.
+  derivation every covered segment belongs to, and the rule identities: binding and relation in the header, and the
+  count rule at the start of the activity.
 
 The bytes are the same whatever order the covered segments were read in, and whether the state was derived at once or
 extended generation by generation (I14). Everything is written in a canonical order (§3). An ambiguous incarnation
@@ -93,8 +102,8 @@ byte count, at most 1 MiB, followed by the bytes. `guid` is 16 bytes in .NET's `
 most 512 MiB.
 
 ```text
-checkpoint  = header covered instances relations
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 0,
+checkpoint  = header covered instances relations activity   ; activity from minor 1: a minor-0 one ends at relations
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
@@ -125,7 +134,16 @@ cut         = record, afterClose u8 (0, 1)
 incarnation = flags u8 (1 has records, 2 names one PID, 4 names two PIDs, 8 binds to two instances)
               when it has records: [pid i32 when 2], holder i32 (-1 when unbound or 8), weakest u8 (EN-RelationStrength),
               first i64, last i64, firstPosition record, records i64 (> 0), untimed i64 (0..records)
+activity    = countRule str8 ("process-activity-v1"), withoutOwner i64 (>= 0),
+              count u32, span*,                     ; strictly ascending by pid
+              count u32, tally*                     ; strictly ascending by (instance, mechanism)
+span        = pid i32, first i64, last i64 (>= first), unbound i64 (>= 0)
+tally       = instance i32 (a position among the rebuilt instances), mechanism u16 (EN-Mechanism),
+              direct i64 (>= 0), bound i64 (>= 0)   ; not both 0
 ```
+
+An instance is named by its position in the rebuilt instances, which are ordered by PID and lifecycle epoch
+(entities-v1 §3), so the counts are as canonical as the instances.
 
 A `record` is a canonical position (entities-v1 §3). Every covered segment shares one capture and one normalizer
 derivation, so the header states them once. A covered file's role says which derivation read it: the relations read
@@ -137,10 +155,12 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, or the major or minor version is not 1.0: a checkpoint is rebuildable, so there is no partial
-  read of a newer one;
-- a rule identity is not this build's: a checkpoint derived under another rule describes other instances or relations
-  (§24);
+- the magic is wrong, the major version is not 1, or the minor is above 1: a checkpoint is rebuildable, so there is no
+  partial read of a newer one. A minor-0 checkpoint, as revisions 162 to 165 wrote, is read without counts: a reader
+  counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
+  reopen would otherwise read every segment;
+- a rule identity is not this build's: a checkpoint derived under another rule describes other instances, relations or
+  counts (§24);
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order
   above is broken, or bytes remain after the last end;
@@ -150,7 +170,8 @@ checkpoint when:
   - two PIDs are named with one of them, or without the incarnation being ambiguous;
   - an ambiguous incarnation names a holder;
   - an end's latest position is missing although an incarnation holds records, or present although none does;
-  - a holder is not an instance of the rebuilt instances.
+  - a holder is not an instance of the rebuilt instances;
+  - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last.
 
 A refused checkpoint is not used, and the overview says why in one caveat, because a
 slower open should be explainable. The answer is the same.
@@ -163,7 +184,9 @@ name, length and digest:
 - **Covers a prefix.** The generation names further segments, as after later live chunks. The derivations are
   extended by reading only those (I14). An extension that would change a decision already made declines, as it does
   between live generations: a late cut among records already read, or an instance that no longer binds alike. The
-  generation is then derived in full.
+  generation is then derived in full. The counts extend when every PID's readings, from its earliest to its latest
+  counted record, bind alike under the extended instances: each instance's counts move to the instance its records
+  now bind to, and only the added segments are counted. Otherwise they are counted in full.
 - **Stale.** A covered file is no longer named, or is named with another length or digest. The checkpoint describes
   other evidence and is not used, silently. §2 keeps writers from publishing one.
 

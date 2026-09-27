@@ -557,12 +557,19 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ProcessLaneProblem));
     }
 
+    /// <summary>
+    /// Process lanes in the ranked table's order over the whole session: most own records first, then by instance, so
+    /// each lane sits where its row does. A brush reranks the table, not the lanes, and the timeline keeps its shape
+    /// (§6.4); a lane of an instance the snapshot does not name goes last.
+    /// </summary>
     private IReadOnlyList<ProcessTimelineLane> OrderProcessLanes(IReadOnlyList<ProcessTimelineLane> lanes)
     {
-        Dictionary<ProcessInstanceId, int> processIds = wholeSnapshot.Processes
-            .ToDictionary(process => process.Id, process => process.ProcessId);
-        return [.. lanes.OrderBy(lane => processIds.GetValueOrDefault(lane.ProcessId, int.MaxValue))
-            .ThenBy(lane => lane.ProcessId.Value)];
+        Dictionary<ProcessInstanceId, long> records = wholeSnapshot.Processes
+            .ToDictionary(process => process.Id, process => process.Records);
+        return [.. lanes
+            .OrderBy(lane => records.ContainsKey(lane.ProcessId) ? 0 : 1)
+            .ThenByDescending(lane => records.GetValueOrDefault(lane.ProcessId))
+            .ThenBy(lane => lane.ProcessId.ToString(), StringComparer.Ordinal)];
     }
 
     private bool HasCompleteLaneDetail => timelineDetail is { } detail
@@ -2331,15 +2338,38 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture,
                 $"{channel.ObservationCount:N0} observed records at this channel's two ends · bytes unknown · no operation rung; E shows the records")
-            : LadderRowBuilder.DescribeTotal(view)
-                + (realOverview ? " · admitted paired TCP only; not all session observations" : string.Empty);
+            : LadderRowBuilder.DescribeTotal(view) + RealScopeNote(brief: false);
 
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
     public string LevelSummaryShort => IsEvidenceRung
         ? EvidenceStatus
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture, $"{channel.ObservationCount:N0} records on this channel · no operation rung")
-            : LadderRowBuilder.DescribeTotalShort(view) + (realOverview ? " · paired TCP only" : string.Empty);
+            : LadderRowBuilder.DescribeTotalShort(view) + RealScopeNote(brief: true);
+
+    /// <summary>
+    /// What a published session's rung total counts, said after it. The machine and group rungs count each process's
+    /// own records (`process-activity-v1`), and the machine rung says how many rows no process holds, which only the
+    /// timeline counts; the process rung's channels count admitted paired TCP only.
+    /// </summary>
+    private string RealScopeNote(bool brief)
+    {
+        if (!realOverview)
+        {
+            return string.Empty;
+        }
+
+        if (ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
+        {
+            return brief ? " · own records"
+                : ladder.Current.Level == DetailLevel.Machine && Snapshot.RowsNoProcessHolds is > 0 and { } none
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $" · each process's own records; {none:N0} more {(none == 1 ? "row" : "rows")} no process holds, in the timeline only")
+                    : " · each process's own records";
+        }
+
+        return brief ? " · paired TCP only" : " · admitted paired TCP only; not all session observations";
+    }
 
     /// <summary>
     /// The channel a published session's channel rung is focused on. Its rung lists no operations, so its own record
@@ -3063,26 +3093,55 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return "No evidence selected";
             }
 
-            string subject = HasMultiSelection ? "these processes"
-                : SelectedGroup is null ? "this process" : "this group's processes";
+            // What the selection made comes first, as the ranked table counts it; what its relationships carry, from both
+            // ends, follows, since the graph draws that.
+            ProcessNode[] members = [.. Snapshot.Processes.Where(process => scope.Contains(process.Id))];
             CommunicationEdge[] edges = [.. Snapshot.Edges
                 .Where(edge => scope.Contains(edge.SourceId) || scope.Contains(edge.TargetId))];
             long observations = edges.Sum(edge => edge.ObservationCount);
-            if (realOverview)
-            {
-                return edges.Length == 0
-                    ? $"No admitted paired TCP relationship for {subject}. Other activity may be present."
-                    : SelectedGroup is null && !HasMultiSelection
-                        ? $"{observations:N0} paired TCP observations · bytes unknown"
-                        : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} paired TCP observations on ")
-                            + Counted(edges.Length, "relationship", "relationships") + " · bytes unknown";
-            }
+            string kind = realOverview ? "paired TCP observations" : "observations";
+            string relationships = edges.Length == 0
+                ? realOverview ? "no admitted paired TCP relationship" : "no relationship"
+                : realOverview && SelectedGroup is null && !HasMultiSelection
+                    ? string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind}")
+                    : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind} on ")
+                        + Counted(edges.Length, "relationship", "relationships");
+
             // Bytes nothing measured are unknown, never zero (R3): a sum over no known value is no sum at all.
             long? knownBytes = edges.Any(edge => edge.KnownBytes.HasValue)
                 ? edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value)
                 : null;
-            return $"{observations:N0} observations · {WorkspaceRowBuilder.DescribeBytes(knownBytes)}";
+            return OwnRecords(members) + " · " + relationships + " · " + WorkspaceRowBuilder.DescribeBytes(knownBytes);
         }
+    }
+
+    /// <summary>
+    /// The records a selection made, as the ranked table counts them (`process-activity-v1`), and the mechanism they
+    /// are: "1,234 own records, mostly TCP", or "all TCP" when every one is.
+    /// </summary>
+    private static string OwnRecords(IReadOnlyCollection<ProcessNode> members)
+    {
+        long own = members.Sum(member => member.Records);
+        if (own == 0)
+        {
+            return "No own record admitted";
+        }
+
+        (Mechanism mechanism, long records) = members.SelectMany(member => member.Activity)
+            .GroupBy(count => count.Mechanism)
+            .Select(group => (Mechanism: group.Key, Records: group.Sum(count => count.Records)))
+            .OrderByDescending(entry => entry.Records)
+            .ThenBy(entry => entry.Mechanism)
+            .First();
+        string name = mechanism switch
+        {
+            // A lane may be called "Process"; in a sentence the records are the process's lifecycle.
+            Mechanism.ProcessLifecycle => "process lifecycle",
+            Mechanism.ThreadLifecycle => "thread lifecycle",
+            _ => EvidenceRowText.MechanismName(mechanism),
+        };
+        return string.Create(CultureInfo.CurrentCulture,
+            $"{own:N0} own {(own == 1 ? "record" : "records")}, {(records == own ? "all" : "mostly")} {name}");
     }
 
     /// <summary>Descends one rung from the selected row. One gesture, at every rung (section 3.2).</summary>

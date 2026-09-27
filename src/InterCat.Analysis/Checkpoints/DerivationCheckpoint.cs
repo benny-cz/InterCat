@@ -19,7 +19,9 @@ public sealed class DerivationCheckpoint
     private const string FilePrefix = "derivation-checkpoint-";
     private const string FileSuffix = ".bin";
     private const ushort Major = 1;
-    private const ushort Minor = 0;
+
+    /// <summary>Minor 1 adds each instance's activity (revision 166); a minor-0 checkpoint is read without it.</summary>
+    private const ushort Minor = 1;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "derivation checkpoint";
@@ -32,7 +34,8 @@ public sealed class DerivationCheckpoint
         IReadOnlyList<StoreDependency> segments,
         IReadOnlyList<StoreDependency> fieldSegments,
         ProcessInstanceIndex processes,
-        TransportRelationIndex relations)
+        TransportRelationIndex relations,
+        ProcessActivityIndex? activity)
     {
         SessionId = sessionId;
         DerivedGeneration = derivedGeneration;
@@ -40,6 +43,7 @@ public sealed class DerivationCheckpoint
         FieldSegments = fieldSegments;
         Processes = processes;
         Relations = relations;
+        Activity = activity;
     }
 
     public Guid SessionId { get; }
@@ -58,6 +62,12 @@ public sealed class DerivationCheckpoint
 
     /// <summary>The relations, as a derivation of the covered segments with <see cref="Processes"/> gives them.</summary>
     public TransportRelationIndex Relations { get; }
+
+    /// <summary>
+    /// Each instance's records, as counted over the covered segments with <see cref="Processes"/>; null for a minor-0
+    /// checkpoint, written before they were kept.
+    /// </summary>
+    public ProcessActivityIndex? Activity { get; }
 
     private static ReadOnlySpan<byte> Magic => "ICATDCKP"u8;
 
@@ -124,9 +134,9 @@ public sealed class DerivationCheckpoint
     }
 
     /// <summary>
-    /// Writes the state of <paramref name="processes"/> and <paramref name="relations"/>, derived from the segments of
-    /// generation <paramref name="derivedGeneration"/>, in the canonical order of §3. The same derivations always write
-    /// the same bytes.
+    /// Writes the state of <paramref name="processes"/>, <paramref name="relations"/> and <paramref name="activity"/>,
+    /// derived from the segments of generation <paramref name="derivedGeneration"/>, in the canonical order of §3. The
+    /// same derivations always write the same bytes.
     /// </summary>
     /// <returns>How many bytes were written.</returns>
     public static long Write(
@@ -134,17 +144,25 @@ public sealed class DerivationCheckpoint
         Guid sessionId,
         long derivedGeneration,
         ProcessInstanceIndex processes,
-        TransportRelationIndex relations)
+        TransportRelationIndex relations,
+        ProcessActivityIndex activity)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(relations);
+        ArgumentNullException.ThrowIfNull(activity);
         ArgumentOutOfRangeException.ThrowIfLessThan(derivedGeneration, 1);
-        if (!ReferenceEquals(relations.Processes, processes))
+        if (!ReferenceEquals(relations.Processes, processes) || !ReferenceEquals(activity.Processes, processes))
         {
             throw new ArgumentException(
-                "These relations were derived with other instances, so their holders name positions in another index.",
+                "These relations or counts were derived with other instances, so they name positions in another index.",
                 nameof(relations));
+        }
+
+        if (activity.FilesRead is not { } counted || relations.FilesRead is not { } relatedFiles
+            || !counted.ToHashSet().SetEquals(relatedFiles))
+        {
+            throw new ArgumentException("The counts were made from other segments than the relations.", nameof(activity));
         }
 
         IReadOnlyCollection<StoreDependency> read = processes.FilesRead
@@ -191,6 +209,7 @@ public sealed class DerivationCheckpoint
 
         processes.WriteState(writer);
         relations.WriteState(writer);
+        activity.WriteState(writer);
         writer.Flush();
         return writer.Written;
     }
@@ -236,9 +255,9 @@ public sealed class DerivationCheckpoint
 
         ushort major = reader.U16();
         ushort minor = reader.U16();
-        if (major != Major || minor != Minor)
+        if (major != Major || minor > Minor)
         {
-            throw reader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.{Minor}.");
+            throw reader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.0 to {Major}.{Minor}.");
         }
 
         string binding = reader.Str8();
@@ -305,8 +324,9 @@ public sealed class DerivationCheckpoint
 
         ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);
         TransportRelationIndex relations = TransportRelationIndex.ReadState(reader, processes, [.. segments]);
+        ProcessActivityIndex? activity = minor >= 1 ? ProcessActivityIndex.ReadState(reader, processes, [.. segments]) : null;
         reader.RequireEnd();
-        return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), processes, relations);
+        return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), processes, relations, activity);
     }
 
     private static bool IsDigest(string digest) =>

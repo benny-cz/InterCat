@@ -509,6 +509,7 @@
         "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread",
         "I14: a checkpoint that cannot be read is derived around, the overview says why, and publishing replaces it",
         "I14: a checkpoint without an overview gives the derivations, and the timeline is counted from the segments",
+        "I14: a checkpoint written before process counts gives its derivations, the counts come from the segments, and publishing replaces it",
         "I14: a derivation read back from its checkpoint answers and extends as the derivation it was written from",
         "I14: a field a later chunk repeats is refused after a checkpoint, as by a derivation of every chunk",
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
@@ -518,7 +519,9 @@
         "I14: an import option outside its declared range is refused before anything is read",
         "I14: an import that spills to disk produces exactly the index it would in memory",
         "I14: an overview that cannot be read is counted around from the segments, and the overview says why",
+        "I14: counts decline to extend, for a full count, when a record already counted would bind otherwise",
         "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
+        "I14: each instance's records extended chunk by chunk equal a count of every chunk at once",
         "I14: equal-time byte-identical records keep their multiplicity and gain no order",
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: instance identities do not depend on how the evidence was split into segments",
@@ -844,7 +847,9 @@
         "R12: related processes are drawn together, separate components apart, and none is omitted"
       ],
       "R13": [
-        "R13: a timeline hit resolves by time to the bucket holding the instant under the pointer, not to the bar drawn nearest"
+        "R13: a timeline hit resolves by time to the bucket holding the instant under the pointer, not to the bar drawn nearest",
+        "R13: groups and processes rank by their own records, so a process with no paired peer is ranked, not zero",
+        "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do"
       ],
       "R14": [
         "R14: a high-contrast mode holds every ink to 7 to 1, every fill to 4.5 to 1 and its divider to 3 to 1 on every surface",
@@ -1048,15 +1053,18 @@
       ],
       "R22": [
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
+        "R22: a brushed count admits a later instance's records only as the evidence policy does, as the whole count does",
         "R22: a call to another interface is scope, not a match",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
+        "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
+        "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",

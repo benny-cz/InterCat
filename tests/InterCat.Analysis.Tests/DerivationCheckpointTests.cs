@@ -22,6 +22,7 @@ public sealed class DerivationCheckpointTests
     {
         var random = new Random(seed);
         int extended = 0;
+        int activityExtended = 0;
         for (int trial = 0; trial < 10; trial++)
         {
             // Each chunk is a generation of one session, as a live capture publishes them, so every file name is unique.
@@ -43,18 +44,23 @@ public sealed class DerivationCheckpointTests
             SegmentReaderV1[] fields = [.. published.Take(covered).SelectMany(chunk => chunk.Fields)];
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
             TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
-            byte[] bytes = Checkpoint(processes, relations);
+            ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
+            byte[] bytes = Checkpoint(processes, relations, activity);
 
             DerivationCheckpoint read = DerivationCheckpoint.Read(bytes, Session, TestClock);
             Assert.True(read.Covers(observations, fields));
             Assert.Equal(2, read.DerivedGeneration);
             AssertSameProcesses(processes, read.Processes, observations);
             AssertSameRelations(relations, read.Relations, observations);
+            Assert.NotNull(read.Activity);
+            ProcessActivityTests.AssertSameActivity(activity, read.Activity, processes.Instances.Count);
 
             // Nothing is lost reading it back, and nothing depends on the order the segments were read in.
-            Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations));
-            ProcessInstanceIndex reversed = ProcessInstanceIndex.Derive([.. observations.Reverse()], TestClock, [.. fields.Reverse()]);
-            Assert.Equal(bytes, Checkpoint(reversed, TransportRelationIndex.Derive([.. observations.Reverse()], reversed)));
+            Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations, read.Activity));
+            SegmentReaderV1[] backwards = [.. observations.Reverse()];
+            ProcessInstanceIndex reversed = ProcessInstanceIndex.Derive(backwards, TestClock, [.. fields.Reverse()]);
+            Assert.Equal(bytes, Checkpoint(
+                reversed, TransportRelationIndex.Derive(backwards, reversed), ProcessActivityIndex.Derive(backwards, reversed)));
 
             if (covered == published.Count)
             {
@@ -72,18 +78,30 @@ public sealed class DerivationCheckpointTests
                 ?? throw new Xunit.Sdk.XunitException("Every covered segment is still offered, so the instances must extend.");
             AssertSameProcesses(full, next, allObservations);
             TransportRelationIndex? nextRelations = read.Relations.Extend(allObservations, next);
-            Assert.Equal(
-                relations.Extend(allObservations, processes.Extend(allObservations, TestClock, allFields)!) is null,
-                nextRelations is null);
+            ProcessInstanceIndex written = processes.Extend(allObservations, TestClock, allFields)!;
+            Assert.Equal(relations.Extend(allObservations, written) is null, nextRelations is null);
+            ProcessActivityIndex fullActivity = ProcessActivityIndex.Derive(allObservations, full);
+            ProcessActivityIndex? nextActivity = read.Activity.Extend(allObservations, next);
+            Assert.Equal(activity.Extend(allObservations, written) is null, nextActivity is null);
+            if (nextActivity is not null)
+            {
+                activityExtended++;
+                ProcessActivityTests.AssertSameActivity(fullActivity, nextActivity, full.Instances.Count);
+            }
+
             if (nextRelations is not null)
             {
                 extended++;
                 AssertSameRelations(fullRelations, nextRelations, allObservations);
-                Assert.Equal(Checkpoint(full, fullRelations), Checkpoint(next, nextRelations));
+                if (nextActivity is not null)
+                {
+                    Assert.Equal(Checkpoint(full, fullRelations, fullActivity), Checkpoint(next, nextRelations, nextActivity));
+                }
             }
         }
 
         Assert.True(extended > 0, "No trial extended a read-back checkpoint.");
+        Assert.True(activityExtended > 0, "No trial extended a read-back checkpoint's counts.");
     }
 
     [Fact(DisplayName = "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread")]
@@ -95,8 +113,19 @@ public sealed class DerivationCheckpointTests
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
         TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
-        byte[] bytes = Checkpoint(processes, relations);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
+        byte[] bytes = Checkpoint(processes, relations, activity);
         _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
+
+        // A minor-0 checkpoint, written before revision 166, ends before the counts: it is read without them, and the
+        // instances and relations it holds answer as before.
+        byte[] older = EarlierCheckpoints.MinorZero(bytes, observations, processes, activity);
+        DerivationCheckpoint minorZero = DerivationCheckpoint.Read(older, Session, TestClock);
+        Assert.Null(minorZero.Activity);
+        Assert.True(minorZero.Covers(observations, fields));
+        AssertSameProcesses(processes, minorZero.Processes, observations);
+        AssertSameRelations(relations, minorZero.Relations, observations);
+        _ = Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read((byte[])[.. older[..^1]], Session, TestClock));
 
         for (int length = 0; length < bytes.Length; length++)
         {
@@ -125,14 +154,19 @@ public sealed class DerivationCheckpointTests
         Assert.InRange(refused, 1, bytes.Length);
 
         byte[] newer = [.. bytes];
-        newer[10] = 1;
-        Assert.Contains("format 1.1", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
+        newer[10] = 2;
+        Assert.Contains("format 1.2", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
             StringComparison.Ordinal);
         byte[] rule = [.. bytes];
         int at = bytes.AsSpan().IndexOf(Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule));
         rule[at + ProcessInstanceIndex.BindingRule.Length - 1] = (byte)'9';
         Assert.Contains("derived under process-binding-v9", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(rule, Session, TestClock)).Message, StringComparison.Ordinal);
+        byte[] counted = [.. bytes];
+        int countAt = bytes.AsSpan().LastIndexOf(Encoding.ASCII.GetBytes(ProcessActivityIndex.CountRule));
+        counted[countAt + ProcessActivityIndex.CountRule.Length - 1] = (byte)'9';
+        Assert.Contains("made under process-activity-v9", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(counted, Session, TestClock)).Message, StringComparison.Ordinal);
         Assert.Contains("belongs to session", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(bytes, Guid.NewGuid(), TestClock)).Message, StringComparison.Ordinal);
         _ = Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(bytes, Session, ClockFor(Clock, "another-host")));
@@ -150,7 +184,8 @@ public sealed class DerivationCheckpointTests
         (SegmentReaderV1[] first, SegmentReaderV1[] firstFields) = SegmentsOf(session.Store);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(first, TestClock, firstFields);
         DerivationCheckpoint read = DerivationCheckpoint.Read(
-            Checkpoint(processes, TransportRelationIndex.Derive(first, processes)), Session, TestClock);
+            Checkpoint(processes, TransportRelationIndex.Derive(first, processes), ProcessActivityIndex.Derive(first, processes)),
+            Session, TestClock);
 
         // The checkpoint keeps which fields each record carried, so a later chunk carrying one again is caught.
         Publish(session.Store, [Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2)], fields: [sequence]);
@@ -171,7 +206,16 @@ public sealed class DerivationCheckpointTests
         ProcessInstanceIndex other = ProcessInstanceIndex.Derive(observations, TestClock, fields);
         TransportRelationIndex relations = TransportRelationIndex.Derive(observations, other);
         using var destination = new MemoryStream();
-        _ = Assert.Throws<ArgumentException>(() => DerivationCheckpoint.Write(destination, Session, 2, processes, relations));
+        _ = Assert.Throws<ArgumentException>(() => DerivationCheckpoint.Write(
+            destination, Session, 2, processes, relations, ProcessActivityIndex.Derive(observations, processes)));
+
+        // Counts made with other instances, or from other segments than the relations, are refused too.
+        TransportRelationIndex matching = TransportRelationIndex.Derive(observations, processes);
+        _ = Assert.Throws<ArgumentException>(() => DerivationCheckpoint.Write(
+            destination, Session, 2, processes, matching, ProcessActivityIndex.Derive(observations, other)));
+        _ = Assert.Throws<ArgumentException>(() => DerivationCheckpoint.Write(
+            destination, Session, 2, processes, matching, ProcessActivityIndex.Derive(observations[..^1], processes)));
+        Assert.Equal(0, destination.Length);
 
         Assert.Equal("derivation-checkpoint-0000000012.bin", DerivationCheckpoint.FileNameFor(12));
         StoreDependency checkpoint = new(DerivationCheckpoint.FileNameFor(12), StoreDependencyKind.Index, 10, "sha256:" + new string('0', 64));
@@ -180,10 +224,11 @@ public sealed class DerivationCheckpointTests
         Assert.False(DerivationCheckpoint.IsCheckpoint(checkpoint with { Name = "derivation-checkpoint-12.bin" }));
     }
 
-    private static byte[] Checkpoint(ProcessInstanceIndex processes, TransportRelationIndex relations)
+    private static byte[] Checkpoint(
+        ProcessInstanceIndex processes, TransportRelationIndex relations, ProcessActivityIndex activity)
     {
         using var destination = new MemoryStream();
-        long written = DerivationCheckpoint.Write(destination, Session, 2, processes, relations);
+        long written = DerivationCheckpoint.Write(destination, Session, 2, processes, relations, activity);
         Assert.Equal(written, destination.Length);
         return destination.ToArray();
     }

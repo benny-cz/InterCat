@@ -84,6 +84,15 @@ apart; inside the first, only that instance or a holder the capture never witnes
 risk every PID that was never reused carries. A reading outside every lifetime is never moved to the nearest one
 (P6).
 
+### 4a. An instance's own records (`process-activity-v1`, revision 166)
+
+An instance's **own records** are the records that bind to it by this table and that the evidence policy admits
+(§5), counted per mechanism. Every record is counted once: by the one instance it binds to, or as a record naming no
+owner, or as one naming a PID at a reading no instance of it held. They rank the ranked table's groups and processes,
+and a group's own records are its members'. A brushed interval counts the same way, over the records whose session
+time lies inside it. The derivation checkpoint keeps the counts (`contracts/derivation-checkpoint-v1.md` §1), and a
+later generation extends them only when every PID's counted readings bind alike under its instances.
+
 ## 5. Evidence policy
 
 `EN-EvidencePolicy` decides which strengths a result admits:

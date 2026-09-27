@@ -101,6 +101,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private readonly Lock gate = new();
     private ProcessInstanceIndex? processes;
     private TransportRelationIndex? relations;
+    private ProcessActivityIndex? activity;
     private DerivationCheckpoint? checkpoint;
     private bool checkpointRead;
     private string? checkpointProblem;
@@ -122,6 +123,15 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>The relations, once derived.</summary>
     public TransportRelationIndex? DerivedRelations => Volatile.Read(ref relations);
+
+    /// <summary>Each instance's records, once counted.</summary>
+    public ProcessActivityIndex? DerivedActivity => Volatile.Read(ref activity);
+
+    /// <summary>Whether the counts were extended from an earlier generation's rather than counted in full.</summary>
+    internal bool ActivityExtended { get; private set; }
+
+    /// <summary>Whether the counts were taken from this generation's checkpoint, as they stand or extended.</summary>
+    internal bool ActivityFromCheckpoint { get; private set; }
 
     /// <summary>
     /// Why the derivation checkpoint this generation names could not be read, once one was asked for; null when it names
@@ -161,10 +171,11 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
-    /// Both derivations without opening a segment: those already made, or the checkpoint's when it covers exactly the
-    /// segments the generation names. Null when neither is so, and the caller derives with the segments opened.
+    /// The derivations without opening a segment: those already made, or the checkpoint's when it covers exactly the
+    /// segments the generation names. Null when neither is so, and the caller derives with the segments opened. The
+    /// activity is null when it was neither counted nor kept, as by a checkpoint written before revision 166.
     /// </summary>
-    public (ProcessInstanceIndex Processes, TransportRelationIndex Relations)? FromCheckpoint(
+    public (ProcessInstanceIndex Processes, TransportRelationIndex Relations, ProcessActivityIndex? Activity)? FromCheckpoint(
         IOwnedDirectory directory,
         SourceClockDescriptor clock)
     {
@@ -172,7 +183,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
         {
             if (processes is { } madeProcesses && relations is { } madeRelations)
             {
-                return (madeProcesses, madeRelations);
+                return (madeProcesses, madeRelations, activity);
             }
 
             if (processes is not null
@@ -186,8 +197,52 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             Volatile.Write(ref processes, saved.Processes);
             Volatile.Write(ref relations, saved.Relations);
             (ProcessesFromCheckpoint, RelationsFromCheckpoint) = (true, true);
+            if (saved.Activity is { } counted)
+            {
+                Volatile.Write(ref activity, counted);
+                ActivityFromCheckpoint = true;
+            }
+
+            // Everything it holds is taken; counts it does not hold are made from the segments, not from it.
             checkpoint = null;
-            return (saved.Processes, saved.Relations);
+            return (saved.Processes, saved.Relations, saved.Activity);
+        }
+    }
+
+    /// <summary>
+    /// Each instance's records: those already counted, extended from an earlier generation's, taken from the checkpoint,
+    /// or counted from the segments, in that order of preference, as the relations are.
+    /// </summary>
+    public ProcessActivityIndex Activity(
+        IOwnedDirectory directory,
+        IReadOnlyList<SegmentReaderV1> segments,
+        SourceClockDescriptor clock,
+        IReadOnlyList<SegmentReaderV1> fields,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (activity is { } known)
+            {
+                return known;
+            }
+
+            ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+            ProcessActivityIndex? extended =
+                SessionDerivationCache.Earlier(this, entry => entry.DerivedActivity)?.Extend(segments, instances, cancellationToken);
+            ActivityExtended = extended is not null;
+            if (extended is null && CheckpointLocked(directory, clock) is { Activity: { } saved } kept)
+            {
+                extended = ReferenceEquals(instances, kept.Processes)
+                    ? saved
+                    : saved.Extend(segments, instances, cancellationToken);
+                ActivityFromCheckpoint = extended is not null;
+            }
+
+            ProcessActivityIndex counted = extended ?? ProcessActivityIndex.Derive(segments, instances, cancellationToken);
+            Volatile.Write(ref activity, counted);
+            ReleaseCheckpointWhenDone();
+            return counted;
         }
     }
 
@@ -262,10 +317,20 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
             TransportRelationIndex derived = extended ?? TransportRelationIndex.Derive(segments, instances, cancellationToken);
             Volatile.Write(ref relations, derived);
-
-            // Both derivations are made, so the checkpoint has nothing left to give; what was taken from it stays.
-            checkpoint = null;
+            ReleaseCheckpointWhenDone();
             return derived;
+        }
+    }
+
+    /// <summary>
+    /// Once every derivation is made the checkpoint has nothing left to give, so it is let go; what was taken from it
+    /// stays. The caller holds the gate.
+    /// </summary>
+    private void ReleaseCheckpointWhenDone()
+    {
+        if (processes is not null && relations is not null && activity is not null)
+        {
+            checkpoint = null;
         }
     }
 
