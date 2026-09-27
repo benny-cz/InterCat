@@ -46,6 +46,8 @@ internal static class ExportCommand
             null or "records" => RankingMetric.Records,
             "bytes-sent" => RankingMetric.BytesSent,
             "bytes-received" => RankingMetric.BytesReceived,
+            "rpc-calls-made" => RankingMetric.RpcCallsMade,
+            "rpc-calls-served" => RankingMetric.RpcCallsServed,
             _ => null,
         };
         int limit = SessionExport.DefaultEvidenceLimit;
@@ -60,7 +62,7 @@ internal static class ExportCommand
             : intervalText is not null && interval is null
                 ? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
             : invalidLimit ? $"--limit applies to --evidence and must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}."
-            : rankBy is null ? "--rank-by must be records, bytes-sent or bytes-received."
+            : rankBy is null ? "--rank-by must be records, bytes-sent, bytes-received, rpc-calls-made or rpc-calls-served."
             : evidence && rankBy != RankingMetric.Records
                 ? "--rank-by ranks rows; an --evidence export lists its records in reading order."
             : null;
@@ -142,13 +144,14 @@ internal static class ExportCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat export <session-directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
-        ConsoleUi.Line("            [--rank-by records|bytes-sent|bytes-received] [--evidence [--limit <1-1000000>]]");
-        ConsoleUi.Line("            [--format json|csv] [--share-redacted] [--overwrite]");
+        ConsoleUi.Line("            [--rank-by records|bytes-sent|bytes-received|rpc-calls-made|rpc-calls-served]");
+        ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
         ConsoleUi.Line("  --interval ranks within [start,end) in 100-nanosecond session ticks. --rank-by orders the machine");
-        ConsoleUi.Line("  and group rungs by records (the default) or by each process's transport-observed bytes on its own");
-        ConsoleUi.Line("  send or receive records; a row whose records recorded no size ranks after every measured row.");
+        ConsoleUi.Line("  and group rungs by records (the default), by each process's transport-observed bytes on its own");
+        ConsoleUi.Line("  send or receive records - a row whose records recorded no size ranks after every measured row -");
+        ConsoleUi.Line("  or by the RPC calls it completed as a client (made) or as a server (served), counted by their stop.");
         ConsoleUi.Line("  --evidence exports the rung's source records instead of its rows, up to --limit (100,000 by");
         ConsoleUi.Line("  default); an export that stops short says so and exits with the partial-result code. CSV");
         ConsoleUi.Line("  neutralizes formula-like text.");

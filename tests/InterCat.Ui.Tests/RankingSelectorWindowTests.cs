@@ -47,7 +47,7 @@ public sealed class RankingSelectorWindowTests
         Dispatch();
         Assert.Equal(RankingMetric.BytesSent, workspace.RankBy);
         Assert.True(note.IsEffectivelyVisible);
-        await workspace.BytesReady;
+        await workspace.RankingReady;
         Dispatch();
         Assert.Equal("big.exe", FirstLabel(rail));
         Assert.Contains(WorkspaceRowBuilder.DescribeSize(1_750), Texts(rail));
@@ -73,7 +73,7 @@ public sealed class RankingSelectorWindowTests
         Assert.Equal("Bytes sent", selector.SelectedItem?.ToString());
         Assert.Equal(("big.exe", RankingMetric.BytesSent), (second.RungRows[0].Label, second.AppliedRanking));
         Assert.EndsWith(" · updating", note.Text, StringComparison.Ordinal);
-        await second.BytesReady;
+        await second.RankingReady;
         Dispatch();
         Assert.Equal("zero.exe", FirstLabel(rail));
         Assert.DoesNotContain("updating", note.Text, StringComparison.Ordinal);

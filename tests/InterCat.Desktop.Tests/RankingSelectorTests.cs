@@ -37,7 +37,7 @@ public sealed class RankingSelectorTests
         Assert.EndsWith("The rows rank by records until the bytes sent are read.", workspace.RankingNoteDetail, StringComparison.Ordinal);
         Assert.Equal("listen.exe", workspace.RungRows[0].Label);
         Assert.Contains("bytes unknown", workspace.LevelSummaryShort, StringComparison.Ordinal);
-        await workspace.BytesReady;
+        await workspace.RankingReady;
 
         // Measured rows first, a measured zero among them; then the sends that recorded no size; then no send at all.
         // The total above them no longer names the paired channels' bytes, which would contradict the note.
@@ -101,7 +101,7 @@ public sealed class RankingSelectorTests
         Publish(session.Store, Traffic());
         using WorkspaceViewModel workspace = Open(session);
         workspace.RankBy = RankingMetric.BytesSent;
-        await workspace.BytesReady;
+        await workspace.RankingReady;
 
         // Every time the rows change, they are ranked by bytes: never by records while the interval's bytes are read.
         var seen = new List<(RankingMetric Applied, string First)>();
@@ -138,7 +138,7 @@ public sealed class RankingSelectorTests
         await workspace.IntervalReady;
         workspace.RankBy = RankingMetric.BytesSent;
         Assert.Equal(RankingMetric.Records, workspace.AppliedRanking);
-        await workspace.BytesReady;
+        await workspace.RankingReady;
         Assert.Equal(WorkspaceRowBuilder.DescribeSize(750), workspace.RungRows[0].Figure);
         workspace.SelectInterval(interval);
         await workspace.IntervalReady;
@@ -152,7 +152,7 @@ public sealed class RankingSelectorTests
         Publish(session.Store, Traffic());
         using WorkspaceViewModel first = Open(session);
         first.RankBy = RankingMetric.BytesSent;
-        await first.BytesReady;
+        await first.RankingReady;
         Assert.Equal(RankingMetric.BytesSent, first.CaptureNavigation().RankBy);
 
         // The next generation holds a large send by zero.exe, which will lead once this generation's bytes are read.
@@ -164,14 +164,14 @@ public sealed class RankingSelectorTests
         Assert.Equal(RankingMetric.BytesSent, second.AppliedRanking);
         Assert.Equal("big.exe", second.RungRows[0].Label);
         Assert.EndsWith(" · updating", second.RankingNote, StringComparison.Ordinal);
-        Assert.EndsWith("These are the previous publication's bytes, shown until this one's are read.", second.RankingNoteDetail,
+        Assert.EndsWith("These are the previous publication's measures, shown until this one's are read.", second.RankingNoteDetail,
             StringComparison.Ordinal);
 
         // An export names this generation, so it waits for this generation's own bytes.
         SessionExportResult exported = await second.ExportAsync(ExportFormat.Json, Exported);
         Assert.Equal(SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent), Exported).Content, exported.Content);
-        await second.BytesReady;
+        await second.RankingReady;
         Assert.DoesNotContain("updating", second.RankingNote, StringComparison.Ordinal);
         Assert.DoesNotContain("previous publication", second.RankingNoteDetail, StringComparison.Ordinal);
         Assert.Equal(("zero.exe", WorkspaceRowBuilder.DescribeSize(5_000)), (second.RungRows[0].Label, second.RungRows[0].Figure));
@@ -197,6 +197,121 @@ public sealed class RankingSelectorTests
             CultureInfo.CurrentCulture = previous;
         }
     }
+
+    [Fact(DisplayName = "§8a: RPC calls made and served rank the rail by each side's completed calls, with failures and unpaired stops said")]
+    public void CallsMadeAndServedRankTheRail() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        using WorkspaceViewModel workspace = Open(session);
+
+        workspace.SelectedRanking = workspace.RankingOptions.Single(option => option.Metric == RankingMetric.RpcCallsMade);
+        Assert.Equal("Reading RPC calls made…", workspace.RankingNote);
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.RpcCallsMade, workspace.AppliedRanking);
+        Assert.Equal(["caller.exe", "orphan.exe"], workspace.RungRows.Take(2).Select(row => row.Label));
+        Assert.Equal(["3 calls", "0 completed", "no calls", "no calls"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Contains("3 RPC calls made, 1 failed", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("0 RPC calls made, 1 stop paired with no start", workspace.RungRows[1].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("3 calls · 1 failed · 1 unpaired", workspace.RankingNote);
+        Assert.EndsWith(
+            "RPC's capture coverage over this scope is UnknownCoverage: this generation publishes no coverage ledger.",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // One read answers both sides: the service served two calls and ranks first at once.
+        workspace.RankBy = RankingMetric.RpcCallsServed;
+        Assert.Equal(("service.exe", "2 calls"), (workspace.RungRows[0].Label, workspace.RungRows[0].Figure));
+
+        // The export is icat export --rank-by rpc-calls-served's, coverage caveat included (R18).
+        foreach (ExportFormat format in (ExportFormat[])[ExportFormat.Json, ExportFormat.Csv])
+        {
+            SessionExportResult desktop = await workspace.ExportAsync(format, Exported);
+            Assert.Equal(desktop.Content, SessionExport.Build(session.Store,
+                new([], null, false, format, RankBy: RankingMetric.RpcCallsServed), Exported).Content);
+            Assert.Contains(desktop.Context.Caveats, caveat => caveat.StartsWith("RPC's capture coverage", StringComparison.Ordinal));
+        }
+    });
+
+    [Fact(DisplayName = "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why")]
+    public void UncollectedRpcKeepsTheRecordsRanking() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Calls();
+        Publish(session.Store, rows, coverage: TcpOnlyLedger(rows.Max(row => row.NativeTicks)));
+        using WorkspaceViewModel workspace = Open(session);
+        string[] byRecords = [.. workspace.RungRows.Select(row => row.Key)];
+
+        workspace.RankBy = RankingMetric.RpcCallsMade;
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.Records, workspace.AppliedRanking);
+        Assert.Equal(byRecords, workspace.RungRows.Select(row => row.Key));
+        Assert.Equal("RPC calls made unavailable: RPC was not collected", workspace.RankingNote);
+        Assert.Contains("They cannot rank the rows: this capture did not collect RPC over this scope", workspace.RankingNoteDetail,
+            StringComparison.Ordinal);
+
+        // Nothing is read again on its own, and the export ranks by records with the reason, as icat export does.
+        Assert.True(workspace.RankingReady.IsCompleted);
+        SessionExportResult exported = await workspace.ExportAsync(ExportFormat.Json, Exported);
+        Assert.Equal(RankingMetric.Records, exported.Context.RankedBy);
+        Assert.Equal(SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Json, RankBy: RankingMetric.RpcCallsMade), Exported).Content, exported.Content);
+    });
+
+    /// <summary>
+    /// caller.exe makes three calls to service.exe, which serves two of them; one of the three fails. orphan.exe has one
+    /// stop whose start came before the capture, and idle.exe only exists.
+    /// </summary>
+    private static ObservationRowV1[] Calls()
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 2);
+        return
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\caller.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\service.exe" }),
+            Timed(Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\orphan.exe" }),
+            Timed(Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\idle.exe" }),
+            Timed(RpcCall(10, ObservationKind.RequestStart, Direction.Outbound, 100, 10, Activity(1), serviceControl)),
+            Timed(RpcCall(11, ObservationKind.RequestStart, Direction.Inbound, 200, 11, Activity(2), serviceControl)),
+            Timed(RpcCall(18, ObservationKind.RequestEnd, Direction.Inbound, 200, 12, Activity(2), status: 0)),
+            Timed(RpcCall(20, ObservationKind.RequestEnd, Direction.Outbound, 100, 13, Activity(1), status: 0)),
+            Timed(RpcCall(30, ObservationKind.RequestStart, Direction.Outbound, 100, 14, Activity(3), serviceControl)),
+            Timed(RpcCall(31, ObservationKind.RequestStart, Direction.Inbound, 200, 15, Activity(4), serviceControl)),
+            Timed(RpcCall(38, ObservationKind.RequestEnd, Direction.Inbound, 200, 16, Activity(4), status: 0)),
+            Timed(RpcCall(40, ObservationKind.RequestEnd, Direction.Outbound, 100, 17, Activity(3), status: 1_722)),
+            Timed(RpcCall(50, ObservationKind.RequestStart, Direction.Outbound, 100, 18, Activity(5), serviceControl)),
+            Timed(RpcCall(60, ObservationKind.RequestEnd, Direction.Outbound, 100, 19, Activity(5), status: 0)),
+            Timed(RpcCall(70, ObservationKind.RequestEnd, Direction.Outbound, 300, 20, Activity(6), status: 0)),
+        ];
+    }
+
+    /// <summary>An imported trace that collected TCP and process lifecycle over its readings, and no RPC.</summary>
+    private static CoverageLedgerV1 TcpOnlyLedger(long last) => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs = [new CoverageEpochV1
+        {
+            Epoch = 1,
+            Acquisition = CoverageAcquisition.EtlImport,
+            FirstDeliveredNativeTicks = 0,
+            LastDeliveredNativeTicks = last,
+            Collected =
+            [
+                new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+                new CoverageCollectedV1 { ProviderId = ProcessProvider, ProviderName = "process", EventId = 1, Version = 4, Mechanism = Mechanism.ProcessLifecycle },
+            ],
+            Deliveries = [new CoverageDeliveryV1
+            {
+                ProviderId = ProcessProvider,
+                EventId = 1,
+                Version = 4,
+                Delivered = 4,
+                Admitted = 4,
+                Omitted = 0,
+            }],
+            Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 }],
+        }],
+    };
 
     private static WorkspaceViewModel Open(TemporarySession session)
     {

@@ -33,6 +33,28 @@ public static class SessionExport
 
     public const int MaximumEvidenceLimit = 1_000_000;
 
+    /// <summary>
+    /// What an export ranked by RPC calls adds to its caveats: why no call could rank its rows, or the RPC coverage its
+    /// counts rest on when it is not whole; null when RPC was covered over the scope.
+    /// </summary>
+    public static string? CallCaveat(SessionCallMeasures calls)
+    {
+        ArgumentNullException.ThrowIfNull(calls);
+        return calls.Unavailable is { } unavailable
+            ? $"RPC calls were asked to rank the rows, but {unavailable}; the rows rank by records."
+            : calls.Coverage.State == CoverageState.Covered
+                ? null
+                : $"RPC's capture coverage over this scope is {calls.Coverage.State}: {calls.Coverage.Reason}.";
+    }
+
+    private static void SameSession(IRankingMeasures measures, SessionOverviewBundle overview)
+    {
+        if (measures.SessionId != overview.SessionId)
+        {
+            throw new InvalidDataException("This directory began holding another session during the export.");
+        }
+    }
+
     public static SessionExportResult Build(
         SessionStore store,
         SessionExportRequest request,
@@ -63,16 +85,22 @@ public static class SessionExport
             snapshot = OverviewWorkspace.WithinInterval(snapshot, counts);
         }
 
-        // A byte ranking reads each process's bytes over the same scope as the counts, as the Desktop's selector does.
-        if (request.RankBy != RankingMetric.Records)
+        // A byte or call ranking reads each process's measures over the same scope as the counts, as the Desktop's
+        // selector does. Calls a capture did not collect rank nothing, and the export says why its rows rank by records.
+        string? rankingCaveat = null;
+        switch (RankingMetrics.FamilyOf(request.RankBy))
         {
-            SessionByteMeasures bytes = SessionByteRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
-            if (bytes.SessionId != overview.SessionId)
-            {
-                throw new InvalidDataException("This directory began holding another session during the export.");
-            }
-
-            snapshot = OverviewWorkspace.WithBytes(snapshot, bytes);
+            case RankingFamily.Bytes:
+                SessionByteMeasures bytes = SessionByteRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+                SameSession(bytes, overview);
+                snapshot = OverviewWorkspace.WithBytes(snapshot, bytes);
+                break;
+            case RankingFamily.Calls:
+                SessionCallMeasures calls = SessionCallRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+                SameSession(calls, overview);
+                snapshot = OverviewWorkspace.WithCalls(snapshot, calls);
+                rankingCaveat = CallCaveat(calls);
+                break;
         }
 
         var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));
@@ -95,6 +123,11 @@ public static class SessionExport
             RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.SessionDisclosure, exportedUtc, applied);
+            if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
+            {
+                ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };
+            }
+
             IReadOnlyList<LadderRow> rows = view.Rows;
             string content = request.Redacted
                 ? RedactedShareExport.Ranking(request.Format, ranked, rows)

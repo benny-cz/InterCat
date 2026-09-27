@@ -52,6 +52,12 @@ public sealed record ProcessNode(
     /// (<see cref="SessionByteRanking"/>); null until one has.
     /// </summary>
     public ProcessBytes? Bytes { get; init; }
+
+    /// <summary>
+    /// The process's RPC calls over the ranked scope, made and served, when an RPC call ranking read them
+    /// (<see cref="SessionCallRanking"/>); null until one has.
+    /// </summary>
+    public ProcessCalls? Calls { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

@@ -80,15 +80,17 @@ public sealed record WorkspaceNavigationMemento(
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
-/// interval they answer, with the bytes a byte ranking read for the whole session and for that interval. The next
-/// publication of the same session shows them, marked pending, until its own arrive.
+/// interval they answer, and the bytes and RPC calls a ranking read for the whole session and for that interval. The
+/// next publication of the same session shows them, marked pending, until its own arrive.
 /// </summary>
 public sealed record ScopeCarry(
     TimeRange? VisibleRange,
     TimeRange? Interval,
     SessionIntervalCounts? Counts,
     SessionByteMeasures? WholeBytes = null,
-    SessionByteMeasures? IntervalBytes = null);
+    SessionByteMeasures? IntervalBytes = null,
+    SessionCallMeasures? WholeCalls = null,
+    SessionCallMeasures? IntervalCalls = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -862,21 +864,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>What this workspace's ranking counted, for the next publication of the same session to show until its own arrive.</summary>
     public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts,
-        wholeBytes ?? carriedWholeBytes, intervalBytes ?? carriedIntervalBytes);
+        byteReads.Whole ?? byteReads.CarriedWhole, byteReads.Interval ?? byteReads.CarriedInterval,
+        callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval);
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
     /// and shows that publication's counts while this one's own are read. Nothing stands in once they have arrived, or
-    /// when the scope is the whole session. A byte ranking's bytes stand in the same way.
+    /// when the scope is the whole session. A ranking's bytes or calls stand in the same way.
     /// </summary>
     public void AdoptScope(ScopeCarry carry)
     {
         ArgumentNullException.ThrowIfNull(carry);
         if (evidenceSource is { } current)
         {
-            carriedWholeBytes = wholeBytes is null && carry.WholeBytes?.SessionId == current.SessionId ? carry.WholeBytes : null;
-            carriedIntervalBytes = intervalBytes is null && carry.IntervalBytes?.SessionId == current.SessionId
-                ? carry.IntervalBytes : null;
+            byteReads.Adopt(carry.WholeBytes, carry.IntervalBytes, current.SessionId);
+            callReads.Adopt(carry.WholeCalls, carry.IntervalCalls, current.SessionId);
         }
 
         ShowVisibleRange(carry.VisibleRange);
@@ -887,9 +889,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             OnPropertyChanged(nameof(RankingScopeText));
         }
 
-        // Carried bytes rank the rows at once where they answer the scope shown, while this generation's are read.
+        // Carried measures rank the rows at once where they answer the scope shown, while this generation's are read.
         Rerank();
-        BytesReady = FollowRankedBytesAsync();
+        RankingReady = FollowRankedMeasuresAsync();
     }
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
@@ -2315,7 +2317,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
-        CancelByteRead();
+        byteReads.Cancel();
+        callReads.Cancel();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -2428,7 +2431,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
             // paired channels' known bytes, which would read as a second, contradicting byte figure.
-            if (view.Rows.Count > 0 && view.Rows[0].Ranked is not null && view.ObservationCount is { } total)
+            if (view.Rows.Count > 0 && view.Rows[0].Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived }
+                && view.ObservationCount is { } total)
             {
                 return string.Create(CultureInfo.CurrentCulture, $"{total:N0} observations");
             }
@@ -4536,10 +4540,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsRankingScope));
         try
         {
-            // A byte ranking's bytes are read beside the counts and applied with them, so the rows change once.
-            Task<SessionByteMeasures?> bytes = BytesBesideCountsAsync(source, interval);
+            // A ranking's bytes or calls are read beside the counts and applied with them, so the rows change once.
+            RankingFamily family = RankingMetrics.FamilyOf(rankBy);
+            Task<IRankingMeasures?> measures = MeasuresBesideCountsAsync(source, interval);
             SessionIntervalCounts counts = await source.CountAsync(interval, query.Token);
-            SessionByteMeasures? measured = await bytes;
+            IRankingMeasures? measured = await measures;
             if (disposed || !ReferenceEquals(intervalQuery, query))
             {
                 return;
@@ -4553,12 +4558,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
-            if (rankBy != RankingMetric.Records)
-            {
-                // This generation's answer replaces a stand-in even when its read failed: the rows then rank by records.
-                intervalBytes = measured;
-                carriedIntervalBytes = null;
-            }
+            KeepBesideCounts(family, measured);
 
             ApplyScope(counts, interval, standIn: false);
         }
@@ -4637,7 +4637,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts.
         RaiseRankingChanged();
-        BytesReady = FollowRankedBytesAsync();
+        RankingReady = FollowRankedMeasuresAsync();
     }
 
     /// <summary>
@@ -4645,10 +4645,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// counts answer. At the evidence rung the scope is the records' own, and the export is complete only when every
     /// page of that scope has been loaded (plan §6.4).
     /// </summary>
-    public ExportContext DescribeExport(DateTimeOffset exportedUtc) =>
-        WorkspaceExport.RankingContext(
+    public ExportContext DescribeExport(DateTimeOffset exportedUtc)
+    {
+        ExportContext context = WorkspaceExport.RankingContext(
             evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure, exportedUtc,
             view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records);
+
+        // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
+        return RankingExportCaveat is { } caveat ? context with { Caveats = [.. context.Caveats, caveat] } : context;
+    }
 
     /// <summary>
     /// The applied view in the chosen format (§6.4). A ranked rung exports its rows. The evidence rung exports its whole
@@ -4687,16 +4692,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             await IntervalReady.WaitAsync(cancellationToken);
         }
 
-        // Bytes standing in from an earlier publication are waited past the same way: the export names this generation.
-        for (int wait = 0; BytesStandIn; wait++)
+        // Measures standing in from an earlier publication are waited past the same way: the export names this generation.
+        for (int wait = 0; MeasuresStandIn; wait++)
         {
             if (disposed || wait == 4)
             {
                 throw new InvalidOperationException(
-                    "This publication's bytes are still being read; export again once the ranking note stops saying so.");
+                    "This publication's ranking is still being read; export again once the ranking note stops saying so.");
             }
 
-            await BytesReady.WaitAsync(cancellationToken);
+            await RankingReady.WaitAsync(cancellationToken);
         }
 
         ExportContext ranked = DescribeExport(exportedUtc);

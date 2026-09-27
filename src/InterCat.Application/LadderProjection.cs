@@ -74,7 +74,7 @@ public static class LadderProjection
 {
     /// <summary>
     /// The rung's rows, ranked by <paramref name="ranking"/> where its rows are groups or processes and every process
-    /// carries the bytes a byte ranking reads; otherwise, and at every other rung, by records.
+    /// carries the bytes or calls the ranking reads; otherwise, and at every other rung, by records.
     /// </summary>
     public static LadderView Project(WorkspaceSnapshot snapshot, NavigationState state, RankingMetric ranking = RankingMetric.Records)
     {
@@ -239,13 +239,18 @@ public static class LadderProjection
     }
 
     /// <summary>
-    /// A row's value under a byte ranking: the sum of its processes' bytes, which partition it, as a group sums its
-    /// members' records. Null when ranking by records, or when a member's bytes have not been read.
+    /// A row's value under a byte or call ranking: the sum of its processes' bytes or calls, which partition it, as a
+    /// group sums its members' records. Null when ranking by records, or when a member's measures have not been read.
     /// </summary>
     private static RankedValue? RankedOf(IReadOnlyCollection<ProcessNode> members, RankingMetric ranking) =>
-        ranking == RankingMetric.Records || members.Any(member => member.Bytes is null)
-            ? null
-            : members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking);
+        RankingMetrics.FamilyOf(ranking) switch
+        {
+            RankingFamily.Bytes when members.All(member => member.Bytes is not null) =>
+                members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking),
+            RankingFamily.Calls when members.All(member => member.Calls is not null) =>
+                members.Aggregate(ProcessCalls.None, (sum, member) => sum.Plus(member.Calls!)).Of(ranking),
+            _ => null,
+        };
 
     private static List<LadderRow> Processes(WorkspaceSnapshot snapshot, string? groupKey, RankingMetric ranking)
     {
@@ -553,11 +558,13 @@ public static class LadderProjection
     }
 
     /// <summary>
-    /// Ranking is deterministic: by the ranked value when a byte ranking gave every row one, else by observations, then
-    /// the key, never collection order (R13). Under a byte ranking the measured rows come first, largest first, a measured
-    /// zero among them; then, as §5.2's separate Unmeasured group, the rows whose records recorded no size; then the rows
-    /// that made no record the metric takes. An unmeasured row is stated as unmeasured, never ranked as a zero (R21). A
-    /// rung only some of whose rows carry a value ranks by records and shows none, so no row claims an order it lacks.
+    /// Ranking is deterministic: by the ranked value when a byte or call ranking gave every row one, else by observations,
+    /// then the key, never collection order (R13). Under a byte ranking the measured rows come first, largest first, a
+    /// measured zero among them; then, as §5.2's separate Unmeasured group, the rows whose records recorded no size; then
+    /// the rows that made no record the metric takes. An unmeasured row is stated as unmeasured, never ranked as a zero
+    /// (R21). Under a call ranking the rows that completed calls come first, most first; then those with only stops
+    /// paired with no start; then those with none. A rung only some of whose rows carry a value ranks by records and
+    /// shows none, so no row claims an order it lacks.
     /// </summary>
     private static List<LadderRow> Rank(List<LadderRow> rows)
     {

@@ -37,6 +37,16 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// Each process's RPC calls made and served over the whole session, or over <paramref name="interval"/>, for the
+    /// ranked table's call ranking (<see cref="SessionCallRanking"/>).
+    /// </summary>
+    public Task<SessionCallMeasures> CallMeasuresAsync(TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionCallRanking.Measure(
+            Store(),
+            interval,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

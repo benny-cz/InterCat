@@ -69,9 +69,9 @@ public sealed partial class RedactedShareExportTests
         else
         {
             string[] lines = report.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,4096,2,1", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,,0,0", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,4096,2,1,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,,0,0,", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
             Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0].TrimEnd('\r')), CsvCellCount(line.TrimEnd('\r'))));
         }
     }

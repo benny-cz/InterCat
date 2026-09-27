@@ -1148,6 +1148,7 @@
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
         "R21: a call lane with more calls in view than it draws one by one draws them all as density",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
+        "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why",
         "R21: a coverage ledger round-trips every outcome and refuses unknown members",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
@@ -1194,7 +1195,8 @@
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
-        "R21: total-machine processor time is readable or explicitly unavailable"
+        "R21: total-machine processor time is readable or explicitly unavailable",
+        "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
@@ -1325,7 +1327,9 @@
         "R18: a headless export descends by row key and names its rung, interval and scope",
         "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: an export ranked by bytes names its ranking, and each row carries the value it was ranked by",
+        "R18: an export ranked by calls served names its ranking, and each row its calls, failures and unpaired stops",
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
+        "R18: each process's calls made and served add up to what the operations metric counts for it, whole or in an interval",
         "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval",
         "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"

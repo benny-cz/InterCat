@@ -16,16 +16,18 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
     {
         RankingMetric.BytesSent => "Bytes sent: rank by the transport-observed bytes of each process's own send records",
         RankingMetric.BytesReceived => "Bytes received: rank by the transport-observed bytes of each process's own receive records",
+        RankingMetric.RpcCallsMade => "RPC calls made: rank by the RPC client calls each process completed",
+        RankingMetric.RpcCallsServed => "RPC calls served: rank by the RPC server calls each process completed",
         _ => "Records: rank by each process's own records",
     };
 }
 
 /// <summary>
-/// The ranked table's metric selector (§5.2, §6.1). The machine and group rungs rank by records unless a byte ranking is
-/// chosen; the bytes are read off the UI thread for the scope the rows count, the whole session or the applied interval,
-/// and rank the rows only while they answer that scope. Until they do, the rows keep their records ranking and the note
-/// beneath the selector says the bytes are being read. A live publication shows the previous one's bytes, marked, until
-/// its own arrive, as it does its interval counts (§6.4).
+/// The ranked table's metric selector (§5.2, §6.1). The machine and group rungs rank by records unless a byte or RPC call
+/// ranking is chosen. Its measures are read off the UI thread for the scope the rows count, the whole session or the
+/// applied interval, and rank the rows only while they answer that scope. Until they do, the rows keep their records
+/// ranking and the note beneath the selector says the measures are being read. A live publication shows the previous
+/// one's measures, marked, until its own arrive, as it does its interval counts (§6.4).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -34,20 +36,17 @@ public sealed partial class WorkspaceViewModel
         new RankingOption(RankingMetric.Records, "Records"),
         new RankingOption(RankingMetric.BytesSent, "Bytes sent"),
         new RankingOption(RankingMetric.BytesReceived, "Bytes received"),
+        new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made"),
+        new RankingOption(RankingMetric.RpcCallsServed, "RPC calls served"),
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
+    private readonly RankingReads<SessionByteMeasures> byteReads = new((source, scope, cancellation) =>
+        source.ByteMeasuresAsync(scope, cancellation));
+    private readonly RankingReads<SessionCallMeasures> callReads = new((source, scope, cancellation) =>
+        source.CallMeasuresAsync(scope, cancellation));
 
-    // This generation's bytes over the whole session and over one interval once read, and an earlier publication's
-    // standing in until they are. Bytes rank the rows only while their interval is the scope the rows count.
-    private SessionByteMeasures? wholeBytes;
-    private SessionByteMeasures? intervalBytes;
-    private SessionByteMeasures? carriedWholeBytes;
-    private SessionByteMeasures? carriedIntervalBytes;
-    private (TimeRange? Scope, Task<SessionByteMeasures> Read, CancellationTokenSource Cancellation)? byteRead;
-    private string? bytesProblem;
-
-    /// <summary>What the machine and group rungs can rank by: records alone without a session to read bytes from.</summary>
+    /// <summary>What the machine and group rungs can rank by: records alone without a session to read measures from.</summary>
     public IReadOnlyList<RankingOption> RankingOptions => evidenceSource is null ? [RankingChoices[0]] : RankingChoices;
 
     /// <summary>The chosen ranking as the selector shows it.</summary>
@@ -61,8 +60,8 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// What the machine and group rungs rank by. A byte ranking reads each process's bytes for the scope the rows count;
-    /// until they arrive, the rows keep ranking by records.
+    /// What the machine and group rungs rank by. A byte or call ranking reads each process's measures for the scope the
+    /// rows count; until they arrive, the rows keep ranking by records. Choosing a ranking again retries a failed read.
     /// </summary>
     public RankingMetric RankBy
     {
@@ -72,143 +71,232 @@ public sealed partial class WorkspaceViewModel
             if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
             if (value == rankBy || disposed) return;
             rankBy = value;
-            if (value == RankingMetric.Records)
-            {
-                CancelByteRead();
-                bytesProblem = null;
-            }
-
+            if (Family != RankingFamily.Bytes) byteReads.Cancel();
+            if (Family != RankingFamily.Calls) callReads.Cancel();
             Rerank();
-            BytesReady = FollowRankedBytesAsync();
+            RankingReady = FollowRankedMeasuresAsync();
         }
     }
 
-    /// <summary>Completes when the most recent byte read for the ranking has applied, been superseded or failed.</summary>
-    public Task BytesReady { get; private set; } = Task.CompletedTask;
+    /// <summary>Completes when the most recent read for the ranking has applied, been superseded or failed.</summary>
+    public Task RankingReady { get; private set; } = Task.CompletedTask;
 
     /// <summary>Whether this rung offers the selector: a session's machine and group rungs, whose rows are groups and processes.</summary>
     public bool ShowsRankingChoice => evidenceSource is not null
         && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group;
 
-    /// <summary>What the rows are ranked by now: the chosen byte ranking once its bytes answer the rows' scope, else records.</summary>
-    public RankingMetric AppliedRanking => ShownBytes is null ? RankingMetric.Records : rankBy;
+    /// <summary>What the rows are ranked by now: the chosen ranking once its measures answer the rows' scope, else records.</summary>
+    public RankingMetric AppliedRanking => ShownMeasures is null ? RankingMetric.Records : rankBy;
 
-    /// <summary>Whether the rail states what a byte ranking measures, or why it does not rank yet.</summary>
+    /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet.</summary>
     public bool ShowsRankingNote => ShowsRankingChoice && rankBy != RankingMetric.Records;
 
     /// <summary>
-    /// What a byte ranking measured over the rows shown, in one line the narrow rail keeps short: the bytes, the records
-    /// that measured them, and those that recorded no size. While the bytes are read, or when they could not be, it says
-    /// so; <see cref="RankingNoteDetail"/> says the rest.
+    /// What a ranking measured over the rows shown, in one line the narrow rail keeps short: the bytes and the records
+    /// that measured them, or the calls and their failures. While the measures are read, or when they could not be or
+    /// the capture did not collect them, it says so; <see cref="RankingNoteDetail"/> says the rest.
     /// </summary>
     public string RankingNote
     {
         get
         {
             if (!ShowsRankingNote) return string.Empty;
-            bool sent = rankBy == RankingMetric.BytesSent;
-            if (ShownBytes is null)
+            string name = Capitalized(Phrase(rankBy));
+            if (CurrentMeasures is SessionCallMeasures { Unavailable: not null })
             {
-                return bytesProblem is { } problem
-                    ? $"{(sent ? "Bytes sent" : "Bytes received")} unavailable: {problem}"
-                    : $"Reading {(sent ? "bytes sent" : "bytes received")}…";
+                return $"{name} unavailable: RPC was not collected";
             }
 
-            (long value, long measured, long unmeasured) = RankedTotals();
-            string records = sent ? "sends" : "receives";
-            string note = measured > 0
-                ? string.Create(CultureInfo.CurrentCulture, $"{WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} {records}")
-                : unmeasured > 0
-                    ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records}, none with a size")
-                    : $"No {records} in scope";
-            if (measured > 0 && unmeasured > 0)
+            if (ShownMeasures is null)
             {
-                note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unmeasured");
+                return ActiveProblem is { } problem ? $"{name} unavailable: {problem}" : $"Reading {Phrase(rankBy)}…";
             }
 
-            return BytesStandIn ? note + " · updating" : note;
+            (long value, long measured, long unmeasured, long failed) = RankedTotals();
+            string note;
+            if (Family == RankingFamily.Calls)
+            {
+                note = string.Create(CultureInfo.CurrentCulture, $"{measured:N0} {(measured == 1 ? "call" : "calls")}");
+                if (failed > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {failed:N0} failed");
+                if (unmeasured > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unpaired");
+            }
+            else
+            {
+                string records = rankBy == RankingMetric.BytesSent ? "sends" : "receives";
+                note = measured > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $"{WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} {records}")
+                    : unmeasured > 0
+                        ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records}, none with a size")
+                        : $"No {records} in scope";
+                if (measured > 0 && unmeasured > 0)
+                {
+                    note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unmeasured");
+                }
+            }
+
+            return MeasuresStandIn ? note + " · updating" : note;
         }
     }
 
     /// <summary>
-    /// The note in full, for its tooltip and a screen reader: what the ranking measures, how it ranks a row whose records
-    /// recorded no size, the bytes no process holds at the machine rung, and whether an earlier publication's bytes stand
-    /// in or why the rows still rank by records.
+    /// The note in full, for its tooltip and a screen reader: what the ranking measures, how it ranks a row with nothing
+    /// measured, what no process holds at the machine rung, the coverage RPC calls rest on, and whether an earlier
+    /// publication's measures stand in or why the rows still rank by records.
     /// </summary>
     public string RankingNoteDetail
     {
         get
         {
             if (!ShowsRankingNote) return string.Empty;
-            bool sent = rankBy == RankingMetric.BytesSent;
-            string metric = sent ? "bytes sent" : "bytes received";
-            string definition = sent
-                ? "Bytes sent are the transport-observed bytes of each process's own send records, sender-accounted."
-                : "Bytes received are the transport-observed bytes of each process's own receive records, receiver-accounted.";
-            if (ShownBytes is not { } bytes)
+            string definition = Definition(rankBy);
+            if (CurrentMeasures is SessionCallMeasures { Unavailable: { } unavailable })
             {
-                return bytesProblem is { } problem
+                return $"{definition} They cannot rank the rows: {unavailable}. The rows rank by records.";
+            }
+
+            if (ShownMeasures is not { } shown)
+            {
+                return ActiveProblem is { } problem
                     ? $"{definition} They could not be read ({problem}), so the rows rank by records."
-                    : $"{definition} The rows rank by records until the {metric} are read.";
+                    : $"{definition} The rows rank by records until the {Phrase(rankBy)} are read.";
             }
 
-            (long value, long measured, long unmeasured) = RankedTotals();
-            string records = sent ? "sends" : "receives";
-            string detail = string.Create(CultureInfo.CurrentCulture,
-                $"{definition} The rows shown hold {WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} measured {records}");
-            detail += unmeasured > 0
-                ? string.Create(CultureInfo.CurrentCulture,
-                    $"; {unmeasured:N0} more recorded no size. A row with none measured ranks after every measured row, never as zero.")
-                : ".";
-            if (ladder.Current.Level == DetailLevel.Machine && bytes.Unattributed.Of(rankBy).Value is { } unheld)
+            (long value, long measured, long unmeasured, long failed) = RankedTotals();
+            string detail;
+            if (shown is SessionCallMeasures calls)
             {
-                detail += $" {WorkspaceRowBuilder.DescribeSize(unheld)} more are on {records} no process holds.";
+                detail = string.Create(CultureInfo.CurrentCulture,
+                    $"{definition} The rows shown completed {measured:N0} {(measured == 1 ? "call" : "calls")}, {failed:N0} of them failed.");
+                if (unmeasured > 0)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unmeasured:N0} stops paired with no start are stated and not counted; a row with only such stops ranks after every row that completed a call.");
+                }
+
+                if (ladder.Current.Level == DetailLevel.Machine && calls.Unattributed.Of(rankBy) is { Holds: true } unheld)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unheld.Measured:N0} more completed calls belong to no process the evidence policy admits.");
+                }
+
+                if (calls.Coverage.State != CoverageState.Covered)
+                {
+                    detail += $" RPC's capture coverage over this scope is {calls.Coverage.State}: {calls.Coverage.Reason}.";
+                }
+            }
+            else
+            {
+                string records = rankBy == RankingMetric.BytesSent ? "sends" : "receives";
+                detail = string.Create(CultureInfo.CurrentCulture,
+                    $"{definition} The rows shown hold {WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} measured {records}");
+                detail += unmeasured > 0
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"; {unmeasured:N0} more recorded no size. A row with none measured ranks after every measured row, never as zero.")
+                    : ".";
+                if (ladder.Current.Level == DetailLevel.Machine
+                    && ((SessionByteMeasures)shown).Unattributed.Of(rankBy).Value is { } unheld)
+                {
+                    detail += $" {WorkspaceRowBuilder.DescribeSize(unheld)} more are on {records} no process holds.";
+                }
             }
 
-            return BytesStandIn
-                ? detail + " These are the previous publication's bytes, shown until this one's are read."
+            return MeasuresStandIn
+                ? detail + " These are the previous publication's measures, shown until this one's are read."
                 : detail;
         }
     }
 
-    /// <summary>The ranked bytes of the rows shown, the records that measured them, and those that recorded no size.</summary>
-    private (long Value, long Measured, long Unmeasured) RankedTotals()
+    /// <summary>What a ranking's selector explains on hover: the definition behind each choice.</summary>
+    public static string RankingDefinition =>
+        "Records: each process's own records. Bytes sent and received: transport-observed bytes on each process's own "
+        + "send or receive records, sender- or receiver-accounted as icat metric answers them; a row whose records recorded "
+        + "no size is unmeasured and ranks after every measured row, never as zero. RPC calls made and served: the client "
+        + "or server calls each process completed, counted by their stop; a local call is made by one process and served by "
+        + "another.";
+
+    private RankingFamily Family => RankingMetrics.FamilyOf(rankBy);
+
+    /// <summary>The scope the rows count: the interval the shown counts answer, or the whole session (null).</summary>
+    private TimeRange? CountedScope => scopedSnapshot is null ? null : displayedCountsInterval;
+
+    /// <summary>The active family's measures for the scope the rows count, this generation's or a stand-in, usable or not.</summary>
+    private IRankingMeasures? CurrentMeasures => evidenceSource is null ? null : Family switch
     {
-        long value = 0, measured = 0, unmeasured = 0;
+        RankingFamily.Bytes => byteReads.For(CountedScope),
+        RankingFamily.Calls => callReads.For(CountedScope),
+        _ => null,
+    };
+
+    /// <summary>The measures ranking the rows: the current ones, unless the capture did not collect what they count.</summary>
+    private IRankingMeasures? ShownMeasures => CurrentMeasures is SessionCallMeasures { Unavailable: not null } ? null : CurrentMeasures;
+
+    /// <summary>Whether the current measures are an earlier publication's, which an export waits past.</summary>
+    private bool MeasuresStandIn => CurrentMeasures switch
+    {
+        SessionByteMeasures bytes => byteReads.IsCarried(bytes),
+        SessionCallMeasures calls => callReads.IsCarried(calls),
+        _ => false,
+    };
+
+    /// <summary>Why the active family's last read failed; null when it did not.</summary>
+    private string? ActiveProblem => Family switch
+    {
+        RankingFamily.Bytes => byteReads.Problem,
+        RankingFamily.Calls => callReads.Problem,
+        _ => null,
+    };
+
+    /// <summary>The current rung's rows, ranked by the shown measures when a byte or call ranking has them.</summary>
+    private LadderView ProjectLadder() => ShownMeasures switch
+    {
+        SessionByteMeasures bytes => LadderProjection.Project(OverviewWorkspace.WithBytes(Snapshot, bytes), ladder.Current, rankBy),
+        SessionCallMeasures calls => LadderProjection.Project(OverviewWorkspace.WithCalls(Snapshot, calls), ladder.Current, rankBy),
+        _ => LadderProjection.Project(Snapshot, ladder.Current),
+    };
+
+    /// <summary>What an export adds for a call ranking, as <c>icat export</c> does: why it could not rank, or its coverage.</summary>
+    private string? RankingExportCaveat => ShowsRankingChoice && CurrentMeasures is SessionCallMeasures calls
+        ? SessionExport.CallCaveat(calls)
+        : null;
+
+    /// <summary>The ranked values of the rows shown, the records behind them, those not counted, and the failed calls.</summary>
+    private (long Value, long Measured, long Unmeasured, long Failed) RankedTotals()
+    {
+        long value = 0, measured = 0, unmeasured = 0, failed = 0;
         foreach (LadderRow row in view.Rows)
         {
             if (row.Ranked is not { } ranked) continue;
             value = checked(value + (ranked.Value ?? 0));
             measured += ranked.Measured;
             unmeasured += ranked.Unmeasured;
+            failed += ranked.Failed ?? 0;
         }
 
-        return (value, measured, unmeasured);
+        return (value, measured, unmeasured, failed);
     }
-    /// <summary>What a byte ranking's selector explains on hover: the definition behind each choice.</summary>
-    public static string RankingDefinition =>
-        "Records: each process's own records. Bytes sent and received: transport-observed bytes on each process's own "
-        + "send or receive records, sender- or receiver-accounted as icat metric answers them. A row whose records recorded "
-        + "no size is unmeasured and ranks after every measured row, never as zero.";
 
-    /// <summary>The scope the rows count: the interval the shown counts answer, or the whole session (null).</summary>
-    private TimeRange? CountedScope => scopedSnapshot is null ? null : displayedCountsInterval;
+    private static string Phrase(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "bytes sent",
+        RankingMetric.BytesReceived => "bytes received",
+        RankingMetric.RpcCallsMade => "RPC calls made",
+        RankingMetric.RpcCallsServed => "RPC calls served",
+        _ => "records",
+    };
 
-    /// <summary>The bytes ranking the rows: this generation's or a stand-in, for exactly the scope the rows count.</summary>
-    private SessionByteMeasures? ShownBytes => rankBy == RankingMetric.Records || evidenceSource is null ? null
-        : CountedScope is { } scope
-            ? (intervalBytes?.Interval == scope ? intervalBytes
-                : carriedIntervalBytes?.Interval == scope ? carriedIntervalBytes : null)
-            : wholeBytes ?? carriedWholeBytes;
+    private static string Capitalized(string phrase) => char.ToUpperInvariant(phrase[0]) + phrase[1..];
 
-    /// <summary>Whether the shown bytes are an earlier publication's, which an export waits past.</summary>
-    private bool BytesStandIn => ShownBytes is { } bytes
-        && (ReferenceEquals(bytes, carriedWholeBytes) || ReferenceEquals(bytes, carriedIntervalBytes));
-
-    /// <summary>The current rung's rows, ranked by the shown bytes when a byte ranking has them.</summary>
-    private LadderView ProjectLadder() => ShownBytes is { } bytes
-        ? LadderProjection.Project(OverviewWorkspace.WithBytes(Snapshot, bytes), ladder.Current, rankBy)
-        : LadderProjection.Project(Snapshot, ladder.Current);
+    private static string Definition(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "Bytes sent are the transport-observed bytes of each process's own send records, sender-accounted.",
+        RankingMetric.BytesReceived =>
+            "Bytes received are the transport-observed bytes of each process's own receive records, receiver-accounted.",
+        RankingMetric.RpcCallsMade => "RPC calls made are the client calls each process completed, counted by their stop; "
+            + "a failed call's stop reported a status other than 0.",
+        RankingMetric.RpcCallsServed => "RPC calls served are the server calls each process completed, counted by their stop; "
+            + "a failed call's stop reported a status other than 0.",
+        _ => "Records are each process's own records.",
+    };
 
     /// <summary>Re-projects the rows under the current ranking, keeping the selected row, and says what changed.</summary>
     private void Rerank()
@@ -238,93 +326,99 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(RankingNoteDetail));
     }
 
-    /// <summary>
-    /// Reads the bytes a byte ranking needs for the scope the rows count, unless this generation's are already shown.
-    /// A newer scope or ranking supersedes the read; a failed one leaves the rows ranked by records and says why.
-    /// </summary>
-    private async Task FollowRankedBytesAsync()
+    /// <summary>Reads what the chosen ranking needs for the scope the rows count, unless this generation's is known.</summary>
+    private Task FollowRankedMeasuresAsync() => Family switch
     {
-        if (rankBy == RankingMetric.Records || evidenceSource is not { } source || disposed)
+        RankingFamily.Bytes => FollowAsync(byteReads),
+        RankingFamily.Calls => FollowAsync(callReads),
+        _ => Task.CompletedTask,
+    };
+
+    /// <summary>
+    /// Reads one family's measures for the scope the rows count, unless this generation's are already known. A newer scope
+    /// supersedes the read; a failed one leaves the rows ranked by records and says why, and is not read again on its own.
+    /// Whole-session measures that arrive after the scope moved are kept for its return.
+    /// </summary>
+    private async Task FollowAsync<T>(RankingReads<T> reads)
+        where T : class, IRankingMeasures
+    {
+        if (evidenceSource is not { } source || disposed)
         {
             return;
         }
 
         TimeRange? scope = CountedScope;
-        if (ShownBytes is not null && !BytesStandIn)
+        if (reads.For(scope) is { } known && !reads.IsCarried(known) || reads.FailedFor(scope))
         {
             return;
         }
 
-        // A scope whose read just failed is not read again on its own; choosing the ranking again retries it.
-        if (bytesProblem is not null && byteRead is { Read.IsFaulted: true } failed && failed.Scope == scope)
-        {
-            return;
-        }
-
-        Task<SessionByteMeasures> read = ReadBytes(source, scope);
-        bytesProblem = null;
+        RankingFamily family = Family;
+        Task<T> read = reads.Read(source, scope);
+        reads.Problem = null;
         RaiseRankingChanged();
         try
         {
-            SessionByteMeasures measured = await read;
-            if (disposed || rankBy == RankingMetric.Records || CountedScope != scope)
+            T measured = await read;
+            if (disposed)
             {
                 return;
             }
 
             if (measured.SessionId != source.SessionId)
             {
-                bytesProblem = "this directory now holds another session";
+                reads.Problem = "this directory now holds another session";
                 RaiseRankingChanged();
                 return;
             }
 
-            if (scope is null)
+            if (scope is null || CountedScope == scope)
             {
-                wholeBytes = measured;
-                carriedWholeBytes = null;
-            }
-            else
-            {
-                intervalBytes = measured;
-                carriedIntervalBytes = null;
+                reads.Keep(measured);
             }
 
-            Rerank();
+            if (Family == family && CountedScope == scope)
+            {
+                Rerank();
+            }
         }
         catch (OperationCanceledException)
         {
-            // A newer scope, a return to records or a closed workspace superseded this read; nothing is applied.
+            // A newer scope, another ranking or a closed workspace superseded this read; nothing is applied.
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
-            if (!disposed && byteRead?.Read == read)
+            if (!disposed && reads.IsCurrent(read))
             {
-                bytesProblem = exception.Message;
+                reads.Problem = exception.Message;
                 RaiseRankingChanged();
             }
         }
     }
 
     /// <summary>
-    /// The bytes of an interval about to be applied, read beside its counts so the rows change once, in one step (§6.4).
-    /// Null when the ranking is by records or the read failed, which leaves the rows ranked by records and says why; a
-    /// failed read never holds the counts back.
+    /// The measures of an interval about to be applied, read beside its counts so the rows change once, in one step
+    /// (§6.4). Null when the ranking is by records or the read failed, which leaves the rows ranked by records and says
+    /// why; a failed read never holds the counts back.
     /// </summary>
-    private async Task<SessionByteMeasures?> BytesBesideCountsAsync(SessionEvidenceSource source, TimeRange interval)
-    {
-        if (rankBy == RankingMetric.Records)
+    private async Task<IRankingMeasures?> MeasuresBesideCountsAsync(SessionEvidenceSource source, TimeRange interval) =>
+        Family switch
         {
-            return null;
-        }
+            RankingFamily.Bytes => await BesideCountsAsync(byteReads, source, interval),
+            RankingFamily.Calls => await BesideCountsAsync(callReads, source, interval),
+            _ => null,
+        };
 
-        Task<SessionByteMeasures> read = ReadBytes(source, interval);
+    private static async Task<T?> BesideCountsAsync<T>(RankingReads<T> reads, SessionEvidenceSource source, TimeRange interval)
+        where T : class, IRankingMeasures
+    {
+        Task<T> read = reads.Read(source, interval);
         try
         {
-            SessionByteMeasures measured = await read;
-            bytesProblem = measured.SessionId == source.SessionId ? null : "this directory now holds another session";
-            return bytesProblem is null ? measured : null;
+            T measured = await read;
+            reads.Problem = measured.SessionId == source.SessionId ? null : "this directory now holds another session";
+            return reads.Problem is null ? measured : null;
         }
         catch (OperationCanceledException)
         {
@@ -333,33 +427,113 @@ public sealed partial class WorkspaceViewModel
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
-            bytesProblem = exception.Message;
+            reads.Problem = exception.Message;
             return null;
         }
     }
 
-    /// <summary>One byte read per scope: a read of the same scope still running is shared, and one of another is cancelled.</summary>
-    private Task<SessionByteMeasures> ReadBytes(SessionEvidenceSource source, TimeRange? scope)
+    /// <summary>
+    /// Keeps the measures read beside an interval's counts for the family they were read for. This generation's answer
+    /// replaces a stand-in even when its read failed: the rows then rank by records.
+    /// </summary>
+    private void KeepBesideCounts(RankingFamily family, IRankingMeasures? measured)
     {
-        if (byteRead is { } running && running.Scope == scope && !running.Read.IsFaulted && !running.Read.IsCanceled)
+        switch (family)
         {
-            return running.Read;
+            case RankingFamily.Bytes:
+                byteReads.KeepInterval(measured as SessionByteMeasures);
+                break;
+            case RankingFamily.Calls:
+                callReads.KeepInterval(measured as SessionCallMeasures);
+                break;
         }
-
-        CancelByteRead();
-        var cancellation = new CancellationTokenSource();
-        Task<SessionByteMeasures> read = source.ByteMeasuresAsync(scope, cancellation.Token);
-        byteRead = (scope, read, cancellation);
-        return read;
     }
 
-    private void CancelByteRead()
+    /// <summary>
+    /// One family's ranking measures, bytes or calls: this generation's for the whole session and for one interval once
+    /// read, an earlier publication's standing in until they are, the one read in flight, and why the last one failed.
+    /// </summary>
+    private sealed class RankingReads<T>(Func<SessionEvidenceSource, TimeRange?, CancellationToken, Task<T>> start)
+        where T : class, IRankingMeasures
     {
-        if (byteRead is { } running)
+        private (TimeRange? Scope, Task<T> Read, CancellationTokenSource Cancellation)? running;
+
+        public T? Whole { get; private set; }
+
+        public T? Interval { get; private set; }
+
+        public T? CarriedWhole { get; private set; }
+
+        public T? CarriedInterval { get; private set; }
+
+        public string? Problem { get; set; }
+
+        /// <summary>The measures that answer <paramref name="scope"/>: this generation's, or else a stand-in.</summary>
+        public T? For(TimeRange? scope) => scope is { } interval
+            ? Interval?.Interval == interval ? Interval : CarriedInterval?.Interval == interval ? CarriedInterval : null
+            : Whole ?? CarriedWhole;
+
+        public bool IsCarried(T measures) => ReferenceEquals(measures, CarriedWhole) || ReferenceEquals(measures, CarriedInterval);
+
+        /// <summary>Keeps this generation's measures for their scope, replacing a stand-in.</summary>
+        public void Keep(T measures)
         {
-            running.Cancellation.Cancel();
-            running.Cancellation.Dispose();
-            byteRead = null;
+            if (measures.Interval is null)
+            {
+                Whole = measures;
+                CarriedWhole = null;
+            }
+            else
+            {
+                KeepInterval(measures);
+            }
+        }
+
+        /// <summary>Keeps this generation's answer for an interval, which is none when its read failed.</summary>
+        public void KeepInterval(T? measures)
+        {
+            Interval = measures;
+            CarriedInterval = null;
+        }
+
+        /// <summary>Takes on an earlier publication's measures where this generation has none of its own yet.</summary>
+        public void Adopt(T? whole, T? interval, Guid session)
+        {
+            CarriedWhole = Whole is null && whole?.SessionId == session ? whole : null;
+            CarriedInterval = Interval is null && interval?.SessionId == session ? interval : null;
+        }
+
+        /// <summary>Whether the last read of <paramref name="scope"/> failed, so it is not read again until chosen again.</summary>
+        public bool FailedFor(TimeRange? scope) =>
+            Problem is not null && running is { Read.IsFaulted: true } failed && failed.Scope == scope;
+
+        public bool IsCurrent(Task<T> read) => running?.Read == read;
+
+        /// <summary>One read per scope: a read of the same scope still running is shared, and one of another is cancelled.</summary>
+        public Task<T> Read(SessionEvidenceSource source, TimeRange? scope)
+        {
+            if (running is { } current && current.Scope == scope && !current.Read.IsFaulted && !current.Read.IsCanceled)
+            {
+                return current.Read;
+            }
+
+            Cancel();
+            var cancellation = new CancellationTokenSource();
+            Task<T> read = start(source, scope, cancellation.Token);
+            running = (scope, read, cancellation);
+            return read;
+        }
+
+        /// <summary>Cancels the read in flight and forgets why the last one failed, so choosing the ranking again retries.</summary>
+        public void Cancel()
+        {
+            Problem = null;
+            if (running is { } current)
+            {
+                current.Cancellation.Cancel();
+                current.Cancellation.Dispose();
+                running = null;
+            }
         }
     }
 }

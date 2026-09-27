@@ -190,9 +190,9 @@ public sealed class SessionByteRankingTests
         string[] lines = SessionExport.Build(session.Store,
                 new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.BytesSent), exported).Content
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.EndsWith(",bytes-sent,1750,3,0", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.EndsWith(",bytes-sent,,0,2", lines[3].TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.EndsWith(",bytes-sent,1750,3,0,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.EndsWith(",bytes-sent,,0,2,", lines[3].TrimEnd('\r'), StringComparison.Ordinal);
 
         // By records nothing is ranked by value, and the export says so.
         SessionExportResult records = SessionExport.Build(session.Store, new([], null, false, ExportFormat.Json), exported);

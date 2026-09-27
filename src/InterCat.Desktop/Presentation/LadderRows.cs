@@ -54,13 +54,16 @@ public sealed record RungRow(
         }
     }
 
+    /// <summary>Whether the row's rung ranks by bytes, whose value its known-bytes phrase would contradict.</summary>
+    private bool RanksByBytes => Source.Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived };
+
     /// <summary>
     /// The row as a screen reader says it. Under a byte ranking the ranked bytes take the place of the paired channels'
     /// known bytes, which would be a second byte figure contradicting the first.
     /// </summary>
     public string AccessibleName => SpokenName
         ?? $"{Label}, {Detail}, {(RankedSpoken is { } ranked ? ranked + ", " : string.Empty)}"
-            + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RankedSpoken is null ? KnownBytes + ", " : string.Empty)}"
+            + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RanksByBytes ? string.Empty : KnownBytes + ", ")}"
             + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";
 }
 
@@ -135,21 +138,47 @@ public static class LadderRowBuilder
     }
 
     /// <summary>
-    /// A byte ranking's value in the right column: the measured sum, or "unmeasured" when the row's records recorded no
-    /// size, or "no sends" when it made none. Neither of the last two is a zero (§5.2, R21).
+    /// A ranking's value in the right column. Under a byte ranking: the measured sum, or "unmeasured" when the row's
+    /// records recorded no size, or "no sends" when it made none; neither of the last two is a zero (§5.2, R21). Under a
+    /// call ranking: the calls completed, or "0 completed" when the row's only stops were paired with no start, or "no
+    /// calls".
     /// </summary>
     public static string RankedFigure(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (ranked.Metric is RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed)
+        {
+            return ranked.Value is { } calls
+                ? string.Create(CultureInfo.CurrentCulture, $"{calls:N0} {(calls == 1 ? "call" : "calls")}")
+                : ranked.Holds ? "0 completed" : "no calls";
+        }
+
         return ranked.Value is { } value ? WorkspaceRowBuilder.DescribeSize(value)
             : ranked.Holds ? "unmeasured"
             : ranked.Metric == RankingMetric.BytesSent ? "no sends" : "no receives";
     }
 
-    /// <summary>The value as a screen reader says it, with the records behind it and those that recorded no size.</summary>
+    /// <summary>
+    /// The value as a screen reader says it: the bytes with the records behind them and those that recorded no size, or
+    /// the calls with those that failed and the stops paired with no start.
+    /// </summary>
     public static string RankedSpoken(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (ranked.Metric is RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed)
+        {
+            string side = ranked.Metric == RankingMetric.RpcCallsMade ? "made" : "served";
+            string failed = ranked.Failed > 0 ? string.Create(CultureInfo.CurrentCulture, $", {ranked.Failed:N0} failed") : string.Empty;
+            string unpaired = ranked.Unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $", {ranked.Unmeasured:N0} {(ranked.Unmeasured == 1 ? "stop" : "stops")} paired with no start")
+                : string.Empty;
+            return ranked.Holds
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{ranked.Measured:N0} RPC {(ranked.Measured == 1 ? "call" : "calls")} {side}{failed}{unpaired}")
+                : $"no RPC calls {side}";
+        }
+
         bool sent = ranked.Metric == RankingMetric.BytesSent;
         string records = sent ? "sends" : "receives";
         string unmeasured = ranked.Unmeasured > 0

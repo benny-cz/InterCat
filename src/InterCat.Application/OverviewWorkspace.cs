@@ -97,4 +97,22 @@ public static class OverviewWorkspace
             })],
         };
     }
+
+    /// <summary>
+    /// The same workspace with each process's RPC calls over the measured scope, for a ranking by calls
+    /// (<see cref="SessionCallRanking"/>); a process with no RPC stop in scope holds none. Measures that could not count
+    /// a call, because the capture did not collect RPC, give no process a value.
+    /// </summary>
+    public static WorkspaceSnapshot WithCalls(WorkspaceSnapshot snapshot, SessionCallMeasures measures)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(measures);
+        return measures.Unavailable is not null ? snapshot : snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process => process with
+            {
+                Calls = measures.ByProcess.GetValueOrDefault(process.Id) ?? ProcessCalls.None,
+            })],
+        };
+    }
 }

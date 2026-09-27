@@ -4,19 +4,6 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What the ranked table ranks its groups and processes by: §6.1's metric selector, over §5.2's metrics.</summary>
-public enum RankingMetric
-{
-    /// <summary>Each process's own records, as the ladder has always ranked (`process-activity-v1`).</summary>
-    Records = 1,
-
-    /// <summary>Transport-observed bytes each process's own send records measured: sender-accounted (`metrics-v1` §4, §6).</summary>
-    BytesSent = 2,
-
-    /// <summary>Transport-observed bytes each process's own receive records measured: receiver-accounted.</summary>
-    BytesReceived = 3,
-}
-
 /// <summary>
 /// One process instance's transport-observed bytes on its own records: those its send records measured, taken under
 /// sender accounting, and those its receive records measured, under receiver accounting (`metrics-v1` §4, §6). A declared
@@ -38,7 +25,7 @@ public sealed record ProcessBytes(
     {
         RankingMetric.BytesSent => new(metric, SentMeasured > 0 ? SentBytes : null, SentMeasured, SentUnmeasured),
         RankingMetric.BytesReceived => new(metric, ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured),
-        _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Records are ranked from a process's activity."),
+        _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only a byte ranking reads a process's bytes."),
     };
 
     /// <summary>Two processes' bytes together: a group's, which its members partition.</summary>
@@ -55,23 +42,13 @@ public sealed record ProcessBytes(
     }
 }
 
-/// <summary>
-/// A row's value under a ranking other than records: null when nothing it holds measured the metric, whether its records
-/// declared a measurement that carried no value (<see cref="Unmeasured"/>) or it made no record the metric takes at all.
-/// </summary>
-public sealed record RankedValue(RankingMetric Metric, long? Value, long Measured, long Unmeasured)
-{
-    /// <summary>Whether the row holds any record the metric takes, measured or not.</summary>
-    public bool Holds => Measured + Unmeasured > 0;
-}
-
 /// <summary>Every process instance's transport bytes over one scope of one generation.</summary>
 public sealed record SessionByteMeasures(
     Guid SessionId,
     long Generation,
     TimeRange? Interval,
     IReadOnlyDictionary<ProcessInstanceId, ProcessBytes> ByProcess,
-    ProcessBytes Unattributed);
+    ProcessBytes Unattributed) : IRankingMeasures;
 
 /// <summary>
 /// Reads each process's transport bytes for the ranked table: what `icat metric --metric bytes-sent --byte-domain
@@ -101,7 +78,7 @@ public static class SessionByteRanking
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         ProcessInstanceIndex processes = SessionDerivationCache.For(manifest).Processes(store.Root, segments, clock, fields, cancellationToken);
-        TimeRange? native = interval is { } presentation ? NativeInterval(clock, presentation) : null;
+        TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
 
         // One slot per instance, then one for every row no instance takes under the policy. An interval no reading can
         // fall in holds nothing, and no segment is read for it.
@@ -158,17 +135,6 @@ public static class SessionByteRanking
                 tally.Add(group, side);
             }
         }
-    }
-
-    /// <summary>
-    /// A presentation interval as native readings, each bound's first reading at or after it; null when no reading can
-    /// fall between the two.
-    /// </summary>
-    private static TimeRange? NativeInterval(SourceClockDescriptor clock, TimeRange presentation)
-    {
-        long first = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(presentation.StartTicks * 100)));
-        long end = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(presentation.EndTicks * 100)));
-        return end > first ? new TimeRange(first, end) : null;
     }
 
     /// <summary>One worker's sums per slot and side, merged once it has no segment left (<see cref="SegmentPasses"/>).</summary>

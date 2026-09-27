@@ -82,7 +82,7 @@ public static class WorkspaceExport
         };
     }
 
-    /// <summary>What a byte ranking measures, as an export states it beside its rows.</summary>
+    /// <summary>What a byte or call ranking measures, as an export states it beside its rows.</summary>
     public static string RankingCaveat(RankingMetric rankedBy) => rankedBy switch
     {
         RankingMetric.BytesSent => "Rows are ranked by bytes sent: transport-observed bytes on each process's own send "
@@ -91,6 +91,12 @@ public static class WorkspaceExport
         RankingMetric.BytesReceived => "Rows are ranked by bytes received: transport-observed bytes on each process's "
             + "own receive records, receiver-accounted. A row none of whose receives recorded a size is unmeasured and "
             + "ranks after every measured row, then rows with no receive.",
+        RankingMetric.RpcCallsMade => "Rows are ranked by RPC calls made: the client calls each process completed, counted by "
+            + "their stop (metrics-v1 §8a). A failed call is one whose stop reported a status other than 0; a stop paired with "
+            + "no start is stated, never counted, and a row with only such stops ranks after every row that completed a call.",
+        RankingMetric.RpcCallsServed => "Rows are ranked by RPC calls served: the server calls each process completed, counted "
+            + "by their stop (metrics-v1 §8a). A failed call is one whose stop reported a status other than 0; a stop paired "
+            + "with no start is stated, never counted, and a row with only such stops ranks after every row that completed a call.",
         _ => throw new ArgumentOutOfRangeException(nameof(rankedBy), rankedBy, "Records need no caveat."),
     };
 
@@ -100,6 +106,8 @@ public static class WorkspaceExport
         RankingMetric.Records => "records",
         RankingMetric.BytesSent => "bytes-sent",
         RankingMetric.BytesReceived => "bytes-received",
+        RankingMetric.RpcCallsMade => "rpc-calls-made",
+        RankingMetric.RpcCallsServed => "rpc-calls-served",
         _ => throw new ArgumentOutOfRangeException(nameof(ranking)),
     };
 
@@ -164,7 +172,7 @@ public static class WorkspaceExport
                 AccountingSide = row.Side,
                 row.DescendsTo,
                 Ranked = row.Ranked is { } ranked
-                    ? new { Value = ranked.Value, Measured = ranked.Measured, Unmeasured = ranked.Unmeasured }
+                    ? new { Value = ranked.Value, Measured = ranked.Measured, Unmeasured = ranked.Unmeasured, Failed = ranked.Failed }
                     : null,
             }),
         }, Json);
@@ -189,13 +197,15 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(rows);
         var csv = new StringBuilder();
         Line(csv, [.. ContextHeader, "key", "label", "detail", "observations", "known_bytes", "mechanism", "coverage",
-            "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured"]);
+            "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured",
+            "ranked_failed"]);
         foreach (LadderRow row in rows)
         {
             Line(csv, [.. ContextCells(context), Text(row.Key), Text(row.Label), Text(row.Detail),
                 Number(row.ObservationCount), Number(row.KnownBytes), row.Mechanism.ToString(), row.Coverage.ToString(),
                 row.Side.ToString(), row.DescendsTo.ToString(), RankingName(context.RankedBy),
-                Number(row.Ranked?.Value), Number(row.Ranked?.Measured), Number(row.Ranked?.Unmeasured)]);
+                Number(row.Ranked?.Value), Number(row.Ranked?.Measured), Number(row.Ranked?.Unmeasured),
+                Number(row.Ranked?.Failed)]);
         }
 
         return csv.ToString();
