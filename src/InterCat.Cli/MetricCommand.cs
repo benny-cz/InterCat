@@ -28,6 +28,7 @@ internal sealed record MetricDocument
     public required MetricAccountingDocument? Accounting { get; init; }
     public required MetricContributionsDocument Contributions { get; init; }
     public required MetricOperationsDocument? Operations { get; init; }
+    public required MetricDistributionDocument? Distribution { get; init; }
     public required MetricExclusionsDocument Excluded { get; init; }
     public required MetricReadDocument Read { get; init; }
     public required MetricClockDocument? Clock { get; init; }
@@ -87,6 +88,7 @@ internal sealed record MetricGroupDocument
     public required string? Mechanism { get; init; }
     public required string? Executable { get; init; }
     public required string? Reason { get; init; }
+    public required MetricDistributionDocument? Distribution { get; init; }
     public required int? GroupsMerged { get; init; }
     public required IReadOnlyDictionary<string, long> Bindings { get; init; }
 }
@@ -158,6 +160,9 @@ internal sealed record MetricSpecificationDocument
     public required string? ByteDomain { get; init; }
     public required string? AccountingSide { get; init; }
     public required string? RateNumerator { get; init; }
+    public required string? DurationInterval { get; init; }
+    public required string? Cohort { get; init; }
+    public required string? Statistic { get; init; }
     public required string TimeScope { get; init; }
     public required string? Layer { get; init; }
     public required string? Mechanism { get; init; }
@@ -249,6 +254,31 @@ internal sealed record MetricOperationsDocument
     public required long Calls { get; init; }
     public required IReadOnlyDictionary<string, long> InScope { get; init; }
     public required long UnpairedFailures { get; init; }
+}
+
+/// <summary>A duration's distribution in nanoseconds: each statistic a duration one operation took, by nearest rank.</summary>
+internal sealed record MetricDistributionDocument
+{
+    public required long Count { get; init; }
+    public required long MinimumNanoseconds { get; init; }
+    public required long MedianNanoseconds { get; init; }
+    public required long Percentile95Nanoseconds { get; init; }
+    public required long MaximumNanoseconds { get; init; }
+    public required long SummedNanoseconds { get; init; }
+    public required long BusyNanoseconds { get; init; }
+
+    public static MetricDistributionDocument? From(MetricDistribution? distribution) => distribution is not { } measured
+        ? null
+        : new()
+        {
+            Count = measured.Count,
+            MinimumNanoseconds = measured.Minimum,
+            MedianNanoseconds = measured.Median,
+            Percentile95Nanoseconds = measured.Percentile95,
+            MaximumNanoseconds = measured.Maximum,
+            SummedNanoseconds = measured.SummedNanoseconds,
+            BusyNanoseconds = measured.BusyNanoseconds,
+        };
 }
 
 internal sealed record MetricSideDocument
@@ -344,6 +374,9 @@ internal static class MetricCommand
         string? domainOption = command.TakeOption("--byte-domain");
         string? sideOption = command.TakeOption("--side");
         string? numeratorOption = command.TakeOption("--rate-numerator");
+        string? durationOption = command.TakeOption("--duration");
+        string? cohortOption = command.TakeOption("--cohort");
+        string? statisticOption = command.TakeOption("--statistic");
         string? layerOption = command.TakeOption("--layer");
         string? mechanismOption = command.TakeOption("--mechanism");
         string? intervalOption = command.TakeOption("--interval");
@@ -420,6 +453,9 @@ internal static class MetricCommand
             || !TryParseOptional(domainOption, "--byte-domain", out ByteDomain? domain, out problem)
             || !TryParseOptional(SideAlias(sideOption), "--side", out AccountingSide? side, out problem)
             || !TryParseOptional(numeratorOption, "--rate-numerator", out Metric? numerator, out problem)
+            || !TryParseOptional(durationOption, "--duration", out DurationInterval? durationInterval, out problem)
+            || !TryParseOptional(CohortAlias(cohortOption), "--cohort", out OperationCohort? cohort, out problem)
+            || !TryParseOptional(StatisticAlias(statisticOption), "--statistic", out DurationStatistic? statistic, out problem)
             || !TryParseOptional(layerOption, "--layer", out ObservationLayer? layer, out problem)
             || !TryParseOptional(mechanismOption, "--mechanism", out Mechanism? mechanism, out problem)
             || !TryParseEvidence(evidenceOption, out int evidence, out problem)
@@ -446,6 +482,9 @@ internal static class MetricCommand
             ByteDomain = domain,
             AccountingSide = side,
             RateNumerator = numerator,
+            DurationInterval = durationInterval,
+            Cohort = cohort,
+            Statistic = statistic,
             Layer = layer,
             Mechanism = mechanism,
             Grouping = grouping,
@@ -626,6 +665,9 @@ internal static class MetricCommand
                 ByteDomain = request.ByteDomain?.ToString(),
                 AccountingSide = request.AccountingSide?.ToString(),
                 RateNumerator = request.RateNumerator?.ToString(),
+                DurationInterval = request.DurationInterval?.ToString(),
+                Cohort = request.Cohort?.ToString(),
+                Statistic = request.Statistic?.ToString(),
                 TimeScope = request.TimeScope.ToString(),
                 Layer = request.Layer?.ToString(),
                 Mechanism = request.Mechanism?.ToString(),
@@ -728,6 +770,7 @@ internal static class MetricCommand
                     UnpairedFailures = operations.UnpairedFailures,
                 }
                 : null,
+            Distribution = MetricDistributionDocument.From(result.Distribution),
             Excluded = new()
             {
                 OtherSide = result.ExcludedOtherSide,
@@ -809,6 +852,7 @@ internal static class MetricCommand
         Executable = group.Executable,
         Reason = group.Reason?.ToString(),
         GroupsMerged = group.Kind == MetricGroupKind.Remainder ? group.GroupsMerged : null,
+        Distribution = MetricDistributionDocument.From(group.Distribution),
         Bindings = group.Bindings.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
     };
 
@@ -861,13 +905,15 @@ internal static class MetricCommand
         }
 
         // Measurement availability is a property of byte slots; a count has none, so the column is left out rather
-        // than shown as a meaningless 100%.
-        bool measures = result.TakenSides.Count > 0;
+        // than shown as a meaningless 100%. A duration's statistic is read beside how many calls it was read from, so a
+        // group of three calls is not mistaken for a busy channel's tail.
+        bool measures = result.TakenSides.Count > 0 || result.Request.Metric == Metric.Duration;
+        string measuredHeader = result.Request.Metric == Metric.Duration ? "Calls measured" : "Measured on";
         IReadOnlyList<string> headers = (byProcess, measures) switch
         {
-            (true, true) => ["Rank", byExecutable ? "Executable path" : "Process instance", "Value", "Measured on", "Bound as"],
+            (true, true) => ["Rank", byExecutable ? "Executable path" : "Process instance", "Value", measuredHeader, "Bound as"],
             (true, false) => ["Rank", byExecutable ? "Executable path" : "Process instance", "Value", "Bound as"],
-            (false, true) => ["Rank", "Mechanism", "Value", "Measured on"],
+            (false, true) => ["Rank", "Mechanism", "Value", measuredHeader],
             (false, false) => ["Rank", "Mechanism", "Value"],
         };
         ConsoleUi.Table(headers, rows);
@@ -902,12 +948,14 @@ internal static class MetricCommand
     private static string[] GroupRow(MetricGroupDocument group, MetricResult result, bool byProcess)
     {
         string rank = group.Rank?.ToString(CultureInfo.CurrentCulture) ?? (group.Kind == nameof(MetricGroupKind.Remainder) ? "..." : "-");
-        string measured = group.MeasurementAvailability is { } availability
-            ? availability.ToString("P1", CultureInfo.CurrentCulture)
-            : "nothing measured";
+        string measured = result.Request.Metric == Metric.Duration
+            ? ConsoleUi.Count(group.Known) + (group.Unknown > 0 ? " of " + ConsoleUi.Count(group.Known + group.Unknown) : string.Empty)
+            : group.MeasurementAvailability is { } availability
+                ? availability.ToString("P1", CultureInfo.CurrentCulture)
+                : "nothing measured";
         string value = GroupValue(group, result);
         string bound = SessionText.Bindings(group.Bindings.ToDictionary(entry => Enum.Parse<RelationStrength>(entry.Key), entry => entry.Value));
-        bool measures = result.TakenSides.Count > 0;
+        bool measures = result.TakenSides.Count > 0 || result.Request.Metric == Metric.Duration;
         return (byProcess, measures) switch
         {
             (true, true) => [rank, group.Label, value, measured, bound],
@@ -923,6 +971,13 @@ internal static class MetricCommand
         {
             string unit = result.Rate?.NumeratorUnit == MeasurementUnit.Bytes ? "B" : Unit(nameof(MeasurementUnit.Count), result.Request);
             return $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {unit}/s";
+        }
+
+        if (result.Request.Metric == Metric.Duration)
+        {
+            return group.Value is { } nanoseconds
+                ? OperationText.Duration(nanoseconds, CultureInfo.CurrentCulture)
+                : "no duration measured";
         }
 
         string unresolved = result.Request.Metric is Metric.ActivePeers or Metric.ActiveChannels && group.Unknown > 0
@@ -1060,6 +1115,26 @@ internal static class MetricCommand
                         $"{availability:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} declared contributions")
                     : "no declared contribution");
         }
+        else if (result.Distribution is { } distribution)
+        {
+            IFormatProvider culture = CultureInfo.CurrentCulture;
+            ConsoleUi.Field(
+                "Distribution",
+                $"minimum {OperationText.Duration(distribution.Minimum, culture)} · median {OperationText.Duration(distribution.Median, culture)} · "
+                + $"95th percentile {OperationText.Duration(distribution.Percentile95, culture)} · maximum {OperationText.Duration(distribution.Maximum, culture)}");
+            ConsoleUi.Field(
+                "Call time",
+                $"{OperationText.Duration(distribution.SummedNanoseconds, culture)} summed, {OperationText.Duration(distribution.BusyNanoseconds, culture)} "
+                + "busy (their union)");
+            if (document.Contributions.MeasurementAvailability is { } measuredShare)
+            {
+                ConsoleUi.Field(
+                    "Measured on",
+                    string.Create(
+                        CultureInfo.CurrentCulture,
+                        $"{measuredShare:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} calls in the cohort"));
+            }
+        }
         else if (IsErrorCount(request) && document.Contributions.MeasurementAvailability is { } statusKnown)
         {
             ConsoleUi.Field(
@@ -1148,7 +1223,9 @@ internal static class MetricCommand
                 {
                     OperationText.State(entry.Key),
                     ConsoleUi.Count(entry.Value),
-                    byStart ? "yes" : entry.Key != RpcCallState.Completed ? "no" : errors ? "when failed" : "yes",
+                    result.Request.Metric == Metric.Duration
+                        ? entry.Key == RpcCallState.Completed ? "measured" : "no duration"
+                        : byStart ? "yes" : entry.Key != RpcCallState.Completed ? "no" : errors ? "when failed" : "yes",
                 }),
             ]);
         if (errors)
@@ -1207,6 +1284,10 @@ internal static class MetricCommand
         if (!operations)
         {
             rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
+        }
+        else if (result.Request.Metric == Metric.Duration)
+        {
+            rows.Add(["another named interval (the other side)", ConsoleUi.Count(document.Excluded.ByProjection)]);
         }
 
         if (result.Request.Focus is not null || result.Request.Between is not null)
@@ -1280,6 +1361,20 @@ internal static class MetricCommand
                 : string.Create(
                     CultureInfo.CurrentCulture,
                     $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit, result.Request)} per {rate.IntervalTicks:N0} native ticks");
+        }
+
+        if (result.Request.Metric == Metric.Duration && result.Distribution is { } distribution)
+        {
+            string calls = result.Request.DurationInterval == DurationInterval.ClientCall ? "client calls" : "served calls";
+            string cohort = result.Request.Cohort == OperationCohort.StartedInRange ? "started" : "completed";
+            string statistic = result.Request.Statistic switch
+            {
+                DurationStatistic.Percentile95 => "95th percentile",
+                DurationStatistic.Maximum => "maximum",
+                _ => "median",
+            };
+            return $"{OperationText.Duration(document.Value ?? 0, CultureInfo.CurrentCulture)}, the {statistic} of "
+                + string.Create(CultureInfo.CurrentCulture, $"{distribution.Count:N0} {calls} {cohort} in scope");
         }
 
         if (result.Unit != MeasurementUnit.Count)
@@ -1478,6 +1573,22 @@ internal static class MetricCommand
     /// The accounting sides as a person says them: send, receive, endpoint or canonical, beside §23's full names. The
     /// short form names the same side, so it is resolved here and the request never sees two spellings.
     /// </summary>
+    /// <summary>A cohort as a person says it: completed or started, beside §23's full names.</summary>
+    private static string? CohortAlias(string? value) => value?.ToLowerInvariant() switch
+    {
+        "completed" => nameof(OperationCohort.CompletedInRange),
+        "started" => nameof(OperationCohort.StartedInRange),
+        _ => value,
+    };
+
+    /// <summary>A statistic as a person says it: p95 and max beside §23's full names.</summary>
+    private static string? StatisticAlias(string? value) => value?.ToLowerInvariant() switch
+    {
+        "p95" => nameof(DurationStatistic.Percentile95),
+        "max" => nameof(DurationStatistic.Maximum),
+        _ => value,
+    };
+
     private static string? SideAlias(string? value) => value?.ToLowerInvariant() switch
     {
         "send" or "sender" => nameof(AccountingSide.SendSide),
@@ -1689,6 +1800,11 @@ internal static class MetricCommand
         ConsoleUi.Line("      with its start, errors the completed ones whose stop reports a failure status.");
         ConsoleUi.Line("      Every other call in scope is stated by what its records establish, never counted;");
         ConsoleUi.Line("      --owner filters the calls, and --group-by ranks them by process or executable.");
+        ConsoleUi.Line("      --metric duration --duration client-call|server-execution measures the calls of one");
+        ConsoleUi.Line("      side, never both: --cohort completed (the default) takes the calls whose stop is in");
+        ConsoleUi.Line("      scope and started those whose start is; --statistic median (default), p95 or max is");
+        ConsoleUi.Line("      the value and what a grouping ranks by. Calls without both records are stated as");
+        ConsoleUi.Line("      censored or unpaired, never given a duration.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

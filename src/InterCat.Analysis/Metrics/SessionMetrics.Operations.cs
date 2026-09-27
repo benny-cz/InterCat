@@ -34,11 +34,10 @@ public static partial class SessionMetrics
 
         string? missing = effective switch
         {
-            Metric.Duration =>
-                "Duration is the length of a named cohort's operations - the calls completed in the interval, or those "
-                + "started in it (§19.2) - and a request cannot name a cohort at this version (metrics-v1 §12). No one "
-                + "number stands for them; icat operations lists each channel's completed calls by minimum, median, 95th "
-                + "percentile and maximum.",
+            Metric.Duration when request.DurationInterval is not (DurationInterval.ClientCall or DurationInterval.ServerExecution) =>
+                $"No {request.DurationInterval} operation is derived at this version. RPC calls, the only operations, give a "
+                + "client call's duration and a server execution's (operations-v1); no other interval is answered from "
+                + "operations of another name (§5).",
             Metric.ActiveChannels =>
                 "ActiveChannels counts connection incarnations (metrics-v1 §6.1). An RPC channel - one process's calls on "
                 + "one side to one interface (operations-v1 §5a) - is another thing, and counting it as a channel is not "
@@ -124,6 +123,11 @@ public static partial class SessionMetrics
         }
 
         RpcCallIndex calls = RpcCallIndex.Derive(readers, context.FieldSegments, processes, clock, cancellationToken);
+        if (request.Metric == Metric.Duration)
+        {
+            return Durations(context, calls, processes, clock, owner, cancellationToken);
+        }
+
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         var tally = new OperationTally(effective, processes, request.EvidencePolicy, request.Grouping);
         var evidence = new List<RpcCallMark>();
@@ -242,6 +246,197 @@ public static partial class SessionMetrics
         return answer with { Value = null, Unit = rate.Unit, Rate = rate, Caveats = caveats };
     }
 
+    /// <summary>
+    /// A duration over one named interval's calls and one cohort (`metrics-v1` §8a): the calls of the interval's side whose
+    /// counted record - the stop for the calls completed in range, the start for those started in range - is in scope, each
+    /// measured when both its start and its stop are in the evidence, and stated by what its records establish when not.
+    /// </summary>
+    private static MetricResult Durations(
+        Context context,
+        RpcCallIndex calls,
+        ProcessInstanceIndex processes,
+        SourceClockDescriptor clock,
+        int owner,
+        CancellationToken cancellationToken)
+    {
+        MetricRequest request = context.Request;
+        RpcCallSide side = request.DurationInterval == DurationInterval.ClientCall ? RpcCallSide.Client : RpcCallSide.Server;
+        bool byStart = request.Cohort == OperationCohort.StartedInRange;
+        DurationStatistic statistic = request.Statistic!.Value;
+        var tally = new OperationTally(Metric.Duration, processes, request.EvidencePolicy, request.Grouping, byStart, statistic);
+        long otherInterval = 0;
+        var evidence = new List<RpcCallMark>();
+        foreach (RpcCallOutcome call in calls.Outcomes())
+        {
+            RpcCallMark? mark = byStart ? call.Start : call.Stop;
+            if (mark is not { } counted)
+            {
+                continue;
+            }
+
+            // The interval is read first, then the named interval's side as a projection, then the process filter, so the
+            // three exclusions never overlap (metrics-v1 §5).
+            if (request.Interval is { } interval && !interval.Contains(counted.NativeTicks))
+            {
+                tally.OutsideInterval++;
+                continue;
+            }
+
+            if (call.Side != side)
+            {
+                otherInterval++;
+                continue;
+            }
+
+            if (owner >= 0 && !(call.Process.Instance == owner && call.Process.IsAdmittedUnder(request.EvidencePolicy)))
+            {
+                tally.OutsideProcess++;
+                continue;
+            }
+
+            (long Start, long Stop)? span = call.State == RpcCallState.Completed
+                ? ((long)SourceClockMath.SessionNanoseconds(clock, call.Start!.Value.NativeTicks),
+                    (long)SourceClockMath.SessionNanoseconds(clock, call.Stop!.Value.NativeTicks))
+                : null;
+            if (tally.AddTimed(call, span) && context.EvidenceLimit > 0)
+            {
+                evidence.Add(counted);
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        MetricDistribution? distribution = tally.Distribution();
+        MetricResult answer = context.Answer(request) with
+        {
+            Unit = MeasurementUnit.Nanoseconds,
+            KnownContributions = tally.Known,
+            UnknownContributions = tally.Unknown,
+            ExcludedByProjection = otherInterval,
+            ExcludedByProcessFilter = tally.OutsideProcess,
+            ExcludedOutsideInterval = tally.OutsideInterval,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            OperationRule = RpcCallIndex.OperationRule,
+            Operations = new()
+            {
+                CountedRecord = byStart ? ObservationKind.RequestStart : ObservationKind.RequestEnd,
+                InScope = tally.InScope,
+                Calls = calls.Totals.Calls,
+            },
+            Distribution = distribution,
+            Evidence =
+            [
+                .. evidence
+                    .OrderBy(mark => mark.Segment)
+                    .ThenBy(mark => mark.Row)
+                    .Take(context.EvidenceLimit)
+                    .Select(mark => Evidence(context.Segments[mark.Segment].Name, context.Segments[mark.Segment].Reader, mark.Row)),
+            ],
+        };
+
+        List<string> caveats = [OperationCaveat(request), .. DurationCaveats(request, tally, distribution, otherInterval)];
+        if (request.Focus is { } focus)
+        {
+            caveats.Add(
+                $"Only calls bound to owner instance {focus.Instance} under {request.EvidencePolicy} contribute: a call binds "
+                + "by its first record's reading to the process that raised it (ADR-030).");
+        }
+
+        if (request.Grouping is not null)
+        {
+            (IReadOnlyList<MetricGroup> ordered, MetricGroup? remainder, IReadOnlyList<MetricGroup> unattributed) =
+                tally.Groups(request.RequestedRows, context);
+            caveats.AddRange(OperationGroupingCaveats(request, unattributed));
+            caveats.Add(
+                $"Groups are ranked by their {Words(statistic)}, the slowest first. Each call is in exactly one group, but a "
+                + "median or a percentile does not add, so the groups' values are not parts of the total's.");
+            answer = answer with { Groups = ordered, Remainder = remainder, Unattributed = unattributed };
+        }
+
+        // A duration of nothing is not zero: with no call in scope measured, there is no value to report (R21).
+        if (distribution is null)
+        {
+            return answer with
+            {
+                Unavailable = MetricUnavailableReason.NothingMeasured,
+                UnavailableExplanation = tally.Unknown > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $"None of the {tally.Unknown:N0} ")
+                        + $"{Words(side)} calls in scope has both its start and its stop in the evidence, so no duration "
+                        + "was measured; they are stated by what their records establish, never given a duration (R3)."
+                    : $"No {Words(side)} call is in scope, so no duration was measured. A duration of nothing is not zero (R21).",
+                Unit = null,
+                Caveats = caveats,
+            };
+        }
+
+        return answer with { Value = distribution.Of(statistic), Caveats = caveats };
+    }
+
+    /// <summary>What a duration measured and what it could not, beside the number.</summary>
+    private static List<string> DurationCaveats(
+        MetricRequest request,
+        OperationTally tally,
+        MetricDistribution? distribution,
+        long otherInterval)
+    {
+        bool client = request.DurationInterval == DurationInterval.ClientCall;
+        var caveats = new List<string>
+        {
+            client
+                ? "A client call runs from its start to its stop in the calling process: it spans the transport and the "
+                    + "server's work, and is never compared with a server execution (§5)."
+                : "A server execution runs from a served call's start to its stop in the serving process: the server's part "
+                    + "of a call, never its client's wait (§5).",
+        };
+        if (request.Cohort == OperationCohort.StartedInRange)
+        {
+            List<string> unmeasured = Parts(
+                (tally.InScope.GetValueOrDefault(RpcCallState.OpenAtCaptureEnd), "still open at capture end (right-censored: longer than the capture shows, never counted as short)"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.NoActivityId), "with no activity id"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.Ambiguous), "of an activity id reused before its stop"));
+            caveats.Add(
+                "The cohort is the calls started in scope, by their start's reading (§19.2)."
+                + (unmeasured.Count == 0 ? string.Empty : $" Of them, {Join(unmeasured)}; none has a duration."));
+        }
+        else
+        {
+            List<string> unmeasured = Parts(
+                (tally.InScope.GetValueOrDefault(RpcCallState.StartNotObserved), "whose start is not in the evidence (left-censored: it began before the capture or its start was lost, and no duration is invented)"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.NoActivityId), "with no activity id"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.Ambiguous), "of an activity id reused before its stop"));
+            caveats.Add(
+                "The cohort is the calls completed in scope, by their stop's reading, the default of §19.2."
+                + (unmeasured.Count == 0 ? string.Empty : $" Stops in scope paired with no start have no duration: {Join(unmeasured)}."));
+        }
+
+        if (distribution is { } measured)
+        {
+            caveats.Add(
+                string.Create(CultureInfo.CurrentCulture, $"The value is the {Words(request.Statistic!.Value)} of {measured.Count:N0} ")
+                + "durations, a duration one call took (nearest rank), never an interpolation.");
+            caveats.Add(
+                "Summed call time and busy time differ: calls that ran at once make the sum exceed the time the calls kept "
+                + "their side busy, which is their union (§19.2).");
+        }
+
+        if (otherInterval > 0)
+        {
+            caveats.Add(string.Create(
+                CultureInfo.CurrentCulture,
+                $"{otherInterval:N0} calls in the interval were made on the other side and measure {(client ? "server execution" : "client calls")}, another named interval; they are left out, never mixed in."));
+        }
+
+        return caveats;
+    }
+
+    private static string Words(DurationStatistic statistic) => statistic switch
+    {
+        DurationStatistic.Median => "median",
+        DurationStatistic.Percentile95 => "95th percentile",
+        _ => "maximum",
+    };
+
+    private static string Words(RpcCallSide side) => side == RpcCallSide.Client ? "client" : "served";
+
     /// <summary>What an operation is at this version, said beside every count of them.</summary>
     private static string OperationCaveat(MetricRequest request) =>
         $"Operations are RPC calls, paired under {RpcCallIndex.OperationRule}: a call's start and its stop on one side of "
@@ -260,9 +455,9 @@ public static partial class SessionMetrics
         {
             List<string> endings = Parts(
                 (completed, "completed"),
-                (tally.InScope.GetValueOrDefault(RpcCallState.OpenAtCaptureEnd), "were open at capture end (censored, not failed)"),
-                (tally.InScope.GetValueOrDefault(RpcCallState.NoActivityId), "carried no activity id"),
-                (tally.InScope.GetValueOrDefault(RpcCallState.Ambiguous), "were of an activity id reused before its stop"));
+                (tally.InScope.GetValueOrDefault(RpcCallState.OpenAtCaptureEnd), "open at capture end (censored, not failed)"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.NoActivityId), "with no activity id"),
+                (tally.InScope.GetValueOrDefault(RpcCallState.Ambiguous), "of an activity id reused before its stop"));
             caveats.Add(
                 "A call is counted when its start is in scope, however it ended."
                 + (endings.Count == 0 ? string.Empty : $" Of these, {Join(endings)}."));
@@ -350,17 +545,30 @@ public static partial class SessionMetrics
         private readonly LaneGrouping? grouping;
         private readonly Dictionary<RpcCallState, long> inScope = [];
         private readonly Dictionary<string, OperationGroup> groups = new(StringComparer.Ordinal);
+        private readonly bool? byStart;
+        private readonly DurationStatistic? statistic;
+        private readonly List<(long Start, long Stop)> spans = [];
 
-        public OperationTally(Metric metric, ProcessInstanceIndex processes, EvidencePolicy policy, LaneGrouping? grouping)
+        /// <param name="byStart">For a duration, whether its cohort is the calls started in scope; a count decides by its metric.</param>
+        /// <param name="statistic">For a duration, the statistic its value and its ranking read; null for a count.</param>
+        public OperationTally(
+            Metric metric,
+            ProcessInstanceIndex processes,
+            EvidencePolicy policy,
+            LaneGrouping? grouping,
+            bool? byStart = null,
+            DurationStatistic? statistic = null)
         {
             this.metric = metric;
             this.processes = processes;
             this.policy = policy;
             this.grouping = grouping;
+            this.byStart = byStart;
+            this.statistic = statistic;
         }
 
         /// <summary>Whether a call is put in scope by its start; otherwise by its stop.</summary>
-        public bool CountsByStart => metric == Metric.OperationsStarted;
+        public bool CountsByStart => byStart ?? metric == Metric.OperationsStarted;
 
         public Dictionary<RpcCallState, long> InScope => inScope;
 
@@ -407,54 +615,112 @@ public static partial class SessionMetrics
         }
 
         /// <summary>
+        /// Adds one call of a duration's cohort, measured when <paramref name="span"/> holds its start and stop in session
+        /// nanoseconds; returns whether it was measured.
+        /// </summary>
+        public bool AddTimed(RpcCallOutcome call, (long Start, long Stop)? span)
+        {
+            inScope[call.State] = inScope.GetValueOrDefault(call.State) + 1;
+            if (span is { } measured)
+            {
+                Known++;
+                spans.Add(measured);
+            }
+            else
+            {
+                Unknown++;
+            }
+
+            if (grouping is not null)
+            {
+                GroupOf(call).AddTimed(call.Process, span);
+            }
+
+            return span is not null;
+        }
+
+        /// <summary>The distribution of every measured call of a duration's cohort; null when none was measured.</summary>
+        public MetricDistribution? Distribution() => MetricDistribution.Of(spans);
+
+        /// <summary>
         /// The ranked groups, then the unmeasured ones, cut to <paramref name="rows"/> with an exact remainder, and the
-        /// calls no group could take, one group per reason. Together they hold every call the count took, once.
+        /// calls no group could take, one group per reason. Together they hold every call the count took, once. A
+        /// duration's groups rank by its statistic, and its remainder is the distribution of the calls it merges, never a
+        /// sum of statistics.
         /// </summary>
         public (IReadOnlyList<MetricGroup> Ordered, MetricGroup? Remainder, IReadOnlyList<MetricGroup> Unattributed) Groups(
             int? rows,
             Context context)
         {
             bool isRate = context.Request.Metric == Metric.Rate;
-            var attributed = new List<(MetricGroup Group, string Key)>();
+            var attributed = new List<(MetricGroup Group, OperationGroup Source, string Key)>();
             var unattributed = new List<(MetricGroup Group, string Key)>();
             foreach ((string key, OperationGroup group) in groups)
             {
-                MetricGroup built = group.ToGroup(isRate, context);
-                (built.Kind == MetricGroupKind.Unattributed ? unattributed : attributed).Add((built, key));
+                MetricGroup built = group.ToGroup(isRate, context, statistic);
+                if (built.Kind == MetricGroupKind.Unattributed)
+                {
+                    unattributed.Add((built, key));
+                }
+                else
+                {
+                    attributed.Add((built, group, key));
+                }
             }
 
-            List<MetricGroup> ordered =
+            List<(MetricGroup Group, OperationGroup Source)> ordered =
             [
                 .. attributed
                     .Where(entry => entry.Group.Value is not null)
                     .OrderByDescending(entry => entry.Group.Value)
                     .ThenBy(entry => entry.Key, StringComparer.Ordinal)
-                    .Select((entry, index) => entry.Group with { Rank = index + 1 }),
+                    .Select((entry, index) => (entry.Group with { Rank = index + 1 }, entry.Source)),
                 .. attributed
                     .Where(entry => entry.Group.Value is null)
                     .OrderBy(entry => entry.Key, StringComparer.Ordinal)
-                    .Select(entry => entry.Group),
+                    .Select(entry => (entry.Group, entry.Source)),
             ];
             MetricGroup? remainder = null;
             if (rows is { } cut && ordered.Count > cut)
             {
-                List<MetricGroup> rest = ordered[cut..];
-                long known = rest.Sum(group => group.KnownContributions);
-                long value = rest.Sum(group => group.Value ?? 0);
-                bool measured = known > 0;
-                remainder = new()
+                List<(MetricGroup Group, OperationGroup Source)> rest = ordered[cut..];
+                long known = rest.Sum(entry => entry.Group.KnownContributions);
+                long unknown = rest.Sum(entry => entry.Group.UnknownContributions);
+                if (statistic is { } named)
                 {
-                    Kind = MetricGroupKind.Remainder,
-                    Value = measured ? value : null,
-                    KnownContributions = known,
-                    UnknownContributions = rest.Sum(group => group.UnknownContributions),
-                    GroupsMerged = rest.Count,
-                    Rate = isRate && measured ? RateOf(value, MeasurementUnit.Count, context) : null,
-                };
+                    MetricDistribution? merged = MetricDistribution.Of([.. rest.SelectMany(entry => entry.Source.Spans)]);
+                    remainder = new()
+                    {
+                        Kind = MetricGroupKind.Remainder,
+                        Value = merged?.Of(named),
+                        KnownContributions = known,
+                        UnknownContributions = unknown,
+                        GroupsMerged = rest.Count,
+                        Distribution = merged,
+                    };
+                }
+                else
+                {
+                    long value = rest.Sum(entry => entry.Group.Value ?? 0);
+                    bool measured = known > 0;
+                    remainder = new()
+                    {
+                        Kind = MetricGroupKind.Remainder,
+                        Value = measured ? value : null,
+                        KnownContributions = known,
+                        UnknownContributions = unknown,
+                        GroupsMerged = rest.Count,
+                        Rate = isRate && measured ? RateOf(value, MeasurementUnit.Count, context) : null,
+                    };
+                }
+
                 ordered = ordered[..cut];
             }
 
-            return (ordered, remainder, [.. unattributed.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => entry.Group)]);
+            return (
+                [.. ordered.Select(entry => entry.Group)],
+                remainder,
+                [.. unattributed.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => entry.Group)]);
         }
 
         private OperationGroup GroupOf(RpcCallOutcome call)
@@ -494,9 +760,13 @@ public static partial class SessionMetrics
     private sealed class OperationGroup(MetricGroupKind kind)
     {
         private readonly Dictionary<RelationStrength, long> bindings = [];
+        private readonly List<(long Start, long Stop)> spans = [];
         private long value;
         private long known;
         private long unknown;
+
+        /// <summary>The measured calls of a duration's group, each from its start to its stop in session nanoseconds.</summary>
+        public IReadOnlyList<(long Start, long Stop)> Spans => spans;
 
         public ProcessInstance? Process { get; init; }
 
@@ -511,6 +781,26 @@ public static partial class SessionMetrics
             value += counts ? 1 : 0;
             known += isKnown ? 1 : 0;
             unknown += isKnown ? 0 : 1;
+            Bind(binding);
+        }
+
+        public void AddTimed(ProcessBinding binding, (long Start, long Stop)? span)
+        {
+            if (span is { } measured)
+            {
+                known++;
+                spans.Add(measured);
+            }
+            else
+            {
+                unknown++;
+            }
+
+            Bind(binding);
+        }
+
+        private void Bind(ProcessBinding binding)
+        {
             if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable)
             {
                 bindings[binding.Strength] = bindings.GetValueOrDefault(binding.Strength) + 1;
@@ -521,8 +811,28 @@ public static partial class SessionMetrics
         /// The group a reader sees. A group whose calls all carry no status is unmeasured, never ranked at zero; a group
         /// with no call the count took is never built (R21).
         /// </summary>
-        public MetricGroup ToGroup(bool isRate, Context context)
+        public MetricGroup ToGroup(bool isRate, Context context, DurationStatistic? statistic)
         {
+            if (statistic is { } named)
+            {
+                // A duration's group is measured when one of its calls was; one whose calls were all censored or unpaired
+                // is unmeasured, and sorts after every ranked group rather than at zero.
+                MetricDistribution? distribution = MetricDistribution.Of(spans);
+                return new()
+                {
+                    Kind = kind,
+                    Process = Process,
+                    Executable = Executable,
+                    Mechanism = Mechanism,
+                    Reason = Reason,
+                    Value = distribution?.Of(named),
+                    KnownContributions = known,
+                    UnknownContributions = unknown,
+                    Bindings = bindings,
+                    Distribution = distribution,
+                };
+            }
+
             bool measured = known > 0;
             return new()
             {

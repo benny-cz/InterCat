@@ -25,6 +25,18 @@ public sealed record MetricRequest
     /// <summary>The metric a rate divides. Null for anything that is not a rate.</summary>
     public Metric? RateNumerator { get; init; }
 
+    /// <summary>
+    /// `EN-DurationInterval`: the named interval a duration measures. Required for a duration, because intervals of different
+    /// names are never interchangeable (§5); null for any other metric.
+    /// </summary>
+    public DurationInterval? DurationInterval { get; init; }
+
+    /// <summary>`EN-Cohort`: which operations a duration describes; completed in range unless named (§19.2).</summary>
+    public OperationCohort? Cohort { get; init; }
+
+    /// <summary>`EN-DurationStatistic`: the number a duration answer and its ranking read; the median unless named.</summary>
+    public DurationStatistic? Statistic { get; init; }
+
     /// <summary>Restricts the request to one layer. Null means every layer the session carries.</summary>
     public ObservationLayer? Layer { get; init; }
 
@@ -228,7 +240,52 @@ public sealed record MetricRequest
                 []);
         }
 
-        return MetricCompatibility.Check(Basis, Metric, ByteDomain, AccountingSide, Layer, RateNumerator);
+        return MetricCompatibility.Check(Basis, Metric, ByteDomain, AccountingSide, Layer, RateNumerator) ?? CheckDuration();
+    }
+
+    /// <summary>
+    /// A duration names its interval, and its cohort and statistic where it names them; nothing else does. A mapping lifetime
+    /// is a resource's, and every other named interval an operation's (§5.3).
+    /// </summary>
+    private MetricRejection? CheckDuration()
+    {
+        if (Metric != Metric.Duration)
+        {
+            return DurationInterval is null && Cohort is null && Statistic is null
+                ? null
+                : new(
+                    $"A duration's interval, cohort and statistic say what a duration measures, and {Metric} is not a "
+                    + "duration.",
+                    []);
+        }
+
+        if (DurationInterval is not { } interval)
+        {
+            return new(
+                "A duration names the interval it measures - a client call, a server execution, an I/O completion, an ALPC "
+                + "send-to-receive, a wait or a mapping lifetime - because intervals of different names are never "
+                + "interchangeable (§5). There is no default.",
+                []);
+        }
+
+        if (!Enum.IsDefined(interval)
+            || (Cohort is { } cohort && !Enum.IsDefined(cohort))
+            || (Statistic is { } statistic && !Enum.IsDefined(statistic)))
+        {
+            return new("A duration's interval, cohort and statistic are codes §23 defines.", []);
+        }
+
+        bool resource = interval == Domain.DurationInterval.MappingLifetime;
+        return Basis switch
+        {
+            AnalysisBasis.LogicalOperations when resource => new(
+                "A mapping lifetime is a resource's, measured on the resource-topology basis, not an operation's.", []),
+            AnalysisBasis.ResourceTopology when !resource => new(
+                $"A {interval} duration is an operation's, measured on the logical-operations basis; the resource-topology "
+                + "basis measures a mapping lifetime only.",
+                []),
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -239,7 +296,16 @@ public sealed record MetricRequest
     {
         (ByteDomain? domain, AccountingSide? side, ObservationLayer? layer) =
             MetricCompatibility.Materialize(Metric, ByteDomain, AccountingSide, Layer, RateNumerator);
-        return this with { ByteDomain = domain, AccountingSide = side, Layer = layer };
+        return Metric == Metric.Duration
+            ? this with
+            {
+                ByteDomain = domain,
+                AccountingSide = side,
+                Layer = layer,
+                Cohort = Cohort ?? OperationCohort.CompletedInRange,
+                Statistic = Statistic ?? DurationStatistic.Median,
+            }
+            : this with { ByteDomain = domain, AccountingSide = side, Layer = layer };
     }
 }
 
@@ -365,6 +431,9 @@ public sealed record MetricGroup
     /// <summary>A rate's per-group value, when the request is a rate.</summary>
     public MetricRate? Rate { get; init; }
 
+    /// <summary>A duration's per-group distribution, when the request is a duration and the group measured one.</summary>
+    public MetricDistribution? Distribution { get; init; }
+
     /// <summary>How many groups a remainder holds.</summary>
     public int GroupsMerged { get; init; }
 
@@ -442,6 +511,80 @@ public sealed record MetricOperations
 
     /// <summary>Every call the generation's call records make, in scope or not.</summary>
     public required long Calls { get; init; }
+}
+
+/// <summary>
+/// The durations a duration answer read, over its cohort, in nanoseconds: each statistic a duration some operation took
+/// (nearest rank), never an interpolation. The summed time adds every duration; the busy time is what their union covers,
+/// which operations running at once make shorter than the sum (§19.2).
+/// </summary>
+public sealed record MetricDistribution(
+    long Count,
+    long Minimum,
+    long Median,
+    long Percentile95,
+    long Maximum,
+    long SummedNanoseconds,
+    long BusyNanoseconds)
+{
+    /// <summary>The statistic a request names, read from this distribution.</summary>
+    public long Of(DurationStatistic statistic) => statistic switch
+    {
+        DurationStatistic.Median => Median,
+        DurationStatistic.Percentile95 => Percentile95,
+        _ => Maximum,
+    };
+
+    /// <summary>
+    /// The distribution of operations each running from a start to a stop, in nanoseconds; null when there are none. A
+    /// duration of nothing is not zero (R21).
+    /// </summary>
+    public static MetricDistribution? Of(IReadOnlyList<(long Start, long Stop)> operations)
+    {
+        ArgumentNullException.ThrowIfNull(operations);
+        if (operations.Count == 0)
+        {
+            return null;
+        }
+
+        long[] durations = new long[operations.Count];
+        long summed = 0;
+        for (int index = 0; index < durations.Length; index++)
+        {
+            durations[index] = operations[index].Stop - operations[index].Start;
+            summed = checked(summed + durations[index]);
+        }
+
+        Array.Sort(durations);
+        (long Start, long Stop)[] ordered = [.. operations.OrderBy(operation => operation.Start)];
+        long busy = 0;
+        long runStart = ordered[0].Start;
+        long runStop = ordered[0].Stop;
+        foreach ((long start, long stop) in ordered.Skip(1))
+        {
+            if (start > runStop)
+            {
+                busy = checked(busy + (runStop - runStart));
+                runStart = start;
+            }
+
+            runStop = Math.Max(runStop, stop);
+        }
+
+        busy = checked(busy + (runStop - runStart));
+        return new(
+            durations.Length,
+            durations[0],
+            NearestRank(durations, 50),
+            NearestRank(durations, 95),
+            durations[^1],
+            summed,
+            busy);
+    }
+
+    /// <summary>The smallest duration at least <paramref name="percent"/>% of the durations do not exceed.</summary>
+    private static long NearestRank(long[] sorted, int percent) =>
+        sorted[(int)Math.Max(0, ((((long)sorted.Length * percent) + 99) / 100) - 1)];
 }
 
 /// <summary>One record an answer counted, with the identities that let a caller navigate to it.</summary>
@@ -593,6 +736,9 @@ public sealed record MetricResult
 
     /// <summary>The calls a logical-operations answer read, by state; null on any other basis.</summary>
     public MetricOperations? Operations { get; init; }
+
+    /// <summary>A duration answer's distribution over its cohort; null for any other metric, and when nothing was measured.</summary>
+    public MetricDistribution? Distribution { get; init; }
 
     /// <summary>
     /// What this result answers, as the canonical specification and its hash (§10.5): the same bytes for the same

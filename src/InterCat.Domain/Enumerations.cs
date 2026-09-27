@@ -62,6 +62,41 @@ public enum Metric
 }
 public enum ByteDomain { TransportObserved = 1, RequestedIo = 2, CompletedIo = 3, ApplicationPayload = 4, CapturedContent = 5, Capacity = 6 }
 public enum AccountingSide { SendSide = 1, ReceiveSide = 2, EndpointActivity = 3, CanonicalOwner = 4 }
+
+/// <summary>
+/// <c>EN-DurationInterval</c> (section 23): the named interval a duration measures (§5). Intervals of different names are
+/// never interchangeable: a client call spans the transport and the server's work, a server execution only the latter.
+/// </summary>
+public enum DurationInterval
+{
+    ClientCall = 1,
+    ServerExecution = 2,
+    IoCompletion = 3,
+    AlpcSendToReceive = 4,
+    Wait = 5,
+    MappingLifetime = 6,
+}
+
+/// <summary><c>EN-Cohort</c> (section 23): which operations a duration describes (§19.2).</summary>
+public enum OperationCohort
+{
+    /// <summary>The operations whose completion is in scope; the default.</summary>
+    CompletedInRange = 1,
+
+    /// <summary>The operations whose start is in scope, those still open at capture end among them, censored.</summary>
+    StartedInRange = 2,
+}
+
+/// <summary>
+/// <c>EN-DurationStatistic</c> (section 23): the one number a duration answer, and a ranking of durations, reads from the
+/// distribution, each a duration some operation took (nearest rank).
+/// </summary>
+public enum DurationStatistic
+{
+    Median = 1,
+    Percentile95 = 2,
+    Maximum = 3,
+}
 /// <summary>
 /// <c>EN-SourceField</c> (section 23): a source correlation or object field of §7.3 that <c>observation-v1</c> has no
 /// column for. The catalog names which admitted field each code is; a code is a meaning, never a field name, so two

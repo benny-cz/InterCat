@@ -26,6 +26,9 @@ A metric request names:
 | `byteDomain` | `EN-ByteDomain` | the metric's fixed domain, when it has one |
 | `accountingSide` | `EN-AccountingSide` | the metric's fixed side, when it has one |
 | `rateNumerator` | `EN-Metric`, a rate only | none |
+| `durationInterval` | `EN-DurationInterval`, a duration only | none: a duration names it (§8a) |
+| `cohort` | `EN-Cohort`, a duration only | `CompletedInRange` |
+| `statistic` | `EN-DurationStatistic`, a duration only | `Median` |
 | `evidencePolicy` | `EN-EvidencePolicy` | `IncludeCorrelated` |
 | `owner` | `owner(P)`: one `ProcessInstanceId` from this generation | none |
 | `participant` | `participant(P)`: one `ProcessInstanceId` | none |
@@ -306,7 +309,7 @@ with no value:
 | Reason | When |
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
-| `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, `Duration`, a count of channels or peers, `Errors` with an accounting side, or a filter or grouping that needs an operation's other end (§8a) |
+| `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, a duration of an interval no operation measures, a count of channels or peers, `Errors` with an accounting side, or a filter or grouping that needs an operation's other end (§8a) |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
@@ -358,11 +361,31 @@ A projection onto `Rpc` or the application layer keeps every call.
 - `participant`, `sender`, `receiver`, `peer`, `between` and grouping by peer, which need an operation's other end: no
   rule pairs a client call with the server call that served it (`operations-v1` §3, P7);
 - `ActivePeers`, for the same reason, and `ActiveChannels`, which counts connection incarnations, not RPC channels;
-- `Duration`, whose cohort a request cannot name at this version (§12);
+- `Duration` of an I/O completion, an ALPC send-to-receive or a wait, which no derived operation measures;
 - `Errors` with an accounting side: a call is made at a client and served at a server, not sent or received;
 - a mechanism other than `Rpc`, or a layer other than the application layer: no correlator derives those operations.
 
 A byte total on this basis is `NothingMeasured`: no call carries a length.
+
+**Durations (revision 186).** A duration names the interval it measures, because intervals of different names are
+never interchangeable (§5): a `ClientCall` runs from a client call's start to its stop in the calling process, spanning
+the transport and the server's work, and a `ServerExecution` from a served call's start to its stop in the serving
+process. A request names no interval by default and is refused without one; a mapping lifetime is a resource's and is
+asked on the resource-topology basis. The **cohort** says which calls of that side a duration describes: those completed
+in scope, by their stop's reading, which is the default of §19.2, or those started in scope, by their start's. A call of
+the cohort is measured when its start and its stop are both in the evidence; one whose start is not
+(`StartNotObserved`, left-censored), one still open at capture end (right-censored, longer than the capture shows), and
+one with no activity id or of a reused one are stated by state and never given a duration. The calls of the other side
+measure another interval and are counted apart from the answer, as a projection's exclusions are.
+
+The answer is a distribution in session nanoseconds: the count, the minimum, the median, the 95th percentile and the
+maximum, each a duration one call took by nearest rank, never an interpolation, beside the summed time of every call
+and the busy time their union covers, which calls running at once make shorter than the sum. The value is the
+**statistic** the request names, the median by default. Grouped, each group's value is its own statistic and the groups
+rank by it, slowest first; a group none of whose calls was measured is unmeasured and sorts after them. A statistic does
+not add, so the groups do not partition the value, and a result says so; the remainder is the distribution of the calls
+it merges, never a sum of statistics. A duration of no measured call is `NothingMeasured`, not zero (R21). A rate never
+divides a duration (§2).
 
 **Zero and coverage.** A count with no call in scope is 0, stated as a count of derived calls and not a finding that no
 call happened (R21). Every operation is an RPC call, so an answer that names no mechanism states RPC's capture coverage
@@ -410,9 +433,8 @@ not exist yet and are answered as unavailable today.
   version does not have.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
-- Cohorts. `Duration` and the latency distributions of §19.2 read the calls §8a counts; the cohort a distribution
-  describes - completed in range by default, or started in range - is part of the request, and a request cannot name
-  one yet. `icat operations` lists each RPC channel's completed-call durations meanwhile.
+- Durations of any interval but an RPC client call and a server execution, and a latency distribution beyond the
+  median, the 95th percentile and the maximum.
 - Operations of any mechanism but RPC, and an operation's other end, which the filters and groupings §8a leaves
   unavailable need.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.

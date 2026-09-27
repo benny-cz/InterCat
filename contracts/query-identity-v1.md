@@ -39,6 +39,9 @@ not apply is **absent**, never `null`:
 | `rateNumerator` | `EN-Metric` name | a rate |
 | `byteDomain` | `EN-ByteDomain` name | a byte metric, materialized |
 | `accountingSide` | `EN-AccountingSide` name | a byte metric, materialized |
+| `durationInterval` | `EN-DurationInterval` name | a duration |
+| `cohort` | `EN-Cohort` name | a duration, materialized |
+| `statistic` | `EN-DurationStatistic` name | a duration, materialized |
 | `evidencePolicy` | `EN-EvidencePolicy` name | when the policy decides which records are kept or where they are grouped, §5 |
 | `timeScope` | `{"kind":"RetainedCapture"}`, or `{"kind":"AnalysisInterval","startTicks":"<n>","endTicks":"<n>"}` | always |
 | `grouping` | `EN-Grouping` name | a grouped request |
@@ -142,7 +145,10 @@ above: a whole-capture count, an interval, an implied domain, an implied layer, 
 that drops the policy, a grouping by process with rows outside the hash, an executable grouping with candidates, and
 owner, participant-by-peer and sender-with-peer focus, a `between` filter written from the first set to the second, a
 channel count that names the binding rule and no policy, and on the logical-operations basis a started count that names
-the operation rule, an owner's failed calls in an interval, and completed calls by process. The corpus fixes the axis values as well as the snapshot, so it
+the operation rule, an owner's failed calls in an interval, completed calls by process, a client-call duration whose
+cohort and statistic are written out, and served calls' 95th percentile over the calls started, by process. The three
+duration members were added by plan revision 186 under this version, as §9 allows: they are written for a duration alone,
+and no earlier specification could name one. The corpus fixes the axis values as well as the snapshot, so it
 pins the form alone: a new rule changes what the CLI prints, never these bytes. The test recomputes each line and each
 hash; a change to this file is a new canonicalization version or an ADR, never a test update.
 

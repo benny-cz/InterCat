@@ -117,8 +117,8 @@ generation it was derived from. A change to what pairs, how, or what a call hold
 ## 8. Not defined at this version
 
 - Operations of any other mechanism.
-- A duration metric over these calls, which needs a cohort a metric request cannot name yet (`contracts/metrics-v1.md`
-  §12).
+- Durations of any interval but a client call and a server execution: those two are measured by
+  `contracts/metrics-v1.md` §8a since revision 186.
 - Pairing a client call with the server call that served it, and pairing by thread nesting.
 - Persisting calls in a checkpoint, or extending them from one live generation to the next: a derivation reads its
   generation whole, holding every call record while it pairs and the keys with a call open while it walks them

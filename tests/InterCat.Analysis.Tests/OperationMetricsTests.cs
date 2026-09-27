@@ -55,7 +55,7 @@ public sealed class OperationMetricsTests
         Assert.Equal(8, started.Operations.Calls);
         Assert.Equal((RpcCallIndex.OperationRule, ProcessInstanceIndex.BindingRule), (started.OperationRule, started.BindingRule));
         Assert.Null(started.RelationRule);
-        Assert.Contains(started.Caveats, caveat => caveat.Contains("1 were open at capture end (censored, not failed)", StringComparison.Ordinal));
+        Assert.Contains(started.Caveats, caveat => caveat.Contains("1 open at capture end (censored, not failed)", StringComparison.Ordinal));
 
         // Six stops are in scope and four of them close a call whose start is in the evidence. The other two are stated:
         // one whose start came before the capture, and one that carried no activity id.
@@ -268,7 +268,7 @@ public sealed class OperationMetricsTests
 
         foreach ((MetricRequest request, string says) in new (MetricRequest, string)[]
         {
-            (Request(Metric.Duration), "cannot name a cohort"),
+            (DurationRequest(DurationInterval.IoCompletion), "No IoCompletion operation is derived"),
             (Request(Metric.ActiveChannels), "connection incarnations"),
             (Request(Metric.ActivePeers) with { Owner = client }, "no call has a resolved other end"),
             (Request(Metric.Errors) with { AccountingSide = AccountingSide.SendSide }, "no call is accounted to a side"),
@@ -295,6 +295,142 @@ public sealed class OperationMetricsTests
         });
         Assert.Equal(6, projected.Value);
         Assert.DoesNotContain(projected.Caveats, caveat => caveat.Contains("No other mechanism", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "§19.2: a duration measures one named interval over one cohort, and a censored call gets no duration")]
+    public void ADurationMeasuresOneIntervalOverOneCohort()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, EveryState());
+
+        // Client calls completed in scope: two measured, 10 µs each (100 ticks of 100 ns). The stop whose start came
+        // before the capture and the stop with no activity id are in the cohort and have no duration; the server's calls
+        // measure another named interval and are left out.
+        MetricResult client = Duration(session.Store, DurationInterval.ClientCall);
+        Assert.True(client.IsAvailable, client.UnavailableExplanation);
+        Assert.Equal((10_000L, MeasurementUnit.Nanoseconds), (client.Value!.Value, client.Unit!.Value));
+        Assert.Equal(new MetricDistribution(2, 10_000, 10_000, 10_000, 10_000, 20_000, 20_000), client.Distribution);
+        Assert.Equal((2L, 2L, 2L), (client.KnownContributions, client.UnknownContributions, client.ExcludedByProjection));
+        Assert.Equal(ObservationKind.RequestEnd, client.Operations!.CountedRecord);
+        Assert.Contains(client.Caveats, caveat => caveat.Contains("left-censored", StringComparison.Ordinal));
+        Assert.Contains(client.Caveats, caveat => caveat.Contains("measure server execution, another named interval", StringComparison.Ordinal));
+
+        // The calls started in scope: the call still open at capture end is right-censored, never counted as short.
+        MetricResult started = Duration(session.Store, DurationInterval.ClientCall, OperationCohort.StartedInRange);
+        Assert.Equal(ObservationKind.RequestStart, started.Operations!.CountedRecord);
+        Assert.Equal((2L, 2L), (started.KnownContributions, started.UnknownContributions));
+        Assert.Equal(1, started.Operations.InScope[RpcCallState.OpenAtCaptureEnd]);
+        Assert.Contains(started.Caveats, caveat => caveat.Contains("right-censored", StringComparison.Ordinal));
+
+        // Served calls: 3 µs and 1 µs. The median, the 95th percentile and the maximum are each a duration a call took.
+        MetricResult median = Duration(session.Store, DurationInterval.ServerExecution);
+        Assert.Equal(1_000, median.Value);
+        Assert.Equal(3_000, Duration(session.Store, DurationInterval.ServerExecution, statistic: DurationStatistic.Percentile95).Value);
+        Assert.Equal(3_000, Duration(session.Store, DurationInterval.ServerExecution, statistic: DurationStatistic.Maximum).Value);
+        Assert.Equal((4_000L, 4_000L), (median.Distribution!.SummedNanoseconds, median.Distribution.BusyNanoseconds));
+
+        // Scope comes from the counted record: the cohort completed in [0, 19 µs) holds only the served call ending at 18 µs.
+        // The interval is read before the side, so four stops fall outside it and the client's stop at 5 µs is the other
+        // named interval.
+        MetricResult early = SessionMetrics.Evaluate(session.Store, DurationRequest(DurationInterval.ServerExecution) with
+        {
+            Interval = new TimeRange(0, 190),
+        });
+        Assert.Equal((3_000L, 4L, 1L), (early.Value!.Value, early.ExcludedOutsideInterval, early.ExcludedByProjection));
+    }
+
+    [Fact(DisplayName = "§19.2: calls that ran at once sum to more than the time they kept their side busy")]
+    public void OverlappingCallsSumToMoreThanTheirBusyTime()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, Server, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Inbound, Server, 2, Activity(1), ServiceControl),
+            RpcCall(150, ObservationKind.RequestStart, Direction.Inbound, Server, 3, Activity(2), ServiceControl),
+            RpcCall(200, ObservationKind.RequestEnd, Direction.Inbound, Server, 4, Activity(1), status: 0),
+            RpcCall(250, ObservationKind.RequestEnd, Direction.Inbound, Server, 5, Activity(2), status: 0),
+        ]);
+
+        MetricDistribution distribution = Duration(session.Store, DurationInterval.ServerExecution).Distribution!;
+        Assert.Equal((20_000L, 15_000L), (distribution.SummedNanoseconds, distribution.BusyNanoseconds));
+        Assert.Equal(MetricUnavailableReason.NothingMeasured, Duration(session.Store, DurationInterval.ClientCall).Unavailable);
+    }
+
+    [Fact(DisplayName = "§19.2: durations grouped by process rank by their statistic, and a remainder is its calls' own distribution")]
+    public void GroupedDurationsRankByTheirStatistic()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. EveryState(),
+            Lifecycle(3, ObservationKind.Create, 600, 90),
+            RpcCall(800, ObservationKind.RequestStart, Direction.Outbound, 600, 91, Activity(20), ServiceControl),
+            RpcCall(1_300, ObservationKind.RequestEnd, Direction.Outbound, 600, 92, Activity(20), status: 0),
+            RpcCall(900, ObservationKind.RequestStart, Direction.Outbound, 600, 93, Activity(21), ServiceControl),
+            RpcCall(910, ObservationKind.RequestEnd, Direction.Outbound, 600, 94, Activity(21), status: 0),
+        ]);
+
+        // PID 600's calls took 50 µs and 1 µs, the client's 10 µs twice: by the maximum PID 600 ranks first, by the median
+        // the client does, because a median is a duration a call took, never an average.
+        MetricResult byMaximum = SessionMetrics.Evaluate(session.Store, DurationRequest(DurationInterval.ClientCall) with
+        {
+            Statistic = DurationStatistic.Maximum,
+            Grouping = LaneGrouping.InstanceOnly,
+        });
+        Assert.Equal([(600, 50_000L), (Client, 10_000L)], byMaximum.Groups.Select(group => (group.Process!.ProcessId, group.Value!.Value)));
+        Assert.False(byMaximum.GroupsPartitionTotal);
+        Assert.Contains(byMaximum.Caveats, caveat => caveat.Contains("does not add", StringComparison.Ordinal));
+
+        MetricResult byMedian = SessionMetrics.Evaluate(session.Store, DurationRequest(DurationInterval.ClientCall) with
+        {
+            Grouping = LaneGrouping.InstanceOnly,
+            RequestedRows = 1,
+        });
+        MetricGroup first = Assert.Single(byMedian.Groups);
+        Assert.Equal((Client, 10_000L), (first.Process!.ProcessId, first.Value!.Value));
+
+        // The remainder is the distribution of the calls it merges: PID 600's two, so its median is 1 µs.
+        Assert.Equal((1, (long?)1_000L, 2L), (byMedian.Remainder!.GroupsMerged, byMedian.Remainder.Value, byMedian.Remainder.Distribution!.Count));
+    }
+
+    [Fact(DisplayName = "§5: a duration names its interval, and one no operation measures is unavailable, never another renamed")]
+    public void ADurationNamesItsInterval()
+    {
+        MetricRejection unnamed = Assert.IsType<MetricRejection>(Request(Metric.Duration).Check());
+        Assert.Contains("There is no default", unnamed.Reason, StringComparison.Ordinal);
+        MetricRejection notADuration = Assert.IsType<MetricRejection>((Request(Metric.OperationsStarted) with
+        {
+            Cohort = OperationCohort.StartedInRange,
+        }).Check());
+        Assert.Contains("is not a duration", notADuration.Reason, StringComparison.Ordinal);
+        MetricRejection lifetime = Assert.IsType<MetricRejection>(DurationRequest(DurationInterval.MappingLifetime).Check());
+        Assert.Contains("resource-topology basis", lifetime.Reason, StringComparison.Ordinal);
+        MetricRejection onTopology = Assert.IsType<MetricRejection>((DurationRequest(DurationInterval.ClientCall) with
+        {
+            Basis = AnalysisBasis.ResourceTopology,
+        }).Check());
+        Assert.Contains("an operation's", onTopology.Reason, StringComparison.Ordinal);
+
+        using var session = new TemporarySession();
+        Publish(session.Store, EveryState());
+        MetricResult waits = SessionMetrics.Evaluate(session.Store, DurationRequest(DurationInterval.Wait));
+        Assert.Equal(MetricUnavailableReason.NoLogicalOperations, waits.Unavailable);
+        Assert.Contains("No Wait operation is derived", waits.UnavailableExplanation!, StringComparison.Ordinal);
+
+        // The defaults are written out, so leaving them implicit and naming them are one question (§10.5).
+        QueryIdentity implicitly = SessionMetrics.Identify(session.Store, DurationRequest(DurationInterval.ClientCall))!;
+        QueryIdentity explicitly = SessionMetrics.Identify(session.Store, DurationRequest(DurationInterval.ClientCall) with
+        {
+            Cohort = OperationCohort.CompletedInRange,
+            Statistic = DurationStatistic.Median,
+        })!;
+        Assert.Equal(implicitly, explicitly);
+        Assert.Contains(
+            "\"metric\":\"Duration\",\"durationInterval\":\"ClientCall\",\"cohort\":\"CompletedInRange\",\"statistic\":\"Median\"",
+            implicitly.CanonicalSpecification,
+            StringComparison.Ordinal);
+        Assert.NotEqual(implicitly.Hash, SessionMetrics.Identify(session.Store, DurationRequest(DurationInterval.ServerExecution))!.Hash);
     }
 
     [Fact(DisplayName = "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently")]
@@ -343,6 +479,24 @@ public sealed class OperationMetricsTests
                     Assert.True(
                         completed == grouped.Groups.Concat(grouped.Unattributed).Sum(group => group.Value ?? 0) + (grouped.Remainder?.Value ?? 0),
                         context);
+
+                    // Each side's durations over the calls completed in scope: the median is the duration by nearest rank.
+                    foreach ((DurationInterval named, int side) in new[] { (DurationInterval.ClientCall, Client), (DurationInterval.ServerExecution, Server) })
+                    {
+                        long[] durations =
+                        [
+                            .. kept
+                                .Where(call => call.Pid == side && call.Activity is not null && call.Start is not null && Inside(call.Stop))
+                                .Select(call => (call.Stop!.Value - call.Start!.Value) * 100)
+                                .Order(),
+                        ];
+                        long? median = durations.Length == 0
+                            ? null
+                            : durations[(int)Math.Max(0, (((durations.Length * 50L) + 99) / 100) - 1)];
+                        MetricResult duration = SessionMetrics.Evaluate(session.Store, Scoped(Metric.Duration) with { DurationInterval = named });
+                        Assert.True(median == duration.Value, $"{context}, {named}: {median} and {duration.Value}");
+                        Assert.True(durations.Length == (duration.Distribution?.Count ?? 0), context);
+                    }
                 }
             }
         }
@@ -438,6 +592,18 @@ public sealed class OperationMetricsTests
         Basis = AnalysisBasis.LogicalOperations,
         Metric = metric,
     };
+
+    private static MetricRequest DurationRequest(DurationInterval interval) => Request(Metric.Duration) with
+    {
+        DurationInterval = interval,
+    };
+
+    private static MetricResult Duration(
+        SessionStore store,
+        DurationInterval interval,
+        OperationCohort? cohort = null,
+        DurationStatistic? statistic = null) =>
+        SessionMetrics.Evaluate(store, DurationRequest(interval) with { Cohort = cohort, Statistic = statistic });
 
     private static MetricResult Evaluate(
         SessionStore store,

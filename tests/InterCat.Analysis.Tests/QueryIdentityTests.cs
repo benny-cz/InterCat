@@ -225,6 +225,19 @@ public sealed class QueryIdentityTests
             Grouping = LaneGrouping.InstanceOnly,
             RequestedRows = 10,
         }),
+        ("client-call-duration-with-its-cohort-and-statistic-implied", Request(Metric.Duration) with
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            DurationInterval = DurationInterval.ClientCall,
+        }),
+        ("served-p95-of-calls-started-by-process", Request(Metric.Duration) with
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            DurationInterval = DurationInterval.ServerExecution,
+            Cohort = OperationCohort.StartedInRange,
+            Statistic = DurationStatistic.Percentile95,
+            Grouping = LaneGrouping.InstanceOnly,
+        }),
     ];
 
     private static string Identity(MetricRequest request, SnapshotEntry[]? snapshot = null) =>

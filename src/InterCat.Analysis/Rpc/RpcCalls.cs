@@ -130,6 +130,7 @@ public readonly record struct RpcCallMark(long NativeTicks, int Segment, int Row
 /// </summary>
 public readonly record struct RpcCallOutcome(
     ProcessBinding Process,
+    RpcCallSide Side,
     RpcCallState State,
     long? Status,
     RpcCallMark? Start,
@@ -293,6 +294,7 @@ public sealed class RpcCallIndex
         {
             yield return new(
                 entry.Process,
+                entry.Side,
                 entry.State,
                 entry.HasStatus ? entry.Status : null,
                 entry.StartSegment >= 0 ? new RpcCallMark(entry.StartTicks, entry.StartSegment, entry.StartRow) : null,

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 185 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 186 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 186 — RPC call durations, by named interval, cohort and statistic (ADR-033):**
+  - **The request:** `icat metric --metric duration --duration client-call|server-execution` with `--cohort
+    completed|started` (default completed, §19.2) and `--statistic median|p95|max` (default median). The interval has no
+    default, because a client call and a server execution are different quantities (§5); the defaults are written out
+    before a request is identified. Three new §23 enumerations carry them.
+  - **Censoring stated, not measured:** a call of the cohort without both records - a stop whose start came before the
+    capture (left-censored), a call open at capture end (right-censored), a record with no activity id or a reused one -
+    is stated by state and never given a duration. The other side's calls are counted apart as another interval.
+  - **The answer:** a distribution by nearest rank (count, minimum, median, 95th percentile, maximum) with the summed
+    call time and the busy time their union covers. Grouped, groups rank by the statistic with each group's measured
+    calls beside it; a remainder is its calls' own distribution, and the result says its groups do not add up.
+  - On a real 30-second recording: 3,945 client calls, median 44 µs, 95th percentile 249 µs, one 11 s call; 22.2 s
+    summed, 21.6 s busy. Served calls ranked by 95th percentile put a three-call process first, which the new "Calls
+    measured" column makes plain.
 
 - **Revision 185 — a busy channel's calls are drawn as density rather than cut off:**
   - **What a real session needed:** a view holding more calls than the call lane draws one by one (4,000) drew the first
@@ -1632,8 +1647,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      process's RPC channels and their calls on the ladder, revision 180 admits RPC to Explore, 32-bit callers included,
      revision 181 draws a channel's calls in the timeline, and revision 183 counts them on the logical-operations
      metric basis (ADR-032). Next, in order:
-     1. A duration metric over the calls, once a request can name its cohort (§19.2: completed in range by default,
-        started in range on request), with left- and right-censored calls marked.
+     1. Done in revision 186: durations of client calls and server executions by cohort and statistic (ADR-033).
      2. Extend the calls between live generations, then keep them with the derivation checkpoint, when a real capture
         needs it. Revision 184 made pairing 3.7 times cheaper; a live session with its RPC rung open still pairs every
         call again at each generation (1.7 s at the end of a 10M-record session with 2,000,000 calls, tens of
@@ -1678,6 +1692,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 186 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
+  passed, 4 skipped**, zero failures. `icat metric --metric duration` was run over a 30-second Explore recording made
+  with `icat record` while the RPC truth workload ran; the recording stays in scratch.
 - Revision 185 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,242 tests: 1,238
   passed, 4 skipped**, zero failures. The Release Desktop opened a 90-second Explore recording made with `icat record`
   while the RPC truth workload ran, driven through UI Automation and keys and clicks posted to its window alone, and

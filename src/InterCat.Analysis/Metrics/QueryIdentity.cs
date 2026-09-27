@@ -162,6 +162,23 @@ public static class AnalysisSpecification
             json.Token("accountingSide", side.ToString());
         }
 
+        // A duration's interval, cohort and statistic are written, materialized, for a duration alone, so no other request's
+        // bytes change (query-identity-v1 §9).
+        if (request.DurationInterval is { } named)
+        {
+            json.Token("durationInterval", named.ToString());
+        }
+
+        if (request.Cohort is { } cohort)
+        {
+            json.Token("cohort", cohort.ToString());
+        }
+
+        if (request.Statistic is { } statistic)
+        {
+            json.Token("statistic", statistic.ToString());
+        }
+
         // A policy is named only where it decides something: which records a process filter keeps, or which group a
         // record joins. A channel count over every process admits every holder alike, so it names none.
         if (AdmitsByPolicy(request))
