@@ -93,15 +93,19 @@ public static class EvidenceRowText
         ArgumentNullException.ThrowIfNull(record);
         IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
         int? processId = OwnerProcessId(record.Observation);
+
+        // An owner the payload does not name is the process that raised the record (ADR-030), and is said to be: the
+        // record's attribution quality describes its payload, which names none.
+        string raisedBy = processId is not null && record.Observation.OwnerProcessId is null ? "raised by " : string.Empty;
         string pid = processId is { } id
-            ? string.Create(format, $"PID {id}")
+            ? string.Create(format, $"{raisedBy}PID {id}")
             : "no owner process named";
         if (record.Owner is not { } owner) return pid;
         if (owner.Instance is null)
             return processId is null ? pid : pid + " · owner unresolved: " + Reason(owner.Reason);
         string named = string.IsNullOrWhiteSpace(owner.ImageName)
-            ? string.Create(format, $"PID {owner.ProcessId} · executable not witnessed")
-            : string.Create(format, $"{owner.ImageName} · PID {owner.ProcessId}");
+            ? string.Create(format, $"{raisedBy}PID {owner.ProcessId} · executable not witnessed")
+            : string.Create(format, $"{raisedBy}{owner.ImageName} · PID {owner.ProcessId}");
         string qualifier = owner.Strength == RelationStrength.Candidate ? " · candidate"
             : owner.Strength == RelationStrength.Conflicting ? " · conflicting" : string.Empty;
         string admitted = owner.AdmittedUnderPolicy ? string.Empty : " · not admitted by the evidence policy";

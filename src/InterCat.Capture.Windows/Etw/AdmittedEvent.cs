@@ -111,6 +111,9 @@ public struct AdmittedEvent
     private ExtendedDataAvailability extendedAvailability;
 
     public int SourceIndex { get; set; }
+
+    /// <summary>The pointer width of the process that raised the record, 4 or 8; 0 when it was not stated, which is the plan's.</summary>
+    public int PointerSize { get; set; }
     public int EventId { get; set; }
     public int Version { get; set; }
     public int Opcode { get; set; }

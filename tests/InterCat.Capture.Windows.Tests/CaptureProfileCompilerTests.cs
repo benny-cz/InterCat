@@ -231,15 +231,16 @@ public sealed class CaptureProfileCompilerTests
             () => ProviderEnablementCompiler.Compile([network], processFilters: networkFilters));
     }
 
-    [Fact(DisplayName = "IC-012: Explore records requested and effective sources with measured optional omissions")]
+    [Fact(DisplayName = "IC-012: Explore takes every measured source it compiles and says why an unmeasured one is left out")]
     public void ExploreCompilesRequiredSourcesAndExplainsOmissions()
     {
         SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
         SourceAdmissionPlan network = BuildPlan(WindowsSourceCatalog.KernelNetworkSourceId, 1, 10);
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 2, 5);
 
         EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
             new(CaptureProfileKind.Explore),
-            new SourcePlanCompilation([process, network], []));
+            new SourcePlanCompilation([process, network, rpc], []));
 
         Assert.True(plan.CanStart);
         Assert.Equal(CapabilityInventoryProbe.AdapterVersion, plan.AdapterVersion);
@@ -248,21 +249,30 @@ public sealed class CaptureProfileCompilerTests
         Assert.Equal("explore", plan.EffectiveProfileId);
         Assert.Equal(AdmissionMode.MetadataOnly, plan.EffectiveAdmission);
         Assert.Same(CaptureBodyAdmissionPolicies.MetadataOnly, plan.BodyPolicy);
-        Assert.Equal(2, plan.Sources.Count);
-        Assert.Equal(2, plan.Providers.Count);
+        Assert.Equal(3, plan.Sources.Count);
+        Assert.Equal(3, plan.Providers.Count);
         Assert.All(
             plan.SourceDecisions.Where(decision => decision.Required),
+            decision => Assert.Equal(ProfileSourceDecisionState.Included, decision.State));
+        Assert.All(
+            plan.SourceDecisions.Where(decision => decision.State == ProfileSourceDecisionState.Included),
             decision =>
             {
-                Assert.Equal(ProfileSourceDecisionState.Included, decision.State);
-                // Whatever class a measurement gives, a required source is one whose capture impact was measured (§4.3).
+                // Whatever class a measurement gives, an included source is one whose capture impact was measured (§4.3).
                 Assert.NotEqual(OverheadClass.Unmeasured, decision.Overhead);
                 Assert.NotNull(decision.OverheadEvidence);
             });
         Assert.All(plan.Providers, provider => Assert.Equal(4, provider.Level));
+
+        // RPC joined once its records bind, pair into calls and reach the ladder; ALPC is still unmeasured.
         Assert.Contains(
             plan.SourceDecisions,
             decision => decision.SourceId == WindowsSourceCatalog.RpcSourceId
+                && decision.State == ProfileSourceDecisionState.Included
+                && decision.Overhead == OverheadClass.Low);
+        Assert.Contains(
+            plan.SourceDecisions,
+            decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId
                 && decision.State == ProfileSourceDecisionState.Omitted
                 && decision.Reason.Contains("unmeasured", StringComparison.OrdinalIgnoreCase));
     }
@@ -406,7 +416,9 @@ public sealed class CaptureProfileCompilerTests
         WindowsSourceDefinition definition = WindowsSourceCatalog.Find(sourceId)!;
         Guid provider = sourceId == WindowsSourceCatalog.KernelProcessSourceId
             ? Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716")
-            : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
+            : sourceId == WindowsSourceCatalog.RpcSourceId
+                ? Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39")
+                : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
         var admitted = new AdmittedEventPlan
         {
             SourceIndex = sourceIndex,

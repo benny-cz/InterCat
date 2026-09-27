@@ -102,17 +102,20 @@ public static class AdmissionPlanCompiler
         CompiledBodyAdmissionPolicy bodyPolicy,
         List<string> diagnostics)
     {
-        Dictionary<string, (int Offset, ProviderSchemaField Field)> resolvable = new(StringComparer.OrdinalIgnoreCase);
+        // Each resolvable field's offset, and whether a pointer-sized field precedes it: an offset past a pointer moves
+        // with the width of the process that raised the record, one before any does not.
+        Dictionary<string, (int Offset, ProviderSchemaField Field, bool AfterPointer)> resolvable = new(StringComparer.OrdinalIgnoreCase);
         int offset = 0;
+        bool afterPointer = false;
         string? blockedFrom = null;
-        (int Offset, ProviderSchemaField Field)? leadingSid = null;
+        (int Offset, ProviderSchemaField Field, bool AfterPointer)? leadingSid = null;
         ProviderSchemaField? afterSid = null;
         bool followsSid = false;
         foreach (ProviderSchemaField field in descriptor.Fields)
         {
             if (blockedFrom is null)
             {
-                resolvable[field.Name] = (offset, field);
+                resolvable[field.Name] = (offset, field, afterPointer);
             }
             else if (followsSid)
             {
@@ -131,6 +134,7 @@ public static class AdmissionPlanCompiler
             if (field.WidthKind == FieldWidthKind.PointerSized)
             {
                 offset += pointerSize;
+                afterPointer = true;
                 continue;
             }
 
@@ -138,7 +142,7 @@ public static class AdmissionPlanCompiler
             // one field after a leading SID, whose offset the SID itself determines.
             if (blockedFrom is null && string.Equals(field.InType, "win:SID", StringComparison.Ordinal))
             {
-                leadingSid = (offset, field);
+                leadingSid = (offset, field, afterPointer);
                 followsSid = true;
             }
 
@@ -148,13 +152,14 @@ public static class AdmissionPlanCompiler
         var slots = new List<AdmittedSlotPlan>();
         var report = new List<FieldCapability>();
         int minimumLength = 0;
+        bool widthDependent = false;
         bool nameSlotTaken = false;
         bool identifierSlotTaken = false;
         int addressSlots = 0;
 
         foreach (AdmittedFieldIntent fieldIntent in intent.Fields)
         {
-            if (!resolvable.TryGetValue(fieldIntent.FieldName, out (int Offset, ProviderSchemaField Field) resolved))
+            if (!resolvable.TryGetValue(fieldIntent.FieldName, out (int Offset, ProviderSchemaField Field, bool AfterPointer) resolved))
             {
                 if (afterSid is { } named
                     && leadingSid is { } sid
@@ -177,6 +182,7 @@ public static class AdmissionPlanCompiler
                         SourceField = fieldIntent.SourceField,
                     });
                     nameSlotTaken = true;
+                    widthDependent |= sid.AfterPointer;
                     minimumLength = Math.Max(minimumLength, sid.Offset + MinimumSidLength);
                     report.Add(new(
                         named.Name,
@@ -325,6 +331,7 @@ public static class AdmissionPlanCompiler
             nameSlotTaken |= isName;
             identifierSlotTaken |= isIdentifier;
             addressSlots += isAddress ? 1 : 0;
+            widthDependent |= resolved.AfterPointer || resolved.Field.WidthKind == FieldWidthKind.PointerSized;
             minimumLength = Math.Max(
                 minimumLength,
                 resolved.Offset + (isAnsiName ? 1 : isName ? 2 : isIdentifier ? 16 : resolvedWidth));
@@ -368,6 +375,7 @@ public static class AdmissionPlanCompiler
             Direction = intent.Direction,
             MinimumBodyLength = minimumLength,
             PointerSize = pointerSize,
+            PointerWidthIndependent = !widthDependent,
             SchemaFingerprint = fingerprint,
             BodyPolicy = bodyPolicy,
             Slots = slots,

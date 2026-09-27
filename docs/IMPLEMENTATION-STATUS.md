@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 179 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 180 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 180 — Explore takes RPC, and a 32-bit process's calls are admitted (adapter 0.8.0):**
+  - **Measured class recorded:** RPC is Low (revision 176's seven pairs), so Explore compiles it beside process and
+    network. It joined once its records bind to a process, pair into calls and reach the ladder (177–179).
+  - **Found by the live test:** the first 60-second Explore recording counted 24 RPC records undecodable, every one a
+    `PointerWidthMismatch`: a 32-bit process (mirc.exe) raises its records at width 4, and admission refused any width
+    but the plan's. The ledger said so honestly, which hatched every timeline column as a partial gap and put "RPC has
+    a coverage gap" in the status bar.
+  - **The fix:** a descriptor whose admitted fields all lie before any pointer-sized field, and are none, decodes at
+    the same offsets at either width. Its plan says so (`pointerWidthIndependent`), admits a record of either width,
+    and the journal envelope keeps the record's own width; replay accepts it by the same rule. Any other plan still
+    admits only its own width. RPC's three admitted fields come before its strings, so they qualify.
+  - **Checked again on real ETW:** a second recording counted RPC Covered, 4,014 records, none refused; the journal
+    held 24 width-4 records from mirc.exe, which paired into 12 completed calls with their procedures, and
+    `icat rederive --check` replayed all 5,863 records exactly. Over the two recordings `icat operations` paired 2,254
+    of 2,260 and 2,000 of 2,014 calls: the rest were open at capture end, begun before it, or carried no id. Headless
+    renders of the real session's process, RPC channel and call rungs read as designed.
+  - **The owner line of an RPC record** now reads "raised by svchost.exe · PID 3632": its stored attribution quality
+    describes a payload that names no owner, and the line says where the owner came from instead.
+  - **Adapter 0.8.0**, because admission changed. The fixtures were not measured again: every record of their 64-bit
+    workloads is width 8, which both versions admit alike.
 
 - **Revision 179 — a process's RPC calls on the ladder: channels by interface, their calls, each call's records:**
   - **L2:** a process that made RPC calls lists them as channels of its own, one per side and interface, ranked by
@@ -1522,15 +1543,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
    - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), revision 177 binds an RPC record to the
-     process that raised it (ADR-030), revision 178 pairs its calls (ADR-031, `icat operations`), and revision 179 puts
-     a process's RPC channels and their calls on the ladder. Next, in order:
+     process that raised it (ADR-030), revision 178 pairs its calls (ADR-031, `icat operations`), revision 179 puts a
+     process's RPC channels and their calls on the ladder, and revision 180 admits RPC to Explore, 32-bit callers
+     included. Next, in order:
      1. Draw an RPC channel's calls in the timeline: one lane of duration bars coloured by outcome at its rung, and the
         selected call marked. Today the timeline at an RPC rung shows the whole session.
-     2. Record RPC's measured class, which lets Explore take it, and live-test a recorded session with RPC.
-     3. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
+     2. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
         today that basis still says `NoLogicalOperations`.
-     4. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
-        from every call record on first use: 0.66 s for 500,000 calls.
+     3. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
+        from every call record on first use: 0.66 s for 500,000 calls, 0.43 s for a real minute of Explore.
+     4. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
+        protocol specification names get a name.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -1564,6 +1587,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 180 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,227 tests: 1,224
+  passed, 3 skipped**, zero failures. Two 60-second Explore recordings on real ETW were checked with `icat operations`
+  and `icat rederive --check`, and the second's rungs were rendered headlessly; both sessions stay in scratch.
 - Revision 179 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,225 tests: 1,222
   passed, 3 skipped**, zero failures. The process and RPC channel rungs were checked in headless renders at 1080×700.
 - Revision 178 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,218 tests: 1,215

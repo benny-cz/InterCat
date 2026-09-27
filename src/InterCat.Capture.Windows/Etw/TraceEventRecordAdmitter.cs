@@ -102,7 +102,8 @@ internal sealed class TraceEventRecordAdmitter
             return;
         }
 
-        if (data.PointerSize != descriptorPlan.PointerSize)
+        if (data.PointerSize != descriptorPlan.PointerSize
+            && !(descriptorPlan.PointerWidthIndependent && data.PointerSize is 4 or 8))
         {
             sink.OnUndecodable(UndecodableReason.PointerWidthMismatch, in delivered);
             ReportRejectedCallback(callbackStarted);
@@ -110,6 +111,7 @@ internal sealed class TraceEventRecordAdmitter
         }
 
         AdmittedEvent admitted = default;
+        admitted.PointerSize = data.PointerSize;
         admitted.SourceIndex = descriptorPlan.SourceIndex;
         admitted.EventId = eventId;
         admitted.Version = data.Version;

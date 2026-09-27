@@ -61,7 +61,8 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 - extended-data and stack settings;
 - requested/effective mechanism, selected and initial-view PIDs, aggregate broader-capture state,
   consent and every per-source process scope;
-- every admitted source, descriptor identity, schema fingerprint and bounded slot definition; and
+- every admitted source, descriptor identity, schema fingerprint, bounded slot definition and, after each
+  descriptor's pointer size, whether it admits the other pointer width (a Boolean, revision 180); and
 - every provider GUID/name, level, keyword mask, event allow/deny list, process filter, capture-state and
   stack request.
 

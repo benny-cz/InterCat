@@ -201,6 +201,33 @@ public sealed class AdmittedEventEnvelopeMapperTests
         Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(envelope, wrong));
     }
 
+    [Fact(DisplayName = "R21: a 32-bit process's record keeps its width, and only a plan whose offsets do not move admits it")]
+    public void ARecordKeepsItsPointerWidth()
+    {
+        AdmittedEventPlan independent = BuildEventPlan() with { PointerWidthIndependent = true };
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(independent)], ClockId.New());
+        AdmittedEvent narrow = BuildAdmitted();
+        narrow.PointerSize = 4;
+        narrow.SetSlot(0, 64);
+
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(narrow, independent, CaptureId.New());
+        Assert.Equal(4, envelope.PointerSize);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, independent);
+        Assert.Equal(4, replayed.PointerSize);
+        Assert.True(replayed.TryGetSlot(0, out long procedure));
+        Assert.Equal(64, procedure);
+
+        // A plan with a pointer-sized field before its admitted ones would read them at other offsets: it writes and
+        // replays only its own width.
+        AdmittedEventPlan dependent = independent with { PointerWidthIndependent = false };
+        Assert.Throws<InvalidDataException>(() => mapper.ToEnvelope(narrow, dependent, CaptureId.New()));
+        Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(envelope, dependent));
+
+        // A record that states no width is the plan's, as every record was before widths were kept.
+        using RecordEnvelopeV1 unstated = mapper.ToEnvelope(BuildAdmitted(), dependent, CaptureId.New());
+        Assert.Equal(8, unstated.PointerSize);
+    }
+
     private static AdmittedEvent BuildAdmitted() => new()
     {
         SourceIndex = 4,

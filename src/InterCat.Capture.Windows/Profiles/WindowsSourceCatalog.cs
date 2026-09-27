@@ -353,6 +353,8 @@ public static class WindowsSourceCatalog
             StartupBehaviour = "No rundown of calls in flight. A call open at capture start is censored, not failed (I20).",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Documented,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/capture-impact-20260927T121747Z/impact.json",
             DeniedEventIds = [10, 11],
             AdmittedEvents =
             [
@@ -368,6 +370,11 @@ public static class WindowsSourceCatalog
                 "Stop events carry a status and no size. RPC therefore yields operations, never a byte volume, "
                 + "and an RPC annotation never adds transport bytes (I11, P4).",
                 "A call is paired with its completion through the event activity id, not by time proximity (P8).",
+                "Measured on FX-RPC-001: every record is raised in the process it describes - a client call in the "
+                + "caller, a served call in the host - so a record binds to its header's process (ADR-030).",
+                "Capture impact alone, seven pairs on 2026-09-27: a median of 0.52 CPU pp (pairs from -4.2 to +4.7) "
+                + "with no throughput regression, loss-free, so the class is Low. It was recorded once the records "
+                + "bind to a process, pair into calls and reach the ladder (revisions 177 to 179).",
             ],
         };
 

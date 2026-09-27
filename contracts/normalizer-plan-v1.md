@@ -50,3 +50,13 @@ identifier: a mask byte of the addresses the record holds, then each one's 16 by
 is projected as `IAP1`, byte for byte as before, so a journal of IPv4 records is unchanged. A decoder refuses an
 `IAP2` mask that names no address or one a record cannot hold. A build before revision 174 refuses an `IAP2` record
 as a projection with the wrong marker, rather than replaying it without its addresses.
+
+## Pointer width (revision 180)
+
+A user-mode provider raises a record at the pointer width of the process that raised it, so a 32-bit process's
+records arrive at width 4 on a 64-bit system. A descriptor's `pointerWidthIndependent` member is true when every
+admitted field lies before any pointer-sized field and is not one itself: its offsets are the same at either width.
+Such a plan admits a record of either width, and the record's own width is its envelope's `pointerSize`; any other
+plan admits only its own `pointerSize` and counts the rest as undecodable (`PointerWidthMismatch`). Replay accepts an
+envelope's width by the same rule. A plan written before revision 180 has no member and reads as false, as it
+admitted. A build before revision 180 refuses a plan that has it, as an unknown member.

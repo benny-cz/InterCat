@@ -174,8 +174,10 @@ recordChecksum          u32    CRC-32C of every byte of this record above
 - **The buffer context** says which processor delivered the record and from which logger. Equal-time
   records from different CPUs can arrive in an unpredictable order, and the processor is part of telling
   them apart (§18.4).
-- **`pointerSize`** travels with the record because a reader on another architecture needs it to
-  interpret the fields, and the recording machine's width is not the reading machine's (§18.1).
+- **`pointerSize`** is the width of the process that raised the record, 4 or 8. It travels with the record because
+  a reader on another architecture needs it to interpret the fields, and the recording machine's width is not the
+  reading machine's (§18.1). Before revision 180 it was always the plan's width, because a record of another width
+  was refused (`contracts/normalizer-plan-v1.md`, pointer width).
 - **`timestampEncoding` and `clockId`** keep the native reading in its original encoding. A converted
   value is never stored in place of it (I8, ADR-006).
 - **`originalLength` on an extended item and on the body** is what makes a truncation visible. A prefix

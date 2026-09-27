@@ -1134,6 +1134,7 @@
         "R20: the retained descriptor plan round-trips and refuses a different journal schema"
       ],
       "R21": [
+        "R21: a 32-bit process's record keeps its width, and only a plan whose offsets do not move admits it",
         "R21: a binary field is fixed only by a stated length, and no bytes are read as an address unless the manifest says so",
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
@@ -1154,6 +1155,7 @@
         "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
         "R21: a negative result records the control that proves the source was live",
         "R21: a process lane's quiet interval is judged by what the capture collected, not left unknown",
+        "R21: a record of the other pointer width is admitted only where no pointer moves its admitted fields",
         "R21: a record the full queue dropped is callback-queue loss, not a delivery of its descriptor",
         "R21: a record whose extended items were unreachable replays as unavailable",
         "R21: a recording published in chunks can be followed, and its last generation holds every chunk",

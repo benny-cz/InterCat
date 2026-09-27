@@ -58,7 +58,8 @@ public sealed class AdmittedEventEnvelopeMapper
         CaptureBodyAdmissionPolicies.EnsureSupported(plan.BodyPolicy);
         if (admitted.SourceIndex != plan.SourceIndex
             || admitted.EventId != plan.EventId
-            || admitted.Version != plan.Version)
+            || admitted.Version != plan.Version
+            || !WidthAdmitted(plan, RecordWidth(admitted, plan)))
         {
             throw new InvalidDataException(
                 "An admitted callback record does not match the descriptor plan selected for persistence.");
@@ -109,7 +110,7 @@ public sealed class AdmittedEventEnvelopeMapper
                 ClockId = clockId,
                 TimestampEncoding = TimestampEncoding.Qpc,
                 NativeTicks = admitted.TimestampQpc,
-                PointerSize = checked((byte)plan.PointerSize),
+                PointerSize = checked((byte)RecordWidth(admitted, plan)),
                 SchemaReference = schemaReference,
                 AdmissionPolicyReference = policyReference,
                 ExtendedItems = extendedItems,
@@ -236,6 +237,7 @@ public sealed class AdmittedEventEnvelopeMapper
             RecordOrdinal = checked((long)envelope.RecordOrdinal),
             ActivityId = envelope.Header.ActivityId,
             RelatedActivityId = envelope.Header.RelatedActivityId,
+            PointerSize = envelope.PointerSize,
         };
 
         byte knownMask = reader.ReadByte();
@@ -317,11 +319,22 @@ public sealed class AdmittedEventEnvelopeMapper
             && envelope.Header.ProviderId == plan.ProviderGuid
             && envelope.Header.EventId == plan.EventId
             && envelope.Header.Version == plan.Version
-            && envelope.PointerSize == plan.PointerSize
+            && WidthAdmitted(plan, envelope.PointerSize)
             ? admitted
             : throw new InvalidDataException(
                 "A journal-v1 projection no longer matches its admitted descriptor plan.");
     }
+
+    /// <summary>The pointer width a record was raised at: its own when the callback stated it, else the plan's.</summary>
+    private static int RecordWidth(AdmittedEvent admitted, AdmittedEventPlan plan) =>
+        admitted.PointerSize == 0 ? plan.PointerSize : admitted.PointerSize;
+
+    /// <summary>
+    /// Whether a plan admits a record of this pointer width: its own width always, and the other one only when every
+    /// admitted field lies before any pointer-sized field, so the offsets do not move (normalizer-plan-v1).
+    /// </summary>
+    private static bool WidthAdmitted(AdmittedEventPlan plan, int width) =>
+        width == plan.PointerSize || (plan.PointerWidthIndependent && width is 4 or 8);
 
     /// <summary>
     /// Fingerprints an envelope's identity and contents in a fixed order, so what a replay reads can be

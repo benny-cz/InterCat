@@ -98,10 +98,13 @@ public sealed class EvidenceRowTextTests
     {
         ObservationRowV1 call = RpcCall(1, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 1_960, 1);
         Assert.Equal(1_960, EvidenceRowText.OwnerProcessId(call));
-        Assert.Equal("PID 1960", EvidenceRowText.Owner(Record(call), Invariant));
-        Assert.Equal("PID 1960 · owner unresolved: after this PID's last instance exited",
+        Assert.Equal("raised by PID 1960", EvidenceRowText.Owner(Record(call), Invariant));
+        Assert.Equal("raised by PID 1960 · owner unresolved: after this PID's last instance exited",
             EvidenceRowText.Owner(Record(call,
                 new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.AfterExit, false)), Invariant));
+        Assert.Equal("raised by services.exe · PID 1960", EvidenceRowText.Owner(Record(call,
+            new(new ProcessInstanceId(Guid.NewGuid()), 1_960, "services.exe", RelationStrength.Correlated,
+                ProcessBindingReason.Bound, true)), Invariant));
 
         // A kernel record is raised in whatever process the kernel was in, so its header names no owner (§4.1).
         ObservationRowV1 kernel = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null) with { HeaderProcessId = 1_960 };

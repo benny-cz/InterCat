@@ -759,6 +759,7 @@ internal static class PreparedPlanDigest
                     writer.Write((int)item.Direction);
                     writer.Write(item.MinimumBodyLength);
                     writer.Write(item.PointerSize);
+                    writer.Write(item.PointerWidthIndependent);
                     WriteString(writer, item.SchemaFingerprint);
                     WriteBodyPolicy(writer, item.BodyPolicy);
                     writer.Write(item.Slots.Count);

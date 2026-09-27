@@ -85,6 +85,13 @@ public sealed record AdmittedEventPlan
     public int PointerSize { get; init; } = 8;
 
     /// <summary>
+    /// Whether every admitted field lies before any pointer-sized field and is not one, so a record raised by a process
+    /// of the other pointer width decodes at the same offsets. A user-mode provider raises a 32-bit process's records at
+    /// width 4; such a record is admitted only by a plan this holds for, and otherwise counted as undecodable.
+    /// </summary>
+    public bool PointerWidthIndependent { get; init; }
+
+    /// <summary>
     /// SHA-256 identity of the saved provider schema, descriptor layout, admitted slots and body policy.
     /// A different projection therefore cannot reuse the same journal schema reference accidentally.
     /// </summary>

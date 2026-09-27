@@ -145,6 +145,62 @@ public sealed class ManifestSchemaTests
             Enumerable.Range(0, descriptor.Slots.Count).Select(slot => AdmittedEvent.AddressOrdinal(descriptor.Slots, slot)));
     }
 
+    // An RPC call start as Microsoft-Windows-RPC declares it, and two templates whose admitted fields a pointer moves.
+    private const string PointerManifest = """
+        <instrumentationManifest xmlns="http://schemas.microsoft.com/win/2004/08/events">
+         <instrumentation><events>
+          <provider name="Sample-Rpc" guid="{6ad52b32-d609-4be9-ae07-ce8dae937e39}">
+           <templates>
+            <template tid="CallStart">
+             <data name="InterfaceUuid" inType="win:GUID" />
+             <data name="ProcNum" inType="win:UInt32" />
+             <data name="Protocol" inType="win:UInt32" />
+             <data name="NetworkAddress" inType="win:UnicodeString" />
+             <data name="Context" inType="win:Pointer" />
+            </template>
+            <template tid="AfterPointer">
+             <data name="Context" inType="win:Pointer" />
+             <data name="ProcNum" inType="win:UInt32" />
+            </template>
+            <template tid="IsPointer">
+             <data name="ProcNum" inType="win:UInt32" />
+             <data name="Context" inType="win:Pointer" />
+            </template>
+           </templates>
+           <events>
+            <event value="5" version="1" template="CallStart" />
+            <event value="40" version="0" template="AfterPointer" />
+            <event value="41" version="0" template="IsPointer" />
+           </events>
+          </provider>
+         </events></instrumentation>
+        </instrumentationManifest>
+        """;
+
+    [Fact(DisplayName = "R21: a record of the other pointer width is admitted only where no pointer moves its admitted fields")]
+    public void OnlyFieldsNoPointerMovesAreWidthIndependent()
+    {
+        ProviderSchema schema = ManifestParser.Parse(PointerManifest);
+        AdmittedEventPlan Plan(int eventId, params AdmittedFieldIntent[] fields) => Assert.Single(AdmissionPlanCompiler.Compile(
+            BuildDefinition([new(eventId, eventId == 5 ? 1 : 0, "call", Mechanism.Rpc, ObservationLayer.Application,
+                ObservationKind.RequestStart, Direction.Outbound, fields)]), schema, 0).Events);
+
+        // The fields RPC admits come before its strings and any pointer, so a 32-bit caller's record decodes the same.
+        AdmittedEventPlan call = Plan(5,
+            new("InterfaceUuid", FieldRole.CorrelationKey),
+            new("ProcNum", FieldRole.CorrelationKey, SourceField: SourceField.RpcProcedureNumber),
+            new("Protocol", FieldRole.Unclassified, SourceField: SourceField.RpcProtocolSequence));
+        Assert.Equal([0, 16, 20], call.Slots.Select(slot => slot.Offset));
+        Assert.True(call.PointerWidthIndependent);
+
+        // A field after a pointer sits at 4 or 8 depending on who raised the record, and a pointer is itself either width.
+        AdmittedEventPlan after = Plan(40, new AdmittedFieldIntent("ProcNum", FieldRole.CorrelationKey));
+        Assert.Equal(8, Assert.Single(after.Slots).Offset);
+        Assert.False(after.PointerWidthIndependent);
+        Assert.False(Plan(41, new AdmittedFieldIntent("Context", FieldRole.CorrelationKey)).PointerWidthIndependent);
+        Assert.True(Plan(41, new AdmittedFieldIntent("ProcNum", FieldRole.CorrelationKey)).PointerWidthIndependent);
+    }
+
     [Fact(DisplayName = "R21: a binary field is fixed only by a stated length, and no bytes are read as an address unless the manifest says so")]
     public void OnlyADeclaredIpv6AddressIsReadAsOne()
     {
