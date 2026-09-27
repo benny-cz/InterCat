@@ -20,13 +20,33 @@ public sealed record ProcessBytes(
     /// <summary>A process with no send or receive record in scope.</summary>
     public static ProcessBytes None { get; } = new(0, 0, 0, 0, 0, 0);
 
+    /// <summary>
+    /// Bytes on the process's own records that state neither side, which only endpoint activity takes: every contribution
+    /// at the endpoint that recorded it (`metrics-v1` §4).
+    /// </summary>
+    public long OtherBytes { get; init; }
+
+    public long OtherMeasured { get; init; }
+
+    public long OtherUnmeasured { get; init; }
+
     /// <summary>The value a ranking reads, with the measured and unmeasured contributions behind it.</summary>
-    public RankedValue Of(RankingMetric metric) => metric switch
+    public RankedValue Of(RankingMetric metric)
     {
-        RankingMetric.BytesSent => new(metric, SentMeasured > 0 ? SentBytes : null, SentMeasured, SentUnmeasured),
-        RankingMetric.BytesReceived => new(metric, ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured),
-        _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only a byte ranking reads a process's bytes."),
-    };
+        switch (metric)
+        {
+            case RankingMetric.BytesSent:
+                return new(metric, SentMeasured > 0 ? SentBytes : null, SentMeasured, SentUnmeasured);
+            case RankingMetric.BytesReceived:
+                return new(metric, ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured);
+            case RankingMetric.EndpointBytes:
+                long measured = SentMeasured + ReceivedMeasured + OtherMeasured;
+                return new(metric, measured > 0 ? checked(SentBytes + ReceivedBytes + OtherBytes) : null, measured,
+                    SentUnmeasured + ReceivedUnmeasured + OtherUnmeasured);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only a byte ranking reads a process's bytes.");
+        }
+    }
 
     /// <summary>Two processes' bytes together: a group's, which its members partition.</summary>
     public ProcessBytes Plus(ProcessBytes other)
@@ -38,7 +58,12 @@ public sealed record ProcessBytes(
             SentUnmeasured + other.SentUnmeasured,
             checked(ReceivedBytes + other.ReceivedBytes),
             ReceivedMeasured + other.ReceivedMeasured,
-            ReceivedUnmeasured + other.ReceivedUnmeasured);
+            ReceivedUnmeasured + other.ReceivedUnmeasured)
+        {
+            OtherBytes = checked(OtherBytes + other.OtherBytes),
+            OtherMeasured = OtherMeasured + other.OtherMeasured,
+            OtherUnmeasured = OtherUnmeasured + other.OtherUnmeasured,
+        };
     }
 }
 
@@ -233,6 +258,9 @@ public static class SessionByteRanking
         private readonly long[] received = new long[slots];
         private readonly long[] receivedMeasured = new long[slots];
         private readonly long[] receivedUnmeasured = new long[slots];
+        private readonly long[] other = new long[slots];
+        private readonly long[] otherMeasured = new long[slots];
+        private readonly long[] otherUnmeasured = new long[slots];
 
         public void Add(int slot, SideMeasurement side)
         {
@@ -248,6 +276,11 @@ public static class SessionByteRanking
                     receivedMeasured[slot] += side.KnownContributions;
                     receivedUnmeasured[slot] += side.UnknownContributions;
                     break;
+                default:
+                    other[slot] = checked(other[slot] + side.TotalBytes);
+                    otherMeasured[slot] += side.KnownContributions;
+                    otherUnmeasured[slot] += side.UnknownContributions;
+                    break;
             }
         }
 
@@ -261,10 +294,18 @@ public static class SessionByteRanking
                 received[slot] = checked(received[slot] + other.received[slot]);
                 receivedMeasured[slot] += other.receivedMeasured[slot];
                 receivedUnmeasured[slot] += other.receivedUnmeasured[slot];
+                this.other[slot] = checked(this.other[slot] + other.other[slot]);
+                otherMeasured[slot] += other.otherMeasured[slot];
+                otherUnmeasured[slot] += other.otherUnmeasured[slot];
             }
         }
 
         public ProcessBytes Of(int slot) => new(
-            sent[slot], sentMeasured[slot], sentUnmeasured[slot], received[slot], receivedMeasured[slot], receivedUnmeasured[slot]);
+            sent[slot], sentMeasured[slot], sentUnmeasured[slot], received[slot], receivedMeasured[slot], receivedUnmeasured[slot])
+        {
+            OtherBytes = other[slot],
+            OtherMeasured = otherMeasured[slot],
+            OtherUnmeasured = otherUnmeasured[slot],
+        };
     }
 }

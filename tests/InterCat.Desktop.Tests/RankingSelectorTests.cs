@@ -232,6 +232,33 @@ public sealed class RankingSelectorTests
         }
     });
 
+    [Fact(DisplayName = "§5.2: bytes sent and received count both directions, and RPC errors rank known failures before unknown outcomes")]
+    public void EndpointBytesAndErrorsRankTheRail() => SingleThreadedContext.Run(async () =>
+    {
+        using (var bytes = new TemporarySession())
+        {
+            Publish(bytes.Store, Traffic());
+            using WorkspaceViewModel workspace = Open(bytes);
+            workspace.RankBy = RankingMetric.EndpointBytes;
+            await workspace.RankingReady;
+            Assert.Equal(["big.exe", "listen.exe", "zero.exe", "blind.exe"], workspace.RungRows.Select(row => row.Label));
+            Assert.Equal([WorkspaceRowBuilder.DescribeSize(1_750), WorkspaceRowBuilder.DescribeSize(192), "0 B", "unmeasured"],
+                workspace.RungRows.Select(row => row.Figure));
+            Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(1_942)} on 10 records · both ends · 2 unmeasured", workspace.RankingNote);
+            Assert.Contains("counts a local transfer at both of its ends", workspace.RankingNoteDetail, StringComparison.Ordinal);
+        }
+
+        using var calls = new TemporarySession();
+        Publish(calls.Store, Calls());
+        using WorkspaceViewModel rpc = Open(calls);
+        rpc.RankBy = RankingMetric.RpcErrors;
+        await rpc.RankingReady;
+        Assert.Equal(["caller.exe", "service.exe"], rpc.RungRows.Take(2).Select(row => row.Label));
+        Assert.Equal(["1 error", "0 errors", "no calls", "no calls"], rpc.RungRows.Select(row => row.Figure));
+        Assert.Contains("1 RPC error of 3 calls with a status", rpc.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("1 failed of 5 calls", rpc.RankingNote);
+    });
+
     [Fact(DisplayName = "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why")]
     public void UncollectedRpcKeepsTheRecordsRanking() => SingleThreadedContext.Run(async () =>
     {

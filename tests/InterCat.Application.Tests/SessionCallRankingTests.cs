@@ -71,6 +71,42 @@ public sealed class SessionCallRankingTests
         }
     }
 
+    [Fact(DisplayName = "R18: each process's RPC errors are what the errors metric grouped by process answers, unknown status apart")]
+    public void ErrorsAreTheErrorsMetrics()
+    {
+        for (int seed = 0; seed < 30; seed++)
+        {
+            var random = new Random(seed);
+            (List<ObservationRowV1> rows, _) = RandomCalls(random);
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long from = random.Next(0, (int)end);
+            var presentation = new TimeRange(from, from + random.Next(1, (int)end + 1));
+
+            foreach (TimeRange? scope in new TimeRange?[] { null, presentation })
+            {
+                SessionCallMeasures measured = SessionCallRanking.Measure(session.Store, scope);
+                MetricResult grouped = SessionMetrics.Evaluate(session.Store, new MetricRequest
+                {
+                    Basis = AnalysisBasis.LogicalOperations,
+                    Metric = Metric.Errors,
+                    Grouping = LaneGrouping.InstanceOnly,
+                    Interval = scope,
+                });
+                string context = $"seed {seed}, interval {scope}";
+                foreach (MetricGroup group in grouped.Groups.Where(group => group.Process is not null))
+                {
+                    RankedValue value = (measured.ByProcess.GetValueOrDefault(group.Process!.Id) ?? ProcessCalls.None).Of(RankingMetric.RpcErrors);
+                    Assert.True(
+                        (group.Value, group.KnownContributions, group.UnknownContributions) == (value.Value, value.Measured, value.Unmeasured),
+                        $"{context}: {group.Process.Id} metric ({group.Value}, {group.KnownContributions}, {group.UnknownContributions}) "
+                            + $"and ranking ({value.Value}, {value.Measured}, {value.Unmeasured})");
+                }
+            }
+        }
+    }
+
     [Fact(DisplayName = "§8a: calls made and served rank their own sides, and a process with only unpaired stops follows those with calls")]
     public void CallsRankByTheirSide()
     {

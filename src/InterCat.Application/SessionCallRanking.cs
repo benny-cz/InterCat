@@ -21,13 +21,31 @@ public sealed record ProcessCalls(
     /// <summary>A process with no RPC stop in scope.</summary>
     public static ProcessCalls None { get; } = new(0, 0, 0, 0, 0, 0);
 
-    /// <summary>The value a ranking reads, with the failures and unpaired stops beside it.</summary>
-    public RankedValue Of(RankingMetric metric) => metric switch
+    /// <summary>Of the calls made, those whose stop carried no status, which an error count cannot call succeeded.</summary>
+    public long MadeNoStatus { get; init; }
+
+    /// <summary>Of the calls served, those whose stop carried no status.</summary>
+    public long ServedNoStatus { get; init; }
+
+    /// <summary>
+    /// The value a ranking reads, with the failures and unpaired stops beside it. An error ranking reads the failed calls
+    /// among those whose stop carried a status, and states those that carried none as unmeasured (R3).
+    /// </summary>
+    public RankedValue Of(RankingMetric metric)
     {
-        RankingMetric.RpcCallsMade => new(metric, Made > 0 ? Made : null, Made, MadeUnpaired) { Failed = MadeFailed },
-        RankingMetric.RpcCallsServed => new(metric, Served > 0 ? Served : null, Served, ServedUnpaired) { Failed = ServedFailed },
-        _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only an RPC call ranking reads a process's calls."),
-    };
+        switch (metric)
+        {
+            case RankingMetric.RpcCallsMade:
+                return new(metric, Made > 0 ? Made : null, Made, MadeUnpaired) { Failed = MadeFailed };
+            case RankingMetric.RpcCallsServed:
+                return new(metric, Served > 0 ? Served : null, Served, ServedUnpaired) { Failed = ServedFailed };
+            case RankingMetric.RpcErrors:
+                long known = Made - MadeNoStatus + Served - ServedNoStatus;
+                return new(metric, known > 0 ? MadeFailed + ServedFailed : null, known, MadeNoStatus + ServedNoStatus);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only an RPC call ranking reads a process's calls.");
+        }
+    }
 
     /// <summary>Two processes' calls together: a group's, which its members partition.</summary>
     public ProcessCalls Plus(ProcessCalls other)
@@ -39,7 +57,11 @@ public sealed record ProcessCalls(
             MadeUnpaired + other.MadeUnpaired,
             Served + other.Served,
             ServedFailed + other.ServedFailed,
-            ServedUnpaired + other.ServedUnpaired);
+            ServedUnpaired + other.ServedUnpaired)
+        {
+            MadeNoStatus = MadeNoStatus + other.MadeNoStatus,
+            ServedNoStatus = ServedNoStatus + other.ServedNoStatus,
+        };
     }
 }
 
@@ -98,7 +120,7 @@ public static class SessionCallRanking
         // One slot per instance, then one for every call no instance takes under the policy. An interval no reading can
         // fall in holds no call, and none is derived for it.
         int instances = processes.Instances.Count;
-        var tally = new long[(instances + 1) * 6];
+        var tally = new long[(instances + 1) * Cells];
         if (interval is null || native is not null)
         {
             RpcCallIndex calls = derivation.RpcCalls(store.Root, segments, clock, fields, cancellationToken);
@@ -110,12 +132,13 @@ public static class SessionCallRanking
                 }
 
                 int slot = call.Process.IsAdmittedUnder(policy) ? call.Process.Instance : instances;
-                int side = call.Side == RpcCallSide.Client ? 0 : 3;
-                int cell = (slot * 6) + side;
+                int side = call.Side == RpcCallSide.Client ? 0 : 4;
+                int cell = (slot * Cells) + side;
                 if (call.State == RpcCallState.Completed)
                 {
                     tally[cell]++;
                     tally[cell + 1] += call.Status is { } status && status != 0 ? 1 : 0;
+                    tally[cell + 3] += call.Status is null ? 1 : 0;
                 }
                 else
                 {
@@ -138,9 +161,16 @@ public static class SessionCallRanking
         return new(manifest.SessionId, manifest.Generation, interval, byProcess, Of(tally, instances), coverage);
     }
 
+    /// <summary>Per slot: made, failed, unpaired and without status; then the same served.</summary>
+    private const int Cells = 8;
+
     private static ProcessCalls Of(long[] tally, int slot)
     {
-        int cell = slot * 6;
-        return new(tally[cell], tally[cell + 1], tally[cell + 2], tally[cell + 3], tally[cell + 4], tally[cell + 5]);
+        int cell = slot * Cells;
+        return new(tally[cell], tally[cell + 1], tally[cell + 2], tally[cell + 4], tally[cell + 5], tally[cell + 6])
+        {
+            MadeNoStatus = tally[cell + 3],
+            ServedNoStatus = tally[cell + 7],
+        };
     }
 }

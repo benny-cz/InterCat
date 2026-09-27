@@ -55,7 +55,7 @@ public sealed record RungRow(
     }
 
     /// <summary>Whether the row's rung ranks by bytes, whose value its known-bytes phrase would contradict.</summary>
-    private bool RanksByBytes => Source.Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived };
+    private bool RanksByBytes => Source.Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes };
 
     /// <summary>
     /// The row as a screen reader says it. Under a byte ranking the ranked bytes take the place of the paired channels'
@@ -157,9 +157,21 @@ public static class LadderRowBuilder
                 : ranked.Holds ? "0 completed" : "no calls";
         }
 
+        if (ranked.Metric == RankingMetric.RpcErrors)
+        {
+            return ranked.Value is { } errors
+                ? string.Create(CultureInfo.CurrentCulture, $"{errors:N0} {(errors == 1 ? "error" : "errors")}")
+                : ranked.Holds ? "status unknown" : "no calls";
+        }
+
         return ranked.Value is { } value ? WorkspaceRowBuilder.DescribeSize(value)
             : ranked.Holds ? "unmeasured"
-            : ranked.Metric == RankingMetric.BytesSent ? "no sends" : "no receives";
+            : ranked.Metric switch
+            {
+                RankingMetric.BytesSent => "no sends",
+                RankingMetric.BytesReceived => "no receives",
+                _ => "no transfers",
+            };
     }
 
     /// <summary>
@@ -169,6 +181,28 @@ public static class LadderRowBuilder
     public static string RankedSpoken(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (ranked.Metric == RankingMetric.RpcErrors)
+        {
+            string unknown = ranked.Unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture, $", {ranked.Unmeasured:N0} without a status")
+                : string.Empty;
+            return ranked.Value is { } errors
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{errors:N0} RPC {(errors == 1 ? "error" : "errors")} of {ranked.Measured:N0} calls with a status{unknown}")
+                : ranked.Holds ? $"RPC errors unknown{unknown}" : "no RPC calls";
+        }
+
+        if (ranked.Metric == RankingMetric.EndpointBytes)
+        {
+            string unmeasuredRecords = ranked.Unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture, $", {ranked.Unmeasured:N0} with no size")
+                : string.Empty;
+            return ranked.Value is { } both
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{WorkspaceRowBuilder.DescribeSize(both)} sent and received on {ranked.Measured:N0} measured records{unmeasuredRecords}")
+                : ranked.Holds ? $"bytes unmeasured{unmeasuredRecords}" : "no transfers";
+        }
+
         if (ranked.Metric is RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed)
         {
             string side = ranked.Metric == RankingMetric.RpcCallsMade ? "made" : "served";

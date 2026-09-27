@@ -24,6 +24,18 @@ public enum RankingMetric
 
     /// <summary>The RPC server calls each process completed, counted by their stop: the serving side.</summary>
     RpcCallsServed = 5,
+
+    /// <summary>
+    /// Transport-observed bytes on every one of each process's own records, sent and received alike: endpoint activity,
+    /// which counts a local transfer at both of its ends by design (`metrics-v1` §4, §5.1).
+    /// </summary>
+    EndpointBytes = 6,
+
+    /// <summary>
+    /// The completed RPC calls each process made or served whose stop reported a status other than 0 (`metrics-v1` §8a); a
+    /// completed call whose stop carried no status is unmeasured, never a success.
+    /// </summary>
+    RpcErrors = 7,
 }
 
 /// <summary>Which kind of measure a ranking reads, and so which read answers it.</summary>
@@ -46,8 +58,8 @@ public static class RankingMetrics
     public static RankingFamily FamilyOf(RankingMetric metric) => metric switch
     {
         RankingMetric.Records => RankingFamily.Records,
-        RankingMetric.BytesSent or RankingMetric.BytesReceived => RankingFamily.Bytes,
-        RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed => RankingFamily.Calls,
+        RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes => RankingFamily.Bytes,
+        RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed or RankingMetric.RpcErrors => RankingFamily.Calls,
         _ => throw new ArgumentOutOfRangeException(nameof(metric)),
     };
 }

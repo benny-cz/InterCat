@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 195 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 196 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 196 — rank by bytes sent and received, and by RPC errors (§5.2):**
+  - **Bytes sent and received** (endpoint activity): every transport contribution of a process's own records, including
+    those stating neither side; it counts a local transfer at both ends, and the note and caveat say its sum is no
+    transfer total. At a process's rung it ranks channels by the process's own end, both directions.
+  - **RPC errors:** completed calls made or served whose stop reported a non-zero status; calls with no status are
+    unmeasured ("status unknown"), never successes, and rank after rows with known outcomes.
+  - Both equal `icat metric` (`endpoint-activity-bytes`, `errors`) grouped by process over random sessions, whole and within
+    an interval; exports name `bytes-sent-and-received` and `rpc-errors`.
+  - **Race fixed:** a Release full-suite run failed the RPC rung navigation test once. Revision 194's read of a
+    selection's bytes re-ranked the rows when it arrived, which a navigation in progress could see mid-step. A read made
+    for a description now only keeps its bytes and refreshes what states them; only a ranking's own read re-ranks.
 
 - **Revision 195 — the graph is sized by the ranking's metric (§6.3):**
   - **Why:** §6.3 fixes edge thickness and node size to the selected metric so the panes cannot disagree about magnitude;
@@ -1809,13 +1821,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells). Since
      revision 189 the ranked table states an unmeasured byte value in words, which is not a plotted one.
    - §6.1's metric selector ranks the machine and group rungs by records, bytes sent or received (revision 189), or RPC
-     calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192). Still open: §5.2's other
-     ranking metrics (rate, peers, errors, durations, endpoint activity bytes), a basis selector that says which basis a
-     metric is on, and bytes in the persisted overview itself (overview-index-v1 §4 sums none), so that edges and channels
+     calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192), bytes sent and
+     received and RPC errors (revision 196). Still open: §5.2's rate, peers and local duration statistics, a basis selector
+     that says which basis a metric is on, and bytes in the persisted overview itself (overview-index-v1 §4 sums none), so that edges and channels
      carry them without a read and the graph can draw volume.
 
 ## Verification and cautions
 
+- Revision 196 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,273 tests: 1,269
+  passed, 4 skipped**, zero failures.
 - Revision 195 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,270 tests: 1,266
   passed, 4 skipped**, zero failures. The 20-second dense capture was recorded with `icat record` from the elevated
   shell into scratch and deleted afterwards.

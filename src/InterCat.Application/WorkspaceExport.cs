@@ -91,6 +91,9 @@ public static class WorkspaceExport
         (RankingMetric.BytesSent, DetailLevel.ProcessInstance) => "Rows are ranked by bytes sent: transport-observed bytes on "
             + "this process's own send records on each channel, sender-accounted. A channel none of whose sends recorded a size "
             + "is unmeasured and ranks after every measured channel, then channels with no send.",
+        (RankingMetric.EndpointBytes, DetailLevel.ProcessInstance) => "Rows are ranked by bytes sent and received: "
+            + "transport-observed bytes on every one of this process's own records on each channel, both directions. A channel "
+            + "none of whose records recorded a size is unmeasured and ranks after every measured channel.",
         (RankingMetric.BytesReceived, DetailLevel.ProcessInstance) => "Rows are ranked by bytes received: transport-observed "
             + "bytes on this process's own receive records on each channel, receiver-accounted. A channel none of whose "
             + "receives recorded a size is unmeasured and ranks after every measured channel, then channels with no receive.",
@@ -105,6 +108,13 @@ public static class WorkspaceExport
         RankingMetric.BytesReceived => "Rows are ranked by bytes received: transport-observed bytes on each process's "
             + "own receive records, receiver-accounted. A row none of whose receives recorded a size is unmeasured and "
             + "ranks after every measured row, then rows with no receive.",
+        RankingMetric.EndpointBytes => "Rows are ranked by bytes sent and received: transport-observed bytes on every one of "
+            + "each process's own records, both directions - endpoint activity, which counts a local transfer at both of its "
+            + "ends by design (metrics-v1 §5.1), so the rows' sum is not a transfer total. A row none of whose records "
+            + "recorded a size is unmeasured and ranks after every measured row.",
+        RankingMetric.RpcErrors => "Rows are ranked by RPC errors: the completed calls each process made or served whose "
+            + "stop reported a status other than 0 (metrics-v1 §8a). A call whose stop carried no status is unmeasured, never "
+            + "a success; a row with only such calls ranks after every row that knows its outcomes.",
         RankingMetric.RpcCallsMade => "Rows are ranked by RPC calls made: the client calls each process completed, counted by "
             + "their stop (metrics-v1 §8a). A failed call is one whose stop reported a status other than 0; a stop paired with "
             + "no start is stated, never counted, and a row with only such stops ranks after every row that completed a call.",
@@ -122,6 +132,8 @@ public static class WorkspaceExport
         RankingMetric.BytesReceived => "bytes-received",
         RankingMetric.RpcCallsMade => "rpc-calls-made",
         RankingMetric.RpcCallsServed => "rpc-calls-served",
+        RankingMetric.EndpointBytes => "bytes-sent-and-received",
+        RankingMetric.RpcErrors => "rpc-errors",
         _ => throw new ArgumentOutOfRangeException(nameof(ranking)),
     };
 

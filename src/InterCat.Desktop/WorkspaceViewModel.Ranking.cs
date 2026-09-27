@@ -18,6 +18,9 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.BytesReceived => "Bytes received: rank by the transport-observed bytes of each process's own receive records",
         RankingMetric.RpcCallsMade => "RPC calls made: rank by the RPC client calls each process completed",
         RankingMetric.RpcCallsServed => "RPC calls served: rank by the RPC server calls each process completed",
+        RankingMetric.EndpointBytes =>
+            "Bytes sent and received: rank by the transport-observed bytes of all of each process's own records, counting a local transfer at both ends",
+        RankingMetric.RpcErrors => "RPC errors: rank by the completed RPC calls each process made or served that failed",
         _ => "Records: rank by each process's own records",
     };
 }
@@ -36,8 +39,10 @@ public sealed partial class WorkspaceViewModel
         new RankingOption(RankingMetric.Records, "Records"),
         new RankingOption(RankingMetric.BytesSent, "Bytes sent"),
         new RankingOption(RankingMetric.BytesReceived, "Bytes received"),
+        new RankingOption(RankingMetric.EndpointBytes, "Bytes sent and received"),
         new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made"),
         new RankingOption(RankingMetric.RpcCallsServed, "RPC calls served"),
+        new RankingOption(RankingMetric.RpcErrors, "RPC errors"),
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
@@ -125,7 +130,24 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string note;
-            if (Family == RankingFamily.Calls)
+            if (rankBy == RankingMetric.RpcErrors)
+            {
+                note = string.Create(CultureInfo.CurrentCulture, $"{value:N0} failed of {measured:N0} {(measured == 1 ? "call" : "calls")}");
+                if (unmeasured > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} without status");
+            }
+            else if (rankBy == RankingMetric.EndpointBytes)
+            {
+                note = measured > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $"{WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} records · both ends")
+                    : unmeasured > 0
+                        ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} records, none with a size")
+                        : "No transfers in scope";
+                if (measured > 0 && unmeasured > 0)
+                {
+                    note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unmeasured");
+                }
+            }
+            else if (Family == RankingFamily.Calls)
             {
                 note = string.Create(CultureInfo.CurrentCulture, $"{measured:N0} {(measured == 1 ? "call" : "calls")}");
                 if (failed > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {failed:N0} failed");
@@ -182,7 +204,22 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string detail;
-            if (shown is SessionCallMeasures calls)
+            if (shown is SessionCallMeasures errors && rankBy == RankingMetric.RpcErrors)
+            {
+                detail = string.Create(CultureInfo.CurrentCulture,
+                    $"{definition} The rows shown completed {measured:N0} calls whose stop carried a status; {value:N0} of them failed.");
+                if (unmeasured > 0)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unmeasured:N0} more carried no status and are counted as neither; a row with only such calls ranks after every row that knows its outcomes.");
+                }
+
+                if (errors.Coverage.State != CoverageState.Covered)
+                {
+                    detail += $" RPC's capture coverage over this scope is {errors.Coverage.State}: {errors.Coverage.Reason}.";
+                }
+            }
+            else if (shown is SessionCallMeasures calls)
             {
                 detail = string.Create(CultureInfo.CurrentCulture,
                     $"{definition} The rows shown completed {measured:N0} {(measured == 1 ? "call" : "calls")}, {failed:N0} of them failed.");
@@ -205,7 +242,12 @@ public sealed partial class WorkspaceViewModel
             }
             else
             {
-                string records = rankBy == RankingMetric.BytesSent ? "sends" : "receives";
+                string records = rankBy switch
+                {
+                    RankingMetric.BytesSent => "sends",
+                    RankingMetric.BytesReceived => "receives",
+                    _ => "records",
+                };
                 detail = string.Create(CultureInfo.CurrentCulture,
                     $"{definition} The rows shown hold {WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} measured {records}");
                 detail += unmeasured > 0
@@ -301,16 +343,22 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.BytesReceived => "bytes received",
         RankingMetric.RpcCallsMade => "RPC calls made",
         RankingMetric.RpcCallsServed => "RPC calls served",
+        RankingMetric.EndpointBytes => "bytes sent and received",
+        RankingMetric.RpcErrors => "RPC errors",
         _ => "records",
     };
 
     private static string Capitalized(string phrase) => char.ToUpperInvariant(phrase[0]) + phrase[1..];
 
-    private static string ChannelDefinition(RankingMetric metric) => metric == RankingMetric.BytesSent
-        ? "Bytes sent are the transport-observed bytes of this process's own send records on each channel, sender-accounted; "
-            + "its RPC channels carry no size."
-        : "Bytes received are the transport-observed bytes of this process's own receive records on each channel, "
-            + "receiver-accounted; its RPC channels carry no size.";
+    private static string ChannelDefinition(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "Bytes sent are the transport-observed bytes of this process's own send records on each "
+            + "channel, sender-accounted; its RPC channels carry no size.",
+        RankingMetric.BytesReceived => "Bytes received are the transport-observed bytes of this process's own receive records "
+            + "on each channel, receiver-accounted; its RPC channels carry no size.",
+        _ => "Bytes sent and received are the transport-observed bytes of every one of this process's own records on each "
+            + "channel, both directions; its RPC channels carry no size.",
+    };
 
     private static string Definition(RankingMetric metric) => metric switch
     {
@@ -321,6 +369,11 @@ public sealed partial class WorkspaceViewModel
             + "a failed call's stop reported a status other than 0.",
         RankingMetric.RpcCallsServed => "RPC calls served are the server calls each process completed, counted by their stop; "
             + "a failed call's stop reported a status other than 0.",
+        RankingMetric.EndpointBytes => "Bytes sent and received are the transport-observed bytes of every one of each "
+            + "process's own records, both directions: endpoint activity, which counts a local transfer at both of its ends, so "
+            + "the rows' sum is not a transfer total (metrics-v1 §5.1).",
+        RankingMetric.RpcErrors => "RPC errors are the completed calls each process made or served whose stop reported a "
+            + "status other than 0; a call whose stop carried no status is unmeasured, never a success.",
         _ => "Records are each process's own records.",
     };
 
@@ -364,9 +417,11 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Reads one family's measures for the scope the rows count, unless this generation's are already known. A newer scope
     /// supersedes the read; a failed one leaves the rows ranked by records and says why, and is not read again on its own.
-    /// Whole-session measures that arrive after the scope moved are kept for its return.
+    /// Whole-session measures that arrive after the scope moved are kept for its return. A read for a description
+    /// (<paramref name="ranks"/> false) only keeps its measures and refreshes what states bytes: it never re-ranks the rows,
+    /// which its arrival must not move under a selection or a navigation in progress.
     /// </summary>
-    private async Task FollowAsync<T>(RankingReads<T> reads)
+    private async Task FollowAsync<T>(RankingReads<T> reads, bool ranks = true)
         where T : class, IRankingMeasures
     {
         if (evidenceSource is not { } source || disposed)
@@ -408,7 +463,7 @@ public sealed partial class WorkspaceViewModel
                 }
             }
 
-            if (Family == family && CountedScope == scope)
+            if (ranks && Family == family && CountedScope == scope)
             {
                 Rerank();
             }

@@ -48,7 +48,7 @@ public sealed partial class WorkspaceViewModel
             return;
         }
 
-        SelectionBytesReady = FollowAsync(selectionBytes);
+        SelectionBytesReady = FollowAsync(selectionBytes, ranks: false);
     }
 
     /// <summary>Rebuilds what states bytes once they are read: the relationship table and the inspector's summary.</summary>

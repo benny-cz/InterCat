@@ -2453,7 +2453,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
             // paired channels' known bytes, which would read as a second, contradicting byte figure.
             // A real session's overview sums no bytes, so its total never states "bytes unknown" for them.
-            if (((view.Rows.Count > 0 && view.Rows[0].Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived })
+            if (((view.Rows.Count > 0 && view.Rows[0].Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes })
                     || (ReadsBytes && view.KnownBytes is null))
                 && view.ObservationCount is { } total)
             {

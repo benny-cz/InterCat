@@ -78,6 +78,58 @@ public sealed class SessionByteRankingTests
         }
     }
 
+    [Fact(DisplayName = "R18: each process's bytes sent and received are what endpoint activity grouped by process answers")]
+    public void EndpointBytesAreTheMetricsEndpointActivity()
+    {
+        for (int seed = 0; seed < 20; seed++)
+        {
+            var random = new Random(seed);
+            // Some records state neither side; only endpoint activity takes them.
+            List<ObservationRowV1> rows = [.. RandomTraffic(random).Select(row => row.Kind is ObservationKind.Send or ObservationKind.Receive
+                && random.Next(6) == 0 ? row with { AccountingSide = AccountingSide.EndpointActivity } : row)];
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long start = random.Next(0, (int)end);
+            var presentation = new TimeRange(start, start + random.Next(1, (int)end + 1));
+
+            foreach (TimeRange? scope in new TimeRange?[] { null, presentation })
+            {
+                SessionByteMeasures measured = SessionByteRanking.Measure(session.Store, scope);
+                MetricResult grouped = SessionMetrics.Evaluate(session.Store, new MetricRequest
+                {
+                    Basis = AnalysisBasis.SourceObservations,
+                    Metric = Metric.EndpointActivityBytes,
+                    ByteDomain = ByteDomain.TransportObserved,
+                    Grouping = LaneGrouping.InstanceOnly,
+                    Interval = scope,
+                });
+                string context = $"seed {seed}, interval {scope}";
+                Dictionary<ProcessInstanceId, MetricGroup> expected = grouped.Groups
+                    .Where(group => group.Process is not null)
+                    .ToDictionary(group => group.Process!.Id);
+                foreach ((ProcessInstanceId instance, ProcessBytes bytes) in measured.ByProcess)
+                {
+                    RankedValue value = bytes.Of(RankingMetric.EndpointBytes);
+                    if (!value.Holds)
+                    {
+                        Assert.False(expected.ContainsKey(instance), context);
+                        continue;
+                    }
+
+                    MetricGroup group = Assert.Contains(instance, (IReadOnlyDictionary<ProcessInstanceId, MetricGroup>)expected);
+                    Assert.True(
+                        (group.Value, group.KnownContributions, group.UnknownContributions) == (value.Value, value.Measured, value.Unmeasured),
+                        $"{context}: {instance} metric ({group.Value}, {group.KnownContributions}, {group.UnknownContributions}) "
+                            + $"and ranking ({value.Value}, {value.Measured}, {value.Unmeasured})");
+                }
+
+                Assert.True(expected.Keys.All(instance => measured.ByProcess.TryGetValue(instance, out ProcessBytes? bytes)
+                    && bytes.Of(RankingMetric.EndpointBytes).Holds), context);
+            }
+        }
+    }
+
     [Fact(DisplayName = "§5.2: a group's bytes are its processes', and a process with nothing measured has no value, never zero")]
     public void ByteValuesAddUpAndStayUnmeasured()
     {
