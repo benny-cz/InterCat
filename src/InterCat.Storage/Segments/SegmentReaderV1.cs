@@ -55,6 +55,14 @@ public readonly ref struct SegmentColumnSlice
         };
     }
 
+    /// <summary>
+    /// A row's 16-byte identifier, read as <see cref="SegmentReaderV1.IdentifierValue"/> reads it, or null when the row has
+    /// none: the column-at-a-time form, for a reader of many rows.
+    /// </summary>
+    public Guid? GuidAt(int row) => Descriptor.Type != SegmentColumnType.Guid16 || width != 16
+        ? throw new InvalidOperationException($"Column {Descriptor.Id} is not a 16-byte identifier.")
+        : HasValue(row) ? new Guid(values.Slice(row * 16, 16), bigEndian: true) : null;
+
     /// <summary>A row's 128-bit address, its bytes in network order, or null when the row has none.</summary>
     public UInt128? AddressAt(int row) => width != 16
         ? throw new InvalidOperationException($"Column {Descriptor.Id} is {width} bytes wide and holds no 128-bit address.")
@@ -79,6 +87,22 @@ public readonly ref struct SegmentColumnSlice
                 $"Column {Descriptor.Id} is {width} bytes wide and is not read as a number."),
         };
     }
+}
+
+/// <summary>Which rows of one column hold a value, read from its null bitmap once (<see cref="SegmentReaderV1.Presence"/>).</summary>
+public readonly ref struct SegmentColumnPresence
+{
+    private readonly ReadOnlySpan<byte> nulls;
+    private readonly bool nullable;
+
+    internal SegmentColumnPresence(ReadOnlySpan<byte> nulls, bool nullable)
+    {
+        this.nulls = nulls;
+        this.nullable = nullable;
+    }
+
+    /// <summary>Whether the row holds a value. A column that is not nullable always does.</summary>
+    public bool HasValue(int row) => !nullable || (nulls[row >> 3] & (1 << (row & 7))) != 0;
 }
 
 /// <summary>
@@ -601,6 +625,16 @@ public sealed class SegmentReaderV1
     {
         SegmentColumnDescriptor column = Require(id);
         return Bytes(column).Values.Span;
+    }
+
+    /// <summary>
+    /// Which rows of a column hold a value, a column at a time: <see cref="HasValue"/> for a reader of many rows, and for
+    /// a text column, which has no <see cref="Slice"/>.
+    /// </summary>
+    public SegmentColumnPresence Presence(SegmentColumnId id)
+    {
+        SegmentColumnDescriptor column = Require(id);
+        return new(column.Nullable ? Bytes(column).Nulls.Span : default, column.Nullable);
     }
 
     /// <summary>Whether a row has a value in a column. A column that is not nullable always has one.</summary>

@@ -264,6 +264,50 @@ public sealed class RpcCallTests
         Assert.Equal(new RpcCallDurations(61, 1_800, 4_800, 61_000, 456_600), served.Durations);
     }
 
+    [Fact(DisplayName = "I14: calls read at one instant are listed by raw locator, however their records were cut into segments")]
+    public void CallsOfOneInstantAreListedByLocator()
+    {
+        // Two calls start at one reading. The first stored is on stream 2, the second on stream 1; the listing follows
+        // the canonical order (§3) - reading, then raw locator - and never the place a segment cut put a record.
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(10, ObservationKind.Create, 400, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 5, Activity(1), ServiceControl) with { RawStreamId = 2 },
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 6, Activity(2), ServiceControl),
+            RpcCall(200, ObservationKind.RequestEnd, Direction.Outbound, 400, 7, Activity(1), status: 0) with { RawStreamId = 2 },
+            RpcCall(210, ObservationKind.RequestEnd, Direction.Outbound, 400, 8, Activity(2), status: 0),
+        ];
+
+        foreach (int rowsPerSegment in new[] { 1, 2, 5 })
+        {
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: rowsPerSegment);
+            (RpcCallIndex calls, SegmentReaderV1[] segments) = Derive(session.Store);
+            RpcCallGroup group = Assert.Single(calls.Groups);
+            IReadOnlyList<RpcCall> listed = calls.CallsOf(group, segments, 0, 10);
+            Assert.Equal([Activity(2), Activity(1)], listed.Select(call => call.ActivityId!.Value));
+            Assert.Equal([1u, 2u], listed.Select(call => call.Start!.Observation.RawRecordId.StreamId));
+            Assert.Equal(0, calls.PositionOf(group, 1, 1, 6, rows[2].FactKey));
+        }
+    }
+
+    [Fact(DisplayName = "I2: a call's procedure named twice refuses the derivation, even when one row carried no value")]
+    public void ADuplicatedCallFieldIsRefused()
+    {
+        ObservationRowV1 start = RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 2, Activity(1), ServiceControl);
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(10, ObservationKind.Create, 400, 1), start], rowsPerSegment: 1, fields:
+        [
+            Field(start, SourceField.RpcProcedureNumber, 0) with { Value = null, Availability = FieldAvailability.EventLost },
+            Field(start, SourceField.RpcProcedureNumber, 7),
+        ]);
+
+        Assert.Contains(
+            "more than one source-field segment",
+            Assert.Throws<InvalidDataException>(() => Derive(session.Store)).Message,
+            StringComparison.Ordinal);
+    }
+
     private static (RpcCallIndex Calls, SegmentReaderV1[] Segments) Derive(SessionStore store)
     {
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(store);

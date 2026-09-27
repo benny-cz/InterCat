@@ -626,6 +626,7 @@
         "I14: an import that spills to disk produces exactly the index it would in memory",
         "I14: an overview that cannot be read is counted around from the segments, and the overview says why",
         "I14: calls do not depend on how their records were cut into segments or delivered",
+        "I14: calls read at one instant are listed by raw locator, however their records were cut into segments",
         "I14: counts decline to extend, for a full count, when a record already counted would bind otherwise",
         "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
         "I14: each instance's records extended chunk by chunk equal a count of every chunk at once",
@@ -764,6 +765,7 @@
         "I19: navigation math depends only on its inputs, never on workspace state"
       ],
       "I2": [
+        "I2: a call's procedure named twice refuses the derivation, even when one row carried no value",
         "I2: a generation naming two derivations of one capture is refused rather than counted twice",
         "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",
         "I2: an import names the evidence it cannot find instead of importing nothing",

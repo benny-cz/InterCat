@@ -1,0 +1,72 @@
+{
+  "schema": "intercat.rpc-pairing.v1",
+  "measuredUtc": "2026-09-27T15:41:07.8993463+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "processorsUsed": 24,
+  "configuration": "Release",
+  "notes": [
+    "Sessions are synthetic and finished: 200 client and 200 server processes created at the start, one record every 60 \u00B5s, four records in ten an RPC call start or stop, each start carrying a procedure number and a protocol sequence as source fields. Every call pairs, so a session of N records holds N/5 calls. Published in chunks of 500,000 records, then its derivation checkpoint.",
+    "perGenerationMs is what a live session pays when its RPC rung is open: after each chunk is published, every call of the generation is paired again (SessionRpcCalls.Channels on a cleared derivation cache).",
+    "firstRungColdMs is the first RPC channel list of a process after a reopen, which opens the segments and pairs every call; warm is the same list again. pairingInMemoryMs pairs every call with every column already read, as a distribution of five runs."
+  ],
+  "sessions": [
+    {
+      "rows": 1000000,
+      "calls": 200000,
+      "perGenerationMs": [
+        241.5,
+        256
+      ],
+      "reopenMs": 13.3,
+      "firstRungColdMs": 333,
+      "firstRungWarmMs": 1,
+      "heldAfterFirstRungMiB": 138.6,
+      "callPageMs": 18.1,
+      "spansMs": 2.9,
+      "spansDrawn": 500,
+      "pairingInMemoryMs": {
+        "minimum": 92.5,
+        "median": 108.3,
+        "maximum": 274.1
+      }
+    },
+    {
+      "rows": 10000000,
+      "calls": 2000000,
+      "perGenerationMs": [
+        57.4,
+        115.3,
+        204.8,
+        242,
+        355.1,
+        356,
+        487.6,
+        517.5,
+        607.3,
+        668.2,
+        756,
+        861.7,
+        973.4,
+        1067.5,
+        1272.7,
+        1294.7,
+        1240.5,
+        1442.6,
+        1497.3,
+        1717
+      ],
+      "reopenMs": 5.7,
+      "firstRungColdMs": 1786.6,
+      "firstRungWarmMs": 2.5,
+      "heldAfterFirstRungMiB": 381.6,
+      "callPageMs": 29.6,
+      "spansMs": 3.1,
+      "spansDrawn": 4000,
+      "pairingInMemoryMs": {
+        "minimum": 1173.6,
+        "median": 1310.9,
+        "maximum": 1399.9
+      }
+    }
+  ]
+}

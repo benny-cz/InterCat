@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 183 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 184 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 184 — RPC calls pair 3.7 times faster, measured before and after:**
+  - **Measured first:** a new opt-in measurement (`RpcPairingScaleTests`, `bench/results/rpc-pairing-20260927T153638Z-*`)
+    pairs the calls of 1M- and 10M-record sessions, four records in ten an RPC call record with its source fields
+    (200,000 and 2,000,000 calls). With revision 183's build, 2,000,000 calls took 4.9 s to pair with every column in
+    memory, a reopened session's first RPC rung 5.4 s, and the last live generation of the 10M session 5.3 s. Most of it
+    was sorting four million large records by key and reading every field row whole.
+  - **The change:** records are ordered by sorting their readings as plain integers, a tie broken by raw locator; one
+    walk pairs every key at once and holds only the keys with a call open; the source fields are read a column at a time
+    (`SegmentColumnSlice.GuidAt`, `SegmentReaderV1.Presence`), a field named twice still refused; and the calls are put
+    in groups by a sort of plain integers.
+  - **After, on the same sessions:** 2,000,000 calls pair in 1.3 s, the first rung opens in 1.8 s and the last live
+    generation pays 1.7 s; 200,000 calls pair in 108 ms (402 ms before). Held memory is unchanged.
+  - **Same calls:** old and new builds list byte-identical calls on the real Explore session and the 1M session, and the
+    same calls on forty random sessions with reused ids, shared readings, late delivery and fields in later chunks. The
+    one change is the order of calls whose first records share a reading: by raw locator (operations-v1 §5a), not by
+    where a segment cut stored them.
 
 - **Revision 183 — operations started, completed and failed, counted from the RPC calls (ADR-032):**
   - **The basis answers:** `icat metric --basis logical-operations` counts `operations-started`,
@@ -1598,9 +1615,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      process's RPC channels and their calls on the ladder, revision 180 admits RPC to Explore, 32-bit callers included,
      revision 181 draws a channel's calls in the timeline, and revision 183 counts them on the logical-operations
      metric basis (ADR-032). Next, in order:
-     1. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
-        from every call record on first use: 0.66 s for 500,000 calls, 0.43 s for a real minute of Explore, and each
-        operation metric pairs them again.
+     1. Extend the calls between live generations, then keep them with the derivation checkpoint. Revision 184 made
+        pairing 3.7 times cheaper, but a live session with its RPC rung open still pairs every call again at each
+        generation (1.7 s at the end of a 10M-record session with 2,000,000 calls), a reopen's first RPC rung pairs them
+        all (1.8 s there, 0.33 s at 200,000 calls), and each operation metric pairs them again.
      2. A duration metric over the calls, once a request can name its cohort (§19.2: completed in range by default,
         started in range on request), with left- and right-censored calls marked.
      3. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
@@ -1639,6 +1657,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 184 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,240 tests: 1,236
+  passed, 4 skipped** (the fourth, the RPC pairing measurement, runs only when asked), zero failures. Revision 183's
+  build and this one were measured over sessions each generated, and compared on the real Explore recording, the 1M
+  session and forty random sessions; the sessions stay in scratch and only the two reports are committed.
 - Revision 183 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,237 tests: 1,234
   passed, 3 skipped**, zero failures. `icat metric --basis logical-operations` answered each count, a grouped rate, an
   owner filter and every unavailable case over revision 180's real Explore recording, which stays in scratch.

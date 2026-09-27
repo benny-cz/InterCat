@@ -85,7 +85,8 @@ duration some call of the group took, never an interpolation.
 A group of calls bound to an instance is an **RPC channel**: that instance's calls on one side to one interface. It is
 named by the instance, the side and the interface, never by a position, so its name reads the same channel in every
 generation that still holds it, and one call on it is named by its first record's raw locator and fact key. A reader
-lists an instance's channels, a channel's calls a page at a time in reading order, and, as an evidence scope, the
+lists an instance's channels, a channel's calls a page at a time in the canonical order of their first records (§3),
+and, as an evidence scope, the
 records of a channel's calls or of one call: each call's start, then its stop. A channel or call a generation no longer
 holds is stated as such, never read as an empty one. A channel belongs to one process, so a process's channels add
 up to its calls; unlike a paired channel, it is not listed for any other process.
@@ -120,5 +121,6 @@ generation it was derived from. A change to what pairs, how, or what a call hold
   §12).
 - Pairing a client call with the server call that served it, and pairing by thread nesting.
 - Persisting calls in a checkpoint, or extending them from one live generation to the next: a derivation reads its
-  generation whole, holding each call record's key while it pairs.
+  generation whole, holding every call record while it pairs and the keys with a call open while it walks them
+  (revision 184).
 - Late evidence revisions (I17): a later generation derives its calls again.

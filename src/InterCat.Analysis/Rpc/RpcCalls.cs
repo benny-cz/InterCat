@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -362,51 +363,32 @@ public sealed class RpcCallIndex
             throw new ArgumentException("The calls are timed on another clock than the process instances.", nameof(clock));
         }
 
-        Dictionary<RecordAddress, StartFields> fields = ReadFields(fieldSegments, cancellationToken);
+        Dictionary<RecordAddress, FieldSlot> fields = ReadFields(fieldSegments, cancellationToken);
         var interfaces = new List<Guid>();
         var interfaceIndex = new Dictionary<Guid, int>();
         // Sized from the mechanism column alone, so a session of many calls fills its buffers once.
-        var keyed = new List<CallRecord>(CountRpcRecords(segments, cancellationToken));
-        var unkeyed = new List<CallRecord>();
+        var collected = new List<CallRecord>(CountRpcRecords(segments, cancellationToken));
         long otherRecords = 0;
         for (int position = 0; position < segments.Count; position++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            otherRecords += Collect(segments[position], position, fields, interfaces, interfaceIndex, keyed, unkeyed);
+            otherRecords += Collect(segments[position], position, fields, interfaces, interfaceIndex, collected);
         }
 
-        Span<CallRecord> records = CollectionsMarshal.AsSpan(keyed);
-        records.Sort(CanonicalByKey.Instance);
-        var drafts = new List<Entry>((records.Length / 2) + unkeyed.Count);
-        int first = 0;
-        while (first < records.Length)
+        // Every call record is read before any is paired, and then in canonical order, so the segments' cut and the
+        // records' delivery order change no call (§3, I14).
+        int[] order = CanonicalOrder(collected, cancellationToken);
+        List<Entry> drafts = Walk(CollectionsMarshal.AsSpan(collected), order, cancellationToken);
+        Span<Entry> drafted = CollectionsMarshal.AsSpan(drafts);
+        for (int index = 0; index < drafted.Length; index++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            int end = first + 1;
-            while (end < records.Length && CanonicalByKey.SameKey(records[first], records[end]))
+            drafted[index] = drafted[index] with
             {
-                end++;
-            }
-
-            Walk(records.Slice(first, end - first), drafts);
-            first = end;
-        }
-
-        foreach (CallRecord record in unkeyed)
-        {
-            drafts.Add(Single(record, RpcCallState.NoActivityId));
-        }
-
-        Entry[] entries = drafts.ToArray();
-        for (int index = 0; index < entries.Length; index++)
-        {
-            entries[index] = entries[index] with
-            {
-                Process = processes.Bind(entries[index].ProcessId, entries[index].FirstTicks, isLifecycleRecord: false),
+                Process = processes.Bind(drafted[index].ProcessId, drafted[index].FirstTicks, isLifecycleRecord: false),
             };
         }
 
-        Array.Sort(entries, ByGroupThenReading.Instance);
+        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken);
         (RpcCallGroup[] groups, RpcCallCounts totals) = Group(entries, [.. interfaces], clock);
         return new(
             entries,
@@ -414,7 +396,7 @@ public sealed class RpcCallIndex
             [.. segments.Select(segment => segment.Published?.Name)],
             clock,
             processes,
-            (long)records.Length + unkeyed.Count,
+            collected.Count,
             otherRecords,
             groups,
             totals);
@@ -498,15 +480,15 @@ public sealed class RpcCallIndex
     }
 
     /// <summary>
-    /// Reads the procedure number and protocol sequence each call start carried as a source field. A field repeated
-    /// across source-field segments refuses the derivation, as it refuses a process identity (§23).
+    /// Reads the procedure number and protocol sequence each call start carried as a source field, a column at a time. A
+    /// field repeated across source-field segments refuses the derivation, as it refuses a process identity (§23), and so
+    /// does a field row whose value and availability disagree, as reading the row whole would (`source-fields-v1`).
     /// </summary>
-    private static Dictionary<RecordAddress, StartFields> ReadFields(
+    private static Dictionary<RecordAddress, FieldSlot> ReadFields(
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         CancellationToken cancellationToken)
     {
-        var fields = new Dictionary<RecordAddress, StartFields>();
-        var seen = new HashSet<(RecordAddress Address, SourceField Field)>();
+        var fields = new Dictionary<RecordAddress, FieldSlot>();
         foreach (SegmentReaderV1 segment in fieldSegments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -516,6 +498,15 @@ public sealed class RpcCallIndex
             }
 
             SegmentColumnSlice codes = segment.Slice(SegmentColumnId.SourceField);
+            bool opened = false;
+            SegmentColumnSlice streams = default;
+            SegmentColumnSlice epochs = default;
+            SegmentColumnSlice ordinals = default;
+            SegmentColumnSlice factHigh = default;
+            SegmentColumnSlice factLow = default;
+            SegmentColumnSlice values = default;
+            SegmentColumnSlice availabilities = default;
+            SegmentColumnPresence texts = default;
             for (int row = 0; row < segment.RowCount; row++)
             {
                 var code = (SourceField)(ushort)codes.UnsignedAt(row)!.Value;
@@ -524,24 +515,45 @@ public sealed class RpcCallIndex
                     continue;
                 }
 
-                SourceFieldRowV1 source = segment.FieldRow(row);
-                var address = new RecordAddress(source.RawStreamId, source.RawSourceEpoch, source.RawRecordOrdinal, source.FactKey);
-                if (!seen.Add((address, source.Field)))
+                // Only a segment holding RPC fields opens the columns they need.
+                if (!opened)
+                {
+                    streams = segment.Slice(SegmentColumnId.RawStreamId);
+                    epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
+                    ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+                    factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
+                    factLow = segment.Slice(SegmentColumnId.FactKeyLow);
+                    values = segment.Slice(SegmentColumnId.FieldValue);
+                    availabilities = segment.Slice(SegmentColumnId.FieldAvailability);
+                    texts = segment.Presence(SegmentColumnId.FieldText);
+                    opened = true;
+                }
+
+                long? value = values.SignedAt(row);
+                bool text = texts.HasValue(row);
+                var availability = (FieldAvailability)availabilities.UnsignedAt(row)!.Value;
+                if (!Enum.IsDefined(availability)
+                    || availability == FieldAvailability.NotApplicable
+                    || (value is not null && text)
+                    || (value is not null || text) != (availability == FieldAvailability.Present))
                 {
                     throw new InvalidDataException(
-                        $"Observation {address} carries {source.Field} in more than one source-field segment; a "
+                        $"Source-field row {row} is invalid: its {code} value and its availability ({availability}) "
+                        + "disagree (source-fields-v1).");
+                }
+
+                var address = new RecordAddress(
+                    (uint)streams.UnsignedAt(row)!.Value,
+                    (uint)epochs.UnsignedAt(row)!.Value,
+                    ordinals.UnsignedAt(row)!.Value,
+                    new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
+                ref FieldSlot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(fields, address, out _);
+                if (!slot.Name(code, value))
+                {
+                    throw new InvalidDataException(
+                        $"Observation {address} carries {code} in more than one source-field segment; a "
                         + "duplicated field could change what its call is.");
                 }
-
-                if (source.Value is not { } value)
-                {
-                    continue;
-                }
-
-                StartFields current = fields.GetValueOrDefault(address);
-                fields[address] = source.Field == SourceField.RpcProcedureNumber
-                    ? current with { Procedure = value }
-                    : current with { Protocol = value };
             }
         }
 
@@ -552,11 +564,10 @@ public sealed class RpcCallIndex
     private static long Collect(
         SegmentReaderV1 segment,
         int position,
-        Dictionary<RecordAddress, StartFields> fields,
+        Dictionary<RecordAddress, FieldSlot> fields,
         List<Guid> interfaces,
         Dictionary<Guid, int> interfaceIndex,
-        List<CallRecord> keyed,
-        List<CallRecord> unkeyed)
+        List<CallRecord> records)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         long other = 0;
@@ -570,6 +581,8 @@ public sealed class RpcCallIndex
         SegmentColumnSlice factHigh = default;
         SegmentColumnSlice factLow = default;
         SegmentColumnSlice statuses = default;
+        SegmentColumnSlice activities = default;
+        SegmentColumnSlice identifiers = default;
         var owners = new RecordOwnerColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
@@ -590,6 +603,8 @@ public sealed class RpcCallIndex
                 factHigh = segment.Slice(SegmentColumnId.FactKeyHigh);
                 factLow = segment.Slice(SegmentColumnId.FactKeyLow);
                 statuses = segment.Slice(SegmentColumnId.StatusCode);
+                activities = segment.Slice(SegmentColumnId.ActivityId);
+                identifiers = segment.Slice(SegmentColumnId.SourceIdentifier);
                 opened = true;
             }
 
@@ -609,14 +624,13 @@ public sealed class RpcCallIndex
             }
 
             bool isStart = kind == ObservationKind.RequestStart;
-            var fact = new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value);
             var address = new RecordAddress(
                 (uint)streams.UnsignedAt(row)!.Value,
                 (uint)epochs.UnsignedAt(row)!.Value,
                 ordinals.UnsignedAt(row)!.Value,
-                fact);
+                new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
             int interfaceAt = -1;
-            if (isStart && segment.IdentifierValue(SegmentColumnId.SourceIdentifier, row) is { } uuid)
+            if (isStart && identifiers.GuidAt(row) is { } uuid)
             {
                 if (!interfaceIndex.TryGetValue(uuid, out interfaceAt))
                 {
@@ -626,127 +640,211 @@ public sealed class RpcCallIndex
                 }
             }
 
-            StartFields carried = isStart ? fields.GetValueOrDefault(address) : default;
+            FieldSlot carried = isStart ? fields.GetValueOrDefault(address) : default;
             long? status = isStart ? null : statuses.SignedAt(row);
-            Guid? activity = segment.IdentifierValue(SegmentColumnId.ActivityId, row);
-            var record = new CallRecord(
-                processId,
-                callSide,
-                isStart,
+            Guid? activity = activities.GuidAt(row);
+            CallFlags flags = (isStart ? CallFlags.Start : CallFlags.None)
+                | (activity is null ? CallFlags.None : CallFlags.Activity)
+                | (status is null ? CallFlags.None : CallFlags.Status)
+                | (carried.Procedure is null ? CallFlags.None : CallFlags.Procedure)
+                | (carried.Protocol is null ? CallFlags.None : CallFlags.Protocol);
+            records.Add(new(
+                address,
                 activity ?? Guid.Empty,
                 ticks.SignedAt(row)!.Value,
-                address,
+                status ?? 0,
+                carried.Procedure ?? 0,
+                carried.Protocol ?? 0,
+                processId,
                 position,
                 row,
                 interfaceAt,
-                carried,
-                status);
-            (activity is null ? unkeyed : keyed).Add(record);
+                callSide,
+                flags));
         }
 
         return other;
     }
 
     /// <summary>
-    /// Pairs one key's records, in canonical order (§3): a start opens a call and the next stop closes it. A start while
-    /// one is open makes every record from the earlier start until the key has no call open ambiguous.
+    /// The records' canonical order (§3): native reading, then raw locator, then fact key. The readings are sorted as plain
+    /// integers, and only records read at one instant are compared by their locators.
     /// </summary>
-    private static void Walk(ReadOnlySpan<CallRecord> records, List<Entry> calls)
+    private static int[] CanonicalOrder(List<CallRecord> collected, CancellationToken cancellationToken)
     {
-        int run = -1;
-        int open = 0;
-        bool ambiguous = false;
+        ReadOnlySpan<CallRecord> records = CollectionsMarshal.AsSpan(collected);
+        long[] readings = new long[records.Length];
+        int[] order = new int[records.Length];
+        bool ordered = true;
         for (int index = 0; index < records.Length; index++)
         {
-            CallRecord record = records[index];
-            if (record.IsStart)
+            readings[index] = records[index].Ticks;
+            order[index] = index;
+            ordered &= index == 0 || readings[index - 1] <= readings[index];
+        }
+
+        if (!ordered)
+        {
+            Array.Sort(readings, order);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Comparer<int>? byLocator = null;
+        for (int start = 0; start < order.Length;)
+        {
+            int end = start + 1;
+            while (end < order.Length && readings[end] == readings[start])
             {
-                run = open == 0 ? index : run;
-                open++;
-                ambiguous |= open > 1;
+                end++;
+            }
+
+            if (end - start > 1)
+            {
+                byLocator ??= Comparer<int>.Create((left, right) => CompareLocators(collected, left, right));
+                Array.Sort(order, start, end - start, byLocator);
+            }
+
+            start = end;
+        }
+
+        return order;
+    }
+
+    private static int CompareLocators(List<CallRecord> collected, int left, int right)
+    {
+        ReadOnlySpan<CallRecord> records = CollectionsMarshal.AsSpan(collected);
+        RecordAddress one = records[left].Address;
+        RecordAddress other = records[right].Address;
+        int order = one.Stream.CompareTo(other.Stream);
+        order = order != 0 ? order : one.Epoch.CompareTo(other.Epoch);
+        order = order != 0 ? order : one.Ordinal.CompareTo(other.Ordinal);
+        order = order != 0 ? order : one.FactKey.High.CompareTo(other.FactKey.High);
+        return order != 0 ? order : one.FactKey.Low.CompareTo(other.FactKey.Low);
+    }
+
+    /// <summary>
+    /// Pairs every key's records at once, in canonical order (§3): a start opens a call and the next stop of its key
+    /// closes it. A start while its key has a call open makes every record of the key, from the earlier start until as
+    /// many stops as starts have been read, ambiguous. Only the keys with a call open are held, so the walk holds the calls
+    /// in flight rather than every key the capture has seen.
+    /// </summary>
+    private static List<Entry> Walk(ReadOnlySpan<CallRecord> records, int[] order, CancellationToken cancellationToken)
+    {
+        var calls = new List<Entry>((records.Length / 2) + 1);
+        var open = new Dictionary<CallKey, OpenCall>();
+        for (int rank = 0; rank < order.Length; rank++)
+        {
+            if ((rank & 0xFFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            ref readonly CallRecord record = ref records[order[rank]];
+            if (!record.HasActivity)
+            {
+                calls.Add(Single(record, RpcCallState.NoActivityId, rank));
                 continue;
             }
 
-            if (open == 0)
+            var key = new CallKey(record.ProcessId, record.Side, record.Activity);
+            ref OpenCall state = ref CollectionsMarshal.GetValueRefOrNullRef(open, key);
+            if (Unsafe.IsNullRef(ref state))
             {
-                calls.Add(Single(record, RpcCallState.StartNotObserved));
+                if (record.IsStart)
+                {
+                    open.Add(key, new OpenCall(rank));
+                }
+                else
+                {
+                    calls.Add(Single(record, RpcCallState.StartNotObserved, rank));
+                }
+
                 continue;
             }
 
-            open--;
-            if (open > 0)
+            // A start while a call is open means the id was reused before its stop. From that start on, every record of the
+            // key belongs to the ambiguous run, until the key has no call open.
+            if (record.IsStart || state.Run is not null)
+            {
+                (state.Run ??= [state.First]).Add(rank);
+            }
+
+            state.Open += record.IsStart ? 1 : -1;
+            if (state.Open > 0)
             {
                 continue;
             }
 
-            if (ambiguous)
+            OpenCall closed = state;
+            _ = open.Remove(key);
+            if (closed.Run is { } run)
             {
-                AddAmbiguous(records[run..(index + 1)], calls);
+                AddAmbiguous(records, order, run, calls);
             }
             else
             {
-                calls.Add(Paired(records[run], record));
+                calls.Add(Paired(records[order[closed.First]], record, closed.First));
             }
-
-            ambiguous = false;
         }
 
-        if (open == 0)
+        foreach (OpenCall still in open.Values)
         {
-            return;
+            if (still.Run is { } run)
+            {
+                AddAmbiguous(records, order, run, calls);
+            }
+            else
+            {
+                calls.Add(Single(records[order[still.First]], RpcCallState.OpenAtCaptureEnd, still.First));
+            }
         }
 
-        if (ambiguous)
-        {
-            AddAmbiguous(records[run..], calls);
-        }
-        else
-        {
-            calls.Add(Single(records[run], RpcCallState.OpenAtCaptureEnd));
-        }
+        return calls;
     }
 
-    private static void AddAmbiguous(ReadOnlySpan<CallRecord> records, List<Entry> calls)
+    private static void AddAmbiguous(ReadOnlySpan<CallRecord> records, int[] order, List<int> run, List<Entry> calls)
     {
-        foreach (CallRecord record in records)
+        foreach (int rank in run)
         {
-            calls.Add(Single(record, RpcCallState.Ambiguous));
+            calls.Add(Single(records[order[rank]], RpcCallState.Ambiguous, rank));
         }
     }
 
-    private static Entry Paired(CallRecord start, CallRecord stop) => new()
+    private static Entry Paired(in CallRecord start, in CallRecord stop, int rank) => new()
     {
         FirstAddress = start.Address,
+        FirstRank = rank,
         ProcessId = start.ProcessId,
         Side = start.Side,
         State = RpcCallState.Completed,
         Interface = start.Interface,
-        Procedure = start.Fields.Procedure ?? 0,
-        HasProcedure = start.Fields.Procedure.HasValue,
-        Protocol = start.Fields.Protocol ?? 0,
-        HasProtocol = start.Fields.Protocol.HasValue,
+        Procedure = start.Procedure,
+        HasProcedure = start.HasProcedure,
+        Protocol = start.Protocol,
+        HasProtocol = start.HasProtocol,
         StartTicks = start.Ticks,
         StartSegment = start.Segment,
         StartRow = start.Row,
         StopTicks = stop.Ticks,
         StopSegment = stop.Segment,
         StopRow = stop.Row,
-        Status = stop.Status ?? 0,
-        HasStatus = stop.Status.HasValue,
+        Status = stop.Status,
+        HasStatus = stop.HasStatus,
     };
 
-    private static Entry Single(CallRecord record, RpcCallState state) => record.IsStart
+    private static Entry Single(in CallRecord record, RpcCallState state, int rank) => record.IsStart
         ? new()
         {
             FirstAddress = record.Address,
+            FirstRank = rank,
             ProcessId = record.ProcessId,
             Side = record.Side,
             State = state,
             Interface = record.Interface,
-            Procedure = record.Fields.Procedure ?? 0,
-            HasProcedure = record.Fields.Procedure.HasValue,
-            Protocol = record.Fields.Protocol ?? 0,
-            HasProtocol = record.Fields.Protocol.HasValue,
+            Procedure = record.Procedure,
+            HasProcedure = record.HasProcedure,
+            Protocol = record.Protocol,
+            HasProtocol = record.HasProtocol,
             StartTicks = record.Ticks,
             StartSegment = record.Segment,
             StartRow = record.Row,
@@ -756,6 +854,7 @@ public sealed class RpcCallIndex
         : new()
         {
             FirstAddress = record.Address,
+            FirstRank = rank,
             ProcessId = record.ProcessId,
             Side = record.Side,
             State = state,
@@ -765,9 +864,62 @@ public sealed class RpcCallIndex
             StopTicks = record.Ticks,
             StopSegment = record.Segment,
             StopRow = record.Row,
-            Status = record.Status ?? 0,
-            HasStatus = record.Status.HasValue,
+            Status = record.Status,
+            HasStatus = record.HasStatus,
         };
+
+    /// <summary>
+    /// The calls grouped by process binding, side and interface, the groups in the order of those identities and each
+    /// group's calls in the canonical order of their first records (§3), which is what a channel lists and a page reads.
+    /// A group is numbered where its identity sorts, so one sort of plain integers orders the groups and their calls.
+    /// </summary>
+    private static Entry[] InGroupsInReadingOrder(ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken)
+    {
+        var numbered = new Dictionary<GroupKey, int>();
+        int[] provisional = new int[drafted.Length];
+        for (int index = 0; index < drafted.Length; index++)
+        {
+            ref int number = ref CollectionsMarshal.GetValueRefOrAddDefault(numbered, GroupKey.Of(drafted[index]), out bool known);
+            if (!known)
+            {
+                number = numbered.Count - 1;
+            }
+
+            provisional[index] = number;
+        }
+
+        var identities = new GroupKey[numbered.Count];
+        foreach ((GroupKey identity, int number) in numbered)
+        {
+            identities[number] = identity;
+        }
+
+        int[] byIdentity = [.. Enumerable.Range(0, identities.Length)];
+        Array.Sort(identities, byIdentity, GroupKeyOrder.Instance);
+        int[] final = new int[byIdentity.Length];
+        for (int place = 0; place < byIdentity.Length; place++)
+        {
+            final[byIdentity[place]] = place;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        long[] keys = new long[drafted.Length];
+        int[] order = new int[drafted.Length];
+        for (int index = 0; index < drafted.Length; index++)
+        {
+            keys[index] = ((long)final[provisional[index]] << 32) | (uint)drafted[index].FirstRank;
+            order[index] = index;
+        }
+
+        Array.Sort(keys, order);
+        var entries = new Entry[drafted.Length];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            entries[index] = drafted[order[index]];
+        }
+
+        return entries;
+    }
 
     /// <summary>Counts each group of consecutive entries, and every entry, and orders the groups by calls.</summary>
     private static (RpcCallGroup[] Groups, RpcCallCounts Totals) Group(Entry[] entries, Guid[] interfaces, SourceClockDescriptor clock)
@@ -778,7 +930,8 @@ public sealed class RpcCallIndex
         while (first < entries.Length)
         {
             int end = first + 1;
-            while (end < entries.Length && ByGroupThenReading.SameGroup(entries[first], entries[end]))
+            GroupKey identity = GroupKey.Of(entries[first]);
+            while (end < entries.Length && GroupKey.Of(entries[end]) == identity)
             {
                 end++;
             }
@@ -840,28 +993,104 @@ public sealed class RpcCallIndex
     /// <summary>Where one record is: its raw locator and fact key, without the capture every record here shares.</summary>
     private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
 
-    /// <summary>The procedure number and protocol sequence a call start carried, each null when it carried none.</summary>
-    private readonly record struct StartFields(long? Procedure, long? Protocol);
+    /// <summary>
+    /// What a call start carried as source fields while they are read, and which fields a row has named, so a field named
+    /// twice is refused even when a row of it carried no value.
+    /// </summary>
+    private struct FieldSlot
+    {
+        private bool procedureNamed;
+        private bool protocolNamed;
 
-    /// <summary>One call record as it is paired: its key, its canonical place, and what it carried.</summary>
+        public long? Procedure { get; private set; }
+
+        public long? Protocol { get; private set; }
+
+        /// <summary>Records one row's field; false when a row named the field already.</summary>
+        public bool Name(SourceField field, long? value)
+        {
+            if (field == SourceField.RpcProcedureNumber)
+            {
+                if (procedureNamed)
+                {
+                    return false;
+                }
+
+                procedureNamed = true;
+                Procedure = value;
+                return true;
+            }
+
+            if (protocolNamed)
+            {
+                return false;
+            }
+
+            protocolNamed = true;
+            Protocol = value;
+            return true;
+        }
+    }
+
+    [Flags]
+    private enum CallFlags : byte
+    {
+        None = 0,
+        Start = 1,
+        Activity = 2,
+        Status = 4,
+        Procedure = 8,
+        Protocol = 16,
+    }
+
+    /// <summary>One call record as it is paired: its canonical place, its key, and what it carried.</summary>
     private readonly record struct CallRecord(
-        int ProcessId,
-        RpcCallSide Side,
-        bool IsStart,
+        RecordAddress Address,
         Guid Activity,
         long Ticks,
-        RecordAddress Address,
+        long Status,
+        long Procedure,
+        long Protocol,
+        int ProcessId,
         int Segment,
         int Row,
         int Interface,
-        StartFields Fields,
-        long? Status);
+        RpcCallSide Side,
+        CallFlags Flags)
+    {
+        public bool IsStart => (Flags & CallFlags.Start) != 0;
+
+        public bool HasActivity => (Flags & CallFlags.Activity) != 0;
+
+        public bool HasStatus => (Flags & CallFlags.Status) != 0;
+
+        public bool HasProcedure => (Flags & CallFlags.Procedure) != 0;
+
+        public bool HasProtocol => (Flags & CallFlags.Protocol) != 0;
+    }
+
+    /// <summary>What pairs a call's records: the process they belong to, their side and their activity id (§3).</summary>
+    private readonly record struct CallKey(int ProcessId, RpcCallSide Side, Guid Activity);
+
+    /// <summary>
+    /// A key with a call open: the rank of its run's first start, how many starts await their stop, and, once the id has
+    /// been reused, the rank of every record of the run.
+    /// </summary>
+    private struct OpenCall(int first)
+    {
+        public int First = first;
+        public int Open = 1;
+        public List<int>? Run;
+    }
 
     /// <summary>One call as the index holds it: a summary's worth, with its records by segment position and row.</summary>
     private readonly record struct Entry
     {
         /// <summary>The call's identity: its first record's raw locator and fact key.</summary>
         public RecordAddress FirstAddress { get; init; }
+
+        /// <summary>Where its first record is in the canonical order of every call record (§3).</summary>
+        public int FirstRank { get; init; }
 
         public int ProcessId { get; init; }
 
@@ -901,52 +1130,25 @@ public sealed class RpcCallIndex
         public long FirstTicks => StartSegment >= 0 ? StartTicks : StopTicks;
     }
 
-    /// <summary>A key's records together, each key's in canonical order (§3).</summary>
-    private sealed class CanonicalByKey : IComparer<CallRecord>
+    /// <summary>What makes a call's group: its PID, its binding, its side and its interface.</summary>
+    private readonly record struct GroupKey(int ProcessId, ProcessBinding Process, RpcCallSide Side, int Interface)
     {
-        public static readonly CanonicalByKey Instance = new();
-
-        public static bool SameKey(CallRecord left, CallRecord right) =>
-            left.ProcessId == right.ProcessId && left.Side == right.Side && left.Activity == right.Activity;
-
-        public int Compare(CallRecord left, CallRecord right)
-        {
-            int order = left.ProcessId.CompareTo(right.ProcessId);
-            order = order != 0 ? order : ((int)left.Side).CompareTo((int)right.Side);
-            order = order != 0 ? order : left.Activity.CompareTo(right.Activity);
-            order = order != 0 ? order : left.Ticks.CompareTo(right.Ticks);
-            order = order != 0 ? order : left.Address.Stream.CompareTo(right.Address.Stream);
-            order = order != 0 ? order : left.Address.Epoch.CompareTo(right.Address.Epoch);
-            order = order != 0 ? order : left.Address.Ordinal.CompareTo(right.Address.Ordinal);
-            order = order != 0 ? order : left.Address.FactKey.High.CompareTo(right.Address.FactKey.High);
-            return order != 0 ? order : left.Address.FactKey.Low.CompareTo(right.Address.FactKey.Low);
-        }
+        public static GroupKey Of(in Entry entry) => new(entry.ProcessId, entry.Process, entry.Side, entry.Interface);
     }
 
-    /// <summary>A group's calls together, each group's in the order their first records were read.</summary>
-    private sealed class ByGroupThenReading : IComparer<Entry>
+    /// <summary>Groups in the order of their identities: PID, instance, binding reason and strength, side, interface.</summary>
+    private sealed class GroupKeyOrder : IComparer<GroupKey>
     {
-        public static readonly ByGroupThenReading Instance = new();
+        public static readonly GroupKeyOrder Instance = new();
 
-        public static bool SameGroup(Entry left, Entry right) =>
-            left.ProcessId == right.ProcessId
-            && left.Process == right.Process
-            && left.Side == right.Side
-            && left.Interface == right.Interface;
-
-        public int Compare(Entry left, Entry right)
+        public int Compare(GroupKey left, GroupKey right)
         {
             int order = left.ProcessId.CompareTo(right.ProcessId);
             order = order != 0 ? order : left.Process.Instance.CompareTo(right.Process.Instance);
             order = order != 0 ? order : ((int)left.Process.Reason).CompareTo((int)right.Process.Reason);
             order = order != 0 ? order : ((int)left.Process.Strength).CompareTo((int)right.Process.Strength);
             order = order != 0 ? order : ((int)left.Side).CompareTo((int)right.Side);
-            order = order != 0 ? order : left.Interface.CompareTo(right.Interface);
-            order = order != 0 ? order : left.FirstTicks.CompareTo(right.FirstTicks);
-            order = order != 0 ? order : left.StartSegment.CompareTo(right.StartSegment);
-            order = order != 0 ? order : left.StartRow.CompareTo(right.StartRow);
-            order = order != 0 ? order : left.StopSegment.CompareTo(right.StopSegment);
-            return order != 0 ? order : left.StopRow.CompareTo(right.StopRow);
+            return order != 0 ? order : left.Interface.CompareTo(right.Interface);
         }
     }
 

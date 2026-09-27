@@ -97,6 +97,23 @@ dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~Scal
 directory holding anything else is refused rather than overwritten. Only `report.json` is committed. Without the
 variable the test is skipped, never passed.
 
+## RPC call pairing
+
+Measures what pairing RPC calls costs over finished synthetic sessions of 1M and 10M observations, four in ten of them
+RPC call records whose starts carry their source fields (200,000 and 2,000,000 calls): each live generation's pairing
+while the session is written, the first RPC channel rung after a reopen, cold and warm, and pairing alone with every
+column in memory, over five runs.
+
+```powershell
+$env:INTERCAT_RPC_SCALE_OUTPUT = "bench/results/rpc-pairing-<UTC>"
+$env:INTERCAT_RPC_SCALE_SESSIONS = "artifacts/claude-work/rpc-sessions"   # generated fresh to measure each generation
+dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~RpcPairingScaleTests"
+```
+
+Per-generation figures exist only for a run that generates its sessions. `rpc-pairing-20260927T153638Z-rev183` and
+`-rev184` are the same measurement with revision 183's build and revision 184's, each over sessions it generated.
+Only `report.json` is committed. Without the variable the test is skipped, never passed.
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a
