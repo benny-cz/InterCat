@@ -100,11 +100,7 @@ internal static partial class Program
         MachineDescriptor machine = MachineProbe.Describe(outputDirectory);
 
         var probe = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
-        string[] sourceIds =
-        [
-            WindowsSourceCatalog.KernelProcessSourceId,
-            WindowsSourceCatalog.KernelNetworkSourceId,
-        ];
+        IReadOnlyList<string> sourceIds = options.SourceIds;
         Console.Error.WriteLine("Compiling one admission plan for every level and both evidence variants...");
         IReadOnlyList<SourceAdmissionPlan> sources = probe.CompilePlans(
             sourceIds,

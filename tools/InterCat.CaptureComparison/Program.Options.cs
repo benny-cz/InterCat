@@ -28,7 +28,8 @@ internal static partial class Program
             3,
             false,
             false,
-            false);
+            false,
+            SourceSelection.Default);
         error = null;
         for (int index = 0; index < args.Length; index++)
         {
@@ -81,6 +82,10 @@ internal static partial class Program
             else if (name == "--levels" && LoadSeries.Select(value) is { } chosen)
             {
                 options = options with { SeriesName = value, Levels = chosen, SeriesWasGiven = true };
+            }
+            else if (name == "--sources" && SourceSelection.Parse(value) is { } selected)
+            {
+                options = options with { SourceIds = selected };
             }
             else if (name == "--pairs" && TryBounded(value, 1, 15, out int pairs))
             {
@@ -156,6 +161,7 @@ internal static partial class Program
         Console.Error.WriteLine("                           materially raises per-event cost, so it is a separate series)");
         Console.Error.WriteLine("  --impact                 Run IC-010a per-source capture/no-capture pairs instead");
         Console.Error.WriteLine("  --pairs <1-15>           Pairs per source in impact mode (default 3; order alternates)");
+        Console.Error.WriteLine("  --sources <a,b,...>      Sources to capture: process, network, rpc, file (default process,network)");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Declared levels:");
         foreach (LoadLevel level in LoadSeries.Default)
@@ -188,5 +194,6 @@ internal static partial class Program
         int ImpactPairs,
         bool SeriesWasGiven,
         bool PairsWasGiven,
-        bool OutputWasGiven);
+        bool OutputWasGiven,
+        IReadOnlyList<string> SourceIds);
 }

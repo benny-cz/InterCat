@@ -899,6 +899,7 @@
         "P27: a source that registers and enables but emits nothing stays unsupported",
         "P27: a supported build states its release and whether it is a pre-release branch",
         "P27: an IPv6 loopback workload is matched on its own flows, never on the same ports over IPv4",
+        "P27: an impact run captures only the sources it names, the Explore pair unless told otherwise",
         "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss",
         "P27: committed transport fixture evidence reproduces its measured tier",
         "P27: discovered resources without a byte claim are topology only",

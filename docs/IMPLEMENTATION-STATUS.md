@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 175 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 176 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 176 — RPC's capture cost measured, the first step toward RPC operations (M3):**
+  - **Cost:** seven pairs with RPC alone put it at a median 0.52 CPU pp (Low), with no throughput regression,
+    loss-free and valid (`bench/results/capture-impact-20260927T121747Z`). The pairs spread from −4.2 to +4.7 pp, so
+    the median is a noisy Low. The harness now captures the sources it is told to (`--sources process,network,rpc,file`),
+    and still defaults to the Explore pair.
+  - **Still qualified:** FX-RPC-001 on adapter 0.7.0 observed 12 of 12 truth calls, bound to their interface and
+    completion-paired through the activity id, reproduced in a second run. Of the fixture process's 63 client calls,
+    62 carried an activity id and all 62 paired.
+  - **Not yet admitted to Explore:** a measured class is what admits an optional source to Explore, and RPC's records
+    would arrive with no process. They name none in their payload, and only a payload owner binds (entities-v1). So
+    the catalog keeps RPC unmeasured until its records bind and its calls are operations (open work item 3).
 
 - **Revision 175 — a long IPv6 endpoint keeps its port on screen, from a render of the channel rung:**
   - **The lane:** a channel-end lane's endpoint line holds 24 characters and cut the end off, which a global IPv6
@@ -1455,6 +1467,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
+   - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low). Next, in order:
+     1. Bind an RPC record to the process that raised it. The provider raises client events in the calling process and
+        server events in the serving one. That is a new binding rule, and it has to be measured per side and stated
+        (ADR); today only a payload owner binds.
+     2. Derive call operations by pairing each start with its stop through the activity id (P8, never by time). A start
+        with no stop at capture end is censored, not failed.
+     3. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
+        and status. Then record RPC's measured class, which lets Explore take it.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -1488,6 +1508,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 176 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,200 tests: 1,197
+  passed, 3 skipped**, zero failures. FX-RPC-001 was measured on real ETW, and the capture-impact harness ran seven
+  pairs of RPC alone.
 - Revision 175 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,199 tests: 1,196
   passed, 3 skipped**, zero failures. The channel rung was checked in headless renders at 1080×700 over IPv4 and IPv6.
 - Revision 174 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,197 tests: 1,194
