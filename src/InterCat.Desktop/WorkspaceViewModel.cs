@@ -130,6 +130,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private RpcCallsLoad? rpcCalls;
     private IReadOnlyList<RungRow> rpcChannelRows = [];
     private IReadOnlyList<RungRow> rpcCallRows = [];
+
+    // The RPC channel rung's calls within the drawn viewport, for the timeline's call lane, and the read under way.
+    private RpcCallSpanPage? rpcSpans;
+    private (string Key, TimeRange Viewport)? requestedRpcSpans;
+    private CancellationTokenSource? rpcSpanQuery;
     private readonly WorkspaceSnapshot wholeSnapshot;
     private WorkspaceSnapshot? scopedSnapshot;
     private readonly string graphIdentity;
@@ -434,6 +439,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         drawnTimeline = (viewport, columns);
         RequestHighlight();
+        RequestRpcSpans(viewport);
         TimeRange extent = wholeSnapshot.Extent;
         bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
         if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
@@ -1096,7 +1102,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
         : $" · selection highlighted: {highlightName}";
 
-    private string RungCaption => timelineFocusDescription is not { } focus
+    private string RungCaption => ShowsRpcCallLane
+        ? "This channel's calls, each from its start to its stop: failures in caution ink, calls open at capture end "
+            + "faint · machine context above · click a call to select its row"
+        : timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
             ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes"
                 + (SelectedTimelineMechanism is { } mechanism
@@ -3930,6 +3939,138 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectedEvidenceTick));
     }
 
+    /// <summary>Completes when the latest read of the call lane's calls has applied or reported a problem.</summary>
+    public Task RpcSpansReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>The RPC channel rung's calls within the drawn viewport, in reading order; null where no call lane is drawn.</summary>
+    public IReadOnlyList<RpcCallSpanView>? RpcCallSpans => ShowsRpcCallLane ? rpcSpans!.Calls : null;
+
+    /// <summary>Whether the timeline draws the RPC channel's calls as a lane of duration bars under the machine row.</summary>
+    public bool ShowsRpcCallLane => IsRpcChannelRung && rpcSpans is { Problem: null };
+
+    /// <summary>What the call lane holds, in one short line: every call in view, or how many of them it drew.</summary>
+    public string RpcCallLaneNote => rpcSpans is not { Problem: null } spans || !IsRpcChannelRung
+        ? string.Empty
+        : spans.Calls.Count < spans.Total
+            ? string.Create(CultureInfo.CurrentCulture, $"{spans.Calls.Count:N0} of {spans.Total:N0} in view; zoom in")
+            : string.Create(CultureInfo.CurrentCulture, $"{spans.Total:N0} in view");
+
+    /// <summary>The call selected in the RPC channel rung's table, which the call lane outlines.</summary>
+    public string? SelectedRpcCallKey => IsRpcChannelRung ? selectedRung?.Key : null;
+
+    /// <summary>Selects a call the lane drew, when its row is among those listed; false when it is not.</summary>
+    public bool SelectRpcCall(string key)
+    {
+        if (!IsRpcChannelRung || RungRows.FirstOrDefault(row => row.Key == key) is not { } row)
+        {
+            return false;
+        }
+
+        SelectedRung = row;
+        return true;
+    }
+
+    /// <summary>What a call the lane draws is, for its hover card.</summary>
+    public HoverCard DescribeRpcCallHover(RpcCallSpanView span)
+    {
+        ArgumentNullException.ThrowIfNull(span);
+        string title = span.State == RpcCallState.Completed && span.StartTicks is { } start && span.EndTicks is { } end
+            ? "RPC call · " + OperationText.Duration((end - start) * 100, CultureInfo.CurrentCulture)
+            : "RPC call · " + OperationText.State(span.State);
+        var lines = new List<string>
+        {
+            span.Status is { } status
+                ? status == 0 ? "Succeeded" : string.Create(CultureInfo.CurrentCulture, $"Failed, status {status:N0}")
+                : "No status",
+            span.StartTicks is { } began
+                ? "Started " + WorkspaceTime.FormatInstant(began, Math.Max(1, (span.EndTicks ?? began) - began + 1), CultureInfo.CurrentCulture)
+                : "Its start is not in the evidence",
+        };
+        if (span.Procedure is { } procedure) lines.Add(string.Create(CultureInfo.CurrentCulture, $"Procedure {procedure:N0}"));
+        lines.Add(RungRows.Any(row => row.Key == span.Key) ? "Click selects its row" : "Load more calls to select its row");
+        return new(title, lines);
+    }
+
+    /// <summary>
+    /// Reads the calls the lane draws for <paramref name="viewport"/> at an RPC channel rung, superseding a read still
+    /// under way; any other rung lets the lane go.
+    /// </summary>
+    private void RequestRpcSpans(TimeRange viewport)
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        if (!IsRpcChannelRung || evidenceSource is null)
+        {
+            if (rpcSpans is not null || requestedRpcSpans is not null)
+            {
+                CancelRpcSpans();
+                RaiseRpcSpansChanged();
+            }
+
+            return;
+        }
+
+        string key = ladder.Current.Focus?.Key ?? string.Empty;
+        if (requestedRpcSpans == (key, viewport))
+        {
+            return;
+        }
+
+        requestedRpcSpans = (key, viewport);
+        rpcSpanQuery?.Cancel();
+        rpcSpanQuery?.Dispose();
+        var query = new CancellationTokenSource();
+        rpcSpanQuery = query;
+        RpcSpansReady = LoadRpcSpansAsync(evidenceSource, key, viewport, query);
+    }
+
+    private async Task LoadRpcSpansAsync(SessionEvidenceSource source, string key, TimeRange viewport, CancellationTokenSource query)
+    {
+        try
+        {
+            RpcCallSpanPage page = await source.RpcSpansAsync(key, viewport, query.Token);
+            if (disposed || !ReferenceEquals(rpcSpanQuery, query)) return;
+            rpcSpans = page;
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (disposed || !ReferenceEquals(rpcSpanQuery, query)) return;
+            rpcSpans = new(Guid.Empty, 0, viewport, [], 0, exception.Message);
+        }
+
+        RaiseRpcSpansChanged();
+    }
+
+    private void CancelRpcSpans()
+    {
+        rpcSpanQuery?.Cancel();
+        rpcSpanQuery?.Dispose();
+        rpcSpanQuery = null;
+        requestedRpcSpans = null;
+        rpcSpans = null;
+    }
+
+    private void RaiseRpcSpansChanged()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(RpcCallSpans));
+        OnPropertyChanged(nameof(ShowsRpcCallLane));
+        OnPropertyChanged(nameof(RpcCallLaneNote));
+        OnPropertyChanged(nameof(TimelineCaption));
+    }
+
     /// <summary>Whether the user is at a published session's RPC channel rung, whose rows are its calls.</summary>
     public bool IsRpcChannelRung => evidenceSource is not null
         && ladder.Current.Level == DetailLevel.Channel
@@ -3994,10 +4135,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             var calls = new RpcCallsLoad(key);
             rpcCalls = calls;
             RpcReady = LoadRpcCallsAsync(calls);
+            RequestRpcSpans(drawnTimeline?.Viewport ?? ladder.Current.Viewport);
             return;
         }
 
         CancelRpcCalls();
+        RequestRpcSpans(ladder.Current.Viewport);
         if (evidenceSource is not null
             && ladder.Current.Level == DetailLevel.ProcessInstance
             && ladder.Current.Focus is { } focus
@@ -4163,6 +4306,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         CancelRpcChannels();
         CancelRpcCalls();
+        CancelRpcSpans();
     }
 
     private void CancelRpcChannels()

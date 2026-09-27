@@ -770,6 +770,78 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal(3, workspace.RungRows.Count(row => row.Detail.Contains("failed, status 1", StringComparison.Ordinal)));
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: an RPC channel's calls are duration bars that hover, select their row and say what they did not draw")]
+    public async Task AnRpcChannelsCallsAreALaneOfDurationBars()
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Conversation(20, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Enumerable.Range(0, 12).SelectMany(index =>
+            {
+                long start = 10 + (4 * index);
+                long stop = start + 1 + (index % 3);
+                var activity = new Guid(index + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+                return new[]
+                {
+                    RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(60_000 + (2 * index)),
+                        activity, serviceControl) with { SessionRelativeTicks = start * 100 },
+                    RpcCall(stop, ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(60_001 + (2 * index)),
+                        activity, status: index == 5 ? 1_753 : 0) with { SessionRelativeTicks = stop * 100 },
+                };
+            }),
+            RpcCall(58, ObservationKind.RequestStart, Direction.Outbound, 100, 61_000, new Guid(99, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                serviceControl) with { SessionRelativeTicks = 58 * 100 },
+        ]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        timeline.RequestDetailNow();
+        await workspace.RpcSpansReady;
+        Dispatch();
+
+        // Every call in view is a bar: twelve that ended, one failing, and one open at capture end.
+        Assert.True(workspace.ShowsRpcCallLane, workspace.TimelineCaption);
+        IReadOnlyList<RpcCallSpanView> calls = workspace.RpcCallSpans!;
+        Assert.Equal(13, calls.Count);
+        Assert.Equal("13 in view", workspace.RpcCallLaneNote);
+        Assert.Single(calls, call => call.Failed);
+        Assert.Single(calls, call => call.State == Analysis.RpcCallState.OpenAtCaptureEnd);
+        Assert.StartsWith("This channel's calls, each from its start to its stop", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // A resting pointer describes the call under it, and a click selects its row, which the lane then outlines.
+        RpcCallSpanView failing = calls.Single(call => call.Failed);
+        Point onCall = timeline.TranslatePoint(timeline.PointOf(failing)!.Value, window)!.Value;
+        window.MouseMove(onCall);
+        Dispatch();
+        Assert.Same(failing, timeline.HoveredRpcCall);
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.StartsWith("RPC call · ", card.Title, StringComparison.Ordinal);
+        Assert.StartsWith("Failed, status 1", card.Lines[0], StringComparison.Ordinal);
+        window.MouseDown(onCall, MouseButton.Left);
+        window.MouseUp(onCall, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(failing.Key, workspace.SelectedRung?.Key);
+        Assert.Equal(failing.Key, workspace.SelectedRpcCallKey);
+        Assert.Null(workspace.SelectedInterval);
+        Save(window.CaptureRenderedFrame()!, "l3-rpc-call-lane-1080x700.png");
+    }
+
     [AvaloniaFact(DisplayName = "§3.2/R15: a channel's ends are lanes banded by direction that hover, select and step")]
     public async Task AChannelDrawsItsEndsBandedByDirection()
     {

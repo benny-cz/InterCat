@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 180 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 181 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 181 — an RPC channel's calls are drawn in the timeline, each from its start to its stop:**
+  - **The lane:** at an RPC channel's rung the timeline draws the machine's records as grey context and, under them, one
+    lane of the channel's calls: a bar from each call's start to its stop, at least 2 px, in the RPC hue; a failed call
+    in caution ink; a call open at capture end faint, running to the view's edge; a call with one record a mark. The
+    selected call is outlined. The lane's note says how many calls are in view, or how many of them it drew.
+  - **Stacks mean concurrency:** calls that ran at the same time stack, up to six rows. The first render packed by
+    pixels, and on a real session calls lasting microseconds stacked six high though they ran one after another; they
+    are packed by time now, so a burst of sequential calls reads as one row.
+  - **Hover and click:** a resting pointer names the call's duration or state, status, start and procedure; a click
+    selects its row, whose records are one step away, and never brushes an interval.
+  - **Read per view:** the calls in view come from the generation's paired calls, at most 4,000 of them, with the count
+    of every call the view holds (`SessionRpcCalls.Spans`).
+  - Checked in headless renders at 1080×700 and on the real recorded session (a svchost channel's 266 calls over a
+    minute, whole and zoomed).
 
 - **Revision 180 — Explore takes RPC, and a 32-bit process's calls are admitted (adapter 0.8.0):**
   - **Measured class recorded:** RPC is Low (revision 176's seven pairs), so Explore compiles it beside process and
@@ -1544,16 +1559,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
    - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), revision 177 binds an RPC record to the
      process that raised it (ADR-030), revision 178 pairs its calls (ADR-031, `icat operations`), revision 179 puts a
-     process's RPC channels and their calls on the ladder, and revision 180 admits RPC to Explore, 32-bit callers
-     included. Next, in order:
-     1. Draw an RPC channel's calls in the timeline: one lane of duration bars coloured by outcome at its rung, and the
-        selected call marked. Today the timeline at an RPC rung shows the whole session.
-     2. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
+     process's RPC channels and their calls on the ladder, revision 180 admits RPC to Explore, 32-bit callers included,
+     and revision 181 draws a channel's calls in the timeline. Next, in order:
+     1. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
         today that basis still says `NoLogicalOperations`.
-     3. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
+     2. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
         from every call record on first use: 0.66 s for 500,000 calls, 0.43 s for a real minute of Explore.
-     4. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
+     3. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
         protocol specification names get a name.
+     4. The call lane draws at most 4,000 calls per view and says so; a denser view needs §6.2's density regime.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -1587,6 +1601,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 181 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,229 tests: 1,226
+  passed, 3 skipped**, zero failures. The call lane was checked in headless renders at 1080×700 and on the real
+  session revision 180 recorded, whole and zoomed.
 - Revision 180 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,227 tests: 1,224
   passed, 3 skipped**, zero failures. Two 60-second Explore recordings on real ETW were checked with `icat operations`
   and `icat rederive --check`, and the second's rungs were rendered headlessly; both sessions stay in scratch.

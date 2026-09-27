@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -63,8 +64,12 @@ public sealed class TimelineView : Control, IHoverCardSource
             TextPen = new(TextBrush, 1);
             OutsideBrush = new(DimBrush.Color, 0.6);
             LiveContextBrush = new(ContextBarBrush.Color, 0.25);
+            FailedBrush = Token(ThemePalette.Status(mode).Caution);
             this.mode = mode;
         }
+
+        /// <summary>A call that completed with a failure status: caution ink, never a mechanism's hue (§6.6).</summary>
+        public SolidColorBrush FailedBrush { get; }
 
         private readonly ThemeMode mode;
         private readonly Dictionary<Mechanism, SolidColorBrush> liveBrushes = [];
@@ -175,6 +180,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     private long? brushAnchor;
     private long? brushEnd;
     private double pressX;
+    private double pressY;
+    private RpcCallSpanView? pressedCall;
     private bool brushing;
     private bool moved;
     private TimeRange panOrigin;
@@ -251,6 +258,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         /// <summary>L3: one lane per channel end, first end first, banded by direction around its midline.</summary>
         ChannelEnds,
+
+        /// <summary>L3 of an RPC channel: one lane of its calls, each a bar from its start to its stop.</summary>
+        Calls,
     }
 
     /// <summary>
@@ -275,6 +285,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             object? lanes = viewModel.ShowsProcessLanes ? viewModel.ProcessLaneDisplay
                 : viewModel.ShowsDirectionLanes ? viewModel.TimelineDirectionLanes
                 : viewModel.ShowsChannelEndLanes ? viewModel.TimelineChannelEndLanes
+                : viewModel.ShowsRpcCallLane ? viewModel.RpcCallSpans
                 : null;
             var key = new FocusRowsKey(viewModel, lanes, viewModel.TimelineDetail, viewModel.Snapshot.Timeline, Viewport);
             if (focusRowsKey != key)
@@ -305,6 +316,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
             : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
             : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
+            : viewModel.ShowsRpcCallLane ? (FocusRowKind.Calls, [MachineBuckets(viewModel, Viewport)])
             : null;
         TimeRange visible = Viewport;
         if (found is not { Rows.Length: > 0 } rows || !rows.Rows.All(buckets => buckets.Count > 0
@@ -588,8 +600,11 @@ public sealed class TimelineView : Control, IHoverCardSource
                 case FocusRowKind.Directions:
                     DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale);
                     break;
-                default:
+                case FocusRowKind.ChannelEnds:
                     DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale);
+                    break;
+                default:
+                    DrawRpcCalls(context, viewModel, rows.Context, scale);
                     break;
             }
 
@@ -681,6 +696,14 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
+        if (HoveredRpcCall is { } hoveredCall && CallRect(hoveredCall) is { } callRect)
+        {
+            using (context.PushOpacity(0.7))
+            {
+                context.DrawRectangle(Brushes.Transparent, HoverPen, callRect.Inflate(1.5));
+            }
+        }
+
         if (HoveredLiveBin is { } hoveredLive && LiveEdgePlacement is { } liveArea)
         {
             (double x1, double x2) = liveArea.Columns(hoveredLive);
@@ -711,7 +734,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             if (FocusRows is { } rows)
             {
-                return BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
+                return rows.Kind == FocusRowKind.Calls && index == 1
+                    ? null
+                    : BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
             }
 
             Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
@@ -771,6 +796,18 @@ public sealed class TimelineView : Control, IHoverCardSource
                 {
                     cardKey = liveKey;
                     card = live.DescribeLiveEdgeHover(liveBin, laneMechanism);
+                }
+
+                return card;
+            }
+
+            if (HoveredRpcCall is { } call && DataContext is WorkspaceViewModel callModel)
+            {
+                var callKey = new CardKey(callModel, call, Mechanism.Rpc, 1, 0, ThemeResources.CurrentMode);
+                if (cardKey != callKey)
+                {
+                    cardKey = callKey;
+                    card = callModel.DescribeRpcCallHover(call);
                 }
 
                 return card;
@@ -985,6 +1022,142 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 DrawCoverageGap(context, new(x1, scale.Top, width, plotHeight));
             }
+        }
+    }
+
+    /// <summary>The most rows a call lane stacks overlapping calls into; any further overlap shares the last row.</summary>
+    private const int MaximumCallRows = 6;
+
+    /// <summary>The machine row an RPC call lane stands under: the zoomed detail where it covers the view, else the overview.</summary>
+    private static IReadOnlyList<TimelineBucket> MachineBuckets(WorkspaceViewModel viewModel, TimeRange visible) =>
+        viewModel.TimelineDetail is { Buckets.Count: > 0 } detail
+        && detail.Buckets[0].Interval.StartTicks <= visible.StartTicks
+        && detail.Buckets[^1].Interval.EndTicks >= visible.EndTicks
+            ? detail.Buckets
+            : viewModel.Snapshot.Timeline;
+
+    private (object? Spans, TimeRange Visible, Size Size, double Left, double Width)? callLayoutKey;
+    private List<(RpcCallSpanView Span, Rect Rect)> callLayout = [];
+
+    /// <summary>
+    /// Where each call the lane draws lies: from its start to its stop, at least 2 px, in the first stacked row it does not
+    /// overlap. A call open at capture end runs to the view's edge; a call with only one record is a mark at it. Computed
+    /// once per set of calls, view and size, and read by drawing, hover and clicks alike (R11).
+    /// </summary>
+    private List<(RpcCallSpanView Span, Rect Rect)> CallLayout(WorkspaceViewModel viewModel)
+    {
+        TimeRange visible = Viewport;
+        var key = (Spans: (object?)viewModel.RpcCallSpans, visible, Bounds.Size, PlotLeft, PlotWidth);
+        if (callLayoutKey is { } known && ReferenceEquals(known.Spans, key.Spans) && known.Visible == visible
+            && known.Size == Bounds.Size && known.Left.Equals(PlotLeft) && known.Width.Equals(PlotWidth))
+        {
+            return callLayout;
+        }
+
+        callLayoutKey = key;
+        callLayout = [];
+        if (viewModel.RpcCallSpans is not { Count: > 0 } spans)
+        {
+            return callLayout;
+        }
+
+        double bottom = Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
+        Rect row = LaneRow(1, 2, PlotTop, bottom);
+        double laneTop = row.Top + 4;
+        double laneHeight = Math.Max(4, row.Height - 10);
+        // Rows are packed by time, not pixels: a call shorter than a pixel still shares its row with the calls before it,
+        // so a stack always means calls that ran at the same time.
+        var placed = new List<(RpcCallSpanView Span, double X1, double X2, int Row)>(spans.Count);
+        var rowEnds = new List<long>();
+        foreach (RpcCallSpanView span in spans)
+        {
+            long first = span.FirstTicks;
+            long last = span.EndTicks ?? (span.State == RpcCallState.OpenAtCaptureEnd ? long.MaxValue : first);
+            double x1 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(first, visible.StartTicks, visible.EndTicks), PlotWidth);
+            double x2 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(last, visible.StartTicks, visible.EndTicks), PlotWidth);
+            x2 = Math.Max(x2, x1 + 2);
+            int index = rowEnds.FindIndex(end => end < first);
+            if (index < 0)
+            {
+                index = rowEnds.Count < MaximumCallRows ? rowEnds.Count : MaximumCallRows - 1;
+                if (index == rowEnds.Count) rowEnds.Add(last);
+            }
+
+            rowEnds[index] = Math.Max(rowEnds[index], last);
+            placed.Add((span, x1, x2, index));
+        }
+
+        double pitch = laneHeight / rowEnds.Count;
+        double height = Math.Max(2, Math.Min(12, pitch - 1));
+        foreach ((RpcCallSpanView span, double x1, double x2, int index) in placed)
+        {
+            callLayout.Add((span, new Rect(x1, laneTop + (index * pitch) + ((pitch - height) / 2), x2 - x1, height)));
+        }
+
+        return callLayout;
+    }
+
+    /// <summary>The call drawn under a point on the call lane, the one drawn last where bars overlap.</summary>
+    private RpcCallSpanView? CallAt(Point point)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel) return null;
+        List<(RpcCallSpanView Span, Rect Rect)> layout = CallLayout(viewModel);
+        for (int index = layout.Count - 1; index >= 0; index--)
+        {
+            if (layout[index].Rect.Inflate(new Thickness(2, 1)).Contains(point)) return layout[index].Span;
+        }
+
+        return null;
+    }
+
+    /// <summary>Where the lane draws a call, if it draws it.</summary>
+    private Rect? CallRect(RpcCallSpanView span)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel) return null;
+        foreach ((RpcCallSpanView drawn, Rect rect) in CallLayout(viewModel))
+        {
+            if (ReferenceEquals(drawn, span)) return rect;
+        }
+
+        return null;
+    }
+
+    /// <summary>Where on the call lane a call is drawn, in this control's coordinates, for pointing at it.</summary>
+    internal Point? PointOf(RpcCallSpanView span) => CallRect(span) is { } rect ? rect.Center : null;
+
+    /// <summary>The call under a resting pointer on the call lane.</summary>
+    internal RpcCallSpanView? HoveredRpcCall => HoverTick is not null && FocusRows is { Kind: FocusRowKind.Calls }
+        && HoveredLaneIndex == 1
+            ? CallAt(HoverPoint)
+            : null;
+
+    /// <summary>
+    /// L3 of an RPC channel: the machine's records as grey context, then the channel's calls as bars from start to stop -
+    /// the RPC hue for a success, caution ink for a failure, a faint bar for a call still open at capture end, and a mark
+    /// for one whose other record is not in the evidence. The selected call is outlined.
+    /// </summary>
+    private void DrawRpcCalls(DrawingContext context, WorkspaceViewModel viewModel, IReadOnlyList<TimelineBucket> machine, BarScale scale)
+    {
+        Rect machineRow = LaneRow(0, 2, scale.Top, scale.Bottom);
+        context.DrawLine(RulePen, new(scale.Left, machineRow.Bottom), new(scale.Left + scale.PlotWidth, machineRow.Bottom));
+        DrawText(context, "Machine · all records", new(9, machineRow.Center.Y - 7));
+        DrawLaneSeries(context, viewModel, null, machine,
+            new BarScale(scale.Visible, scale.Left, scale.PlotWidth, machineRow.Top + 3, machineRow.Bottom - 5,
+                scale.MaximumRate, Focused: false),
+            machineRow, contextRow: true);
+
+        Rect callRow = LaneRow(1, 2, scale.Top, scale.Bottom);
+        DrawText(context, "Calls", new(9, callRow.Center.Y - 14));
+        DrawText(context, Shortened(viewModel.RpcCallLaneNote, 24), new(9, callRow.Center.Y + 1));
+        string? selected = viewModel.SelectedRpcCallKey;
+        SolidColorBrush success = BrushFor(Mechanism.Rpc);
+        foreach ((RpcCallSpanView span, Rect rect) in CallLayout(viewModel))
+        {
+            IBrush fill = span.Failed ? Current.FailedBrush
+                : span.State == RpcCallState.Completed ? success
+                : span.State == RpcCallState.OpenAtCaptureEnd ? Current.LiveBrush(Mechanism.Rpc)
+                : TextBrush;
+            context.DrawRectangle(fill, span.Key == selected ? SelectionPen : null, rect);
         }
     }
 
@@ -1567,6 +1740,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                 case FocusRowKind.ChannelEnds:
                     viewModel.SelectChannelEnd(laneIndex == 0 ? null : viewModel.TimelineChannelEndLanes![laneIndex - 1].End);
                     break;
+                case FocusRowKind.Calls:
+                    break;
             }
 
             e.Handled = true;
@@ -1581,6 +1756,9 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         pressX = point.Position.X;
+        pressY = point.Position.Y;
+        pressedCall = FocusRows is { Kind: FocusRowKind.Calls } && LaneIndexAt(point.Position.Y) == 1
+            ? CallAt(point.Position) : null;
         brushing = e.KeyModifiers.HasFlag(KeyModifiers.Shift) || point.Properties.IsMiddleButtonPressed;
         moved = false;
         panOrigin = Viewport;
@@ -1658,10 +1836,21 @@ public sealed class TimelineView : Control, IHoverCardSource
                 viewModel.SelectInterval(new TimeRange(start, stop));
             }
         }
+        else if (wasClick && pressedCall is { } call)
+        {
+            // A call is an operation, not an interval: a click on one selects its row, where its records are one step away.
+            viewModel.SelectRpcCall(call.Key);
+        }
+        else if (wasClick && FocusRows is { Kind: FocusRowKind.Calls } && LaneIndexAt(pressY) == 1)
+        {
+            // Between calls there is nothing to select.
+        }
         else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)
         {
             viewModel.SelectInterval(bucket.Interval);
         }
+
+        pressedCall = null;
 
         InvalidateVisual();
         e.Handled = true;

@@ -53,6 +53,10 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     public Task<RpcCallPage> RpcCallsAsync(string channelKey, int offset, CancellationToken cancellationToken) =>
         Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
+    public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionRpcCalls.Spans(Store(), channelKey, interval, cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>
     /// The session's store, shared by every read and by every workspace of this session (<see cref="SharedSessionStores"/>).
     /// Opening verifies the pointer, the manifest and every file it names, which for a large session costs far more than a

@@ -101,6 +101,37 @@ public sealed class SessionRpcCallsTests
         _ = Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, rpcKey: "rpc:nonsense"));
     }
 
+    [Fact(DisplayName = "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out")]
+    public void SpansAreTheCallsRunningInAnInterval()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Calls().Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })]);
+        (ProcessInstanceId client, _) = Instances(session.Store);
+        string channel = RpcChannelKeys.Channel(client, RpcCallSide.Client, ServiceControl);
+        string unnamed = RpcChannelKeys.Channel(client, RpcCallSide.Client, Unnamed);
+
+        // Session nanoseconds are 100 native ticks each here, so a call's workspace ticks are its native ones.
+        RpcCallSpanPage all = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(0, 1_000));
+        Assert.Equal([(100L, 120L), (200L, 210L), (300L, 340L)],
+            all.Calls.Select(call => (call.StartTicks!.Value, call.EndTicks!.Value)));
+        Assert.Equal([false, false, true], all.Calls.Select(call => call.Failed));
+        Assert.Equal(3, all.Total);
+
+        // A call runs from its start to its stop, and only the calls within an interval are drawn for it.
+        RpcCallSpanPage middle = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(205, 300));
+        Assert.Equal([200L], middle.Calls.Select(call => call.StartTicks!.Value));
+
+        // A call open at capture end runs to the end of the session.
+        RpcCallSpanPage open = SessionRpcCalls.Spans(session.Store, unnamed, new TimeRange(5_000, 6_000));
+        RpcCallSpanView still = Assert.Single(open.Calls);
+        Assert.Equal((RpcCallState.OpenAtCaptureEnd, (long?)null), (still.State, still.EndTicks));
+
+        // More calls than the budget: the first in reading order, and the count of every one.
+        RpcCallSpanPage budgeted = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(0, 1_000), budget: 2);
+        Assert.Equal((2, 3L), (budgeted.Calls.Count, budgeted.Total));
+        Assert.Equal(SessionRpcCalls.Calls(session.Store, channel).Calls[0].Key, budgeted.Calls[0].Key);
+    }
+
     [Fact]
     public void KeysRoundTripAndRefuseWhatTheyDoNotName()
     {

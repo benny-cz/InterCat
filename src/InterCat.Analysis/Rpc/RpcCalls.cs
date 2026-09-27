@@ -105,6 +105,21 @@ public sealed record RpcCallCounts
 /// </summary>
 public sealed record RpcCallDurations(long Count, long Minimum, long Median, long Percentile95, long Maximum);
 
+/// <summary>
+/// One call as a timeline draws it: when its records were read, in session nanoseconds, how it ended, and the first
+/// record's raw locator and fact key, which name it.
+/// </summary>
+public readonly record struct RpcCallSpan(
+    long? StartNanoseconds,
+    long? StopNanoseconds,
+    RpcCallState State,
+    long? Status,
+    long? Procedure,
+    uint Stream,
+    uint Epoch,
+    ulong Ordinal,
+    FactKey FactKey);
+
 /// <summary>The calls of one process binding, side and interface (`contracts/operations-v1.md` §5).</summary>
 public sealed record RpcCallGroup
 {
@@ -241,6 +256,34 @@ public sealed class RpcCallIndex
         }
 
         return Records(group.First + (position ?? 0), position is null ? group.First + (int)group.Counts.Calls : group.First + position.Value + 1);
+    }
+
+    /// <summary>
+    /// Every call of <paramref name="group"/> in reading order, placed in session time on the index's clock: what a
+    /// timeline draws of a channel, with no segment read.
+    /// </summary>
+    public IEnumerable<RpcCallSpan> SpansOf(RpcCallGroup group)
+    {
+        RequireGroup(group);
+        return Spans(group.First, group.First + (int)group.Counts.Calls);
+    }
+
+    private IEnumerable<RpcCallSpan> Spans(int from, int to)
+    {
+        for (int index = from; index < to; index++)
+        {
+            Entry entry = entries[index];
+            yield return new(
+                entry.StartSegment >= 0 ? (long)SourceClockMath.SessionNanoseconds(clock, entry.StartTicks) : null,
+                entry.StopSegment >= 0 ? (long)SourceClockMath.SessionNanoseconds(clock, entry.StopTicks) : null,
+                entry.State,
+                entry.HasStatus ? entry.Status : null,
+                entry.HasProcedure ? entry.Procedure : null,
+                entry.FirstAddress.Stream,
+                entry.FirstAddress.Epoch,
+                entry.FirstAddress.Ordinal,
+                entry.FirstAddress.FactKey);
+        }
     }
 
     private IEnumerable<(int Segment, int Row)> Records(int from, int to)

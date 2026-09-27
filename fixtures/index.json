@@ -943,6 +943,7 @@
         "P8: a start still open at capture end is censored, and a stop without its start is given none",
         "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
         "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after",
+        "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
         "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
       ],
       "R1": [

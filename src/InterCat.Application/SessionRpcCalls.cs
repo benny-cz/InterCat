@@ -59,6 +59,37 @@ public sealed record RpcCallPage(
     string? Problem);
 
 /// <summary>
+/// One call as the timeline draws it, in workspace ticks (100 ns, session-relative): a start or a stop may be unknown,
+/// and a call open at capture end has no end.
+/// </summary>
+public sealed record RpcCallSpanView(
+    string Key,
+    long? StartTicks,
+    long? EndTicks,
+    RpcCallState State,
+    long? Status,
+    long? Procedure)
+{
+    /// <summary>Where the call begins on the axis: its start, or its stop when no start was seen.</summary>
+    public long FirstTicks => StartTicks ?? EndTicks!.Value;
+
+    /// <summary>Whether it completed with a status other than 0.</summary>
+    public bool Failed => State == RpcCallState.Completed && Status is { } code && code != 0;
+}
+
+/// <summary>
+/// A channel's calls within one interval, in reading order, at most a budget of them; <see cref="Total"/> counts every call
+/// the interval holds, so a view can say how many it did not draw.
+/// </summary>
+public sealed record RpcCallSpanPage(
+    Guid SessionId,
+    long Generation,
+    TimeRange Interval,
+    IReadOnlyList<RpcCallSpanView> Calls,
+    long Total,
+    string? Problem);
+
+/// <summary>
 /// Reads a published session's RPC calls for the ladder: a process's channels, and a channel's calls a page at a time.
 /// Each read leases the current generation, whose calls are paired once and shared by every read of it.
 /// </summary>
@@ -66,6 +97,69 @@ public static class SessionRpcCalls
 {
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 500;
+
+    /// <summary>The most calls one timeline read returns; a denser interval says how many more it holds.</summary>
+    public const int MaximumSpans = 4_000;
+
+    /// <summary>
+    /// The calls of one channel that run within <paramref name="interval"/> (workspace ticks), in reading order, at most
+    /// <paramref name="budget"/>. A call runs within it when it starts before the interval ends and has not stopped
+    /// before it begins; a call still open at capture end runs to the end of the session.
+    /// </summary>
+    public static RpcCallSpanPage Spans(
+        SessionStore store,
+        string channelKey,
+        TimeRange interval,
+        int budget = MaximumSpans,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (budget is < 1 or > MaximumSpans) throw new ArgumentOutOfRangeException(nameof(budget));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface))
+        {
+            throw new ArgumentException("This key names no RPC channel.", nameof(channelKey));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        (SessionManifestV1 manifest, RpcCallIndex? calls) = Derive(store, lease, cancellationToken);
+        RpcCallGroup? group = calls?.GroupOf(instance, side, rpcInterface);
+        if (calls is null || group is null || !group.Process.IsAdmittedUnder(policy))
+        {
+            return new(manifest.SessionId, manifest.Generation, interval, [], 0,
+                "This generation holds no call of this channel under the evidence policy.");
+        }
+
+        var drawn = new List<RpcCallSpanView>(Math.Min(budget, (int)Math.Min(group.Counts.Calls, int.MaxValue)));
+        long total = 0;
+        foreach (RpcCallSpan span in calls.SpansOf(group))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            long? start = span.StartNanoseconds / 100;
+            long? stop = span.StopNanoseconds / 100;
+            long first = start ?? stop!.Value;
+            long last = stop ?? (span.State == RpcCallState.OpenAtCaptureEnd ? long.MaxValue : first);
+            if (first >= interval.EndTicks || last < interval.StartTicks)
+            {
+                continue;
+            }
+
+            total++;
+            if (drawn.Count < budget)
+            {
+                drawn.Add(new(
+                    RpcChannelKeys.Call(channelKey, span.Stream, span.Epoch, span.Ordinal, span.FactKey),
+                    start,
+                    stop,
+                    span.State,
+                    span.Status,
+                    span.Procedure));
+            }
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
+    }
 
     /// <summary>
     /// The RPC channels of one process instance, each one side's calls to one interface, bound as strongly as
