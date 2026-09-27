@@ -93,7 +93,7 @@ internal static partial class Qualification
                     + "(plan §12, §19.3's labelled preview). Schema v2 added the preview; v1's event-to-visible is v2's "
                     + "event-to-exact.",
                 "Schema v5 adds what the viewer publishes once the follow finishes, a derivation checkpoint and a "
-                    + "persisted overview (derivation-checkpoint-v1, overview-v1), and what a fresh store opening the saved "
+                    + "persisted overview (derivation-checkpoint-v1, overview-index-v1), and what a fresh store opening the saved "
                     + "session reads before its first overview. It is measured in this process, whose derivations of the "
                     + "session are already made.",
                 "Schema v4 adds the manifests the derived session and the broker's evidence hold at the end, and their "
@@ -241,7 +241,7 @@ internal static partial class Qualification
             .Sum(file => new FileInfo(file).Length);
         (result.SessionManifests, result.SessionManifestBytes) = Manifests(seen.SessionPath);
 
-        // What the viewer published once the follow finished (derivation-checkpoint-v1, overview-v1), and what a fresh
+        // What the viewer published once the follow finished (derivation-checkpoint-v1, overview-index-v1), and what a fresh
         // store opening the saved session reads before its first overview.
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(seen.SessionPath));
         if (reopened.Current is { } final)

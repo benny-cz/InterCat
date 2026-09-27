@@ -261,7 +261,7 @@ public static class SessionOverviewProjector
     /// <summary>
     /// What the overview counts from a generation's rows: how many there are, how many have no session time, the extent
     /// of the rest, and their counts in the overview's columns and the minimap's. It is what a persisted overview holds
-    /// (`contracts/overview-v1.md`); coverage is judged when the counts are presented.
+    /// (`contracts/overview-index-v1.md`); coverage is judged when the counts are presented.
     /// </summary>
     internal static OverviewCounts Count(IReadOnlyList<SegmentReaderV1> segments, CancellationToken cancellationToken)
     {

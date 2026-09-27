@@ -709,7 +709,7 @@ internal sealed class TimelineColumns
 
     /// <summary>
     /// Every nonzero count of one mechanism in one column, by column and then mechanism code: what a persisted overview
-    /// holds (`contracts/overview-v1.md`). Columns counted without their mechanisms have none.
+    /// holds (`contracts/overview-index-v1.md`). Columns counted without their mechanisms have none.
     /// </summary>
     internal IEnumerable<(int Column, Mechanism Mechanism, int Count)> Tallies()
     {

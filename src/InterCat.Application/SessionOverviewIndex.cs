@@ -18,7 +18,7 @@ internal sealed record OverviewCounts(
     TimelineColumns? Minimap);
 
 /// <summary>
-/// The persisted whole-session overview (`contracts/overview-v1.md`), S4's top level: the counts a finished session's
+/// The persisted whole-session overview (`contracts/overview-index-v1.md`), S4's top level: the counts a finished session's
 /// first view draws, so opening it counts no row. It is published beside the derivation checkpoint and read only when
 /// it covers exactly the observation segments its generation names.
 /// </summary>
@@ -78,7 +78,7 @@ internal static class SessionOverviewIndex
 
     /// <summary>
     /// Writes <paramref name="counts"/>, counted from <paramref name="segments"/> of generation
-    /// <paramref name="derivedGeneration"/>, in the canonical order of overview-v1 §3.
+    /// <paramref name="derivedGeneration"/>, in the canonical order of overview-index-v1 §3.
     /// </summary>
     /// <returns>How many bytes were written.</returns>
     public static long Write(

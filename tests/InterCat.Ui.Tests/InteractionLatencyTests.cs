@@ -93,7 +93,7 @@ public sealed class InteractionLatencyTests
                     + "when measured, is named by the INTERCAT_REAL_SESSION variable and stays local.",
                 "Each synthetic session is measured twice: derived from its segments, and then reopened from the "
                     + "derivation checkpoint and persisted overview its writer published (derivation-checkpoint-v1, "
-                    + "overview-v1), which the second open reads instead of any segment.",
+                    + "overview-index-v1), which the second open reads instead of any segment.",
             },
             ["sessions"] = sessions,
         };

@@ -87,7 +87,7 @@ public static class SessionCheckpoints
             }
 
             // The derivation checkpoint and the persisted overview are published together: with both, a reopen opens no
-            // segment before its first view (overview-v1).
+            // segment before its first view (overview-index-v1).
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);

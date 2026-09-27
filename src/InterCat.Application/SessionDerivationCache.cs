@@ -247,7 +247,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
-    /// The counts this generation's persisted overview holds (`contracts/overview-v1.md`), read and checked once; null
+    /// The counts this generation's persisted overview holds (`contracts/overview-index-v1.md`), read and checked once; null
     /// when it names none, when it covers other segments than the generation names, or when it could not be read, which
     /// <see cref="OverviewProblem"/> then says.
     /// </summary>

@@ -6,7 +6,7 @@ namespace InterCat.Storage;
 /// <summary>
 /// Writes an index file's little-endian fields to a stream, a buffer at a time, and refuses to write more than the
 /// index may hold. The indexes a generation publishes (`contracts/derivation-checkpoint-v1.md`,
-/// `contracts/overview-v1.md`) share these field encodings.
+/// `contracts/overview-index-v1.md`) share these field encodings.
 /// </summary>
 public sealed class IndexFileWriter(Stream destination, long maximumBytes, string what)
 {

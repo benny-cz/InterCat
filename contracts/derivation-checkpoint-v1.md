@@ -80,7 +80,7 @@ rollback to the generation before it, as any damaged file does (store-v1 §6). I
 generation, or a live writer's next commit, which re-measures everything it carries. A writer publishes a new
 checkpoint when it finishes.
 
-A writer publishes a checkpoint, and since revision 163 the persisted overview with it (`contracts/overview-v1.md`),
+A writer publishes a checkpoint, and since revision 163 the persisted overview with it (`contracts/overview-index-v1.md`),
 when it has finished writing a session:
 
 - an import (`icat import --into`);
@@ -195,7 +195,7 @@ checkpoint. Both give the same result.
 
 ## 5. What is not defined at this version
 
-- The overview's counts, which the persisted overview publishes beside the checkpoint (`contracts/overview-v1.md`,
+- The overview's counts, which the persisted overview publishes beside the checkpoint (`contracts/overview-index-v1.md`,
   revision 163). When both cover exactly the segments a generation names, a reopen opens no segment before its first
   view. The checkpoint is then used as it stands, without a segment reader to compare it with: its covered files are
   compared with the manifest's.

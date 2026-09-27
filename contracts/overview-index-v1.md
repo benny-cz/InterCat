@@ -1,10 +1,14 @@
-# InterCat overview v1
+# InterCat overview index v1
 
 Status: **implemented** in plan revision 163. It is the top level of §12.1 S4's pyramid: the whole-session overview a
 generation's first view draws, persisted beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`).
 With both, opening a finished session opens no segment before the first view. Its processes and relationships come
 from the checkpoint, and its timeline, mechanism lanes and minimap from these counts. Deeper levels are the per-segment
 tiles of revision 158, built from a segment's rows when a view needs them.
+
+Revision 170 renamed this contract from `overview-v1`, which the JSON bundle `icat overview --json` had carried since
+revision 87 and still carries: that bundle is what a view shows, and this is a file a generation publishes. The file
+itself names neither.
 
 Like the checkpoint, an overview is a derived index. It holds counts, never evidence (R1), and the segments it covers
 rebuild it (R20). One that is missing, stale or unreadable costs time, and when unreadable a caveat; it never changes
