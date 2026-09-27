@@ -898,9 +898,10 @@ public static partial class SessionMetrics
                 request,
                 generation,
                 MetricUnavailableReason.NoLogicalOperations,
-                "Nothing in this session derives logical operations yet. §5.3 defines this metric on that "
-                + "basis; the correlators that produce one do not exist, so it is reported as unavailable "
-                + "rather than answered from source records renamed as operations (P4).");
+                "No metric counts logical operations yet. RPC calls are derived as operations "
+                + "(contracts/operations-v1.md), but this basis does not read them, and no other mechanism has a "
+                + "correlator. It is reported as unavailable rather than answered from source records renamed as "
+                + "operations (P4).");
         }
 
         if (request.Basis == AnalysisBasis.ResourceTopology)

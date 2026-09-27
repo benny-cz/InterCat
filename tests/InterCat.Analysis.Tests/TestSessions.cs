@@ -166,9 +166,18 @@ internal static class TestSessions
 
     /// <summary>
     /// An RPC call record raised in <paramref name="raisedBy"/>: a client call is raised in the calling process and a
-    /// server call in the serving one. Its payload names no owner, so only its header says whose it is (ADR-030).
+    /// server call in the serving one. Its payload names no owner, so only its header says whose it is (ADR-030). A start
+    /// carries the interface, and a stop its status.
     /// </summary>
-    public static ObservationRowV1 RpcCall(long ticks, ObservationKind kind, Direction direction, int raisedBy, ulong ordinal) => new()
+    public static ObservationRowV1 RpcCall(
+        long ticks,
+        ObservationKind kind,
+        Direction direction,
+        int raisedBy,
+        ulong ordinal,
+        Guid? activity = null,
+        Guid? interfaceUuid = null,
+        long? status = null) => new()
     {
         RawStreamId = 1,
         RawSourceEpoch = 1,
@@ -187,8 +196,13 @@ internal static class TestSessions
         Layer = ObservationLayer.Application,
         Kind = kind,
         Direction = direction,
+        ActivityId = activity,
+        SourceIdentifier = kind == ObservationKind.RequestStart ? interfaceUuid : null,
         ByteAvailability = FieldAvailability.NotApplicable,
-        StatusAvailability = FieldAvailability.NotApplicable,
+        StatusCode = kind == ObservationKind.RequestEnd ? status : null,
+        StatusAvailability = kind == ObservationKind.RequestEnd && status is not null
+            ? FieldAvailability.Present
+            : FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,

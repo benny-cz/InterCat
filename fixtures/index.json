@@ -327,6 +327,7 @@
         "R22: a call to another interface is scope, not a match",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: a server call is counted as raised in the recorded host only when its own process is that host",
+        "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
       ]
     },
@@ -624,6 +625,7 @@
         "I14: an import option outside its declared range is refused before anything is read",
         "I14: an import that spills to disk produces exactly the index it would in memory",
         "I14: an overview that cannot be read is counted around from the segments, and the overview says why",
+        "I14: calls do not depend on how their records were cut into segments or delivered",
         "I14: counts decline to extend, for a full count, when a record already counted would bind otherwise",
         "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
         "I14: each instance's records extended chunk by chunk equal a count of every chunk at once",
@@ -928,12 +930,17 @@
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
       ],
       "P7": [
+        "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed"
       ],
       "P8": [
+        "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
         "P8: a completion is paired by I/O request identity, not by time proximity",
-        "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown"
+        "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",
+        "P8: a start still open at capture end is censored, and a stop without its start is given none",
+        "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
+        "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after"
       ],
       "R1": [
         "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
@@ -1178,6 +1185,7 @@
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a brushed count admits a later instance's records only as the evidence policy does, as the whole count does",
+        "R22: a call binds to its process by its first record's reading, and outside every lifetime says why",
         "R22: a call to another interface is scope, not a match",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",

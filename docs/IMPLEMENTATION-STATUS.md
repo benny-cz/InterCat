@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 177 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 178 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 178 — an RPC call is an operation: its start and stop, paired by activity id (ADR-031):**
+  - **The correlator, stated before it ran:** `contracts/operations-v1.md` fixes what §7.4 asks of every correlator.
+    A call record joins by its process, its side and its activity id. A start opens a call and the next stop closes
+    it. Nothing is paired by time (P8), and nothing expires. A start still open at the end is censored, not failed; a
+    stop without its start is given none; a record with no id pairs with nothing. An id reused before its stop leaves
+    the overlapping calls ambiguous rather than guessed. The client and server sides never meet, because FX-RPC-001
+    measured different ids on each (P7).
+  - **What a call holds:** its first record's identity, its binding, interface, procedure and protocol from the start,
+    status from the stop, and the duration between them on one clock. Groups by process, side and interface state
+    started, completed, failed and open calls, every unpaired call by reason, and the durations' median, 95th
+    percentile and maximum, each a duration a call took.
+  - **Checked against the real capture:** replaying FX-RPC-001's committed records pairs 60 of 60 client calls to the
+    Service Control Manager, 2 of 3 to the Local Security Authority (a thread's first call carried no id), and 61 of
+    61 served calls. The durations match ones computed from the evidence file apart from this code: the client's calls
+    took a median 25.6 µs, the host's served part 4.8 µs.
+  - **`icat operations`** lists the groups, and with `--pid` or `--interface` their first calls, in text or JSON.
+  - **Cost:** 500,000 synthetic calls pair in 0.66 s, allocating 246 MiB. A first measurement allocated 2.4 GiB,
+    nearly all of it enum comparisons in the sort boxing their operands.
 
 - **Revision 177 — an RPC record belongs to the process that raised it (ADR-030, `process-binding-v3`):**
   - **Measured per side first:** FX-RPC-001 on adapter 0.7.0 started every truth call in the calling process. It saw
@@ -1485,13 +1504,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-   - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), and revision 177 binds an RPC record to
-     the process that raised it (ADR-030). Next, in order:
-     1. Derive call operations by pairing each start with its stop through the activity id (P8, never by time). A start
-        with no stop at capture end is censored, not failed. The ids pair one side's start and stop; they never link a
-        caller to its server, so a call's other end stays unresolved.
-     2. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
-        and status. Then record RPC's measured class, which lets Explore take it.
+   - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), revision 177 binds an RPC record to the
+     process that raised it (ADR-030), and revision 178 pairs its calls (ADR-031, `icat operations`). Next, in order:
+     1. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
+        and status, from `RpcCallIndex`. Then record RPC's measured class, which lets Explore take it.
+     2. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
+        today that basis still says `NoLogicalOperations`.
+     3. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
+        from every call record on first use: 0.66 s for 500,000 calls.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -1525,6 +1545,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 178 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,218 tests: 1,215
+  passed, 3 skipped**, zero failures. `icat operations` was run over a session built from FX-RPC-001's committed
+  records, and over a 1M-row session with no RPC (0.63 s in all).
 - Revision 177 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,207 tests: 1,204
   passed, 3 skipped**, zero failures. FX-RPC-001 was measured again on real ETW with adapter 0.7.0, and the Release
   command line read the overviews of five earlier scratch sessions under the new binding rule.
@@ -1735,5 +1758,5 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Key reference contracts
 
-`contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–028; the complete historical ledger linked above.
+`contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031; the complete historical ledger linked above.

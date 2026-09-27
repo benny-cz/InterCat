@@ -48,6 +48,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "follow" => await FollowCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "operations" => await OperationsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -211,6 +212,10 @@ static void PrintHelp()
     ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--json]");
     ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
     ConsoleUi.Line("      lifetime, records and transport bytes. A reused PID is two instances.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat operations <directory> [--pid <id>] [--interface <uuid>] [--calls <n>] [--json]");
+    ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");
+    ConsoleUi.Line("      side and interface, with durations and every unpaired call's reason.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

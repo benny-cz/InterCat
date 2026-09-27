@@ -303,7 +303,7 @@ with no value:
 | Reason | When |
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
-| `NoLogicalOperations` | a logical-operations basis, before any correlator derives operations |
+| `NoLogicalOperations` | a logical-operations basis: no metric reads derived operations at this version, though RPC calls are derived (`contracts/operations-v1.md`) |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
