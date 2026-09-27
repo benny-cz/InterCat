@@ -180,7 +180,7 @@ public static class WorkspaceExport
             Line(csv, [.. ContextCells(context), Number(row.SessionRelativeTicks), Number(row.NativeTicks),
                 Text(EvidenceRowText.Title(row)), row.Mechanism.ToString(), row.Kind.ToString(), Number(row.ByteValue),
                 row.ByteDomain?.ToString() ?? string.Empty, row.ByteAvailability.ToString(),
-                Text(EvidenceRowText.Endpoints(row) ?? string.Empty), Number(row.OwnerProcessId),
+                Text(EvidenceRowText.Endpoints(row) ?? string.Empty), Number(EvidenceRowText.OwnerProcessId(row)),
                 record.Owner?.Instance?.ToString() ?? string.Empty, Text(record.Owner?.ImageName ?? string.Empty),
                 record.Owner?.Strength.ToString() ?? string.Empty, Text(EvidenceRowText.ProviderName(row.ProviderId)),
                 Number(row.EventId), Number(row.DescriptorVersion), row.AttributionQuality.ToString(),
@@ -253,7 +253,7 @@ public static class WorkspaceExport
             Endpoints = EvidenceRowText.Endpoints(row),
             Owner = new
             {
-                ProcessId = row.OwnerProcessId,
+                ProcessId = EvidenceRowText.OwnerProcessId(row),
                 Instance = record.Owner?.Instance?.ToString(),
                 Executable = record.Owner?.ImageName,
                 Strength = record.Owner?.Strength,

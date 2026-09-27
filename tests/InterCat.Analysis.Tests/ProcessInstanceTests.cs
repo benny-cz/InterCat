@@ -184,7 +184,7 @@ public sealed class ProcessInstanceTests
         Assert.Equal(ProcessBindingReason.AfterExit, index.Bind(901, 9, isLifecycleRecord: false).Reason);
     }
 
-    [Fact(DisplayName = "R22: a record whose payload names no owner binds to no instance, whatever its header says")]
+    [Fact(DisplayName = "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says")]
     public void ARecordWithoutAnOwnerIsUnattributed()
     {
         using var session = new TemporarySession();
@@ -205,6 +205,52 @@ public sealed class ProcessInstanceTests
         Assert.Equal(30, sent.Value);
         MetricGroup noOwner = Assert.Single(sent.Unattributed);
         Assert.Equal((ProcessBindingReason.NoOwner, 10L), (noOwner.Reason!.Value, noOwner.Value!.Value));
+    }
+
+    [Fact(DisplayName = "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context")]
+    public void AnRpcRecordBindsToTheProcessThatRaisedIt()
+    {
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Lifecycle(100, ObservationKind.Create, 400, 1),
+                RpcCall(150, ObservationKind.RequestStart, Direction.Outbound, raisedBy: 400, 2),
+                Transfer(160, ObservationKind.Send, AccountingSide.SendSide, 10, owner: null, 3),
+                RpcCall(170, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 700, 4),
+                Lifecycle(200, ObservationKind.Exit, 400, 5, exitCode: 0),
+                RpcCall(250, ObservationKind.RequestEnd, Direction.Outbound, raisedBy: 400, 6),
+            ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+
+        // The server that no lifecycle record names is witnessed by the call it raised; the kernel record's header,
+        // PID 4, is still never an owner (§4.1).
+        Assert.Equal([400, 700], index.Instances.Select(instance => instance.ProcessId).Order());
+        ProcessInstance server = index.Instances.Single(instance => instance.ProcessId == 700);
+        Assert.Equal(ProcessWitness.ActivityOnly, server.Witness);
+        Assert.Equal(new RawRecordId(Capture, 1, 1, 4), server.Key.ProvisionalWitness);
+
+        int client = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 400);
+        ProcessBinding[] owners = index.OwnersOf(Assert.Single(TestSessions.Segments(session.Store)));
+        Assert.Equal(new ProcessBinding(client, RelationStrength.Correlated, ProcessBindingReason.Bound), owners[1]);
+        Assert.Equal(ProcessBindingReason.NoOwner, owners[2].Reason);
+        Assert.Equal(index.Instances.ToList().IndexOf(server), owners[3].Instance);
+        Assert.Equal(ProcessBindingReason.AfterExit, owners[5].Reason);
+
+        // The owner filter and the counts read the same rule: the client's own records are its lifecycle and its call.
+        MetricResult own = SessionMetrics.Evaluate(session.Store, new()
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Observations,
+            Owner = index.Instances[client].Id,
+        });
+        Assert.Equal(3, own.Value);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(TestSessions.Segments(session.Store), index);
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 2L), (Mechanism.Rpc, 1L)],
+            activity.MechanismsOf(client, EvidencePolicy.IncludeCorrelated));
+        Assert.Equal((1L, 1L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
     }
 
     [Fact(DisplayName = "I14: instance identities do not depend on how the evidence was split into segments")]

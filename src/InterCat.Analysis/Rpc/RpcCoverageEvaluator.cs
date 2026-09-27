@@ -56,6 +56,15 @@ public sealed record RpcCoverageResult
     /// <summary>Server-side call records observed at all, whatever process they belong to.</summary>
     public required int ServerSideRecords { get; init; }
 
+    /// <summary>Server-side call starts on the expected interface, whatever process raised them.</summary>
+    public int ServerStartsOnInterface { get; init; }
+
+    /// <summary>
+    /// Of those, the ones raised in the process the workload recorded as the server: the evidence that the provider raises
+    /// a server call in the serving process, as it raises a client call in the calling one (ADR-030).
+    /// </summary>
+    public int ServerStartsInExpectedServer { get; init; }
+
     /// <summary>Records from the client process that belong to another interface. Scope, not error.</summary>
     public required int ObservationsOutsideScope { get; init; }
 
@@ -283,6 +292,19 @@ public static class RpcCoverageEvaluator
             ? $"{serverStarts.Count} server-side call records were observed, so both sides of a local call can reach the capture."
             : "No server-side call record was observed, so only the calling side of a local call is visible here.");
 
+        // Which process raised a call record: every matched client call was raised in the calling process, by how it was
+        // matched; a server call is checked against the host the workload recorded, never assumed (ADR-030).
+        List<RpcCallObservation> servedHere = [.. serverStarts.Where(server => server.InterfaceUuid == settings.ExpectedInterface)];
+        int raisedByServer = settings.ExpectedServerProcessId == 0
+            ? 0
+            : servedHere.Count(server => server.ProcessId == settings.ExpectedServerProcessId);
+        if (servedHere.Count > 0 && settings.ExpectedServerProcessId != 0)
+        {
+            notes.Add(
+                $"{raisedByServer} of {servedHere.Count} server-side calls to the expected interface were raised in the service "
+                + $"host the workload recorded (PID {settings.ExpectedServerProcessId}).");
+        }
+
         if (serverStarts.Count > 0 && peers.Count == 0)
         {
             notes.Add(
@@ -298,6 +320,8 @@ public static class RpcCoverageEvaluator
             PeerAttributions = peers,
             CompletionsPaired = completionsPaired,
             ServerSideRecords = serverStarts.Count,
+            ServerStartsOnInterface = servedHere.Count,
+            ServerStartsInExpectedServer = raisedByServer,
             ObservationsOutsideScope = outsideScope,
             ControlRecordsFromFixtureProcess = control,
             Notes = notes,

@@ -47,7 +47,7 @@ public sealed partial class ProcessActivityIndex
         this.read = read;
     }
 
-    /// <summary>Records whose payload names no owner: no instance can hold them (§4.1).</summary>
+    /// <summary>Records that name no owner under the binding rule: no instance can hold them (§4.1).</summary>
     public long RecordsWithoutOwner { get; private set; }
 
     /// <summary>Records naming a PID at a reading no instance of it held: before its first evidence, between, or after.</summary>
@@ -183,19 +183,19 @@ public sealed partial class ProcessActivityIndex
         try
         {
             ProcessRoles.OwnersOf(processes, segment, bindings);
-            SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+            var owners = new RecordOwnerColumns(segment);
             SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
             for (int row = 0; row < segment.RowCount; row++)
             {
-                if (owners.SignedAt(row) is not { } owner)
+                var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                if (owners.At(row, mechanism) is not { } processId)
                 {
                     RecordsWithoutOwner++;
                     continue;
                 }
 
                 long reading = ticks.SignedAt(row)!.Value;
-                int processId = (int)owner;
                 if (!pids.TryGetValue(processId, out PidSpan? span))
                 {
                     span = new();
@@ -217,7 +217,6 @@ public sealed partial class ProcessActivityIndex
                     instances[binding.Instance] = activity;
                 }
 
-                var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
                 Dictionary<Mechanism, long> tally = binding.Strength == RelationStrength.Direct ? activity.Direct : activity.Bound;
                 tally[mechanism] = tally.GetValueOrDefault(mechanism) + 1;
             }

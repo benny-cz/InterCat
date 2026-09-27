@@ -269,7 +269,19 @@ public sealed class DerivationCheckpoint
         // Relations of the rule before this one are this rule's when no related record went without an end, which the
         // relations section says (§4); only a format before 1.2 was written under it.
         bool earlierRule = relation == TransportRelationIndex.EarlierRelationRule && minor < 2;
-        if (binding != ProcessInstanceIndex.BindingRule || (relation != TransportRelationIndex.RelationRule && !earlierRule))
+
+        // Instances and counts of the binding rule before this one are this rule's when every record named its owner,
+        // which the activity section says (§4); a format before 1.1 holds no such section.
+        bool earlierBinding = binding == ProcessInstanceIndex.EarlierBindingRule && minor >= 1;
+        if (binding == ProcessInstanceIndex.EarlierBindingRule && !earlierBinding)
+        {
+            throw reader.Invalid(
+                $"it was derived under {binding} in format {major}.{minor}, which holds no counts to show that every record "
+                + $"named its owner, as reading it under {ProcessInstanceIndex.BindingRule} requires.");
+        }
+
+        if ((binding != ProcessInstanceIndex.BindingRule && !earlierBinding)
+            || (relation != TransportRelationIndex.RelationRule && !earlierRule))
         {
             throw reader.Invalid(
                 $"it was derived under {binding} and {relation}, and this build derives under "
@@ -332,7 +344,9 @@ public sealed class DerivationCheckpoint
         ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);
         TransportRelationIndex relations = TransportRelationIndex.ReadState(
             reader, processes, [.. segments], ipv6Ends: minor >= 2, earlierRule: earlierRule);
-        ProcessActivityIndex? activity = minor >= 1 ? ProcessActivityIndex.ReadState(reader, processes, [.. segments]) : null;
+        ProcessActivityIndex? activity = minor >= 1
+            ? ProcessActivityIndex.ReadState(reader, processes, [.. segments], earlierRule: earlierBinding)
+            : null;
         reader.RequireEnd();
         return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), processes, relations, activity);
     }

@@ -16,7 +16,7 @@ grouping uses it is `contracts/metrics-v1.md` §5 and §6. ADR-014, ADR-016, ADR
 
 A derivation reads every segment of one generation, of **one capture on one clock**, exactly as the process
 derivation it rests on does: an endpoint, like a PID, means nothing outside the host and timeline it was observed
-in. The process instances are `process-binding-v2`'s over the same segments.
+in. The process instances are `process-binding-v3`'s over the same segments.
 
 ## 2. The join key
 
@@ -158,7 +158,7 @@ but never splits one connection in two.
 
 ## 8. Identity of a derivation
 
-A derivation is identified by `transport-endpoint-relation-v4`, the `process-binding-v2` derivation it rests on, and
+A derivation is identified by `transport-endpoint-relation-v4`, the `process-binding-v3` derivation it rests on, and
 the generation it was derived from. A change to what an end or an incarnation is, what holds it, how incarnations pair, how
 strongly, or when an end is left unresolved is a new rule identity (§24 `correlationRevision`); a result names the rule
 it used. v1 differed from v2 only in scoping every end to the whole capture, and v2 from v3 only in reading UDP, which

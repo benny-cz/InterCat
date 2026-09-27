@@ -12,6 +12,8 @@ internal static class RandomCaptures
     /// arrive in time order, but some are delivered a chunk or two late, as ETW delivers a busy processor's buffer late,
     /// so a chunk can hold records older than the chunk before it. Processes are created, exit, are reused and are
     /// confirmed by rundowns, some with the start key a source field carries, and a field can arrive after its record.
+    /// Some records are RPC calls, which name no owner and belong to the process that raised them, now and then a server
+    /// no lifecycle record names.
     /// About one connection in four is IPv6, on the same ports as IPv4 ones, so a chunk's segment is `observation-v2`
     /// when it holds one and an end of one family must never meet an end of the other.
     /// </summary>
@@ -55,6 +57,15 @@ internal static class RandomCaptures
                     int fieldChunk = random.Next(4) == 0 ? Math.Min(chunkCount - 1, chunk + 1) : chunk;
                     fields.Add((Field(row, SourceField.ProcessStartSequence, (long)++sequence), fieldChunk));
                 }
+            }
+            else if (random.Next(12) == 0)
+            {
+                row = RpcCall(
+                    ticks,
+                    random.Next(2) == 0 ? ObservationKind.RequestStart : ObservationKind.RequestEnd,
+                    random.Next(2) == 0 ? Direction.Outbound : Direction.Inbound,
+                    raisedBy: random.Next(3) == 0 ? 500 : pid,
+                    ++ordinal);
             }
             else
             {

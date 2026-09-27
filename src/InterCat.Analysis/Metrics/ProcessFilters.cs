@@ -7,7 +7,7 @@ namespace InterCat.Analysis;
 /// <summary>The role a process filter selects a record by (§19.1).</summary>
 public enum ProcessRole
 {
-    /// <summary>`owner(P)`: the record's own payload names P.</summary>
+    /// <summary>`owner(P)`: the record is P's own: its payload names P, or P raised it (process-binding-v3).</summary>
     Owner = 1,
 
     /// <summary>`participant(P)`: P made the record, or is the other end of it through a proven relation.</summary>
@@ -52,7 +52,7 @@ internal interface IRowFilter
 /// Who each record of a segment belongs to in every role a filter or grouping can ask about: the process that made it,
 /// the process at its other end, and which way its data flowed. Computed once per segment and shared.
 /// </summary>
-/// <param name="Owners">Each row's own binding under `process-binding-v2`.</param>
+/// <param name="Owners">Each row's own binding under `process-binding-v3`.</param>
 /// <param name="Peers">Each row's other end under the relation rule; empty when relations were not derived.</param>
 /// <param name="Directions">+1 when data left the row's owner, -1 when it arrived, 0 for a record with no data direction.</param>
 /// <param name="Communicates">Whether the record could have another end at all. A thread or process lifecycle record has none.</param>
@@ -124,7 +124,7 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
                 $"The buffer holds {bindings.Length:N0} rows and the segment has {segment.RowCount:N0}.", nameof(bindings));
         }
 
-        SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+        var owners = new RecordOwnerColumns(segment);
         SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
@@ -139,10 +139,9 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
         bool keyed = false;
         for (int row = 0; row < segment.RowCount; row++)
         {
-            bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(
-                (Mechanism)mechanisms.UnsignedAt(row)!.Value,
-                (ObservationKind)kinds.UnsignedAt(row)!.Value);
-            long? owner = owners.SignedAt(row);
+            var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+            bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value);
+            int? owner = owners.At(row, mechanism);
             ObservationId? exact = null;
             if (lifecycle && owner is not null)
             {
@@ -165,7 +164,7 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
                     new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
             }
 
-            bindings[row] = index.Bind(owner is { } pid ? (int)pid : null, ticks.SignedAt(row)!.Value, lifecycle, exact);
+            bindings[row] = index.Bind(owner, ticks.SignedAt(row)!.Value, lifecycle, exact);
         }
     }
 }

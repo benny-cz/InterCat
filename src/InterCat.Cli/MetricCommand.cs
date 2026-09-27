@@ -754,7 +754,8 @@ internal static class MetricCommand
                     Mechanism = item.Observation.Mechanism.ToString(),
                     Layer = item.Observation.Layer.ToString(),
                     Kind = item.Observation.Kind.ToString(),
-                    OwnerProcessId = item.Observation.OwnerProcessId,
+                    OwnerProcessId = RecordAttribution.OwnerOf(
+                        item.Observation.OwnerProcessId, item.Observation.Mechanism, item.Observation.HeaderProcessId),
                     ByteValue = item.Observation.ByteValue,
                     ByteAvailability = item.Observation.ByteAvailability.ToString(),
                     AccountingSide = item.Observation.AccountingSide?.ToString(),

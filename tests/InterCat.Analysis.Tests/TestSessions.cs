@@ -14,6 +14,7 @@ internal static class TestSessions
     public static readonly ClockId Clock = new(Guid.Parse("33334444-5555-4666-8777-888899990000"));
     public static readonly Guid NetworkProvider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
     public static readonly Guid ProcessProvider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
+    public static readonly Guid RpcProvider = Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
     public static SourceClockDescriptor TestClock { get; } = ClockFor(Clock, "session-metrics-tests");
@@ -158,6 +159,37 @@ internal static class TestSessions
         StatusCode = exitCode,
         StatusAvailability = exitCode is null ? FieldAvailability.NotApplicable : FieldAvailability.Present,
         AttributionQuality = QualityLevel.Proven,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// An RPC call record raised in <paramref name="raisedBy"/>: a client call is raised in the calling process and a
+    /// server call in the serving one. Its payload names no owner, so only its header says whose it is (ADR-030).
+    /// </summary>
+    public static ObservationRowV1 RpcCall(long ticks, ObservationKind kind, Direction direction, int raisedBy, ulong ordinal) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create("rpc-call"),
+        ProviderId = RpcProvider,
+        EventId = (ushort)((kind == ObservationKind.RequestStart ? 5 : 7) + (direction == Direction.Inbound ? 1 : 0)),
+        DescriptorVersion = 1,
+        SchemaFingerprint = "sha256:" + new string('c', 64),
+        Opcode = kind == ObservationKind.RequestStart ? (byte)1 : (byte)2,
+        NativeTicks = ticks,
+        HeaderProcessId = raisedBy,
+        HeaderThreadId = raisedBy + 1,
+        ProcessorNumber = 0,
+        Mechanism = Mechanism.Rpc,
+        Layer = ObservationLayer.Application,
+        Kind = kind,
+        Direction = direction,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,
         TimingQuality = QualityLevel.Proven,

@@ -542,6 +542,34 @@ public sealed class EvidenceRungTests
         Assert.EndsWith(" · admitted paired TCP only; not all session observations", workspace.LevelSummary, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it")]
+    public async Task AnRpcServerIsTheProcessOfTheCallsItRaised()
+    {
+        // The service host raised every server call and appears in no lifecycle record, as a long-running host does not.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            .. Enumerable.Range(0, 6).Select(index => Timed(RpcCall(20 + index, index % 2 == 0 ? ObservationKind.RequestStart
+                : ObservationKind.RequestEnd, Direction.Inbound, raisedBy: 1_960, (ulong)(30_000 + index)))),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode host = workspace.Snapshot.Processes.Single(node => node.ProcessId == 1_960);
+        Assert.Equal(6, host.Records);
+
+        DescendTo(workspace, host.GroupKey);
+        DescendTo(workspace, host.Id.ToString());
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records owned by", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Equal(6, workspace.RungRows.Count);
+        Assert.All(workspace.RungRows, row =>
+        {
+            Assert.StartsWith("RPC request ", row.Label, StringComparison.Ordinal);
+            Assert.EndsWith("· PID 1960", row.Detail, StringComparison.Ordinal);
+        });
+    }
+
     [Fact]
     public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
     {

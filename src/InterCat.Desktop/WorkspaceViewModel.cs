@@ -3804,7 +3804,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
         string owner = EvidenceRowText.Owner(record, CultureInfo.CurrentCulture);
         string when = EvidenceRowText.When(row, CultureInfo.CurrentCulture);
-        string pid = row.OwnerProcessId is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
+        string pid = EvidenceRowText.OwnerProcessId(row) is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
         // The rail is narrow: what happened and its size on the first line, when and whose on the second. Endpoints
         // and the full owner are the inspector's, where they fit without being cut.
         string detail = when + " · " + pid;

@@ -160,6 +160,35 @@ public sealed class RpcCoverageEvaluatorTests
             note => note.Contains("left unresolved rather than inferred", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "R22: a server call is counted as raised in the recorded host only when its own process is that host")]
+    public void ServerCallsAreCheckedAgainstTheRecordedHost()
+    {
+        List<TruthRecord> truth = [Call(1, 10)];
+        List<RpcCallObservation> observations =
+        [
+            Observation(ObservationKind.RequestStart, 1, 10, Guid.NewGuid(), Interface),
+            Observation(ObservationKind.RequestStart, 2, 11, Guid.NewGuid(), Interface,
+                processId: ServerProcessId, direction: Direction.Inbound),
+            Observation(ObservationKind.RequestStart, 3, 12, Guid.NewGuid(), Interface,
+                processId: 7_000, direction: Direction.Inbound),
+            Observation(ObservationKind.RequestStart, 4, 13, Guid.NewGuid(), OtherInterface,
+                processId: ServerProcessId, direction: Direction.Inbound),
+        ];
+
+        RpcCoverageResult result = RpcCoverageEvaluator.Evaluate(truth, observations, Settings());
+
+        // A serving call on another interface is no evidence either way, and one raised elsewhere is not counted in.
+        Assert.Equal((3, 2, 1), (result.ServerSideRecords, result.ServerStartsOnInterface, result.ServerStartsInExpectedServer));
+        Assert.Contains(result.Notes, note => note.StartsWith(
+            "1 of 2 server-side calls to the expected interface were raised in the service host the workload recorded (PID 1960)",
+            StringComparison.Ordinal));
+
+        // A workload that recorded no host leaves the count unmeasured rather than zero of something.
+        RpcCoverageResult unrecorded = RpcCoverageEvaluator.Evaluate(truth, observations, Settings() with { ExpectedServerProcessId = 0 });
+        Assert.Equal(0, unrecorded.ServerStartsInExpectedServer);
+        Assert.DoesNotContain(unrecorded.Notes, note => note.Contains("service host the workload recorded", StringComparison.Ordinal));
+    }
+
     [Fact(DisplayName = "P27: observed calls without a byte domain or a lifetime stay at experimental evidence")]
     public void ObservedCallsStayExperimental()
     {

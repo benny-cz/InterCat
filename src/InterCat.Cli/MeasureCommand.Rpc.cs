@@ -352,6 +352,8 @@ internal static partial class MeasureCommand
         ConsoleUi.Field("Peer attributions", ConsoleUi.Count(measurement.PeerAttributions));
         ConsoleUi.Field("False attributions", ConsoleUi.Count(measurement.FalsePeerAttributions));
         ConsoleUi.Field("Server-side records", ConsoleUi.Count(run.Coverage.ServerSideRecords));
+        ConsoleUi.Field("Served on interface", string.Create(CultureInfo.CurrentCulture,
+            $"{run.Coverage.ServerStartsInExpectedServer:N0} of {run.Coverage.ServerStartsOnInterface:N0} raised in the recorded host"));
         ConsoleUi.Field("Control records", ConsoleUi.Count(run.Coverage.ControlRecordsFromFixtureProcess));
         ConsoleUi.Field("Reproduced", run.RepeatRunObservedCalls ? "yes, in a second run" : "no");
         ConsoleUi.Note("This source exposes no size, so no byte value is reported for any call.");
@@ -425,8 +427,10 @@ internal static partial class MeasureCommand
     }
 
     /// <summary>
-    /// Writes only the calls that belong to this fixture: the client process's own calls and the server
-    /// records that share an activity with them. Unrelated machine RPC never reaches a stored artifact (P16).
+    /// Writes only the calls that belong to this fixture: the client process's own calls, the server records that share
+    /// an activity with them, and the server side of the fixture's interface - the calls to it that the service host the
+    /// workload recorded served while the client ran, with their completions. Unrelated machine RPC never reaches a
+    /// stored artifact (P16).
     /// </summary>
     private static async Task WriteRpcEvidenceAsync(
         string directory,
@@ -435,9 +439,34 @@ internal static partial class MeasureCommand
         CancellationToken cancellationToken)
     {
         HashSet<Guid> activities = [];
+        long first = long.MaxValue;
+        long last = long.MinValue;
         foreach (RpcCallObservation observation in observations)
         {
-            if (observation.ProcessId == scenario.ClientProcessId && observation.ActivityId != Guid.Empty)
+            if (observation.ProcessId != scenario.ClientProcessId)
+            {
+                continue;
+            }
+
+            first = Math.Min(first, observation.TimestampUtcTicks);
+            last = Math.Max(last, observation.TimestampUtcTicks);
+            if (observation.ActivityId != Guid.Empty)
+            {
+                activities.Add(observation.ActivityId);
+            }
+        }
+
+        Guid expected = Guid.Parse(scenario.ExpectedInterfaceUuid);
+        foreach (RpcCallObservation observation in observations)
+        {
+            if (scenario.ExpectedServerProcessId != 0
+                && observation.ProcessId == scenario.ExpectedServerProcessId
+                && observation.Direction == Direction.Inbound
+                && observation.Kind == ObservationKind.RequestStart
+                && observation.InterfaceUuid == expected
+                && observation.TimestampUtcTicks >= first
+                && observation.TimestampUtcTicks <= last
+                && observation.ActivityId != Guid.Empty)
             {
                 activities.Add(observation.ActivityId);
             }

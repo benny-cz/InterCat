@@ -55,7 +55,10 @@ public sealed record ObservationRowV1
     /// <summary>The same instant session-relative, or null when the conversion was quarantined (ADR-006).</summary>
     public long? SessionRelativeTicks { get; init; }
 
-    /// <summary>The event header's process. Context only; it is never promoted into the owner (§4.1).</summary>
+    /// <summary>
+    /// The event header's process. It is never written into the owner (§4.1); a binding rule reads it as the owner only
+    /// for a mechanism whose records are raised in the process they describe (ADR-030).
+    /// </summary>
     public required int HeaderProcessId { get; init; }
 
     public required int HeaderThreadId { get; init; }

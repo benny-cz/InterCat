@@ -45,8 +45,8 @@ public enum ProcessBindingReason
     Bound = 0,
 
     /// <summary>
-    /// The record's payload names no owner. The event header's process is context and is never promoted into an
-    /// owner (§4.1), so a record without a payload owner has no process to bind to.
+    /// The record names no owner: its payload names none, and its mechanism's records are not raised in the process they
+    /// describe, so the event header's process is context only (§4.1) and the record has no process to bind to.
     /// </summary>
     NoOwner = 1,
 
@@ -219,11 +219,13 @@ public sealed record ProcessInstance
 /// </para>
 /// <para>
 /// A record binds by where its native reading falls. A lifecycle record binds <see cref="RelationStrength.Direct"/>ly
-/// to the instance it creates, ends or confirms. Any other record whose payload names a PID binds to the instance
-/// whose lifetime contains its reading: <see cref="RelationStrength.Correlated"/> when that is the PID's first
-/// instance in the capture, and <see cref="RelationStrength.Candidate"/> when it is a later one, because a late record
-/// of the earlier instance cannot be told apart from a record of the later one by PID and time (identity-v1). A
-/// reading no lifetime contains is unresolved, with the reason.
+/// to the instance it creates, ends or confirms. Any other record that belongs to a PID — the one its payload names,
+/// or, for a mechanism whose records are raised in the process they describe, the one that raised it
+/// (<see cref="RecordAttribution"/>) — binds to the instance whose lifetime contains its reading:
+/// <see cref="RelationStrength.Correlated"/> when that is the PID's first instance in the capture, and
+/// <see cref="RelationStrength.Candidate"/> when it is a later one, because a late record of the earlier instance
+/// cannot be told apart from a record of the later one by PID and time (identity-v1). A reading no lifetime contains
+/// is unresolved, with the reason.
 /// </para>
 /// <para>
 /// The rule assumes the capture lost no lifecycle record that carries no start key. A lost exit and creation pair of
@@ -235,9 +237,17 @@ public sealed partial class ProcessInstanceIndex
     /// <summary>
     /// The binding rule's identity. A change to what binds, how strongly, or how an instance is keyed is a new rule
     /// (§24 entityRevision). Version 2 keys instances by the provider start key when the evidence carries one, splits
-    /// an instance at a lifecycle record whose start key contradicts it, and links parents.
+    /// an instance at a lifecycle record whose start key contradicts it, and links parents. Version 3 binds a record
+    /// whose payload names no owner to the process that raised it, for a mechanism whose records are raised in the
+    /// process they describe (ADR-030).
     /// </summary>
-    public const string BindingRule = "process-binding-v2";
+    public const string BindingRule = "process-binding-v3";
+
+    /// <summary>
+    /// The rule before this one. It bound no record whose payload names no owner, so its derivation is this rule's
+    /// wherever every record named one (`contracts/derivation-checkpoint-v1.md` §4).
+    /// </summary>
+    internal const string EarlierBindingRule = "process-binding-v2";
 
     private readonly Dictionary<int, int[]> instancesByPid;
     private readonly Dictionary<ObservationId, int> lifecycleBindings;
@@ -318,8 +328,8 @@ public sealed partial class ProcessInstanceIndex
     public void OwnersOf(SegmentReaderV1 segment, Span<ProcessBinding> bindings) => ProcessRoles.OwnersOf(this, segment, bindings);
 
     /// <summary>
-    /// Binds one record, given the owner its payload names, its native reading and whether it is a process
-    /// lifecycle record. Pure: the same inputs bind the same way every time.
+    /// Binds one record, given the PID it belongs to (<see cref="RecordAttribution"/>), its native reading and whether
+    /// it is a process lifecycle record. Pure: the same inputs bind the same way every time.
     /// </summary>
     public ProcessBinding Bind(int? ownerProcessId, long nativeTicks, bool isLifecycleRecord, ObservationId? observationId = null)
     {
@@ -750,7 +760,7 @@ public sealed partial class ProcessInstanceIndex
     {
         List<LifecycleRow> lifecycle = evidence.Lifecycle;
         Dictionary<int, RecordKey> firstActivity = evidence.FirstActivity;
-        SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+        var owners = new RecordOwnerColumns(segment);
         SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
@@ -767,13 +777,12 @@ public sealed partial class ProcessInstanceIndex
             var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
             var kind = (ObservationKind)kinds.UnsignedAt(row)!.Value;
             bool isLifecycle = IsLifecycleRecord(mechanism, kind);
-            if (owners.SignedAt(row) is not { } owner)
+            if (owners.At(row, mechanism) is not { } processId)
             {
                 withoutOwner += isLifecycle ? 1 : 0;
                 continue;
             }
 
-            int processId = (int)owner;
             long reading = ticks.SignedAt(row)!.Value;
 
             // Only a record that could be its PID's earliest needs its whole key: the key orders by reading first.

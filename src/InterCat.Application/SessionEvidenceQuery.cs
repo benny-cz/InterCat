@@ -8,7 +8,7 @@ using InterCat.Storage;
 namespace InterCat.Application;
 
 /// <summary>
-/// The canonical owner of one evidence row under <c>process-binding-v2</c>, resolved when its page was read. An
+/// The canonical owner of one evidence row under <c>process-binding-v3</c>, resolved when its page was read. An
 /// unresolved row names its reason, and a candidate stays a candidate rather than being promoted (I12).
 /// </summary>
 public sealed record SessionEvidenceOwner(

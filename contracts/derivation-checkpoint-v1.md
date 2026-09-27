@@ -1,7 +1,7 @@
 # InterCat derivation checkpoint v1
 
 Status: **implemented** in plan revision 162. A generation can name one checkpoint: the state of its
-`process-binding-v2` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
+`process-binding-v3` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
 (`contracts/relations-v1.md`), as derived from named segments. A reader that finds a checkpoint builds both
 derivations from it, reads only the segments it does not cover, and gets exactly what a derivation from every segment
 gives. Without one, opening a session reads every record's owner, endpoints and canonical position before the first
@@ -9,9 +9,10 @@ view, so reopening takes longer as the session grows. That breaks §12.1 S1. Thi
 covers, when a reader may use it, and who publishes it.
 
 Format 1.1 (plan revision 166) adds each instance's own records under `process-activity-v1`, which rank the ranked
-table's groups and processes. A checkpoint of format 1.0 is still read, without them (§4). Format 1.2 (plan revision
-173) lets an end be IPv6, its addresses in 16 bytes; a checkpoint of format 1.0 or 1.1 holds IPv4 ends only and is
-still read (§4).
+table's groups and processes. A checkpoint of format 1.0 holds none. Every one was written under
+`process-binding-v2`, which revision 177 accepts only where counts show every record named its owner, so it is
+derived again (§4). Format 1.2 (plan revision 173) lets an end be IPv6, its addresses in 16 bytes; a checkpoint of
+format 1.0 or 1.1 holds IPv4 ends only and is still read (§4).
 
 A checkpoint is a derived index. It holds no evidence and changes no observation (R1). It can always be rebuilt from
 the segments it covers (R20). A missing, stale or unreadable checkpoint costs time and never changes an answer.
@@ -160,15 +161,21 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 checkpoint when:
 
 - the magic is wrong, the major version is not 1, or the minor is above 2: a checkpoint is rebuildable, so there is no
-  partial read of a newer one. A minor-0 checkpoint, as revisions 162 to 165 wrote, is read without counts: a reader
+  partial read of a newer one. A minor-0 checkpoint of this build's rules would be read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
-  reopen would otherwise read every segment;
+  reopen would otherwise read every segment. Every one revisions 162 to 165 wrote is under `process-binding-v2`,
+  which the next item refuses without counts;
 - a rule identity is not this build's: a checkpoint derived under another rule describes other instances, relations or
-  counts (§24). One exception is exact. A checkpoint of format 1.0 or 1.1 derived under
+  counts (§24). Two exceptions are exact. A checkpoint of format 1.0 or 1.1 derived under
   `transport-endpoint-relation-v3` is read as `v4`'s when it counts no related record without an end. `v4` differs
   from `v3` only in giving an IPv6 record the end `v3` left it without, so where no record went without one the two
   derivations are one state. One that counts any is refused and derived again. No checkpoint of format 1.2 was written
-  under `v3`;
+  under `v3`. A checkpoint of format 1.1 or 1.2 derived under `process-binding-v2` is read as `v3`'s when its counts
+  name no record without an owner. `v3` differs from `v2` only in binding a record whose payload names no owner to
+  the process that raised it, for a mechanism measured to raise its records there (entities-v1 §2a), so where every
+  record named its owner the two derivations are one state. One that counts any record without an owner is refused
+  and derived again, because the count does not say whether one was such a record. A checkpoint of format 1.0 holds
+  no counts and was written only under `v2`, so it is refused;
 - a checkpoint before format 1.2 claims an IPv6 end, which it cannot hold;
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order

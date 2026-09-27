@@ -780,7 +780,7 @@ internal static class SessionCommand
                         row.NativeTicks.ToString("N0", CultureInfo.CurrentCulture),
                         row.Mechanism.ToString(),
                         row.Kind.ToString(),
-                        row.OwnerProcessId?.ToString(CultureInfo.CurrentCulture) ?? "unknown",
+                        EvidenceRowText.OwnerProcessId(row)?.ToString(CultureInfo.CurrentCulture) ?? "unknown",
                         row.ByteValue is { } value
                             ? value.ToString("N0", CultureInfo.CurrentCulture)
                             : row.ByteAvailability == FieldAvailability.NotApplicable

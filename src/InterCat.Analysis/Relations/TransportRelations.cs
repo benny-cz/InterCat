@@ -344,7 +344,7 @@ public sealed partial class TransportRelationIndex
         Dictionary<Mechanism, long> withoutEnd)
     {
         var columns = new EndColumns(segment);
-        SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+        var owners = new RecordOwnerColumns(segment);
         SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
         for (int row = 0; row < segment.RowCount; row++)
         {
@@ -367,7 +367,7 @@ public sealed partial class TransportRelationIndex
             }
 
             Position position = columns.PositionAt(row);
-            int? owner = owners.SignedAt(row) is { } pid ? (int)pid : null;
+            int? owner = owners.At(row, (Mechanism)key.Protocol);
             timeline.Observe(
                 position,
                 owner,

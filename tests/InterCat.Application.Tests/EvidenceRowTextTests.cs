@@ -93,6 +93,22 @@ public sealed class EvidenceRowTextTests
             new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.NoOwner, false)), Invariant));
     }
 
+    [Fact(DisplayName = "ADR-030: an RPC record is owned by the process that raised it, and a kernel record's header never is")]
+    public void AnRpcRecordIsOwnedByTheProcessThatRaisedIt()
+    {
+        ObservationRowV1 call = RpcCall(1, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 1_960, 1);
+        Assert.Equal(1_960, EvidenceRowText.OwnerProcessId(call));
+        Assert.Equal("PID 1960", EvidenceRowText.Owner(Record(call), Invariant));
+        Assert.Equal("PID 1960 · owner unresolved: after this PID's last instance exited",
+            EvidenceRowText.Owner(Record(call,
+                new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.AfterExit, false)), Invariant));
+
+        // A kernel record is raised in whatever process the kernel was in, so its header names no owner (§4.1).
+        ObservationRowV1 kernel = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null) with { HeaderProcessId = 1_960 };
+        Assert.Null(EvidenceRowText.OwnerProcessId(kernel));
+        Assert.Equal("no owner process named", EvidenceRowText.Owner(Record(kernel), Invariant));
+    }
+
     [Fact]
     public void TheValidatedProvidersAreNamedAndAnyOtherIsIdentifiedNotGuessed()
     {

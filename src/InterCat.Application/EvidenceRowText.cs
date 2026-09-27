@@ -74,19 +74,31 @@ public static class EvidenceRowText
     }
 
     /// <summary>
+    /// The PID the row belongs to under the binding rule: the owner its payload names, or the process that raised it
+    /// when its mechanism's records are raised in the process they describe (<see cref="RecordAttribution"/>). Null
+    /// when neither applies.
+    /// </summary>
+    public static int? OwnerProcessId(ObservationRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId);
+    }
+
+    /// <summary>
     /// Who canonically owns the row: the resolved instance's executable and PID, a candidate named as one, or the
-    /// PID with the reason no instance holds it. Without a resolution only the PID the record names is stated.
+    /// PID with the reason no instance holds it. Without a resolution only the PID the record belongs to is stated.
     /// </summary>
     public static string Owner(SessionEvidenceRecord record, IFormatProvider? culture = null)
     {
         ArgumentNullException.ThrowIfNull(record);
         IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
-        string pid = record.Observation.OwnerProcessId is { } id
+        int? processId = OwnerProcessId(record.Observation);
+        string pid = processId is { } id
             ? string.Create(format, $"PID {id}")
             : "no owner process named";
         if (record.Owner is not { } owner) return pid;
         if (owner.Instance is null)
-            return record.Observation.OwnerProcessId is null ? pid : pid + " · owner unresolved: " + Reason(owner.Reason);
+            return processId is null ? pid : pid + " · owner unresolved: " + Reason(owner.Reason);
         string named = string.IsNullOrWhiteSpace(owner.ImageName)
             ? string.Create(format, $"PID {owner.ProcessId} · executable not witnessed")
             : string.Create(format, $"{owner.ImageName} · PID {owner.ProcessId}");

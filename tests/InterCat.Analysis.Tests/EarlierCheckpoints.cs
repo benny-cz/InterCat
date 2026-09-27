@@ -27,6 +27,25 @@ internal static class EarlierCheckpoints
     }
 
     /// <summary>
+    /// A checkpoint as revisions 166 to 176 wrote it, under `process-binding-v2`. It differs from one under v3 only in
+    /// that word when every record names its owner: v2 bound no record that named none, and v3 binds only such records.
+    /// </summary>
+    public static byte[] UnderEarlierBindingRule(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        byte[] rule = System.Text.Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule);
+        int at = bytes.AsSpan().IndexOf(rule);
+        if (at < 0 || !ProcessInstanceIndex.BindingRule.EndsWith("-v3", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The checkpoint does not name the binding rule this helper rewrites.");
+        }
+
+        byte[] earlier = [.. bytes];
+        earlier[at + rule.Length - 1] = (byte)'2';
+        return earlier;
+    }
+
+    /// <summary>
     /// A checkpoint as revisions 162 to 165 wrote it: format 1.0, ending before the counts section, which is the last one
     /// (`contracts/derivation-checkpoint-v1.md` §3). <paramref name="activity"/> is what <paramref name="bytes"/> holds.
     /// </summary>
@@ -41,8 +60,9 @@ internal static class EarlierCheckpoints
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(activity);
         int pids = observations.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
-                .Select(row => segment.Slice(SegmentColumnId.OwnerProcessId).SignedAt(row)))
-            .OfType<long>().Distinct().Count();
+                .Select(segment.Row)
+                .Select(row => RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId)))
+            .OfType<int>().Distinct().Count();
         int counts = Enumerable.Range(0, processes.Instances.Count)
             .Sum(instance => activity.MechanismsOf(instance, EvidencePolicy.AllIncludingConflicting).Count);
         int rule = 1 + System.Text.Encoding.UTF8.GetByteCount(ProcessActivityIndex.CountRule);

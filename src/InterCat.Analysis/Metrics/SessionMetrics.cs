@@ -50,7 +50,7 @@ public sealed record MetricRequest
     /// </summary>
     public EvidencePolicy EvidencePolicy { get; init; } = EvidencePolicy.IncludeCorrelated;
 
-    /// <summary>`owner(P)`: limit rows to those whose own payload names this process instance.</summary>
+    /// <summary>`owner(P)`: limit rows to this process instance's own: those its payload names, or that it raised.</summary>
     public ProcessInstanceId? Owner { get; init; }
 
     /// <summary>`participant(P)`: rows this instance made, or whose other end it is through a proven relation.</summary>

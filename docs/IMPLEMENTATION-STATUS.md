@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 176 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 177 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 177 — an RPC record belongs to the process that raised it (ADR-030, `process-binding-v3`):**
+  - **Measured per side first:** FX-RPC-001 on adapter 0.7.0 started every truth call in the calling process. It saw
+    122 of 122 server-side calls to the Service Control Manager's interface raised in the service host the workload
+    recorded (services.exe). `icat measure rpc` now reports and stores that server side: the host's calls to the
+    interface inside the client's call window, with their completions (61 of 61 paired by activity id).
+  - **The rule:** a record belongs to the PID its payload names. When the payload names none, and its mechanism was
+    measured to raise its records in the process they describe, it belongs to the process its header names. Only RPC
+    qualifies, and a test pins that list. A kernel record's header stays context (§4.1). The stored row is unchanged:
+    the derivation reads the header column only in a segment where such a record names no owner.
+  - **One rule everywhere:** instances, bindings, `owner(P)`, each process's own records, relation holders, evidence
+    text, the rail, exports and the command line all ask whose a record is the same way. An RPC server that no
+    lifecycle record names, as a long-running host is not, becomes an activity-only process of its own calls.
+  - **Earlier checkpoints:** a `process-binding-v2` checkpoint is v3's wherever its counts hold no record without an
+    owner, and is read as such. Any other is derived again, with the reason in the overview, because a count cannot
+    say whether an ownerless record was RPC. A format-1.0 checkpoint holds no counts, so it is derived again. Over this
+    workstation's earlier scratch sessions, a format-1.1 checkpoint of 1M rows was read, and four format-1.0 ones each
+    said why they were not.
 
 - **Revision 176 — RPC's capture cost measured, the first step toward RPC operations (M3):**
   - **Cost:** seven pairs with RPC alone put it at a median 0.52 CPU pp (Low), with no throughput regression,
@@ -1467,13 +1485,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-   - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low). Next, in order:
-     1. Bind an RPC record to the process that raised it. The provider raises client events in the calling process and
-        server events in the serving one. That is a new binding rule, and it has to be measured per side and stated
-        (ADR); today only a payload owner binds.
-     2. Derive call operations by pairing each start with its stop through the activity id (P8, never by time). A start
-        with no stop at capture end is censored, not failed.
-     3. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
+   - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), and revision 177 binds an RPC record to
+     the process that raised it (ADR-030). Next, in order:
+     1. Derive call operations by pairing each start with its stop through the activity id (P8, never by time). A start
+        with no stop at capture end is censored, not failed. The ids pair one side's start and stop; they never link a
+        caller to its server, so a call's other end stays unresolved.
+     2. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
         and status. Then record RPC's measured class, which lets Explore take it.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -1508,6 +1525,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 177 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,207 tests: 1,204
+  passed, 3 skipped**, zero failures. FX-RPC-001 was measured again on real ETW with adapter 0.7.0, and the Release
+  command line read the overviews of five earlier scratch sessions under the new binding rule.
 - Revision 176 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,200 tests: 1,197
   passed, 3 skipped**, zero failures. FX-RPC-001 was measured on real ETW, and the capture-impact harness ran seven
   pairs of RPC alone.

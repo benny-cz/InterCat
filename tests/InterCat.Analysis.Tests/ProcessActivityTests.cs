@@ -63,12 +63,14 @@ public sealed class ProcessActivityTests
                 }
             }
 
-            // Every row is counted once: by the instance it binds to, as a row naming no owner, or as one naming a PID at
+            // Every row is counted once: by the instance it binds to, as a row with no owner, or as one belonging to a PID at
             // a reading no instance of it held. A lifecycle record is its instance's under every policy.
             long bound = Enumerable.Range(0, processes.Instances.Count)
                 .Sum(instance => activity.RecordsOf(instance, EvidencePolicy.AllIncludingConflicting));
             Assert.Equal(rows.Length, bound + activity.RecordsWithoutOwner + activity.RecordsNotBound);
-            Assert.Equal(rows.Count(row => row.OwnerProcessId is null), activity.RecordsWithoutOwner);
+            Assert.Equal(
+                rows.Count(row => RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId) is null),
+                activity.RecordsWithoutOwner);
             for (int instance = 0; instance < processes.Instances.Count; instance++)
             {
                 long direct = activity.RecordsOf(instance, EvidencePolicy.DirectOnly);

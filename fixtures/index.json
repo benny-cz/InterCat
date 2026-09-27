@@ -293,7 +293,7 @@
       },
       "expected": {
         "artifact": "fixtures/FX-RPC-001/evidence/measurement.json",
-        "note": "8 of 8 calls observed and bound to the expected interface with their completions paired, no byte domain on any descriptor, and no client-to-server peer paired. Tier ExperimentalEvidence; scope recorded in ADR-004."
+        "note": "12 of 12 calls observed and bound to the expected interface with their completions paired, no byte domain on any descriptor, and no client-to-server peer paired. 122 of 122 server-side calls to the expected interface were raised in the recorded service host, the measurement process-binding-v3 binds an RPC record by (ADR-030). Tier ExperimentalEvidence; scope recorded in ADR-004."
       },
       "environment": [
         {
@@ -307,18 +307,26 @@
           "supportTier": "Untested at the time of the run; ADR-007 later added this build",
           "date": "2026-09-21",
           "result": "Reproduced across two runs in one capture. Gaps: no byte measurement exists on this source, and an interface has no lifetime to discover."
+        },
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-09-27",
+          "result": "On adapter 0.7.0: 12 of 12 truth calls observed, bound to the expected interface and completion-paired, reproduced across two runs in one capture. Every truth call started in the calling process, and 122 of 122 server-side calls to the expected interface were raised in the service host the workload recorded (ADR-030)."
         }
       ],
       "provenance": {
-        "adapter": "windows-etw-inventory-0.2.0",
+        "adapter": "windows-etw-inventory-0.7.0",
         "shareable": true,
-        "contents": "The client's truth log, the scenario parameters, the measurement counters, and the call records belonging to the fixture's own process and activities. Unrelated machine RPC is never written (P16)."
+        "contents": "The client's truth log, the scenario parameters, the measurement counters, the call records belonging to the fixture's own process and activities, and the service host's server-side calls to the expected interface inside the client's call window with their completions. A server record names no client, so a call another process made to that interface in that window is written too; no other machine RPC is (P16)."
       },
       "tests": [
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "R22: a call to another interface is scope, not a match",
+        "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
+        "R22: a server call is counted as raised in the recorded host only when its own process is that host",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
       ]
     },
@@ -623,6 +631,7 @@
         "I14: equal-time records from different processors are two records, not one seen twice",
         "I14: instance identities do not depend on how the evidence was split into segments",
         "I14: instances and relations extended chunk by chunk equal a derivation of every chunk at once",
+        "I14: instances of the binding rule before this one are read as this rule's only when every record named its owner",
         "I14: nothing is published for a session with no generation or no records, and a stale writer is refused",
         "I14: one admitted record cannot satisfy two truth operations",
         "I14: only instances and the relations derived with them are written, and a generation names one checkpoint",
@@ -1172,14 +1181,17 @@
         "R22: a call to another interface is scope, not a match",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
+        "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
-        "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
+        "R22: a server call is counted as raised in the recorded host only when its own process is that host",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
+        "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
+        "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
         "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",

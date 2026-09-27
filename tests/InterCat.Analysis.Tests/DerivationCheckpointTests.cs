@@ -143,6 +143,51 @@ public sealed class DerivationCheckpointTests
         AssertSameProcesses(processes, minorZero.Processes, observations);
         AssertSameRelations(relations, minorZero.Relations, observations);
         _ = Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read((byte[])[.. older[..^1]], Session, TestClock));
+
+        // Every minor-0 checkpoint was written under process-binding-v2, and one holds no counts to show that every
+        // record named its owner, so it is derived again.
+        Assert.Contains("derived under process-binding-v2 in format 1.0, which holds no counts", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(
+            EarlierCheckpoints.UnderEarlierBindingRule(older), Session, TestClock)).Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I14: instances of the binding rule before this one are read as this rule's only when every record named its owner")]
+    public void EarlierBindingRuleIsReadWhereItAgrees()
+    {
+        // Every record names its owner, so the rule before this one - which bound no record that named none - derived
+        // exactly what this one does, under the relation rule of its time too.
+        using var complete = new TemporarySession();
+        Publish(complete.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 700, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 2).Between("127.0.0.1:50100", "127.0.0.1:8100"),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 800, 3).Between("127.0.0.1:8100", "127.0.0.1:50100"),
+        ]);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(complete.Store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
+        byte[] bytes = Checkpoint(processes, relations, ProcessActivityIndex.Derive(observations, processes));
+        DerivationCheckpoint read = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes), Session, TestClock);
+        AssertSameProcesses(processes, read.Processes, observations);
+        AssertSameRelations(relations, read.Relations, observations);
+        Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations, read.Activity!));
+        DerivationCheckpoint both = DerivationCheckpoint.Read(
+            EarlierCheckpoints.UnderEarlierBindingRule(EarlierCheckpoints.UnderEarlierRelationRule(bytes)), Session, TestClock);
+        Assert.Equal(bytes, Checkpoint(both.Processes, both.Relations, both.Activity!));
+
+        // A record naming no owner might have been an RPC record, which this rule binds to the process that raised it,
+        // so a checkpoint that left one unbound is derived again. Its count is all the checkpoint says of them.
+        using var incomplete = new TemporarySession();
+        Publish(incomplete.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 700, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, owner: null, 2),
+        ]);
+        (observations, fields) = SegmentsOf(incomplete.Store);
+        processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        bytes = Checkpoint(processes, TransportRelationIndex.Derive(observations, processes), ProcessActivityIndex.Derive(observations, processes));
+        _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
+        Assert.Contains("left 1 record naming no owner unbound", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(
+            EarlierCheckpoints.UnderEarlierBindingRule(bytes), Session, TestClock)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I14: relations of the rule before this one are read as this rule's only when no related record went without an end")]
