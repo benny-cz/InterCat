@@ -36,6 +36,27 @@
           </Grid>
           <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      AutomationProperties.Name="What the ranked table holds" />
+          <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
+               ranks a row whose records recorded no size after every measured row, never as zero (§5.2). -->
+          <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
+            <TextBlock Text="Rank by" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="RankBySelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
+                      ItemsSource="{Binding RankingOptions}"
+                      SelectedItem="{Binding SelectedRanking, Mode=TwoWay}"
+                      ToolTip.Tip="{x:Static local:WorkspaceViewModel.RankingDefinition}"
+                      AutomationProperties.Name="Rank groups and processes by"
+                      AutomationProperties.HelpText="{x:Static local:WorkspaceViewModel.RankingDefinition}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="local:RankingOption">
+                  <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+          <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                     IsVisible="{Binding ShowsRankingNote}" ToolTip.Tip="{Binding RankingNoteDetail}"
+                     AutomationProperties.Name="What the ranking measured"
+                     AutomationProperties.HelpText="{Binding RankingNoteDetail}" />
           <!-- A brushed interval, or else the zoomed timeline's visible range, re-ranks every rung; the scope is stated
                where the totals are read, and a range that follows the view can be kept (plan §6.4). -->
           <TextBlock x:Name="RankingScope" Text="{Binding RankingScopeText}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
@@ -122,7 +143,7 @@
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Margin="6,0,6,0" Text="{Binding Label}" FontWeight="SemiBold"
                              TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
-                  <TextBlock Grid.Column="2" Text="{Binding Observations}" FontSize="11" TextAlignment="Right"
+                  <TextBlock Grid.Column="2" Text="{Binding Figure}" FontSize="11" TextAlignment="Right"
                              VerticalAlignment="Center" />
                   <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="6,0,0,0"
                              Text="{Binding DetailLine}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"

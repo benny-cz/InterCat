@@ -28,7 +28,11 @@ public sealed record ExportContext(
     string Scope,
     bool Complete,
     IReadOnlyList<string> Caveats,
-    DateTimeOffset ExportedUtc);
+    DateTimeOffset ExportedUtc)
+{
+    /// <summary>What a ranked export's rows are ordered by; records unless a byte ranking was applied (§5.2).</summary>
+    public RankingMetric RankedBy { get; init; } = RankingMetric.Records;
+}
 
 /// <summary>
 /// Exports what a rung shows - its ranked rows, or the evidence records loaded at the evidence rung - as JSON that
@@ -45,7 +49,8 @@ public static class WorkspaceExport
     /// <summary>
     /// A ranked rung's export context: its breadcrumb and filters, and the interval its counts answer, which is a
     /// brushed interval only once its counts have been applied. The Desktop and <c>icat export</c> both build it here,
-    /// so the two name one snapshot the same way (R18).
+    /// so the two name one snapshot the same way (R18). A byte ranking is named, with what it measures, beside the
+    /// disclosure.
     /// </summary>
     public static ExportContext RankingContext(
         Guid? sessionId,
@@ -53,10 +58,12 @@ public static class WorkspaceExport
         DetailLadder ladder,
         TimeRange? appliedInterval,
         string disclosure,
-        DateTimeOffset exportedUtc)
+        DateTimeOffset exportedUtc,
+        RankingMetric rankedBy = RankingMetric.Records)
     {
         ArgumentNullException.ThrowIfNull(ladder);
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
+        if (!Enum.IsDefined(rankedBy)) throw new ArgumentOutOfRangeException(nameof(rankedBy));
         return new(
             sessionId,
             generation,
@@ -68,9 +75,33 @@ public static class WorkspaceExport
                 ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
                 : "Whole session",
             true,
-            [disclosure],
-            exportedUtc);
+            rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy)],
+            exportedUtc)
+        {
+            RankedBy = rankedBy,
+        };
     }
+
+    /// <summary>What a byte ranking measures, as an export states it beside its rows.</summary>
+    public static string RankingCaveat(RankingMetric rankedBy) => rankedBy switch
+    {
+        RankingMetric.BytesSent => "Rows are ranked by bytes sent: transport-observed bytes on each process's own send "
+            + "records, sender-accounted. A row none of whose sends recorded a size is unmeasured and ranks after every "
+            + "measured row, then rows with no send.",
+        RankingMetric.BytesReceived => "Rows are ranked by bytes received: transport-observed bytes on each process's "
+            + "own receive records, receiver-accounted. A row none of whose receives recorded a size is unmeasured and "
+            + "ranks after every measured row, then rows with no receive.",
+        _ => throw new ArgumentOutOfRangeException(nameof(rankedBy), rankedBy, "Records need no caveat."),
+    };
+
+    /// <summary>A ranking's name as the command line and an export spell it.</summary>
+    public static string RankingName(RankingMetric ranking) => ranking switch
+    {
+        RankingMetric.Records => "records",
+        RankingMetric.BytesSent => "bytes-sent",
+        RankingMetric.BytesReceived => "bytes-received",
+        _ => throw new ArgumentOutOfRangeException(nameof(ranking)),
+    };
 
     /// <summary>
     /// An evidence export's context: the records' own scope, complete only when every record of it is included. An
@@ -120,6 +151,7 @@ public static class WorkspaceExport
             Contract,
             Kind = "ranking",
             Context = Describe(context),
+            RankedBy = RankingName(context.RankedBy),
             Rows = rows.Select(row => new
             {
                 row.Key,
@@ -131,6 +163,9 @@ public static class WorkspaceExport
                 row.Coverage,
                 AccountingSide = row.Side,
                 row.DescendsTo,
+                Ranked = row.Ranked is { } ranked
+                    ? new { Value = ranked.Value, Measured = ranked.Measured, Unmeasured = ranked.Unmeasured }
+                    : null,
             }),
         }, Json);
     }
@@ -154,12 +189,13 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(rows);
         var csv = new StringBuilder();
         Line(csv, [.. ContextHeader, "key", "label", "detail", "observations", "known_bytes", "mechanism", "coverage",
-            "accounting_side", "descends_to"]);
+            "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured"]);
         foreach (LadderRow row in rows)
         {
             Line(csv, [.. ContextCells(context), Text(row.Key), Text(row.Label), Text(row.Detail),
                 Number(row.ObservationCount), Number(row.KnownBytes), row.Mechanism.ToString(), row.Coverage.ToString(),
-                row.Side.ToString(), row.DescendsTo.ToString()]);
+                row.Side.ToString(), row.DescendsTo.ToString(), RankingName(context.RankedBy),
+                Number(row.Ranked?.Value), Number(row.Ranked?.Measured), Number(row.Ranked?.Unmeasured)]);
         }
 
         return csv.ToString();

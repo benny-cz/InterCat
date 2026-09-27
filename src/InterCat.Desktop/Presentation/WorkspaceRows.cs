@@ -200,6 +200,32 @@ public static class WorkspaceRowBuilder
         ? "bytes unknown"
         : string.Create(CultureInfo.CurrentCulture, $"{value.Value / 1_000_000m:N2} MB known");
 
+    /// <summary>
+    /// A measured byte total as the ranked table shows it, in the decimal units of <see cref="DescribeBytes"/> and three
+    /// significant figures at most: "512 B", "8.4 KB", "37 MB", "1.3 GB". A value that rounds up to the next unit is
+    /// written in it, so 999,999 bytes reads "1.0 MB" rather than "1,000 KB".
+    /// </summary>
+    public static string DescribeSize(long bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytes);
+        if (bytes < 1_000)
+        {
+            return string.Create(CultureInfo.CurrentCulture, $"{bytes:N0} B");
+        }
+
+        string[] units = ["KB", "MB", "GB", "TB", "PB", "EB"];
+        double scaled = bytes / 1_000d;
+        int unit = 0;
+        while (unit < units.Length - 1 && Math.Round(scaled, scaled < 10 ? 1 : 0) >= 1_000)
+        {
+            scaled /= 1_000;
+            unit++;
+        }
+
+        return string.Create(CultureInfo.CurrentCulture,
+            $"{scaled.ToString(Math.Round(scaled, 1) < 10 ? "N1" : "N0", CultureInfo.CurrentCulture)} {units[unit]}");
+    }
+
     private static string DescribeStrength(RelationStrength strength) => strength switch
     {
         RelationStrength.Direct => "direct",

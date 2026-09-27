@@ -46,6 +46,12 @@ public sealed record ProcessNode(
 
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);
+
+    /// <summary>
+    /// The process's transport bytes on its own records over the ranked scope, when a byte ranking read them
+    /// (<see cref="SessionByteRanking"/>); null until one has.
+    /// </summary>
+    public ProcessBytes? Bytes { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

@@ -25,15 +25,42 @@ public sealed record RungRow(
     public string? SpokenName { get; init; }
 
     /// <summary>
+    /// The row's value under a byte ranking as its right column shows it: "4.2 MB", "unmeasured" or "no sends"; null
+    /// when the rung ranks by records, whose count the column shows.
+    /// </summary>
+    public string? RankedFigure { get; init; }
+
+    /// <summary>The same value as a sentence says it, with the records behind it: "4.2 MB sent on 12 measured sends".</summary>
+    public string? RankedSpoken { get; init; }
+
+    /// <summary>The right column: the ranked value under a byte ranking, else the records.</summary>
+    public string Figure => RankedFigure ?? Observations;
+
+    /// <summary>
     /// The row's second line: what it holds, then its coverage. Coverage shares the line under the name rather than the
     /// count's column, where a phrase such as "partial gap, not extrapolated" left the name a few letters in the rail.
+    /// Under a byte ranking the records the column no longer shows follow what the row holds.
     /// </summary>
-    public string DetailLine => Coverage.Length == 0 ? Detail
-        : Detail.Length == 0 ? Coverage
-        : $"{Detail} · {Coverage}";
+    public string DetailLine
+    {
+        get
+        {
+            string holds = RankedFigure is null ? Detail
+                : Detail.Length == 0 ? $"{Observations} records"
+                : $"{Detail} · {Observations} records";
+            return Coverage.Length == 0 ? holds
+                : holds.Length == 0 ? Coverage
+                : $"{holds} · {Coverage}";
+        }
+    }
 
+    /// <summary>
+    /// The row as a screen reader says it. Under a byte ranking the ranked bytes take the place of the paired channels'
+    /// known bytes, which would be a second byte figure contradicting the first.
+    /// </summary>
     public string AccessibleName => SpokenName
-        ?? $"{Label}, {Detail}, {Spoken.Count(Source.ObservationCount, "observation")}, {KnownBytes}, "
+        ?? $"{Label}, {Detail}, {(RankedSpoken is { } ranked ? ranked + ", " : string.Empty)}"
+            + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RankedSpoken is null ? KnownBytes + ", " : string.Empty)}"
             + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";
 }
 
@@ -87,7 +114,7 @@ public static class LadderRowBuilder
         foreach (LadderRow row in view.Rows)
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(row.Mechanism));
-            rows.Add(new(
+            rows.Add(new RungRow(
                 row.Key,
                 row.Label,
                 row.Detail,
@@ -97,10 +124,43 @@ public static class LadderRowBuilder
                 tokens.Glyph,
                 DescribeCoverage(row.Coverage),
                 NavigationState.Name(row.DescendsTo),
-                row));
+                row)
+            {
+                RankedFigure = row.Ranked is { } ranked ? RankedFigure(ranked) : null,
+                RankedSpoken = row.Ranked is { } spoken ? RankedSpoken(spoken) : null,
+            });
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// A byte ranking's value in the right column: the measured sum, or "unmeasured" when the row's records recorded no
+    /// size, or "no sends" when it made none. Neither of the last two is a zero (§5.2, R21).
+    /// </summary>
+    public static string RankedFigure(RankedValue ranked)
+    {
+        ArgumentNullException.ThrowIfNull(ranked);
+        return ranked.Value is { } value ? WorkspaceRowBuilder.DescribeSize(value)
+            : ranked.Holds ? "unmeasured"
+            : ranked.Metric == RankingMetric.BytesSent ? "no sends" : "no receives";
+    }
+
+    /// <summary>The value as a screen reader says it, with the records behind it and those that recorded no size.</summary>
+    public static string RankedSpoken(RankedValue ranked)
+    {
+        ArgumentNullException.ThrowIfNull(ranked);
+        bool sent = ranked.Metric == RankingMetric.BytesSent;
+        string records = sent ? "sends" : "receives";
+        string unmeasured = ranked.Unmeasured > 0
+            ? string.Create(CultureInfo.CurrentCulture, $", {ranked.Unmeasured:N0} {(ranked.Unmeasured == 1 ? records[..^1] : records)} with no size")
+            : string.Empty;
+        return ranked.Value is { } value
+            ? string.Create(CultureInfo.CurrentCulture,
+                $"{WorkspaceRowBuilder.DescribeSize(value)} {(sent ? "sent" : "received")} on {ranked.Measured:N0} measured {(ranked.Measured == 1 ? records[..^1] : records)}{unmeasured}")
+            : ranked.Holds
+                ? $"{(sent ? "bytes sent" : "bytes received")} unmeasured{unmeasured}"
+                : $"no {records}";
     }
 
     public static IReadOnlyList<CrumbRow> Crumbs(DetailLadder ladder)

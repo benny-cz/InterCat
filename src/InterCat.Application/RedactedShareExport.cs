@@ -36,13 +36,14 @@ public static class RedactedShareExport
         Guid reportId = Guid.NewGuid();
         Ranked[] safe = [.. rows.Select(row => new Ranked(
             tokens.For("entity", row.Key), row.ObservationCount, row.KnownBytes,
-            row.Mechanism, row.Coverage, row.Side, row.DescendsTo))];
+            row.Mechanism, row.Coverage, row.Side, row.DescendsTo,
+            row.Ranked?.Value, row.Ranked?.Measured, row.Ranked?.Unmeasured))];
         return format switch
         {
             ExportFormat.Json => JsonSerializer.Serialize(new
             {
                 Contract, Kind = "ranking", ReportId = reportId, Redaction = PolicyDescription(),
-                Context = SafeContext(context), Rows = safe,
+                Context = SafeContext(context), RankedBy = WorkspaceExport.RankingName(context.RankedBy), Rows = safe,
             }, Json),
             ExportFormat.Csv => RankingCsv(reportId, context, safe),
             _ => throw new ArgumentOutOfRangeException(nameof(format)),
@@ -123,8 +124,13 @@ public static class RedactedShareExport
             record.Owner?.Strength, record.Owner?.Reason);
     }
 
+    /// <summary>
+    /// One ranked row: counts, sizes and enumerations only. Under a byte ranking it carries the ranked byte sum and how many
+    /// records measured it or recorded no size; the ranking's name is one of three fixed words (admitted in revision 189).
+    /// </summary>
     private sealed record Ranked(string EntityToken, long Observations, long? KnownBytes,
-        Mechanism Mechanism, CoverageState Coverage, AccountingSide AccountingSide, DetailLevel DescendsTo);
+        Mechanism Mechanism, CoverageState Coverage, AccountingSide AccountingSide, DetailLevel DescendsTo,
+        long? RankedValue, long? RankedMeasured, long? RankedUnmeasured);
 
     private sealed record SharedObservation(
         string RecordToken, string? OwnerToken, string? ExecutableToken,
@@ -167,13 +173,16 @@ public static class RedactedShareExport
     {
         var csv = new StringBuilder();
         Line(csv, [.. ContextHeader, "row_present", "entity_token", "observations", "known_bytes", "mechanism", "coverage",
-            "accounting_side", "descends_to"]);
+            "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured"]);
+        string rankedBy = WorkspaceExport.RankingName(context.RankedBy);
         if (rows.Count == 0)
-            Line(csv, [.. ContextCells(reportId, context, "ranking"), "false", .. Enumerable.Repeat(string.Empty, 7)]);
+            Line(csv, [.. ContextCells(reportId, context, "ranking"), "false", .. Enumerable.Repeat(string.Empty, 7),
+                rankedBy, string.Empty, string.Empty, string.Empty]);
         foreach (Ranked row in rows)
             Line(csv, [.. ContextCells(reportId, context, "ranking"), "true", row.EntityToken,
                 Number(row.Observations), Number(row.KnownBytes), row.Mechanism.ToString(),
-                row.Coverage.ToString(), row.AccountingSide.ToString(), row.DescendsTo.ToString()]);
+                row.Coverage.ToString(), row.AccountingSide.ToString(), row.DescendsTo.ToString(), rankedBy,
+                Number(row.RankedValue), Number(row.RankedMeasured), Number(row.RankedUnmeasured)]);
         return csv.ToString();
     }
 

@@ -13,8 +13,8 @@ session rather than read one view of it.
 
 | Subject | Retained | Omitted or transformed |
 |---|---|---|
-| Report context | New random report ID, rung, half-open session-relative interval, export time, completeness, count of applied filters | Original session/capture ID, generation, breadcrumb, scope prose, filter names/values/reasons, source caveats |
-| Ranked rows | Count, known byte total, mechanism, coverage, accounting side, descent level | Key/label/detail replaced by one random `entity-*` token keyed to row identity within this report |
+| Report context | New random report ID, rung, half-open session-relative interval, export time, completeness, count of applied filters, and the ranking a ranked export was ordered by: one of `records`, `bytes-sent` or `bytes-received` (plan revision 189) | Original session/capture ID, generation, breadcrumb, scope prose, filter names/values/reasons, source caveats |
+| Ranked rows | Count, known byte total, mechanism, coverage, accounting side, descent level; under a byte ranking, the ranked byte sum and how many records measured it or recorded no size (plan revision 189) | Key/label/detail replaced by one random `entity-*` token keyed to row identity within this report |
 | Evidence records | Relative presentation ticks, mechanism, layer, kind, direction, numeric byte/status values with domains/availability, quality and owner-binding classifications | Raw record ID/ordinal, journal/segment coordinate, native clock, provider/schema IDs, header/owner PID, machine/user/executable/resource names, endpoint address and port, original files |
 | Relationships | Random `record-*`, `process-*`, `executable-*`, `endpoint-*`, `resource-*`, `identifier-*`, `activity-*` tokens | Original identifiers and any mapping back to them; only policy-admitted process instances receive owner tokens |
 

@@ -62,6 +62,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="SelectedGraphAggregate">A selected aggregate node that is not one executable group, by its stable key.</param>
 /// <param name="SelectedChannelEnd">The L3 end chosen for the table and stepping: 0 the channel's first end, 1 its second.</param>
 /// <param name="Forward">The rungs forward steps would re-enter, nearest first (§6.7).</param>
+/// <param name="RankBy">What the machine and group rungs rank by (§6.1's metric selector).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -74,13 +75,20 @@ public sealed record WorkspaceNavigationMemento(
     Mechanism? SelectedTimelineMechanism = null,
     Direction? SelectedTimelineDirection = null,
     int? SelectedChannelEnd = null,
-    IReadOnlyList<NavigationState>? Forward = null);
+    IReadOnlyList<NavigationState>? Forward = null,
+    RankingMetric RankBy = RankingMetric.Records);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
-/// interval they answer. The next publication of the same session shows them, marked pending, until its own arrive.
+/// interval they answer, with the bytes a byte ranking read for the whole session and for that interval. The next
+/// publication of the same session shows them, marked pending, until its own arrive.
 /// </summary>
-public sealed record ScopeCarry(TimeRange? VisibleRange, TimeRange? Interval, SessionIntervalCounts? Counts);
+public sealed record ScopeCarry(
+    TimeRange? VisibleRange,
+    TimeRange? Interval,
+    SessionIntervalCounts? Counts,
+    SessionByteMeasures? WholeBytes = null,
+    SessionByteMeasures? IntervalBytes = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -98,7 +106,7 @@ public sealed record TimelineCarry(
     IReadOnlyList<TimelineBucket>? Highlight = null,
     IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null);
 
-public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly GraphLayoutScheduler graphLayout;
     private readonly WorkspaceSelectionCoordinator selection = new();
@@ -297,7 +305,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         GraphPositions = ProcessPositions();
         ladder = new(SyntheticWorkspace.Root(Snapshot));
-        view = LadderProjection.Project(Snapshot, ladder.Current);
+        view = ProjectLadder();
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeResources.CurrentMode);
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
         timelineLaneOptions = Array.AsReadOnly([new TimelineLaneOption(null, "All mechanisms"),
@@ -853,16 +861,24 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>What this workspace's ranking counted, for the next publication of the same session to show until its own arrive.</summary>
-    public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts);
+    public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts,
+        wholeBytes ?? carriedWholeBytes, intervalBytes ?? carriedIntervalBytes);
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
     /// and shows that publication's counts while this one's own are read. Nothing stands in once they have arrived, or
-    /// when the scope is the whole session.
+    /// when the scope is the whole session. A byte ranking's bytes stand in the same way.
     /// </summary>
     public void AdoptScope(ScopeCarry carry)
     {
         ArgumentNullException.ThrowIfNull(carry);
+        if (evidenceSource is { } current)
+        {
+            carriedWholeBytes = wholeBytes is null && carry.WholeBytes?.SessionId == current.SessionId ? carry.WholeBytes : null;
+            carriedIntervalBytes = intervalBytes is null && carry.IntervalBytes?.SessionId == current.SessionId
+                ? carry.IntervalBytes : null;
+        }
+
         ShowVisibleRange(carry.VisibleRange);
         if (carry.Counts is { } counts && evidenceSource is { } source && counts.SessionId == source.SessionId
             && scopedInterval is not null && intervalLoading && scopedSnapshot is null)
@@ -870,6 +886,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ApplyScope(counts, carry.Interval, standIn: true);
             OnPropertyChanged(nameof(RankingScopeText));
         }
+
+        // Carried bytes rank the rows at once where they answer the scope shown, while this generation's are read.
+        Rerank();
+        BytesReady = FollowRankedBytesAsync();
     }
 
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
@@ -1264,7 +1284,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
-        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })]);
+        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1357,6 +1377,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         AfterNavigation();
+        RankBy = saved.RankBy;
         if (saved.SelectedTimelineMechanism is { } savedMechanism)
         {
             if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))
@@ -2294,6 +2315,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
+        CancelByteRead();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -2404,6 +2426,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     {
         if (rpcChannelRows.Count == 0 || view.Rows.Count > 0)
         {
+            // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
+            // paired channels' known bytes, which would read as a second, contradicting byte figure.
+            if (view.Rows.Count > 0 && view.Rows[0].Ranked is not null && view.ObservationCount is { } total)
+            {
+                return string.Create(CultureInfo.CurrentCulture, $"{total:N0} observations");
+            }
+
             return brief ? LadderRowBuilder.DescribeTotalShort(view) : LadderRowBuilder.DescribeTotal(view);
         }
 
@@ -3565,7 +3594,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     private void AfterNavigation()
     {
-        view = LadderProjection.Project(Snapshot, ladder.Current);
+        view = ProjectLadder();
         selectedRung = null;
         selectedCrumb = null;
 
@@ -3580,6 +3609,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         RefreshIntervalRows(timelineFocusBuckets);
         SyncEvidence();
         SyncRpc();
+        RaiseRankingChanged();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));
@@ -4506,7 +4536,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShowsRankingScope));
         try
         {
+            // A byte ranking's bytes are read beside the counts and applied with them, so the rows change once.
+            Task<SessionByteMeasures?> bytes = BytesBesideCountsAsync(source, interval);
             SessionIntervalCounts counts = await source.CountAsync(interval, query.Token);
+            SessionByteMeasures? measured = await bytes;
             if (disposed || !ReferenceEquals(intervalQuery, query))
             {
                 return;
@@ -4518,6 +4551,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 intervalProblem = "this directory now holds another session";
                 ApplyScope(null);
                 return;
+            }
+
+            if (rankBy != RankingMetric.Records)
+            {
+                // This generation's answer replaces a stand-in even when its read failed: the rows then rank by records.
+                intervalBytes = measured;
+                carriedIntervalBytes = null;
             }
 
             ApplyScope(counts, interval, standIn: false);
@@ -4576,7 +4616,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         {
             graphDisplay = ScopeGraph(wholeDisplay, scoped);
         }
-        view = LadderProjection.Project(Snapshot, ladder.Current);
+        view = ProjectLadder();
         relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(GraphSummary));
@@ -4594,6 +4634,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(EvidenceSummary));
+
+        // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts.
+        RaiseRankingChanged();
+        BytesReady = FollowRankedBytesAsync();
     }
 
     /// <summary>
@@ -4603,7 +4647,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public ExportContext DescribeExport(DateTimeOffset exportedUtc) =>
         WorkspaceExport.RankingContext(
-            evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure, exportedUtc);
+            evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure, exportedUtc,
+            view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records);
 
     /// <summary>
     /// The applied view in the chosen format (§6.4). A ranked rung exports its rows. The evidence rung exports its whole
@@ -4640,6 +4685,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             }
 
             await IntervalReady.WaitAsync(cancellationToken);
+        }
+
+        // Bytes standing in from an earlier publication are waited past the same way: the export names this generation.
+        for (int wait = 0; BytesStandIn; wait++)
+        {
+            if (disposed || wait == 4)
+            {
+                throw new InvalidOperationException(
+                    "This publication's bytes are still being read; export again once the ranking note stops saying so.");
+            }
+
+            await BytesReady.WaitAsync(cancellationToken);
         }
 
         ExportContext ranked = DescribeExport(exportedUtc);

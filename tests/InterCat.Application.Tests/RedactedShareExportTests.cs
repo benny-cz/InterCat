@@ -41,6 +41,41 @@ public sealed partial class RedactedShareExportTests
         }
     }
 
+    [Theory(DisplayName = "§11.3: a byte-ranked report names its ranking and each row's ranked bytes, and nothing that identifies")]
+    [InlineData(ExportFormat.Json)]
+    [InlineData(ExportFormat.Csv)]
+    public void AByteRankedReportKeepsItsRankingAndValues(ExportFormat format)
+    {
+        ExportContext context = Context() with { RankedBy = RankingMetric.BytesReceived };
+        LadderRow[] rows =
+        [
+            new(Secret, Secret, Secret, 3, 64, Mechanism.Tcp, CoverageState.Covered, DetailLevel.Group,
+                AccountingSide.CanonicalOwner) { Ranked = new(RankingMetric.BytesReceived, 4_096, 2, 1) },
+            new(Secret + "-2", Secret, Secret, 9, null, Mechanism.Udp, CoverageState.Covered, DetailLevel.Group,
+                AccountingSide.CanonicalOwner) { Ranked = new(RankingMetric.BytesReceived, null, 0, 0) },
+        ];
+        string report = RedactedShareExport.Ranking(format, context, rows);
+
+        AssertSafe(report);
+        if (format == ExportFormat.Json)
+        {
+            using JsonDocument json = JsonDocument.Parse(report);
+            Assert.Equal("bytes-received", json.RootElement.GetProperty("rankedBy").GetString());
+            JsonElement first = json.RootElement.GetProperty("rows")[0];
+            Assert.Equal((4_096L, 2L, 1L), (first.GetProperty("rankedValue").GetInt64(),
+                first.GetProperty("rankedMeasured").GetInt64(), first.GetProperty("rankedUnmeasured").GetInt64()));
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("rows")[1].GetProperty("rankedValue").ValueKind);
+        }
+        else
+        {
+            string[] lines = report.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,4096,2,1", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,,0,0", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0].TrimEnd('\r')), CsvCellCount(line.TrimEnd('\r'))));
+        }
+    }
+
     [Theory]
     [InlineData(ExportFormat.Json)]
     [InlineData(ExportFormat.Csv)]

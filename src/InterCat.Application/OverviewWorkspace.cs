@@ -80,4 +80,21 @@ public static class OverviewWorkspace
                 : counts.ObservedRows - counts.ProcessRecords.Values.Sum(records => records.Sum(entry => entry.Records)),
         };
     }
+
+    /// <summary>
+    /// The same workspace with each process's transport bytes over the measured scope, for a ranking by bytes
+    /// (<see cref="SessionByteRanking"/>); a process the measurement found no send or receive record of holds none.
+    /// </summary>
+    public static WorkspaceSnapshot WithBytes(WorkspaceSnapshot snapshot, SessionByteMeasures measures)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(measures);
+        return snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process => process with
+            {
+                Bytes = measures.ByProcess.GetValueOrDefault(process.Id) ?? ProcessBytes.None,
+            })],
+        };
+    }
 }

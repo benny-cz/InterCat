@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 188 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 189 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -61,12 +61,31 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget; since revision 172 `observation-v2` holds IPv6 endpoint addresses, written only for a segment that has one | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 lanes beyond RPC calls (drawn since revision 181), and byte composition once IC-015 derives operations that carry a length. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open; since revision 189 the machine and group rungs rank by records or by bytes sent or received (§6.1's metric selector) | §5.2's other ranking metrics and the basis selector. L4 lanes beyond RPC calls (drawn since revision 181), and byte composition once IC-015 derives operations that carry a length. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 189 — the ranked table ranks by bytes sent or received (§6.1's metric selector, §5.2):**
+  - **The selector:** "Rank by" under the ranked table's summary offers records, bytes sent and bytes received at the
+    machine and group rungs. Bytes are the transport-observed bytes of each process's own send or receive records,
+    sender- or receiver-accounted, exactly what `icat metric --group-by process` answers per instance
+    (`SessionByteRanking`); a group sums its processes. A rung of channels keeps records, and the selector steps aside.
+  - **Scope and timing:** one pass off the UI thread reads both directions for the scope the rows count: the whole
+    session, a brush (read beside its counts, so the rows change once) or the visible range. Until the bytes answer
+    that scope the rows keep their records order and the note says "Reading bytes sent…"; a failed read says why.
+  - **Unmeasured is not zero (R21):** measured rows first, a measured zero among them; then rows whose records recorded
+    no size ("unmeasured"), then rows with none ("no sends"). The records move to the detail line, the spoken name gives
+    the bytes with their records, and the rung total drops the paired channels' "bytes unknown", which contradicted it.
+  - **Live and export:** a publication keeps the choice and shows the previous publication's bytes, marked "updating",
+    until its own arrive. An export names its ranking (`rankedBy`, a defining caveat, each row's value with its measured
+    and unmeasured records); `icat export --rank-by` writes the same file; the sharing report's allowlist admits the
+    ranking's name and those three numbers.
+  - **Live run:** on a 25-second dense recording, bytes sent put worker.exe first (2.8 MB on 1,296 sends) where records
+    put chrome.exe, and every group's value equals `icat metric --group-by executable`. The Release app was driven
+    through UI Automation and keys posted to its window: selector, group rung, bytes received and the zoomed scope.
 
 - **Revision 188 — what collecting ALPC costs, measured before building its capture:**
   - `InterCat.AlpcProbe --impact` runs the RPC workload in alternating pairs with and without the probe's ALPC system
@@ -1716,10 +1735,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      - On Windows, check each of the system's high-contrast themes, and whether Avalonia reports light or dark for
        each as expected.
    - §6.6's unmeasured encoding (an open cross-hatch outline) is drawn nowhere, because no pane plots a value that can
-     be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells).
+     be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells). Since
+     revision 189 the ranked table states an unmeasured byte value in words, which is not a plotted one.
+   - §6.1's metric selector (revision 189) ranks the machine and group rungs by records or bytes sent or received.
+     Still open: §5.2's other ranking metrics (operations on the logical-operations basis, rate, peers, errors,
+     durations, endpoint activity bytes), the basis selector beside it, and a channel rung ranked by bytes, which needs
+     a channel's own byte query.
 
 ## Verification and cautions
 
+- Revision 189 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,257 tests: 1,253
+  passed, 4 skipped**, zero failures. A 25-second dense capture was recorded with `icat record` from the elevated shell
+  into scratch and deleted afterwards; the Release app opened it and received keys posted to its window only.
 - Revision 188 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
   passed, 4 skipped**, zero failures. The two ALPC cost series ran from the elevated shell on this workstation, which is
   in use; no probe session was left running.

@@ -16,7 +16,14 @@ public sealed record LadderRow(
     Mechanism Mechanism,
     CoverageState Coverage,
     DetailLevel DescendsTo,
-    AccountingSide Side);
+    AccountingSide Side)
+{
+    /// <summary>
+    /// The row's value under a ranking other than records, which its rung is ordered by; null when the rung is ranked by
+    /// records, or before the metric has been read.
+    /// </summary>
+    public RankedValue? Ranked { get; init; }
+}
 
 /// <summary>
 /// What one rung shows. An empty rung names the source that would supply its data instead of showing an
@@ -65,15 +72,20 @@ public sealed record LadderView
 /// </summary>
 public static class LadderProjection
 {
-    public static LadderView Project(WorkspaceSnapshot snapshot, NavigationState state)
+    /// <summary>
+    /// The rung's rows, ranked by <paramref name="ranking"/> where its rows are groups or processes and every process
+    /// carries the bytes a byte ranking reads; otherwise, and at every other rung, by records.
+    /// </summary>
+    public static LadderView Project(WorkspaceSnapshot snapshot, NavigationState state, RankingMetric ranking = RankingMetric.Records)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(state);
+        if (!Enum.IsDefined(ranking)) throw new ArgumentOutOfRangeException(nameof(ranking));
 
         List<LadderRow> rows = state.Level switch
         {
-            DetailLevel.Machine => Groups(snapshot),
-            DetailLevel.Group => Processes(snapshot, state.Focus?.Key),
+            DetailLevel.Machine => Groups(snapshot, ranking),
+            DetailLevel.Group => Processes(snapshot, state.Focus?.Key, ranking),
             DetailLevel.ProcessInstance => Channels(snapshot, state.Focus?.Key),
             DetailLevel.Channel => Operations(snapshot, state.Focus?.Key),
             DetailLevel.Operation => Evidence(snapshot, state.Focus?.Key),
@@ -196,7 +208,7 @@ public static class LadderProjection
         _ => [],
     };
 
-    private static List<LadderRow> Groups(WorkspaceSnapshot snapshot)
+    private static List<LadderRow> Groups(WorkspaceSnapshot snapshot, RankingMetric ranking)
     {
         var rows = new List<LadderRow>(snapshot.Groups.Count);
         foreach (ProcessGroup group in snapshot.Groups)
@@ -206,7 +218,7 @@ public static class LadderProjection
                 .. snapshot.Processes.Where(process => string.Equals(process.GroupKey, group.Key, StringComparison.Ordinal)),
             ];
             CommunicationEdge[] edges = [.. OwnedBy(snapshot, members)];
-            rows.Add(new(
+            rows.Add(new LadderRow(
                 group.Key,
                 group.Name,
                 members.Length == 1
@@ -217,13 +229,25 @@ public static class LadderProjection
                 Dominant(members),
                 Worst(members.Select(member => member.Coverage)),
                 DetailLevel.Group,
-                AccountingSide.CanonicalOwner));
+                AccountingSide.CanonicalOwner)
+            {
+                Ranked = RankedOf(members, ranking),
+            });
         }
 
         return Rank(rows);
     }
 
-    private static List<LadderRow> Processes(WorkspaceSnapshot snapshot, string? groupKey)
+    /// <summary>
+    /// A row's value under a byte ranking: the sum of its processes' bytes, which partition it, as a group sums its
+    /// members' records. Null when ranking by records, or when a member's bytes have not been read.
+    /// </summary>
+    private static RankedValue? RankedOf(IReadOnlyCollection<ProcessNode> members, RankingMetric ranking) =>
+        ranking == RankingMetric.Records || members.Any(member => member.Bytes is null)
+            ? null
+            : members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking);
+
+    private static List<LadderRow> Processes(WorkspaceSnapshot snapshot, string? groupKey, RankingMetric ranking)
     {
         var rows = new List<LadderRow>();
         foreach (ProcessNode process in snapshot.Processes)
@@ -234,7 +258,7 @@ public static class LadderProjection
             }
 
             CommunicationEdge[] edges = [.. OwnedBy(snapshot, [process])];
-            rows.Add(new(
+            rows.Add(new LadderRow(
                 process.Id.ToString(),
                 process.Name,
                 string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId} · {process.Role}"),
@@ -243,7 +267,10 @@ public static class LadderProjection
                 Dominant([process]),
                 process.Coverage,
                 DetailLevel.ProcessInstance,
-                AccountingSide.CanonicalOwner));
+                AccountingSide.CanonicalOwner)
+            {
+                Ranked = RankedOf([process], ranking),
+            });
         }
 
         return Rank(rows);
@@ -525,14 +552,40 @@ public static class LadderProjection
         return worst;
     }
 
-    /// <summary>Ranking is deterministic: observations first, then the key, never collection order (R13).</summary>
+    /// <summary>
+    /// Ranking is deterministic: by the ranked value when a byte ranking gave every row one, else by observations, then
+    /// the key, never collection order (R13). Under a byte ranking the measured rows come first, largest first, a measured
+    /// zero among them; then, as §5.2's separate Unmeasured group, the rows whose records recorded no size; then the rows
+    /// that made no record the metric takes. An unmeasured row is stated as unmeasured, never ranked as a zero (R21). A
+    /// rung only some of whose rows carry a value ranks by records and shows none, so no row claims an order it lacks.
+    /// </summary>
     private static List<LadderRow> Rank(List<LadderRow> rows)
     {
-        rows.Sort(static (left, right) =>
+        bool byValue = rows.Count > 0 && rows.TrueForAll(row => row.Ranked is not null);
+        if (!byValue && rows.Exists(row => row.Ranked is not null))
         {
-            int byCount = right.ObservationCount.CompareTo(left.ObservationCount);
-            return byCount != 0 ? byCount : string.CompareOrdinal(left.Key, right.Key);
-        });
+            for (int index = 0; index < rows.Count; index++)
+            {
+                rows[index] = rows[index] with { Ranked = null };
+            }
+        }
+
+        rows.Sort(byValue ? CompareByValue : CompareByRecords);
         return rows;
+    }
+
+    private static int CompareByRecords(LadderRow left, LadderRow right)
+    {
+        int order = right.ObservationCount.CompareTo(left.ObservationCount);
+        return order != 0 ? order : string.CompareOrdinal(left.Key, right.Key);
+    }
+
+    private static int CompareByValue(LadderRow left, LadderRow right)
+    {
+        static int Tier(RankedValue value) => value.Value is not null ? 0 : value.Holds ? 1 : 2;
+        RankedValue one = left.Ranked!, other = right.Ranked!;
+        int order = Tier(one).CompareTo(Tier(other));
+        if (order == 0) order = (other.Value ?? 0).CompareTo(one.Value ?? 0);
+        return order != 0 ? order : string.CompareOrdinal(left.Key, right.Key);
     }
 }

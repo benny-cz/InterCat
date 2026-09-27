@@ -6,7 +6,8 @@ namespace InterCat.Application;
 
 /// <summary>
 /// What a headless export reads: the rung reached by descending through these row keys from the machine rung, an
-/// optional analysis interval, and whether that rung's ranked rows or its evidence records are exported.
+/// optional analysis interval, whether that rung's ranked rows or its evidence records are exported, and what the
+/// machine and group rungs rank by.
 /// </summary>
 public sealed record SessionExportRequest(
     IReadOnlyList<string> Path,
@@ -14,7 +15,8 @@ public sealed record SessionExportRequest(
     bool Evidence,
     ExportFormat Format,
     int EvidenceLimit = SessionExport.DefaultEvidenceLimit,
-    bool Redacted = false);
+    bool Redacted = false,
+    RankingMetric RankBy = RankingMetric.Records);
 
 /// <summary>The exported text, the snapshot it names, and how many rows or records it holds.</summary>
 public sealed record SessionExportResult(string Content, ExportContext Context, int Rows);
@@ -42,6 +44,11 @@ public static class SessionExport
         ArgumentNullException.ThrowIfNull(request.Path);
         ArgumentOutOfRangeException.ThrowIfLessThan(request.EvidenceLimit, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(request.EvidenceLimit, MaximumEvidenceLimit);
+        if (!Enum.IsDefined(request.RankBy)) throw new ArgumentOutOfRangeException(nameof(request));
+        if (request.Evidence && request.RankBy != RankingMetric.Records)
+        {
+            throw new ArgumentException("A ranking applies to ranked rows; an evidence export lists its records in reading order.");
+        }
 
         SessionOverviewBundle overview = SessionOverviewProjector.Project(store, cancellationToken: cancellationToken);
         WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
@@ -54,6 +61,18 @@ public static class SessionExport
             }
 
             snapshot = OverviewWorkspace.WithinInterval(snapshot, counts);
+        }
+
+        // A byte ranking reads each process's bytes over the same scope as the counts, as the Desktop's selector does.
+        if (request.RankBy != RankingMetric.Records)
+        {
+            SessionByteMeasures bytes = SessionByteRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+            if (bytes.SessionId != overview.SessionId)
+            {
+                throw new InvalidDataException("This directory began holding another session during the export.");
+            }
+
+            snapshot = OverviewWorkspace.WithBytes(snapshot, bytes);
         }
 
         var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));
@@ -71,9 +90,12 @@ public static class SessionExport
 
         if (!request.Evidence)
         {
+            // Only the machine and group rungs rank by a chosen metric; the export names the ranking its rows use.
+            LadderView view = LadderProjection.Project(snapshot, ladder.Current, request.RankBy);
+            RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
-                request.Interval, OverviewWorkspace.SessionDisclosure, exportedUtc);
-            IReadOnlyList<LadderRow> rows = LadderProjection.Project(snapshot, ladder.Current).Rows;
+                request.Interval, OverviewWorkspace.SessionDisclosure, exportedUtc, applied);
+            IReadOnlyList<LadderRow> rows = view.Rows;
             string content = request.Redacted
                 ? RedactedShareExport.Ranking(request.Format, ranked, rows)
                 : WorkspaceExport.Ranking(request.Format, ranked, rows);
