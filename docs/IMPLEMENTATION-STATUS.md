@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 184 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 185 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 185 — a busy channel's calls are drawn as density rather than cut off:**
+  - **What a real session needed:** a view holding more calls than the call lane draws one by one (4,000) drew the first
+    4,000 and said how many it left out, so a whole-session view of a busy channel showed its first minutes and then an
+    empty lane. It now falls back to §6.2's density and drops no call (R21).
+  - **The density:** every call in view is read once into columns about five logical pixels wide (§6.2's minimum
+    drawn width, so each is a pointer target), each counting the calls running in it (§21.1's overlap count) and the
+    failed ones (`SessionRpcCalls.Spans`, `RpcCallDensity`). Height is the count on a log scale above the occupied floor;
+    the failed share is caution ink on top, so a failure never disappears when zoomed out.
+  - **Interaction:** the lane note and caption say it is density and up to how many calls a column holds; a resting
+    pointer names a column's calls and failures; a click selects its interval; zoomed in to the budget, each call is a
+    bar again.
+  - **Live run:** the Release app opened a 90-second Explore recording in which the RPC truth workload made 8,930 calls
+    to svcctl, walked to that channel through UI Automation, clicked a column and zoomed with keys posted to its window
+    alone, and drew density, the selected column, and each call again at 2.5 s.
+  - **Set aside, with the measurement:** extending the calls between live generations. At this workstation's rate
+    (about 2,000 calls a minute) re-pairing a ten-minute capture costs tens of milliseconds a generation.
 
 - **Revision 184 — RPC calls pair 3.7 times faster, measured before and after:**
   - **Measured first:** a new opt-in measurement (`RpcPairingScaleTests`, `bench/results/rpc-pairing-20260927T153638Z-*`)
@@ -1615,15 +1632,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      process's RPC channels and their calls on the ladder, revision 180 admits RPC to Explore, 32-bit callers included,
      revision 181 draws a channel's calls in the timeline, and revision 183 counts them on the logical-operations
      metric basis (ADR-032). Next, in order:
-     1. Extend the calls between live generations, then keep them with the derivation checkpoint. Revision 184 made
-        pairing 3.7 times cheaper, but a live session with its RPC rung open still pairs every call again at each
-        generation (1.7 s at the end of a 10M-record session with 2,000,000 calls), a reopen's first RPC rung pairs them
-        all (1.8 s there, 0.33 s at 200,000 calls), and each operation metric pairs them again.
-     2. A duration metric over the calls, once a request can name its cohort (§19.2: completed in range by default,
+     1. A duration metric over the calls, once a request can name its cohort (§19.2: completed in range by default,
         started in range on request), with left- and right-censored calls marked.
-     3. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
-        protocol specification names get a name.
-     4. The call lane draws at most 4,000 calls per view and says so; a denser view needs §6.2's density regime.
+     2. Extend the calls between live generations, then keep them with the derivation checkpoint, when a real capture
+        needs it. Revision 184 made pairing 3.7 times cheaper; a live session with its RPC rung open still pairs every
+        call again at each generation (1.7 s at the end of a 10M-record session with 2,000,000 calls, tens of
+        milliseconds at this workstation's real rate), and a reopen's first RPC rung pairs them all (1.8 s there, 0.33 s
+        at 200,000 calls). Exactness needs every key a late record touches re-paired, and the grouping still reads every
+        call.
+     3. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
+        (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
+        for them needs another source of truth than a guess.
+     4. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
+        §6.2 density regime remains (item 5).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -1657,6 +1678,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 185 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,242 tests: 1,238
+  passed, 4 skipped**, zero failures. The Release Desktop opened a 90-second Explore recording made with `icat record`
+  while the RPC truth workload ran, driven through UI Automation and keys and clicks posted to its window alone, and
+  only its window was captured; the recording and captures stay in scratch.
 - Revision 184 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,240 tests: 1,236
   passed, 4 skipped** (the fourth, the RPC pairing measurement, runs only when asked), zero failures. Revision 183's
   build and this one were measured over sessions each generated, and compared on the real Explore recording, the 1M

@@ -704,6 +704,17 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
+        if (HoveredRpcDensityColumn is { } hoveredColumn && viewModel.RpcCallDensity is { } hoveredDensity
+            && DensityColumnSpan(hoveredDensity, hoveredColumn, scale) is { } columnSpan)
+        {
+            Rect callRow = LaneRow(1, 2, top, bottom);
+            using (context.PushOpacity(0.5))
+            {
+                context.DrawRectangle(Brushes.Transparent, HoverPen,
+                    new Rect(columnSpan.X1 - 1, callRow.Top, Math.Max(2, columnSpan.X2 - columnSpan.X1), callRow.Height));
+            }
+        }
+
         if (HoveredLiveBin is { } hoveredLive && LiveEdgePlacement is { } liveArea)
         {
             (double x1, double x2) = liveArea.Columns(hoveredLive);
@@ -808,6 +819,19 @@ public sealed class TimelineView : Control, IHoverCardSource
                 {
                     cardKey = callKey;
                     card = callModel.DescribeRpcCallHover(call);
+                }
+
+                return card;
+            }
+
+            if (HoveredRpcDensityColumn is { } column && DataContext is WorkspaceViewModel { RpcCallDensity: { } density } densityModel)
+            {
+                // The column is told apart by the peak slot, which a density card does not otherwise use.
+                var densityKey = new CardKey(densityModel, density, Mechanism.Rpc, 1, column, ThemeResources.CurrentMode);
+                if (cardKey != densityKey)
+                {
+                    cardKey = densityKey;
+                    card = densityModel.DescribeRpcDensityHover(column);
                 }
 
                 return card;
@@ -1028,6 +1052,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>The most rows a call lane stacks overlapping calls into; any further overlap shares the last row.</summary>
     private const int MaximumCallRows = 6;
 
+    /// <summary>
+    /// §6.2's occupied floor: the share of its lane any occupied column keeps, so a lone record or call stays visible and
+    /// pointable, and only growth above it tracks magnitude.
+    /// </summary>
+    private const double OccupiedFloor = 0.42;
+
     /// <summary>The machine row an RPC call lane stands under: the zoomed detail where it covers the view, else the overview.</summary>
     private static IReadOnlyList<TimelineBucket> MachineBuckets(WorkspaceViewModel viewModel, TimeRange visible) =>
         viewModel.TimelineDetail is { Buckets.Count: > 0 } detail
@@ -1126,6 +1156,37 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>Where on the call lane a call is drawn, in this control's coordinates, for pointing at it.</summary>
     internal Point? PointOf(RpcCallSpanView span) => CallRect(span) is { } rect ? rect.Center : null;
 
+    /// <summary>The density column under a resting pointer, when the call lane draws its calls as density (§6.2).</summary>
+    internal int? HoveredRpcDensityColumn => HoverTick is { } tick && FocusRows is { Kind: FocusRowKind.Calls }
+        && HoveredLaneIndex == 1
+        && DataContext is WorkspaceViewModel { RpcCallDensity: { } density }
+        && density.Interval.Contains(tick)
+            ? RpcCallDensity.ColumnOf(density.Interval, density.Columns, tick)
+            : null;
+
+    /// <summary>Where on the call lane a density column is drawn, in this control's coordinates, for pointing at it.</summary>
+    internal Point? PointOfDensityColumn(int column)
+    {
+        if (DataContext is not WorkspaceViewModel { RpcCallDensity: { } density } || column < 0 || column >= density.Columns)
+        {
+            return null;
+        }
+
+        TimeRange visible = Viewport;
+        TimeRange interval = density.ColumnInterval(column);
+        if (!Intersects(interval, visible))
+        {
+            return null;
+        }
+
+        double x1 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Max(interval.StartTicks, visible.StartTicks), PlotWidth);
+        double x2 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Min(interval.EndTicks, visible.EndTicks), PlotWidth);
+        Rect row = LaneRow(1, 2, PlotTop, Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin));
+
+        // The lower half of the lane, where every occupied column is drawn whatever its height.
+        return new Point((x1 + x2) / 2, row.Center.Y + (row.Height / 4));
+    }
+
     /// <summary>The call under a resting pointer on the call lane.</summary>
     internal RpcCallSpanView? HoveredRpcCall => HoverTick is not null && FocusRows is { Kind: FocusRowKind.Calls }
         && HoveredLaneIndex == 1
@@ -1150,6 +1211,12 @@ public sealed class TimelineView : Control, IHoverCardSource
         Rect callRow = LaneRow(1, 2, scale.Top, scale.Bottom);
         DrawText(context, "Calls", new(9, callRow.Center.Y - 14));
         DrawText(context, Shortened(viewModel.RpcCallLaneNote, 24), new(9, callRow.Center.Y + 1));
+        if (viewModel.RpcCallDensity is { } density)
+        {
+            DrawCallDensity(context, density, callRow, scale);
+            return;
+        }
+
         string? selected = viewModel.SelectedRpcCallKey;
         SolidColorBrush success = BrushFor(Mechanism.Rpc);
         foreach ((RpcCallSpanView span, Rect rect) in CallLayout(viewModel))
@@ -1160,6 +1227,49 @@ public sealed class TimelineView : Control, IHoverCardSource
                 : TextBrush;
             context.DrawRectangle(fill, span.Key == selected ? SelectionPen : null, rect);
         }
+    }
+
+    /// <summary>
+    /// A call lane with more calls in view than it draws one by one (§6.2): a column per share of the read interval, its
+    /// height the calls running in it on a log scale above the occupied floor, so a lone call stays visible, and its failed
+    /// share in caution ink on top, so a failure never disappears when the view zooms out.
+    /// </summary>
+    private static void DrawCallDensity(DrawingContext context, RpcCallDensity density, Rect row, BarScale scale)
+    {
+        double laneTop = row.Top + 4;
+        double laneHeight = Math.Max(4, row.Height - 10);
+        double bottom = laneTop + laneHeight;
+        double peak = Math.Log2(1 + density.Maximum);
+        SolidColorBrush fill = BrushFor(Mechanism.Rpc);
+        for (int column = 0; column < density.Columns; column++)
+        {
+            long running = density.Running[column];
+            if (running == 0 || DensityColumnSpan(density, column, scale) is not { } span)
+            {
+                continue;
+            }
+
+            double width = Math.Max(1, span.X2 - span.X1 - 1);
+            double intensity = peak <= 0 ? 1 : Math.Log2(1 + running) / peak;
+            double height = laneHeight * (OccupiedFloor + ((1 - OccupiedFloor) * intensity));
+            context.DrawRectangle(fill, null, new Rect(span.X1, bottom - height, width, height));
+            long failed = density.Failed[column];
+            if (failed > 0)
+            {
+                context.DrawRectangle(Current.FailedBrush, null,
+                    new Rect(span.X1, bottom - height, width, Math.Max(2, height * failed / running)));
+            }
+        }
+    }
+
+    /// <summary>Where a density column lies on the plot, clipped to the view; null when it is outside it.</summary>
+    private static (double X1, double X2)? DensityColumnSpan(RpcCallDensity density, int column, BarScale scale)
+    {
+        TimeRange interval = density.ColumnInterval(column);
+        return Intersects(interval, scale.Visible)
+            ? (scale.X(Math.Max(interval.StartTicks, scale.Visible.StartTicks)),
+                scale.X(Math.Min(interval.EndTicks, scale.Visible.EndTicks)))
+            : null;
     }
 
     private static Rect LaneRow(int index, int count, double top, double bottom)
@@ -1323,14 +1433,14 @@ public sealed class TimelineView : Control, IHoverCardSource
             for (int index = 0; index < lanes.Count; index++)
             {
                 Rect row = LaneRow(index, lanes.Count, top, bottom);
-                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, 0.42, LiveBars.Lane, lanes[index].Mechanism);
+                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, OccupiedFloor, LiveBars.Lane, lanes[index].Mechanism);
             }
         }
         else if (rows is not null)
         {
             DrawText(context, "live", new(live.Left, top - 16));
             Rect machine = LaneRow(0, rows.Rows.Count + 1, top, bottom);
-            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, 0.42, LiveBars.Machine, default);
+            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, OccupiedFloor, LiveBars.Machine, default);
         }
         else
         {
@@ -1413,7 +1523,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// of 0.42 of the band, so a lone record in a quiet end stays visible and pointable.
     /// </summary>
     private static double BandHeight(TimelineBucket bucket, double half, double maximumRate) =>
-        Math.Min(half, Math.Max(half * 0.42, half * Rate(bucket) / Math.Max(double.Epsilon, maximumRate)));
+        Math.Min(half, Math.Max(half * OccupiedFloor, half * Rate(bucket) / Math.Max(double.Epsilon, maximumRate)));
 
     /// <summary>
     /// L3's two ends under the machine row (§3.2): outbound records rise above each end's midline and inbound records fall
@@ -1525,7 +1635,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (bucket.ObservationCount > 0)
             {
                 Rect measured = scale.Bar(bucket);
-                double height = Math.Max(measured.Height, (scale.Bottom - scale.Top) * 0.42);
+                double height = Math.Max(measured.Height, (scale.Bottom - scale.Top) * OccupiedFloor);
                 Rect bar = new(measured.X, scale.Bottom - height, measured.Width, height);
                 context.DrawRectangle(contextRow ? ContextBarBrush : BrushFor(mechanism ?? bucket.DominantMechanism),
                     null, bar);
@@ -1844,7 +1954,12 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
         else if (wasClick && FocusRows is { Kind: FocusRowKind.Calls } && LaneIndexAt(pressY) == 1)
         {
-            // Between calls there is nothing to select.
+            // A density column is an interval, which a click selects as it would a bar's; between drawn calls there is
+            // nothing to select.
+            if (viewModel.RpcCallDensity is { } density && density.Interval.Contains(anchor))
+            {
+                viewModel.SelectInterval(density.ColumnInterval(RpcCallDensity.ColumnOf(density.Interval, density.Columns, anchor)));
+            }
         }
         else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)
         {

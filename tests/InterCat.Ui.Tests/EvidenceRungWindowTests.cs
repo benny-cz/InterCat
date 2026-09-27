@@ -770,7 +770,7 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal(3, workspace.RungRows.Count(row => row.Detail.Contains("failed, status 1", StringComparison.Ordinal)));
     }
 
-    [AvaloniaFact(DisplayName = "§3.2/R15: an RPC channel's calls are duration bars that hover, select their row and say what they did not draw")]
+    [AvaloniaFact(DisplayName = "§3.2/R15: an RPC channel's calls are duration bars that hover and select their row")]
     public async Task AnRpcChannelsCallsAreALaneOfDurationBars()
     {
         Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
@@ -840,6 +840,103 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal(failing.Key, workspace.SelectedRpcCallKey);
         Assert.Null(workspace.SelectedInterval);
         Save(window.CaptureRenderedFrame()!, "l3-rpc-call-lane-1080x700.png");
+    }
+
+    [AvaloniaFact(DisplayName = "R21: a call lane with more calls in view than it draws one by one draws them all as density")]
+    public async Task ACallLaneDenserThanItsBudgetIsDrawnAsDensity()
+    {
+        // More calls than the lane draws one by one (§6.2's mark budget), fifty of them failing in one stretch.
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        int calls = SessionRpcCalls.MaximumSpans + 100;
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Conversation(20, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Enumerable.Range(0, calls).SelectMany(index =>
+            {
+                long start = 10 + (3 * index);
+                var activity = new Guid(index + 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2);
+                return new[]
+                {
+                    RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(100_000 + (2 * index)),
+                        activity, serviceControl) with { SessionRelativeTicks = start * 100 },
+                    RpcCall(start + 1, ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(100_001 + (2 * index)),
+                        activity, status: index is >= 2_000 and < 2_050 ? 5 : 0) with { SessionRelativeTicks = (start + 1) * 100 },
+                };
+            }),
+        ]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        timeline.RequestDetailNow();
+        await workspace.RpcSpansReady;
+        Dispatch();
+
+        // No call is dropped: every one counts into a column, and the lane and the caption say it is density.
+        RpcCallDensity density = Assert.IsType<RpcCallDensity>(workspace.RpcCallDensity);
+        Assert.Empty(workspace.RpcCallSpans!);
+        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{calls:N0} · density"), workspace.RpcCallLaneNote);
+        Assert.Contains("as density", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // Each call counts in every column from its start's to its stop's, so a call whose records straddle a column's
+        // edge counts in both: the sums are the calls' column spans, which depend on the plot's width, never the calls.
+        long Spanned(int from, int to) => Enumerable.Range(from, to - from).Sum(index =>
+        {
+            long start = 10 + (3 * index);
+            return RpcCallDensity.ColumnOf(density.Interval, density.Columns, start + 1)
+                - RpcCallDensity.ColumnOf(density.Interval, density.Columns, start) + 1L;
+        });
+        Assert.Equal(Spanned(0, calls), density.Running.Sum());
+        Assert.Equal(Spanned(2_000, 2_050), density.Failed.Sum());
+        Save(window.CaptureRenderedFrame()!, "l3-rpc-call-density-1080x700.png");
+
+        // A resting pointer describes the column under it, failures included; a click selects its interval, not a call.
+        int failing = Enumerable.Range(0, density.Columns).First(column => density.Failed[column] > 0);
+        Point onColumn = timeline.TranslatePoint(timeline.PointOfDensityColumn(failing)!.Value, window)!.Value;
+        window.MouseMove(onColumn);
+        Dispatch();
+        Assert.Equal(failing, timeline.HoveredRpcDensityColumn);
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.EndsWith("running", card.Title, StringComparison.Ordinal);
+        Assert.Contains(card.Lines, line => line.EndsWith("of them failed", StringComparison.Ordinal));
+        Assert.Contains(card.Lines, line => line.StartsWith("Click selects this interval", StringComparison.Ordinal));
+        string? row = workspace.SelectedRung?.Key;
+        window.MouseDown(onColumn, MouseButton.Left);
+        window.MouseUp(onColumn, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(density.ColumnInterval(failing), workspace.SelectedInterval);
+        Assert.Equal(row, workspace.SelectedRung?.Key);
+
+        // Zoomed in to fewer calls than the budget, the lane draws each call again.
+        TimeRange column = density.ColumnInterval(failing);
+        timeline.SetViewport(new TimeRange(column.StartTicks, column.StartTicks + 3_000));
+        timeline.RequestDetailNow();
+        await workspace.RpcSpansReady;
+        Dispatch();
+        Assert.Null(workspace.RpcCallDensity);
+        Assert.NotEmpty(workspace.RpcCallSpans!);
+        // A headless capture returns the frame rendered before its own tick, so the first one still shows the density the
+        // view held before the zoomed calls arrived; the second shows what the window now draws.
+        _ = window.CaptureRenderedFrame();
+        Avalonia.Media.Imaging.WriteableBitmap zoomed = window.CaptureRenderedFrame()!;
+        Assert.Null(workspace.RpcCallDensity);
+        Assert.EndsWith("in view", workspace.RpcCallLaneNote, StringComparison.Ordinal);
+        Assert.StartsWith("This channel's calls, each", workspace.TimelineCaption, StringComparison.Ordinal);
+        Save(zoomed, "l3-rpc-call-density-zoomed-1080x700.png");
     }
 
     [AvaloniaFact(DisplayName = "§3.2/R15: a channel's ends are lanes banded by direction that hover, select and step")]

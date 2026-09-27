@@ -1146,6 +1146,7 @@
         "R21: a 32-bit process's record keeps its width, and only a plan whose offsets do not move admits it",
         "R21: a binary field is fixed only by a stated length, and no bytes are read as an address unless the manifest says so",
         "R21: a budget nothing measured reports as unmeasured, never as a pass",
+        "R21: a call lane with more calls in view than it draws one by one draws them all as density",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
         "R21: a coverage ledger round-trips every outcome and refuses unknown members",
         "R21: a descriptor the schema does not declare is refused with a reason",

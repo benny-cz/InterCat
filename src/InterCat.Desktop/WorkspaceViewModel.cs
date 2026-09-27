@@ -133,7 +133,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     // The RPC channel rung's calls within the drawn viewport, for the timeline's call lane, and the read under way.
     private RpcCallSpanPage? rpcSpans;
-    private (string Key, TimeRange Viewport)? requestedRpcSpans;
+    private (string Key, TimeRange Viewport, int Columns)? requestedRpcSpans;
     private CancellationTokenSource? rpcSpanQuery;
     private readonly WorkspaceSnapshot wholeSnapshot;
     private WorkspaceSnapshot? scopedSnapshot;
@@ -1103,8 +1103,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : $" · selection highlighted: {highlightName}";
 
     private string RungCaption => ShowsRpcCallLane
-        ? "This channel's calls, each from its start to its stop: failures in caution ink, calls open at capture end "
-            + "faint · machine context above · click a call to select its row"
+        ? RpcCallDensity is { } density
+            ? string.Create(CultureInfo.CurrentCulture, $"This channel's {rpcSpans!.Total:N0} calls in view, as density: ")
+                + string.Create(CultureInfo.CurrentCulture, $"the taller a column, the more calls ran in it, up to {density.Maximum:N0}; ")
+                + "failures in caution ink · machine context above · zoom in to see each call, or click a column to select its interval"
+            : "This channel's calls, each from its start to its stop: failures in caution ink, calls open at capture end "
+                + "faint · machine context above · click a call to select its row"
         : timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
             ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes"
@@ -3960,17 +3964,32 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Completes when the latest read of the call lane's calls has applied or reported a problem.</summary>
     public Task RpcSpansReady { get; private set; } = Task.CompletedTask;
 
-    /// <summary>The RPC channel rung's calls within the drawn viewport, in reading order; null where no call lane is drawn.</summary>
+    /// <summary>
+    /// The RPC channel rung's calls within the drawn viewport, in reading order; null where no call lane is drawn, and empty
+    /// where the view holds more calls than the lane draws one by one and <see cref="RpcCallDensity"/> draws them instead.
+    /// </summary>
     public IReadOnlyList<RpcCallSpanView>? RpcCallSpans => ShowsRpcCallLane ? rpcSpans!.Calls : null;
+
+    /// <summary>
+    /// The call lane's density columns (§6.2), when the viewport holds more calls than the lane draws one by one; null
+    /// otherwise.
+    /// </summary>
+    public RpcCallDensity? RpcCallDensity => ShowsRpcCallLane ? rpcSpans!.Density : null;
+
+    /// <summary>
+    /// How many density columns the call lane asks for: twice the timeline's detail columns, about five logical pixels
+    /// each, which is §6.2's minimum drawn width, so every column is a pointer target without widening.
+    /// </summary>
+    private int CallDensityColumns => Math.Clamp((drawnTimeline?.Columns ?? 128) * 2, 32, 512);
 
     /// <summary>Whether the timeline draws the RPC channel's calls as a lane of duration bars under the machine row.</summary>
     public bool ShowsRpcCallLane => IsRpcChannelRung && rpcSpans is { Problem: null };
 
-    /// <summary>What the call lane holds, in one short line: every call in view, or how many of them it drew.</summary>
+    /// <summary>What the call lane holds, in one short line: every call in view, drawn one by one or as density.</summary>
     public string RpcCallLaneNote => rpcSpans is not { Problem: null } spans || !IsRpcChannelRung
         ? string.Empty
-        : spans.Calls.Count < spans.Total
-            ? string.Create(CultureInfo.CurrentCulture, $"{spans.Calls.Count:N0} of {spans.Total:N0} in view; zoom in")
+        : spans.Density is not null
+            ? string.Create(CultureInfo.CurrentCulture, $"{spans.Total:N0} · density")
             : string.Create(CultureInfo.CurrentCulture, $"{spans.Total:N0} in view");
 
     /// <summary>The call selected in the RPC channel rung's table, which the call lane outlines.</summary>
@@ -4009,6 +4028,29 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         return new(title, lines);
     }
 
+    /// <summary>What one density column of the call lane holds, for its hover card.</summary>
+    public HoverCard DescribeRpcDensityHover(int column)
+    {
+        RpcCallDensity density = RpcCallDensity ?? throw new InvalidOperationException("The call lane draws no density.");
+        TimeRange interval = density.ColumnInterval(column);
+        long running = density.Running[column];
+        long failed = density.Failed[column];
+        string title = running == 0
+            ? "No call running"
+            : string.Create(CultureInfo.CurrentCulture, $"{running:N0} {(running == 1 ? "call" : "calls")} running");
+        var lines = new List<string>();
+        if (failed > 0)
+        {
+            lines.Add(string.Create(CultureInfo.CurrentCulture, $"{failed:N0} of them failed"));
+        }
+
+        lines.Add("From " + WorkspaceTime.FormatInstant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
+            + " for " + WorkspaceTime.FormatDuration(interval.SpanTicks, CultureInfo.CurrentCulture));
+        lines.Add(string.Create(CultureInfo.CurrentCulture, $"The busiest column holds {density.Maximum:N0}; a call counts in every column it ran in"));
+        lines.Add("Click selects this interval; zoom in to see each call");
+        return new(title, lines);
+    }
+
     /// <summary>
     /// Reads the calls the lane draws for <paramref name="viewport"/> at an RPC channel rung, superseding a read still
     /// under way; any other rung lets the lane go.
@@ -4032,24 +4074,26 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         string key = ladder.Current.Focus?.Key ?? string.Empty;
-        if (requestedRpcSpans == (key, viewport))
+        int columns = CallDensityColumns;
+        if (requestedRpcSpans == (key, viewport, columns))
         {
             return;
         }
 
-        requestedRpcSpans = (key, viewport);
+        requestedRpcSpans = (key, viewport, columns);
         rpcSpanQuery?.Cancel();
         rpcSpanQuery?.Dispose();
         var query = new CancellationTokenSource();
         rpcSpanQuery = query;
-        RpcSpansReady = LoadRpcSpansAsync(evidenceSource, key, viewport, query);
+        RpcSpansReady = LoadRpcSpansAsync(evidenceSource, key, viewport, columns, query);
     }
 
-    private async Task LoadRpcSpansAsync(SessionEvidenceSource source, string key, TimeRange viewport, CancellationTokenSource query)
+    private async Task LoadRpcSpansAsync(
+        SessionEvidenceSource source, string key, TimeRange viewport, int columns, CancellationTokenSource query)
     {
         try
         {
-            RpcCallSpanPage page = await source.RpcSpansAsync(key, viewport, query.Token);
+            RpcCallSpanPage page = await source.RpcSpansAsync(key, viewport, columns, query.Token);
             if (disposed || !ReferenceEquals(rpcSpanQuery, query)) return;
             rpcSpans = page;
         }
@@ -4084,6 +4128,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
 
         OnPropertyChanged(nameof(RpcCallSpans));
+        OnPropertyChanged(nameof(RpcCallDensity));
         OnPropertyChanged(nameof(ShowsRpcCallLane));
         OnPropertyChanged(nameof(RpcCallLaneNote));
         OnPropertyChanged(nameof(TimelineCaption));

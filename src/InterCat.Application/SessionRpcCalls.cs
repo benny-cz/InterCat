@@ -78,8 +78,8 @@ public sealed record RpcCallSpanView(
 }
 
 /// <summary>
-/// A channel's calls within one interval, in reading order, at most a budget of them; <see cref="Total"/> counts every call
-/// the interval holds, so a view can say how many it did not draw.
+/// A channel's calls within one interval, in reading order, when they are no more than a lane draws one by one; otherwise
+/// none of them, and their <see cref="Density"/> instead (§6.2). <see cref="Total"/> counts every call the interval holds.
 /// </summary>
 public sealed record RpcCallSpanPage(
     Guid SessionId,
@@ -87,7 +87,44 @@ public sealed record RpcCallSpanPage(
     TimeRange Interval,
     IReadOnlyList<RpcCallSpanView> Calls,
     long Total,
-    string? Problem);
+    string? Problem)
+{
+    /// <summary>The calls as density columns, when there were more of them than the budget; null otherwise.</summary>
+    public RpcCallDensity? Density { get; init; }
+}
+
+/// <summary>
+/// A channel's calls within one interval as §6.2's density regime draws them, when there are more than a lane draws one by
+/// one: the interval cut into equal columns, and in each the calls running in it and how many of those failed. A call
+/// runs in every column from its start's to its stop's; a call open at capture end runs to the interval's end, and a call
+/// with one record runs in that record's column. It is the overlap count of §21.1, never a count of records.
+/// </summary>
+public sealed record RpcCallDensity(TimeRange Interval, IReadOnlyList<long> Running, IReadOnlyList<long> Failed)
+{
+    /// <summary>The most calls running in any one column: what the lane's intensity scale reaches.</summary>
+    public long Maximum { get; } = Running.Count == 0 ? 0 : Running.Max();
+
+    public int Columns => Running.Count;
+
+    /// <summary>The interval one column covers: equal shares of <see cref="Interval"/>, the last one ending with it.</summary>
+    public TimeRange ColumnInterval(int column)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, Columns);
+        return new(Boundary(Interval, Columns, column), Boundary(Interval, Columns, column + 1));
+    }
+
+    /// <summary>The column a tick falls in, clamped to the interval's first and last.</summary>
+    public static int ColumnOf(TimeRange interval, int columns, long tick) => tick <= interval.StartTicks
+        ? 0
+        : tick >= interval.EndTicks
+            ? columns - 1
+            : (int)((Int128)(tick - interval.StartTicks) * columns / interval.SpanTicks);
+
+    /// <summary>Where a column begins: the first tick <see cref="ColumnOf"/> places in it, so the two never disagree.</summary>
+    private static long Boundary(TimeRange interval, int columns, int column) =>
+        interval.StartTicks + (long)((((Int128)interval.SpanTicks * column) + columns - 1) / columns);
+}
 
 /// <summary>
 /// Reads a published session's RPC calls for the ladder: a process's channels, and a channel's calls a page at a time.
@@ -98,25 +135,32 @@ public static class SessionRpcCalls
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 500;
 
-    /// <summary>The most calls one timeline read returns; a denser interval says how many more it holds.</summary>
+    /// <summary>The most calls one timeline read returns one by one; a denser interval is read as density columns.</summary>
     public const int MaximumSpans = 4_000;
 
+    /// <summary>The most density columns one read cuts an interval into.</summary>
+    public const int MaximumDensityColumns = 2_048;
+
     /// <summary>
-    /// The calls of one channel that run within <paramref name="interval"/> (workspace ticks), in reading order, at most
-    /// <paramref name="budget"/>. A call runs within it when it starts before the interval ends and has not stopped
-    /// before it begins; a call still open at capture end runs to the end of the session.
+    /// The calls of one channel that run within <paramref name="interval"/> (workspace ticks), in reading order, when there
+    /// are at most <paramref name="budget"/> of them; when there are more, none of them and their density in
+    /// <paramref name="columns"/> equal columns instead, as §6.2 falls back from marks to density rather than drop marks.
+    /// A call runs within the interval when it starts before the interval ends and has not stopped before it begins; a call
+    /// still open at capture end runs to the end of the session.
     /// </summary>
     public static RpcCallSpanPage Spans(
         SessionStore store,
         string channelKey,
         TimeRange interval,
         int budget = MaximumSpans,
+        int columns = 512,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         if (budget is < 1 or > MaximumSpans) throw new ArgumentOutOfRangeException(nameof(budget));
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (columns is < 1 or > MaximumDensityColumns) throw new ArgumentOutOfRangeException(nameof(columns));
         if (!RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface))
         {
             throw new ArgumentException("This key names no RPC channel.", nameof(channelKey));
@@ -133,6 +177,12 @@ public static class SessionRpcCalls
 
         var drawn = new List<RpcCallSpanView>(Math.Min(budget, (int)Math.Min(group.Counts.Calls, int.MaxValue)));
         long total = 0;
+
+        // Every call in the interval is counted into the columns as it is read, so an interval denser than the budget
+        // costs one pass and never holds more than the budget's calls. A column is at least one tick wide.
+        int width = (int)Math.Min(columns, interval.SpanTicks);
+        long[] running = new long[width + 1];
+        long[] failed = new long[width + 1];
         foreach (RpcCallSpan span in calls.SpansOf(group))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -146,6 +196,16 @@ public static class SessionRpcCalls
             }
 
             total++;
+            int from = RpcCallDensity.ColumnOf(interval, width, first);
+            int to = RpcCallDensity.ColumnOf(interval, width, last) + 1;
+            running[from]++;
+            running[to]--;
+            if (span.State == RpcCallState.Completed && span.Status is { } code && code != 0)
+            {
+                failed[from]++;
+                failed[to]--;
+            }
+
             if (drawn.Count < budget)
             {
                 drawn.Add(new(
@@ -158,7 +218,21 @@ public static class SessionRpcCalls
             }
         }
 
-        return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
+        if (total <= budget)
+        {
+            return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
+        }
+
+        for (int column = 1; column < width; column++)
+        {
+            running[column] += running[column - 1];
+            failed[column] += failed[column - 1];
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, [], total, null)
+        {
+            Density = new(interval, running[..width], failed[..width]),
+        };
     }
 
     /// <summary>

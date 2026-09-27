@@ -126,10 +126,63 @@ public sealed class SessionRpcCallsTests
         RpcCallSpanView still = Assert.Single(open.Calls);
         Assert.Equal((RpcCallState.OpenAtCaptureEnd, (long?)null), (still.State, still.EndTicks));
 
-        // More calls than the budget: the first in reading order, and the count of every one.
-        RpcCallSpanPage budgeted = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(0, 1_000), budget: 2);
-        Assert.Equal((2, 3L), (budgeted.Calls.Count, budgeted.Total));
-        Assert.Equal(SessionRpcCalls.Calls(session.Store, channel).Calls[0].Key, budgeted.Calls[0].Key);
+        // More calls than the budget: none of them one by one, and all of them as density columns instead, each counting
+        // the calls running in it, never dropping one (§6.2, R21). The failing call keeps its caution share.
+        RpcCallSpanPage budgeted = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(0, 1_000), budget: 2, columns: 10);
+        Assert.Equal((0, 3L), (budgeted.Calls.Count, budgeted.Total));
+        RpcCallDensity density = budgeted.Density!;
+        Assert.Equal([0L, 1L, 1L, 1L, 0L, 0L, 0L, 0L, 0L, 0L], density.Running);
+        Assert.Equal([0L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L], density.Failed);
+        Assert.Equal((1L, new TimeRange(300, 400)), (density.Maximum, density.ColumnInterval(3)));
+        Assert.Null(all.Density);
+
+        // A call counts in every column from its start's to its stop's: 100-120 in three columns of ten ticks, 200-210 in
+        // two, and the failing 300-340 in five.
+        RpcCallDensity fine = SessionRpcCalls.Spans(session.Store, channel, new TimeRange(0, 1_000), budget: 2, columns: 100).Density!;
+        Assert.Equal([1L, 1L, 1L, 0L], fine.Running.Skip(10).Take(4));
+        Assert.Equal([1L, 1L, 0L], fine.Running.Skip(20).Take(3));
+        Assert.Equal((10L, 5L), (fine.Running.Sum(), fine.Failed.Sum()));
+
+        // Two calls running at once count twice, and a call still open at capture end runs to the interval's end.
+        using var overlapping = new TemporarySession();
+        Publish(overlapping.Store,
+        [
+            .. new[]
+            {
+                Lifecycle(1, ObservationKind.Create, 400, 1),
+                RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 10, Activity(1), ServiceControl),
+                RpcCall(120, ObservationKind.RequestStart, Direction.Outbound, 400, 11, Activity(2), ServiceControl),
+                RpcCall(130, ObservationKind.RequestEnd, Direction.Outbound, 400, 12, Activity(2), status: 0),
+                RpcCall(150, ObservationKind.RequestEnd, Direction.Outbound, 400, 13, Activity(1), status: 0),
+                RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 14, Activity(3), ServiceControl),
+            }.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 }),
+        ]);
+        ProcessInstanceId caller = SessionOverviewProjector.Project(overlapping.Store).Nodes.Single(node => node.ProcessId == 400).Id;
+        RpcCallDensity overlap = SessionRpcCalls.Spans(
+            overlapping.Store, RpcChannelKeys.Channel(caller, RpcCallSide.Client, ServiceControl), new TimeRange(0, 1_000),
+            budget: 1, columns: 10).Density!;
+        Assert.Equal([0L, 2L, 0L, 1L, 1L, 1L, 1L, 1L, 1L, 1L], overlap.Running);
+        Assert.Equal(2, overlap.Maximum);
+    }
+
+    [Fact(DisplayName = "§6.2: a density column's interval holds exactly the ticks placed in it, whatever the interval and columns")]
+    public void DensityColumnsHoldTheirTicks()
+    {
+        var random = new Random(7);
+        for (int trial = 0; trial < 200; trial++)
+        {
+            long start = random.Next(-50, 50);
+            var interval = new TimeRange(start, start + random.Next(1, 300));
+            int columns = (int)Math.Min(interval.SpanTicks, random.Next(1, 40));
+            var density = new RpcCallDensity(interval, new long[columns], new long[columns]);
+            Assert.Equal(interval.StartTicks, density.ColumnInterval(0).StartTicks);
+            Assert.Equal(interval.EndTicks, density.ColumnInterval(columns - 1).EndTicks);
+            for (long tick = interval.StartTicks; tick < interval.EndTicks; tick++)
+            {
+                int column = RpcCallDensity.ColumnOf(interval, columns, tick);
+                Assert.True(density.ColumnInterval(column).Contains(tick), $"{interval} in {columns}: tick {tick} in {column}");
+            }
+        }
     }
 
     [Fact]

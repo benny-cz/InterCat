@@ -54,8 +54,10 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
-    public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionRpcCalls.Spans(Store(), channelKey, interval, cancellationToken: cancellationToken), cancellationToken);
+    public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
+        Task.Run(
+            () => SessionRpcCalls.Spans(Store(), channelKey, interval, columns: columns, cancellationToken: cancellationToken),
+            cancellationToken);
 
     /// <summary>
     /// The session's store, shared by every read and by every workspace of this session (<see cref="SharedSessionStores"/>).
