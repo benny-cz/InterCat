@@ -452,6 +452,46 @@ public sealed class RankingSelectorTests
         }
     });
 
+    [Fact(DisplayName = "R15: below the machine rung the relationship table lists what the rung's graph draws and counts the rest")]
+    public void TheRelationshipTableListsWhatTheRungsGraphDraws() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. ClientAndServer(),
+            Timed(Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\agent.exe" }),
+            Timed(Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\store.exe" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 300, 50).Between("127.0.0.1:50010", "127.0.0.1:9090")),
+            Timed(Transfer(51, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 400, 51).Between("127.0.0.1:9090", "127.0.0.1:50010")),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.Equal(2, workspace.Relationships.Count);
+        Assert.Equal("Whole machine · 2 relationships", workspace.RelationshipTableScope);
+
+        // At the client's rung the graph draws the client and the server; agent.exe and store.exe are counted, not listed.
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        RelationshipRow listed = Assert.Single(workspace.Relationships);
+        Assert.Equal(["client.exe · PID 100", "server.exe · PID 200"], new[] { listed.Source, listed.Target }.Order(StringComparer.Ordinal));
+        Assert.Equal("client.exe · PID 100 and its peers · 1 relationship · 1 more elsewhere, listed at the machine rung",
+            workspace.RelationshipTableScope);
+
+        // Back at the machine rung, every relationship is listed again.
+        while (workspace.CanAscend)
+        {
+            workspace.Ascend();
+        }
+
+        Assert.Equal(2, workspace.Relationships.Count);
+        Assert.Equal("Whole machine · 2 relationships", workspace.RelationshipTableScope);
+    });
+
     [Fact(DisplayName = "§6.3: under a byte ranking the graph's edges and nodes are sized by bytes, so the panes agree on magnitude")]
     public void TheGraphIsSizedByTheRankingsMetric() => SingleThreadedContext.Run(async () =>
     {

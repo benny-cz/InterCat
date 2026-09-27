@@ -560,7 +560,13 @@
             BorderBrush="{DynamicResource Ink.Accent}" BorderThickness="1"
             IsVisible="{Binding ShowTables}">
       <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,*" Margin="16">
-        <TextBlock Text="RELATIONSHIP TABLE" Classes="eyebrow" />
+        <!-- Below the machine rung the table lists what the rung's graph draws, and counts what it leaves out (R15). -->
+        <Grid ColumnDefinitions="Auto,*">
+          <TextBlock Text="RELATIONSHIP TABLE" Classes="eyebrow" VerticalAlignment="Center" />
+          <TextBlock x:Name="RelationshipTableScopeText" Grid.Column="1" Margin="10,0" Text="{Binding RelationshipTableScope}"
+                     Classes="muted" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="{Binding RelationshipTableScope}" />
+        </Grid>
         <!-- Each end is named with its PID, so one executable's instances are told apart. -->
         <Grid Grid.Row="1" ColumnDefinitions="18,200,200,90,150,100" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Source" Classes="columnHeader" />

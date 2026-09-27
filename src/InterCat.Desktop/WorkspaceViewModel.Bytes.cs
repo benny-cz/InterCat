@@ -72,29 +72,32 @@ public sealed partial class WorkspaceViewModel
     {
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
+        OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(LevelSummary));
     }
 
     /// <summary>
-    /// The relationship table's rows, with the bytes sent across each once they are read, or that none was sent or none of
-    /// its sends measured a size; until the bytes are read, each says why they are not known yet.
+    /// The relationship table's rows, those the graph draws at this rung, with the bytes sent across each once they are
+    /// read, or that none was sent or none of its sends measured a size; until the bytes are read, each says why they are
+    /// not known yet.
     /// </summary>
     private IReadOnlyList<RelationshipRow> RelationshipRows()
     {
+        WorkspaceSnapshot listed = ListedRelationships();
         if (!ReadsBytes)
         {
-            return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
+            return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode);
         }
 
         if (DescribedBytes is not { } bytes)
         {
             string unread = UnreadBytes;
-            return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode, _ => unread);
+            return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode, _ => unread);
         }
 
-        ILookup<string, Channel> channels = Snapshot.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
-        return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode,
+        ILookup<string, Channel> channels = listed.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
+        return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode,
             edge => SentAcross(edge, channels[edge.Key], bytes).Phrase);
     }
 

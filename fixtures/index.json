@@ -1009,6 +1009,7 @@
         "R15: a published session's channel and evidence rungs render at every supported size",
         "R15: a selected group highlights its members' records; the rung's own focus is not highlighted again",
         "R15: a selected process highlights exactly its own records in the timeline, until cleared",
+        "R15: below the machine rung the relationship table lists what the rung's graph draws and counts the rest",
         "R15: every focusable element and list item is named for the ear at every rung, never by a record's fields",
         "R15: graph pin and re-layout commands have keyboard paths and a button equivalent",
         "R15: in mechanism lanes each lane marks the selection's own records of its mechanism",

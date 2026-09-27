@@ -2347,6 +2347,30 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Table equivalent of the graph. It yields the same relationships the canvas draws (R15).</summary>
     public IReadOnlyList<RelationshipRow> Relationships => relationships;
 
+    /// <summary>
+    /// The relationships the table lists: those the graph draws (R15). At the machine rung that is every one; below it,
+    /// every one with an end in the rung's neighbourhood, which the graph draws between its processes or out to Rest of the
+    /// machine. The others are counted in <see cref="RelationshipTableScope"/>, never dropped without a word.
+    /// </summary>
+    private WorkspaceSnapshot ListedRelationships() => graphFocus.Neighborhood is not { } drawn
+        ? Snapshot
+        : Snapshot with { Edges = [.. Snapshot.Edges.Where(edge => drawn.Contains(edge.SourceId) || drawn.Contains(edge.TargetId))] };
+
+    /// <summary>What the relationship table lists, as the graph's caption names it, and how many relationships it leaves out.</summary>
+    public string RelationshipTableScope
+    {
+        get
+        {
+            string listed = Counted(relationships.Count, "relationship", "relationships");
+            int elsewhere = Snapshot.Edges.Count - relationships.Count;
+            return graphFocus.Neighborhood is null
+                ? $"Whole machine · {listed}"
+                : $"{graphFocus.Description} · {listed}" + (elsewhere > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $" · {elsewhere:N0} more elsewhere, listed at the machine rung")
+                    : string.Empty);
+        }
+    }
+
     /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
     /// <summary>
     /// The table equivalent of the timeline (R15): the buckets it draws, which are the zoomed viewport's own once they
@@ -3720,6 +3744,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenProcesses.Clear();
         graphSelection = null;
         RefreshGraphDisplay();
+
+        // The relationship table lists what the rung's graph draws.
+        relationships = RelationshipRows();
+        OnPropertyChanged(nameof(Relationships));
+        OnPropertyChanged(nameof(RelationshipTableScope));
         UpdateTimelineFocus();
         UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
@@ -4785,6 +4814,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(IsRankedWithinInterval));
         OnPropertyChanged(nameof(RankingScopeText));
         OnPropertyChanged(nameof(Relationships));
+        OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));
