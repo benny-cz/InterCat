@@ -219,8 +219,12 @@ public sealed partial class RedactedShareExportTests
         "Machine / " + Secret, [new ImpliedFilter(Secret, Secret, Secret)], new TimeRange(100, 2_000),
         Secret, false, [Secret], Exported);
 
-    /// <summary>A report token (kind, a hyphen, 24 random hex digits) or a random GUID such as the report id.</summary>
-    [GeneratedRegex("[a-z]+-[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOptions.IgnoreCase)]
+    /// <summary>
+    /// A report token (kind, a hyphen, 24 random hex digits) or a random GUID such as the report id, which JSON writes with
+    /// dashes and CSV as 32 bare hex digits. Missing the CSV form let the id's own digits read as a leaked port.
+    /// </summary>
+    [GeneratedRegex("[a-z]+-[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32}",
+        RegexOptions.IgnoreCase)]
     private static partial Regex RandomValues();
 
     private static void AssertSafe(string report)

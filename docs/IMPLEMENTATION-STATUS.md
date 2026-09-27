@@ -77,6 +77,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
     sent across its channels by either end, each transfer once at its sender. Totals and spoken rows drop the phrase.
   - A view without the session's directory, which cannot read bytes, keeps saying they are unknown.
   - **Live run:** on a 12-second TCP workload recording, selecting its group read 132 KB sent and 132 KB received.
+  - **Flake fixed:** the clean-worktree verification caught the redacted report's leak test failing about once in two
+    thousand CSV reports: CSV writes the random report id as 32 bare hex digits, which the test's random-value pattern
+    did not strip, so the id's own digits could read as a leaked port. The pattern now strips that form too.
 
 - **Revision 193 — RPC channels and calls answer the rung's scope:**
   - **Found:** under a brush or a zoomed view a process's paired channels counted the interval while its RPC channels
