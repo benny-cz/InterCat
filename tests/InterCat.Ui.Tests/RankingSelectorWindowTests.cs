@@ -42,6 +42,20 @@ public sealed class RankingSelectorWindowTests
         Assert.False(note.IsEffectivelyVisible);
         Assert.Equal("listen.exe", FirstLabel(rail));
 
+        // The basis stays beside the selector, and its list heads each basis's metrics with its name (§3.2, §6.1).
+        TextBlock basis = window.GetControl<TextBlock>("RankingBasisText");
+        Assert.Equal(("observations", true), (basis.Text, basis.IsEffectivelyVisible));
+        selector.IsDropDownOpen = true;
+        Dispatch();
+        static string[] Shown(Control item) => [.. item.GetVisualDescendants().OfType<TextBlock>()
+            .Where(text => text.IsEffectivelyVisible).Select(text => text.Text ?? string.Empty)];
+        Assert.Equal(["LOGICAL OPERATIONS · RPC CALLS", "RPC calls made"],
+            Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(5))));
+        Assert.Equal(["RPC calls served"], Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(6))));
+        Save(window.CaptureRenderedFrame()!, "l0-rank-by-list-1080x700.png");
+        selector.IsDropDownOpen = false;
+        Dispatch();
+
         // A person picks Bytes sent: the rail keeps its order until the bytes are read, then ranks by them.
         selector.SelectedIndex = 1;
         Dispatch();

@@ -6,11 +6,22 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
-/// <summary>A choice of what the machine and group rungs rank their rows by (§5.2's metrics, §6.1's metric selector).</summary>
+/// <summary>
+/// A choice of what the machine and group rungs rank their rows by (§5.2's metrics, §6.1's basis and metric selector). The
+/// choices are listed by the basis they are on, and the first of each basis heads its group with the basis's name.
+/// </summary>
 public sealed record RankingOption(RankingMetric Metric, string Label) : IAccessibleRow
 {
     /// <summary>What a combo box reads as its value when this option is chosen: the label, not the record's fields.</summary>
     public override string ToString() => Label;
+
+    /// <summary>Whether this is the first choice on its basis, which the list heads with the basis's name.</summary>
+    public bool OpensBasis { get; init; }
+
+    /// <summary>The heading above the first choice on a basis (§5.3's `EN-Basis`).</summary>
+    public string BasisHeading => RankingMetrics.BasisOf(Metric) == AnalysisBasis.LogicalOperations
+        ? "LOGICAL OPERATIONS · RPC CALLS"
+        : "SOURCE OBSERVATIONS";
 
     public string AccessibleName => Metric switch
     {
@@ -25,7 +36,8 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.RpcServeTime => "RPC serve time: rank by the median time each process took to serve its completed calls, slowest first",
         RankingMetric.ActivePeers => "Peers: rank by the distinct processes at the other end of each process's records",
         _ => "Records: rank by each process's own records",
-    };
+    } + (RankingMetrics.BasisOf(Metric) == AnalysisBasis.LogicalOperations
+        ? ", on logical operations" : ", on source observations");
 }
 
 /// <summary>
@@ -37,18 +49,19 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
+    // By basis (§5.3): what each record measured, then what each RPC call, paired from its records, came to.
     private static readonly ReadOnlyCollection<RankingOption> RankingChoices = Array.AsReadOnly(
     [
-        new RankingOption(RankingMetric.Records, "Records"),
+        new RankingOption(RankingMetric.Records, "Records") { OpensBasis = true },
         new RankingOption(RankingMetric.BytesSent, "Bytes sent"),
         new RankingOption(RankingMetric.BytesReceived, "Bytes received"),
         new RankingOption(RankingMetric.EndpointBytes, "Bytes sent and received"),
-        new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made"),
+        new RankingOption(RankingMetric.ActivePeers, "Peers"),
+        new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made") { OpensBasis = true },
         new RankingOption(RankingMetric.RpcCallsServed, "RPC calls served"),
         new RankingOption(RankingMetric.RpcErrors, "RPC errors"),
         new RankingOption(RankingMetric.RpcCallTime, "RPC call time (median)"),
         new RankingOption(RankingMetric.RpcServeTime, "RPC serve time (median)"),
-        new RankingOption(RankingMetric.ActivePeers, "Peers"),
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
@@ -111,6 +124,18 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private bool RanksThisRung => ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group
         || (ladder.Current.Level == DetailLevel.ProcessInstance && Family == RankingFamily.Bytes);
+
+    /// <summary>
+    /// The basis the chosen ranking is on, beside the selector (§3.2: basis and metric stay on screen): "observations" for
+    /// records, bytes and peers, "operations" for RPC calls paired from their records.
+    /// </summary>
+    public string RankingBasis => RankingMetrics.BasisOf(rankBy) == AnalysisBasis.LogicalOperations ? "operations" : "observations";
+
+    /// <summary>The basis in full, for the caption's tooltip and a screen reader.</summary>
+    public string RankingBasisDetail => RankingMetrics.BasisOf(rankBy) == AnalysisBasis.LogicalOperations
+        ? "Basis: logical operations. Each RPC call is paired from its start and stop records (rpc-call-operation-v1) and "
+            + "counted by the record that puts it in scope; the records beneath a call add no operation."
+        : "Basis: source observations. Each record counts as the capture recorded it, as the rung's own totals do.";
 
     /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet.</summary>
     public bool ShowsRankingNote => ShowsRankingChoice && rankBy != RankingMetric.Records;
@@ -513,6 +538,8 @@ public sealed partial class WorkspaceViewModel
     {
         OnPropertyChanged(nameof(RankBy));
         OnPropertyChanged(nameof(SelectedRanking));
+        OnPropertyChanged(nameof(RankingBasis));
+        OnPropertyChanged(nameof(RankingBasisDetail));
         OnPropertyChanged(nameof(AppliedRanking));
         OnPropertyChanged(nameof(ShowsRankingChoice));
         OnPropertyChanged(nameof(ShowsRankingNote));

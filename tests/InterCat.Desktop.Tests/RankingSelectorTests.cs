@@ -198,6 +198,38 @@ public sealed class RankingSelectorTests
         }
     }
 
+    [Fact(DisplayName = "§6.1: the selector lists its metrics by basis, and the basis of the chosen one stays beside it")]
+    public void TheSelectorStatesEachMetricsBasis() => SingleThreadedContext.Run(() =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        using WorkspaceViewModel workspace = Open(session);
+
+        // What each record measured, then what each RPC call, paired from its records, came to; each group headed once.
+        Assert.Equal(
+            [
+                RankingMetric.Records, RankingMetric.BytesSent, RankingMetric.BytesReceived, RankingMetric.EndpointBytes,
+                RankingMetric.ActivePeers, RankingMetric.RpcCallsMade, RankingMetric.RpcCallsServed, RankingMetric.RpcErrors,
+                RankingMetric.RpcCallTime, RankingMetric.RpcServeTime,
+            ],
+            workspace.RankingOptions.Select(option => option.Metric));
+        Assert.Equal(
+            [("SOURCE OBSERVATIONS", RankingMetric.Records), ("LOGICAL OPERATIONS · RPC CALLS", RankingMetric.RpcCallsMade)],
+            workspace.RankingOptions.Where(option => option.OpensBasis).Select(option => (option.BasisHeading, option.Metric)));
+        Assert.All(workspace.RankingOptions, option => Assert.EndsWith(
+            RankingMetrics.BasisOf(option.Metric) == AnalysisBasis.LogicalOperations ? ", on logical operations" : ", on source observations",
+            option.AccessibleName, StringComparison.Ordinal));
+
+        Assert.Equal("observations", workspace.RankingBasis);
+        workspace.RankBy = RankingMetric.RpcErrors;
+        Assert.Equal("operations", workspace.RankingBasis);
+        Assert.StartsWith("Basis: logical operations. Each RPC call is paired from its start and stop records", workspace.RankingBasisDetail,
+            StringComparison.Ordinal);
+        workspace.RankBy = RankingMetric.ActivePeers;
+        Assert.Equal("observations", workspace.RankingBasis);
+        return Task.CompletedTask;
+    });
+
     [Fact(DisplayName = "§8a: RPC calls made and served rank the rail by each side's completed calls, with failures and unpaired stops said")]
     public void CallsMadeAndServedRankTheRail() => SingleThreadedContext.Run(async () =>
     {

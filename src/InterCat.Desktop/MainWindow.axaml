@@ -44,8 +44,14 @@
                      AutomationProperties.Name="What the ranked table holds" />
           <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
                ranks a row whose records recorded no size after every measured row, never as zero (§5.2). -->
+          <!-- The basis a ranking is on stays on screen beside it (§3.2): observations or operations, in full on hover. -->
           <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
-            <TextBlock Text="Rank by" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+              <TextBlock Text="Rank by" Classes="muted" FontSize="11" />
+              <TextBlock x:Name="RankingBasisText" Text="{Binding RankingBasis}" Classes="muted" FontSize="9"
+                         ToolTip.Tip="{Binding RankingBasisDetail}"
+                         AutomationProperties.HelpText="{Binding RankingBasisDetail}" />
+            </StackPanel>
             <ComboBox x:Name="RankBySelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
                       ItemsSource="{Binding RankingOptions}"
                       SelectedItem="{Binding SelectedRanking, Mode=TwoWay}"
@@ -54,9 +60,17 @@
                       AutomationProperties.HelpText="{x:Static local:WorkspaceViewModel.RankingDefinition}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="local:RankingOption">
-                  <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding BasisHeading}" Classes="eyebrow" IsVisible="{Binding OpensBasis}" Margin="0,2,0,4" />
+                    <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                  </StackPanel>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
+              <ComboBox.SelectionBoxItemTemplate>
+                <DataTemplate x:DataType="local:RankingOption">
+                  <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.SelectionBoxItemTemplate>
             </ComboBox>
           </Grid>
           <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"

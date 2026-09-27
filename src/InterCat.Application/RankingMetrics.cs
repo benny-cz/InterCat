@@ -87,6 +87,14 @@ public static class RankingMetrics
     };
 
     /// <summary>
+    /// The basis a ranking is on (§5.3, `EN-Basis`): records, bytes and peers are source observations, each record as the
+    /// capture recorded it; RPC calls, their errors and their times are logical operations, each call paired from its
+    /// start and stop records (`rpc-call-operation-v1`).
+    /// </summary>
+    public static AnalysisBasis BasisOf(RankingMetric metric) =>
+        FamilyOf(metric) == RankingFamily.Calls ? AnalysisBasis.LogicalOperations : AnalysisBasis.SourceObservations;
+
+    /// <summary>
     /// Whether <paramref name="metric"/> ranks by a duration statistic, which does not add: a group's value is its members'
     /// calls taken together, never a sum of their values.
     /// </summary>
