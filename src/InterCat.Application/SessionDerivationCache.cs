@@ -102,6 +102,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private ProcessInstanceIndex? processes;
     private TransportRelationIndex? relations;
     private ProcessActivityIndex? activity;
+    private RpcCallIndex? rpcCalls;
     private DerivationCheckpoint? checkpoint;
     private bool checkpointRead;
     private string? checkpointProblem;
@@ -243,6 +244,31 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             Volatile.Write(ref activity, counted);
             ReleaseCheckpointWhenDone();
             return counted;
+        }
+    }
+
+    /// <summary>
+    /// The generation's RPC calls, paired once on first use (`contracts/operations-v1.md`). They are neither checkpointed nor
+    /// extended from an earlier generation's: a call still open in one generation may close in the next.
+    /// </summary>
+    public RpcCallIndex RpcCalls(
+        IOwnedDirectory directory,
+        IReadOnlyList<SegmentReaderV1> segments,
+        SourceClockDescriptor clock,
+        IReadOnlyList<SegmentReaderV1> fields,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (rpcCalls is { } known)
+            {
+                return known;
+            }
+
+            ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+            RpcCallIndex paired = RpcCallIndex.Derive(segments, fields, instances, clock, cancellationToken);
+            Volatile.Write(ref rpcCalls, paired);
+            return paired;
         }
     }
 

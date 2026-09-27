@@ -132,11 +132,16 @@ public sealed class TimelineFocus
     /// <summary>What the focus reads, as one comparable string: two focuses with the same key count the same rows.</summary>
     public string Key { get; }
 
-    /// <summary>The focus of an evidence scope; null for the whole session or for a scope that cannot be read.</summary>
+    /// <summary>
+    /// The focus of an evidence scope; null for the whole session, for a scope that cannot be read, and for an RPC channel
+    /// or call, whose records the timeline does not yet count apart (their rungs list the calls).
+    /// </summary>
     public static TimelineFocus? Of(EvidenceScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return scope.Problem is null && !scope.IsWholeSession ? new(scope.ChannelKey, scope.OwnerProcesses) : null;
+        return scope.Problem is null && !scope.IsWholeSession && scope.RpcKey is null
+            ? new(scope.ChannelKey, scope.OwnerProcesses)
+            : null;
     }
 }
 

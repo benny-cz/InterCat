@@ -10,9 +10,9 @@ public static class OverviewWorkspace
 {
     /// <summary>What every view of a real session's overview must say about what it does and does not show.</summary>
     public const string SessionDisclosure =
-        "Graph and channel rungs show admitted paired TCP only; the timeline includes every observed row. "
-        + "TCP and UDP records are completed transfers, so this session has no operation rung: source "
-        + "records are one step (E) from every rung, and Enter on a record opens its original journal "
+        "The graph shows admitted paired TCP; a process's rung also lists its RPC calls by interface, call by call. "
+        + "The timeline includes every observed row. TCP and UDP records are completed transfers with no operation "
+        + "rung. Source records are one step (E) from every rung, and Enter on a record opens its original journal "
         + "entry. Byte previews stay hidden until requested.";
 
     public static WorkspaceSnapshot Empty() => new(

@@ -79,6 +79,16 @@ group states its started, completed, failed and open calls, the calls it could n
 distribution of its completed calls' durations: count, minimum, median, 95th percentile and maximum. A percentile is a
 duration some call of the group took, never an interpolation.
 
+## 5a. Reading calls (revision 179)
+
+A group of calls bound to an instance is an **RPC channel**: that instance's calls on one side to one interface. It is
+named by the instance, the side and the interface, never by a position, so its name reads the same channel in every
+generation that still holds it, and one call on it is named by its first record's raw locator and fact key. A reader
+lists an instance's channels, a channel's calls a page at a time in reading order, and, as an evidence scope, the
+records of a channel's calls or of one call: each call's start, then its stop. A channel or call a generation no longer
+holds is stated as such, never read as an empty one. A channel belongs to one process, so a process's channels add
+up to its calls; unlike a paired channel, it is not listed for any other process.
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as

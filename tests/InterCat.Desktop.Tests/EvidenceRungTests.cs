@@ -1,6 +1,7 @@
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -569,6 +570,89 @@ public sealed class EvidenceRungTests
             Assert.EndsWith("· PID 1960", row.Detail, StringComparison.Ordinal);
         });
     }
+
+    [Fact(DisplayName = "P8: a process's RPC calls are channels by interface, listed a page at a time, each call's records one step away")]
+    public async Task RpcCallsAreChannelsOfPagedCallsWithTheirRecordsOneStepAway()
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        Guid other = Guid.Parse("0a74ef1c-41a4-4e06-83ae-dc74fb1cdd53");
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            .. Enumerable.Range(0, 3).SelectMany(index => new[]
+            {
+                Timed(RpcCall(5_000 + (10 * index), ObservationKind.RequestStart, Direction.Outbound, 100,
+                    (ulong)(40_000 + (2 * index)), Activity(index), serviceControl)),
+                Timed(RpcCall(5_004 + (10 * index), ObservationKind.RequestEnd, Direction.Outbound, 100,
+                    (ulong)(40_001 + (2 * index)), Activity(index), status: index == 2 ? 5 : 0)),
+            }),
+            .. Enumerable.Range(0, 150).SelectMany(index => new[]
+            {
+                Timed(RpcCall(6_000 + (10 * index), ObservationKind.RequestStart, Direction.Outbound, 100,
+                    (ulong)(50_000 + (2 * index)), Activity(1_000 + index), other)),
+                Timed(RpcCall(6_002 + (10 * index), ObservationKind.RequestEnd, Direction.Outbound, 100,
+                    (ulong)(50_001 + (2 * index)), Activity(1_000 + index), status: 0)),
+            }),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.RpcReady;
+
+        // The process's calls to each interface are channels of its own, ranked by records beside its paired channel.
+        Assert.Equal(
+            [
+                other.ToString(),
+                workspace.Snapshot.Channels.Single().Name,
+                "svcctl (Service Control Manager)",
+            ],
+            workspace.RungRows.Select(row => row.Label));
+        Assert.Equal("RPC client · 3 calls · 1 failed · median 400 ns", workspace.RungRows[2].Detail.Replace(' ', ' '));
+        Assert.EndsWith(" · admitted paired TCP and this process's RPC calls by interface; not all session observations",
+            workspace.LevelSummary, StringComparison.Ordinal);
+
+        // A channel lists its calls a page at a time, in reading order.
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.IsRpcChannelRung);
+        await workspace.RpcReady;
+        Assert.Equal(SessionRpcCalls.DefaultPageSize, workspace.RungRows.Count);
+        Assert.True(workspace.CanLoadMore);
+        Assert.Equal("Load more calls (M)", workspace.LoadMoreLabel);
+        Assert.StartsWith("150 calls · median 200 ns · 100 listed", workspace.LevelSummaryShort, StringComparison.Ordinal);
+        await workspace.LoadMoreAsync();
+        Assert.Equal(150, workspace.RungRows.Count);
+        Assert.False(workspace.CanLoadMore);
+        Assert.All(workspace.RungRows, row => Assert.Equal("200 ns", row.Label));
+
+        // The failing call to the named interface, and then its two records.
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svcctl (Service Control Manager)");
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        RungRow failed = workspace.RungRows[2];
+        Assert.Equal("failed, status 5", failed.Detail[(failed.Detail.IndexOf(" · ", StringComparison.Ordinal) + 3)..]);
+        workspace.SelectedRung = failed;
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(["RPC request start", "RPC request end"], workspace.RungRows.Select(row => row.Label));
+        Assert.StartsWith("Records of RPC call at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
+
+        // E at a channel reads every record of its calls.
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        Assert.Equal(3, workspace.RungRows.Count);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(6, workspace.RungRows.Count);
+        Assert.StartsWith("Records of RPC calls to svcctl", workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
+    private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
     [Fact]
     public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()

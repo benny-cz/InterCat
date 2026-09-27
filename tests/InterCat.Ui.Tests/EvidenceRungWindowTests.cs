@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -712,6 +713,61 @@ public sealed class EvidenceRungWindowTests
 
         Assert.Equal(1, crumbList.ContainerFromIndex(crumbList.ItemCount - 1)!.Opacity);
         Save(window.CaptureRenderedFrame()!, "l3-ipv6-channel-ends-1080x700.png");
+    }
+
+    [AvaloniaFact(DisplayName = "§3.2: a process's RPC channels and a channel's calls are rows that read whole, with a paging button")]
+    public async Task RpcChannelsAndCallsReadInTheRail()
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Conversation(20, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Enumerable.Range(0, 120).SelectMany(index => new[]
+            {
+                RpcCall(40 + (4 * index), ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(60_000 + (2 * index)),
+                    new Guid(index + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), serviceControl) with { SessionRelativeTicks = (40 + (4 * index)) * 100 },
+                RpcCall(42 + (4 * index), ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(60_001 + (2 * index)),
+                    new Guid(index + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), status: index % 40 == 39 ? 1_753 : 0)
+                    with { SessionRelativeTicks = (42 + (4 * index)) * 100 },
+            }),
+        ]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        Dispatch();
+        RungRow rpc = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
+        Assert.Equal("svcctl (Service Control Manager)", rpc.Label);
+        Assert.StartsWith("RPC calls to svcctl (Service Control Manager), RPC client · 120 calls · 3 failed · median 200 ns, 240 call records",
+            rpc.AccessibleName, StringComparison.Ordinal);
+        Save(window.CaptureRenderedFrame()!, "l2-rpc-channels-1080x700.png");
+
+        workspace.SelectedRung = rpc;
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Dispatch();
+        Assert.Equal(100, workspace.RungRows.Count);
+        Button loadMore = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Load more calls (M)"));
+        Assert.True(loadMore.IsEffectivelyVisible);
+        Assert.Equal("Load the next page of calls", AutomationProperties.GetName(loadMore));
+        Assert.Equal("Channel: RPC calls to svcctl (Service Control Manager)", workspace.Crumbs[^1].Display);
+        Save(window.CaptureRenderedFrame()!, "l3-rpc-calls-1080x700.png");
+
+        await workspace.LoadMoreAsync();
+        Dispatch();
+        Assert.Equal(120, workspace.RungRows.Count);
+        Assert.False(loadMore.IsEffectivelyVisible);
+        Assert.Equal(3, workspace.RungRows.Count(row => row.Detail.Contains("failed, status 1", StringComparison.Ordinal)));
     }
 
     [AvaloniaFact(DisplayName = "§3.2/R15: a channel's ends are lanes banded by direction that hover, select and step")]

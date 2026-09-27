@@ -54,6 +54,9 @@ public sealed record SessionEvidencePage(
     /// sort before the cursor are not inserted into a list already under way; the first page includes them.
     /// </summary>
     public long? ContinuedFromGeneration { get; init; }
+
+    /// <summary>The RPC channel or call the page is scoped to (<see cref="RpcChannelKeys"/>); null when it is not.</summary>
+    public string? RpcKey { get; init; }
 }
 
 public static class SessionEvidenceQuery
@@ -84,6 +87,7 @@ public static class SessionEvidenceQuery
         string? cursor = null,
         IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
         bool resolveOwners = false,
+        string? rpcKey = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -92,8 +96,9 @@ public static class SessionEvidenceQuery
             throw new ArgumentException("Name one owner process or a set of them, not both.", nameof(ownerProcesses));
         ProcessInstanceId[] owners = Owners(channelKey, policy,
             ownerProcesses ?? (ownerProcessScope is { } single ? [single] : null));
+        RequireOneScope(channelKey, owners, rpcKey);
         return ReadCore(store, channelKey, interval, owners, policy, pageSize, ParseCursor(cursor), resolveOwners,
-            cancellationToken);
+            rpcKey, cancellationToken);
     }
 
     /// <summary>
@@ -109,12 +114,24 @@ public static class SessionEvidenceQuery
         IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         bool resolveOwners = false,
+        string? rpcKey = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
-        return ReadCore(store, channelKey, interval, Owners(channelKey, policy, ownerProcesses), policy, limit, null,
-            resolveOwners, cancellationToken);
+        ProcessInstanceId[] owners = Owners(channelKey, policy, ownerProcesses);
+        RequireOneScope(channelKey, owners, rpcKey);
+        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, rpcKey, cancellationToken);
+    }
+
+    /// <summary>An RPC scope names its own records, so it is never combined with a channel or an owner scope.</summary>
+    private static void RequireOneScope(string? channelKey, ProcessInstanceId[] owners, string? rpcKey)
+    {
+        if (rpcKey is null) return;
+        if (!RpcChannelKeys.IsRpc(rpcKey))
+            throw new ArgumentException("This key names no RPC channel or call.", nameof(rpcKey));
+        if (channelKey is not null || owners.Length > 0)
+            throw new ArgumentException("An RPC channel or call scopes its own records; name it alone.", nameof(rpcKey));
     }
 
     private static ProcessInstanceId[] Owners(
@@ -145,13 +162,14 @@ public static class SessionEvidenceQuery
         int maximum,
         EvidenceCursor? position,
         bool resolveOwners,
+        string? rpcKey,
         CancellationToken cancellationToken)
     {
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         string[] names = [.. SessionSegments.Names(manifest)];
         SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
-        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy);
+        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, rpcKey);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
             new(identity, manifest.SessionId, manifest.Generation, channelKey,
@@ -159,6 +177,7 @@ public static class SessionEvidenceQuery
             {
                 OwnerProcesses = Array.AsReadOnly(owners),
                 ContinuedFromGeneration = continuedFrom,
+                RpcKey = rpcKey,
             };
 
         if (position is { Legacy: true })
@@ -171,7 +190,7 @@ public static class SessionEvidenceQuery
         SessionDerivation? derivation = null;
         SourceClockDescriptor clock = default;
         SegmentReaderV1[] fields = [];
-        if (channelKey is not null || owners.Length > 0 || (resolveOwners && segments.Length > 0))
+        if (channelKey is not null || owners.Length > 0 || rpcKey is not null || (resolveOwners && segments.Length > 0))
         {
             clock = SessionSegments.SourceClock(store.Root, manifest)
                 ?? throw new InvalidDataException("This generation has no source clock for process binding.");
@@ -204,6 +223,15 @@ public static class SessionEvidenceQuery
                 throw new InvalidOperationException("This paired TCP channel is not uniquely admitted in the "
                     + "current generation and evidence policy. Return to the overview and select it again.");
             selectedChannel = matching[0].Channel;
+        }
+
+        // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls.
+        HashSet<(string Segment, int Row)>? rpcRecords = null;
+        if (rpcKey is not null)
+        {
+            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, segments, rpcKey, policy, cancellationToken)
+                ?? throw new InvalidOperationException("This RPC channel or call is not in the current generation under the "
+                    + "evidence policy. Return to the process and select its channel again.");
         }
 
         // Segments join the merge in order of their earliest reading, and only once that reading could come next: every
@@ -262,6 +290,7 @@ public static class SessionEvidenceQuery
                 && (segment.Reader.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is not { } nanoseconds
                     || !range.Contains(nanoseconds / 100))) continue;
             if (selectedChannel is { } channel && segment.ChannelOf(row, relations!) != channel) continue;
+            if (rpcRecords is not null && !rpcRecords.Contains((segment.Name, row))) continue;
             ProcessBinding? binding = needOwners ? segment.OwnerOf(row, processes!) : null;
             if (selectedOwners.Count > 0
                 && (!selectedOwners.Contains(binding!.Value.Instance) || !binding.Value.IsAdmittedUnder(policy))) continue;
@@ -302,13 +331,14 @@ public static class SessionEvidenceQuery
     }
 
     private static string Identity(Guid sessionId, IReadOnlyList<SegmentReaderV1> segments, string? channelKey,
-        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy)
+        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? rpcKey)
     {
         string timeScope = interval is { } range
             ? string.Create(CultureInfo.InvariantCulture, $"{range.StartTicks}:{range.EndTicks}")
             : "all-time";
         string relationRule = channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule;
-        string bindingRule = owners.Length == 0 ? "unscoped" : ProcessInstanceIndex.BindingRule;
+        string bindingRule = owners.Length == 0 && rpcKey is null ? "unscoped" : ProcessInstanceIndex.BindingRule;
+        string operationScope = rpcKey is null ? string.Empty : $"|{RpcCallIndex.OperationRule}|{rpcKey.Length}:{rpcKey}";
         string captures = string.Join(",", segments.Select(segment => segment.CaptureId.Value.ToString("N"))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
         string derivations = string.Join(",", segments.Select(segment => segment.Derivation.Value)
@@ -316,7 +346,7 @@ public static class SessionEvidenceQuery
         string ownerSet = string.Join(",", owners.Select(owner => owner.Value.ToString("N")));
         string canonical = string.Create(CultureInfo.InvariantCulture,
             $"evidence-page-v2|{sessionId:N}|{captures}|{derivations}|{policy}|{relationRule}|{bindingRule}|"
-            + $"{channelKey?.Length ?? 0}:{channelKey}|{ownerSet}|{timeScope}");
+            + $"{channelKey?.Length ?? 0}:{channelKey}|{ownerSet}|{timeScope}{operationScope}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 

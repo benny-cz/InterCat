@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 178 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 179 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 179 — a process's RPC calls on the ladder: channels by interface, their calls, each call's records:**
+  - **L2:** a process that made RPC calls lists them as channels of its own, one per side and interface, ranked by
+    records among its paired TCP channels. A row leads with the interface ("svcctl (Service Control Manager)", named
+    from the protocol specifications, else its UUID) and states the side, the calls, failures, open calls and the
+    median duration under it. The overview holds no calls, so a process's channels are read when its rung opens, and
+    only for a process whose own records include RPC.
+  - **L3:** an RPC channel lists its calls in reading order, 100 at a time with "Load more calls (M)". A call's row
+    leads with how it went (its duration, or open, unpaired, ambiguous), then its time and status.
+  - **Evidence:** Enter on a call opens its start and stop records; E on a channel opens every record of its calls.
+    Both are evidence scopes of their own, paged with the usual cursors, and they say when a later generation no longer
+    holds the channel or call. A channel or call is keyed by its instance, side, interface and first record, so a live
+    refresh keeps the rung.
+  - **Rendered and checked** at 1080×700: the rail shows each row's interface and outcome, the crumb and filter keep the
+    whole name, and the paging button names what it loads. The session disclosure no longer says there is no operation
+    rung.
+  - **Not yet:** the timeline does not draw an RPC channel's calls apart from the rest; revision 180's call lanes do.
 
 - **Revision 178 — an RPC call is an operation: its start and stop, paired by activity id (ADR-031):**
   - **The correlator, stated before it ran:** `contracts/operations-v1.md` fixes what §7.4 asks of every correlator.
@@ -1505,12 +1522,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
    - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), revision 177 binds an RPC record to the
-     process that raised it (ADR-030), and revision 178 pairs its calls (ADR-031, `icat operations`). Next, in order:
-     1. Show one-sided RPC channels (a process's calls to one interface) at L3 and the calls at L4 with duration bars
-        and status, from `RpcCallIndex`. Then record RPC's measured class, which lets Explore take it.
-     2. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
+     process that raised it (ADR-030), revision 178 pairs its calls (ADR-031, `icat operations`), and revision 179 puts
+     a process's RPC channels and their calls on the ladder. Next, in order:
+     1. Draw an RPC channel's calls in the timeline: one lane of duration bars coloured by outcome at its rung, and the
+        selected call marked. Today the timeline at an RPC rung shows the whole session.
+     2. Record RPC's measured class, which lets Explore take it, and live-test a recorded session with RPC.
+     3. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
         today that basis still says `NoLogicalOperations`.
-     3. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
+     4. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
         from every call record on first use: 0.66 s for 500,000 calls.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -1545,6 +1564,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 179 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,225 tests: 1,222
+  passed, 3 skipped**, zero failures. The process and RPC channel rungs were checked in headless renders at 1080×700.
 - Revision 178 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,218 tests: 1,215
   passed, 3 skipped**, zero failures. `icat operations` was run over a session built from FX-RPC-001's committed
   records, and over a 1M-row session with no RPC (0.63 s in all).

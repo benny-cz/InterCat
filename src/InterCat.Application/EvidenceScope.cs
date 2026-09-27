@@ -5,8 +5,8 @@ namespace InterCat.Application;
 
 /// <summary>
 /// What an evidence rung reads from a published session: one paired channel, the rows canonically owned by a set of
-/// process instances, or every admitted row, optionally within a deliberate time range. A scope that cannot be read
-/// states its problem rather than widening itself to the whole session.
+/// process instances, an RPC channel's or one call's records, or every admitted row, optionally within a deliberate
+/// time range. A scope that cannot be read states its problem rather than widening itself to the whole session.
 /// </summary>
 public sealed record EvidenceScope(
     string Description,
@@ -16,7 +16,10 @@ public sealed record EvidenceScope(
     string? ContributingEdgeKey,
     string? Problem = null)
 {
-    public bool IsWholeSession => ChannelKey is null && OwnerProcesses.Count == 0;
+    /// <summary>The RPC channel or call whose records the scope reads (<see cref="RpcChannelKeys"/>); null otherwise.</summary>
+    public string? RpcKey { get; init; }
+
+    public bool IsWholeSession => ChannelKey is null && OwnerProcesses.Count == 0 && RpcKey is null;
 }
 
 /// <summary>
@@ -96,6 +99,11 @@ public static class EvidenceScopes
             {
                 case DetailLevel.Machine:
                     return Whole(interval, time);
+                case DetailLevel.Channel when RpcChannelKeys.IsRpc(filter.Key):
+                    return new($"Records of {filter.Value}{time}", null, [], interval, null) { RpcKey = filter.Key };
+                case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key):
+                    // A call is one entity: its records are its start and stop wherever the view is zoomed.
+                    return new($"Records of {filter.Value}", null, [], null, null) { RpcKey = filter.Key };
                 case DetailLevel.Channel when filter.Key is { } channelKey:
                     Channel? channel = snapshot.Channels.FirstOrDefault(candidate => candidate.Key == channelKey);
                     return new($"Paired TCP channel {channel?.Name ?? filter.Value}{time}", channelKey, [], interval,

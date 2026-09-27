@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop.Presentation;
@@ -122,6 +123,13 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     private SessionEvidenceRecord? selectedEvidence;
     private string? pendingEvidenceKey;
     private IReadOnlyList<RungRow> evidenceRows = [];
+
+    // A published process's RPC channels at its rung, and one RPC channel's calls at its rung, read from the session: the
+    // overview holds neither (`contracts/operations-v1.md` §5). Each belongs to the rung it was read for.
+    private RpcChannelsLoad? rpcChannels;
+    private RpcCallsLoad? rpcCalls;
+    private IReadOnlyList<RungRow> rpcChannelRows = [];
+    private IReadOnlyList<RungRow> rpcCallRows = [];
     private readonly WorkspaceSnapshot wholeSnapshot;
     private WorkspaceSnapshot? scopedSnapshot;
     private readonly string graphIdentity;
@@ -1301,8 +1309,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             }
             else if (target.Focus is { } targetFocus)
             {
-                LadderRow? row = LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(
-                    candidate => candidate.Key == targetFocus.Key && candidate.DescendsTo == target.Level);
+                // An RPC channel is read from the session rather than listed in the overview, so it is re-entered by its
+                // key; its reader says when this generation no longer holds it.
+                LadderRow? row = target.Level == DetailLevel.Channel && RpcChannelKeys.IsRpc(targetFocus.Key)
+                    ? RpcChannelRow(targetFocus.Key, targetFocus.Label, string.Empty, 0)
+                    : LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(
+                        candidate => candidate.Key == targetFocus.Key && candidate.DescendsTo == target.Level);
                 if (row is not null)
                 {
                     descent = LadderProjection.DescentFor(row, ladder.Current, viewport);
@@ -1447,6 +1459,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private static bool Reachable(NavigationState rung, NavigationState above, WorkspaceSnapshot snapshot) =>
         rung.Level == DetailLevel.Evidence
+        || rung.Level == DetailLevel.Channel && RpcChannelKeys.IsRpc(rung.Focus?.Key)
         || rung.Focus is { } focus && LadderProjection.Project(snapshot, above).Rows.Any(
             row => string.Equals(row.Key, focus.Key, StringComparison.Ordinal) && row.DescendsTo == rung.Level);
 
@@ -1771,6 +1784,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(ShowsRankedTable));
             OnPropertyChanged(nameof(ShowsEmptyReason));
             OnPropertyChanged(nameof(ShowsLoadMoreEvidence));
+            OnPropertyChanged(nameof(ShowsLoadMore));
         }
     }
 
@@ -1806,6 +1820,18 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     public bool ShowsEmptyReason => IsEmptyRung && !IsSearching;
 
     public bool ShowsLoadMoreEvidence => CanLoadMoreEvidence && !IsSearching;
+
+    /// <summary>Whether the rung has another page to load: source records at the evidence rung, calls at an RPC channel's.</summary>
+    public bool CanLoadMore => CanLoadMoreEvidence || CanLoadMoreCalls;
+
+    public bool ShowsLoadMore => CanLoadMore && !IsSearching;
+
+    public string LoadMoreLabel => CanLoadMoreCalls ? "Load more calls (M)" : "Load more records (M)";
+
+    public string LoadMoreName => CanLoadMoreCalls ? "Load the next page of calls" : "Load the next page of source records";
+
+    /// <summary>Loads the rung's next page, whichever it lists.</summary>
+    public Task LoadMoreAsync() => CanLoadMoreCalls ? LoadMoreCallsAsync() : LoadMoreEvidenceAsync();
 
     /// <summary>Goes to a search hit - the selected one when none is named - and clears the search.</summary>
     public bool OpenSearchResult(SearchRow? row = null)
@@ -2251,6 +2277,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
         disposed = true;
         CancelEvidence();
+        CancelRpc();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
@@ -2318,7 +2345,21 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// The ranked table of the rung the user is on. The same gesture works at every rung. At a published session's
     /// evidence rung it lists the admitted source records of the rung's scope, in reading order, as they load.
     /// </summary>
-    public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows : LadderRowBuilder.Rows(view, ThemeResources.CurrentMode);
+    public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
+        : IsRpcChannelRung ? rpcCallRows
+        : rpcChannelRows.Count == 0 ? LadderRowBuilder.Rows(view, ThemeResources.CurrentMode)
+        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode), .. rpcChannelRows]);
+
+    /// <summary>A rung's rows ranked as the ladder ranks them: most records first, then by key (R13).</summary>
+    private static List<RungRow> Ranked(List<RungRow> rows)
+    {
+        rows.Sort(static (left, right) =>
+        {
+            int byCount = right.Source.ObservationCount.CompareTo(left.Source.ObservationCount);
+            return byCount != 0 ? byCount : string.CompareOrdinal(left.Key, right.Key);
+        });
+        return rows;
+    }
 
     /// <summary>The breadcrumb. It always names the level and the selection at each rung (section 3.2).</summary>
     public IReadOnlyList<CrumbRow> Crumbs => LadderRowBuilder.Crumbs(ladder);
@@ -2335,6 +2376,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     public string LevelSummary => IsEvidenceRung
         ? (evidence?.Scope.Description ?? string.Empty) + " · " + EvidenceStatus
+        : IsRpcChannelRung
+            ? RpcCallSummary(brief: false)
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture,
                 $"{channel.ObservationCount:N0} observed records at this channel's two ends · bytes unknown · no operation rung; E shows the records")
@@ -2343,6 +2386,8 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
     public string LevelSummaryShort => IsEvidenceRung
         ? EvidenceStatus
+        : IsRpcChannelRung
+            ? RpcCallSummary(brief: true)
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture, $"{channel.ObservationCount:N0} records on this channel · no operation rung")
             : LadderRowBuilder.DescribeTotalShort(view) + RealScopeNote(brief: true);
@@ -2366,6 +2411,12 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                     ? string.Create(CultureInfo.CurrentCulture,
                         $" · each process's own records; {none:N0} more {(none == 1 ? "row" : "rows")} no process holds, in the timeline only")
                     : " · each process's own records";
+        }
+
+        if (ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannelRows.Count > 0)
+        {
+            return brief ? " · paired TCP and RPC calls"
+                : " · admitted paired TCP and this process's RPC calls by interface; not all session observations";
         }
 
         return brief ? " · paired TCP only" : " · admitted paired TCP only; not all session observations";
@@ -2395,8 +2446,22 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                             + "is stated in the health strip, and a time brush or a removed filter changes the scope.");
             }
 
-            if (view.EmptyReason is null) return string.Empty;
+            if (IsRpcChannelRung)
+            {
+                if (rpcCallRows.Count > 0) return string.Empty;
+                return rpcCalls?.Problem
+                    ?? (rpcCalls is null || rpcCalls.Loading
+                        ? "Reading this channel's calls…"
+                        : "This channel has no call in this generation. Its records are one step away.");
+            }
+
+            if (view.EmptyReason is null || rpcChannelRows.Count > 0) return string.Empty;
             if (emptyWorkspace) return awaitingCaptureNote ?? "No capture is running. Start exploring to publish a live session.";
+            if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannels is { Loading: true })
+            {
+                return "Reading this process's RPC calls…";
+            }
+
             if (realOverview && ladder.Current.Level is DetailLevel.Channel or DetailLevel.Operation)
             {
                 return "TCP records are completed transfers, not operations with a start and an end, so a channel "
@@ -2421,7 +2486,9 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public bool IsEmptyRung => IsEvidenceRung ? evidenceRows.Count == 0 : view.EmptyReason is not null;
+    public bool IsEmptyRung => IsEvidenceRung ? evidenceRows.Count == 0
+        : IsRpcChannelRung ? rpcCallRows.Count == 0
+        : view.EmptyReason is not null && rpcChannelRows.Count == 0;
 
     /// <summary>Whether the empty rung can offer its one-step path to evidence as a button beside the reason.</summary>
     public bool OffersEvidenceStep => IsEmptyRung && realOverview && evidenceSource is not null
@@ -3481,6 +3548,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
         SyncEvidence();
+        SyncRpc();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));
@@ -3847,6 +3915,10 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(EvidenceScopeText));
         OnPropertyChanged(nameof(CanLoadMoreEvidence));
         OnPropertyChanged(nameof(ShowsLoadMoreEvidence));
+        OnPropertyChanged(nameof(CanLoadMore));
+        OnPropertyChanged(nameof(ShowsLoadMore));
+        OnPropertyChanged(nameof(LoadMoreLabel));
+        OnPropertyChanged(nameof(LoadMoreName));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EvidenceMarkTicks));
@@ -3856,6 +3928,320 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectedEvidenceTitle));
         OnPropertyChanged(nameof(SelectedEvidenceFields));
         OnPropertyChanged(nameof(SelectedEvidenceTick));
+    }
+
+    /// <summary>Whether the user is at a published session's RPC channel rung, whose rows are its calls.</summary>
+    public bool IsRpcChannelRung => evidenceSource is not null
+        && ladder.Current.Level == DetailLevel.Channel
+        && RpcChannelKeys.IsRpc(ladder.Current.Focus?.Key);
+
+    /// <summary>Completes when the latest read of RPC channels or calls has applied or reported a problem.</summary>
+    public Task RpcReady { get; private set; } = Task.CompletedTask;
+
+    public bool CanLoadMoreCalls => IsRpcChannelRung && rpcCalls is { Loading: false, Problem: null, More: true };
+
+    /// <summary>Reads the RPC channel rung's next page of calls, after the last call shown.</summary>
+    public Task LoadMoreCallsAsync()
+    {
+        if (!CanLoadMoreCalls)
+        {
+            return Task.CompletedTask;
+        }
+
+        RpcReady = LoadRpcCallsAsync(rpcCalls!);
+        return RpcReady;
+    }
+
+    /// <summary>
+    /// What an RPC channel rung states: its calls, how they ended and how long they took, and that its records are one
+    /// step away.
+    /// </summary>
+    private string RpcCallSummary(bool brief)
+    {
+        if (rpcCalls is not { } load) return string.Empty;
+        if (load.Problem is not null) return "Calls unavailable";
+        if (load.Channel is not { } channel) return "Reading calls…";
+        string loaded = load.Calls.Count < channel.Counts.Calls
+            ? string.Create(CultureInfo.CurrentCulture, $" · {load.Calls.Count:N0} listed")
+            : string.Empty;
+        return brief
+            ? channel.Outcome(CultureInfo.CurrentCulture) + loaded
+            : channel.Outcome(CultureInfo.CurrentCulture) + loaded
+                + " · paired start to stop by activity id; E shows the records";
+    }
+
+    /// <summary>A row for an RPC channel: one process's calls on one side to one interface, counted in call records.</summary>
+    private static LadderRow RpcChannelRow(string key, string label, string detail, long records) =>
+        new(key, label, detail, records, null, Mechanism.Rpc, CoverageState.UnknownCoverage, DetailLevel.Channel,
+            AccountingSide.CanonicalOwner);
+
+    /// <summary>
+    /// Starts the reads the rung needs: a process's RPC channels when it made RPC calls, and an RPC channel's first page of
+    /// calls. Any other rung lets both go.
+    /// </summary>
+    private void SyncRpc()
+    {
+        if (IsRpcChannelRung)
+        {
+            string key = ladder.Current.Focus?.Key ?? string.Empty;
+            CancelRpcChannels();
+            if (rpcCalls is { } current && current.ChannelKey == key)
+            {
+                return;
+            }
+
+            CancelRpcCalls();
+            var calls = new RpcCallsLoad(key);
+            rpcCalls = calls;
+            RpcReady = LoadRpcCallsAsync(calls);
+            return;
+        }
+
+        CancelRpcCalls();
+        if (evidenceSource is not null
+            && ladder.Current.Level == DetailLevel.ProcessInstance
+            && ladder.Current.Focus is { } focus
+            && Snapshot.Processes.FirstOrDefault(process => process.Id.ToString() == focus.Key) is { } process
+            && process.Activity.Any(count => count.Mechanism == Mechanism.Rpc && count.Records > 0))
+        {
+            if (rpcChannels is { } known && known.Instance == process.Id)
+            {
+                return;
+            }
+
+            CancelRpcChannels();
+            var channels = new RpcChannelsLoad(process.Id);
+            rpcChannels = channels;
+            RpcReady = LoadRpcChannelsAsync(channels);
+            return;
+        }
+
+        CancelRpcChannels();
+    }
+
+    private async Task LoadRpcChannelsAsync(RpcChannelsLoad load)
+    {
+        load.Loading = true;
+        RaiseRpcChanged();
+        try
+        {
+            RpcChannelList list = await evidenceSource!.RpcChannelsAsync(load.Instance, load.Cancellation.Token);
+            if (disposed || !ReferenceEquals(rpcChannels, load)) return;
+            load.Channels = list.Channels;
+        }
+        catch (OperationCanceledException) when (load.Cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (disposed || !ReferenceEquals(rpcChannels, load)) return;
+            load.Problem = "This process's RPC calls could not be read: " + exception.Message;
+        }
+        finally
+        {
+            load.Loading = false;
+        }
+
+        RebuildRpcRows();
+    }
+
+    private async Task LoadRpcCallsAsync(RpcCallsLoad load)
+    {
+        load.Loading = true;
+        RaiseRpcChanged();
+        try
+        {
+            RpcCallPage page = await evidenceSource!.RpcCallsAsync(load.ChannelKey, load.Calls.Count, load.Cancellation.Token);
+            if (disposed || !ReferenceEquals(rpcCalls, load)) return;
+            if (page.Problem is not null)
+            {
+                load.Problem = page.Problem;
+                load.More = false;
+            }
+            else
+            {
+                load.Channel = page.Channel;
+                load.Calls.AddRange(page.Calls);
+                load.More = page.More;
+            }
+        }
+        catch (OperationCanceledException) when (load.Cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (disposed || !ReferenceEquals(rpcCalls, load)) return;
+            load.Problem = "This channel's calls could not be read: " + exception.Message;
+            load.More = false;
+        }
+        finally
+        {
+            load.Loading = false;
+        }
+
+        RebuildRpcRows();
+    }
+
+    /// <summary>Rebuilds the rows the RPC reads supply, keeping the selected row when it is still listed.</summary>
+    private void RebuildRpcRows()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        ThemeMode mode = ThemeResources.CurrentMode;
+        FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(Mechanism.Rpc));
+        rpcChannelRows = rpcChannels is { } channels
+            ? [.. channels.Channels.Select(channel => RpcChannelRungRow(channel, tokens))]
+            : [];
+        rpcCallRows = rpcCalls is { Channel: { } summary } calls
+            ? [.. calls.Calls.Select(call => RpcCallRungRow(call, summary, tokens))]
+            : [];
+        string? selectedKey = selectedRung?.Key;
+        RaiseRpcChanged();
+        if (selectedKey is not null && RungRows.FirstOrDefault(row => row.Key == selectedKey) is { } kept)
+        {
+            selectedRung = kept;
+            OnPropertyChanged(nameof(SelectedRung));
+        }
+    }
+
+    /// <summary>
+    /// An RPC channel's row. The rail is narrow, so it leads with the interface and states the side and the calls under
+    /// it; the whole name is what its crumb, its filter and its records' scope say.
+    /// </summary>
+    private static RungRow RpcChannelRungRow(RpcChannelSummary channel, FamilyTokens tokens)
+    {
+        string label = channel.Interface is null ? "Calls whose start was not seen" : RpcInterfaceNames.Describe(channel.Interface);
+        string detail = (channel.Side == RpcCallSide.Client ? "RPC client · " : "RPC server · ")
+            + channel.Outcome(CultureInfo.CurrentCulture);
+        LadderRow source = RpcChannelRow(channel.Key, channel.Name, detail, channel.Records);
+        return new(channel.Key, label, detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
+            WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
+            NavigationState.Name(DetailLevel.Channel), source)
+        {
+            SpokenName = $"{channel.Name}, {detail}, {Spoken.Count(channel.Records, "call record")}. RPC carries no "
+                + "size. Press Enter to open the channel's calls.",
+        };
+    }
+
+    private static RungRow RpcCallRungRow(RpcCallRow row, RpcChannelSummary channel, FamilyTokens tokens)
+    {
+        RpcCall call = row.Call;
+        string when = (call.Start ?? call.Stop)!.SessionRelativeTicks is { } nanoseconds
+            ? string.Create(CultureInfo.CurrentCulture, $"+{nanoseconds / 1_000_000_000m:0.000000} s")
+            : "time unavailable";
+        string procedure = call.Procedure is { } number
+            ? string.Create(CultureInfo.CurrentCulture, $" · procedure {number:N0}")
+            : string.Empty;
+
+        // The row leads with how the call went, which is what a list of calls is scanned for; the rung names the channel.
+        string label = (call.State == RpcCallState.Completed
+            ? OperationText.Duration(call.DurationNanoseconds!.Value, CultureInfo.CurrentCulture)
+            : OperationText.State(call.State)) + procedure;
+        string status = call.Status is { } code
+            ? code == 0 ? "succeeded" : string.Create(CultureInfo.CurrentCulture, $"failed, status {code:N0}")
+            : "no status";
+        string detail = $"{when} · {status}";
+        long records = (call.Start is null ? 0 : 1) + (call.Stop is null ? 0 : 1);
+        var source = new LadderRow(row.Key, $"RPC call at {when}", detail, records, null, Mechanism.Rpc,
+            CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
+        return new(row.Key, label, detail, records.ToString("N0", CultureInfo.CurrentCulture),
+            WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
+            NavigationState.Name(DetailLevel.Evidence), source)
+        {
+            SpokenName = $"RPC call at {when}, {label}, {status}, {channel.Name}. Press Enter to open its records.",
+        };
+    }
+
+    private void CancelRpc()
+    {
+        CancelRpcChannels();
+        CancelRpcCalls();
+    }
+
+    private void CancelRpcChannels()
+    {
+        if (rpcChannels is not { } load)
+        {
+            return;
+        }
+
+        load.Cancellation.Cancel();
+        load.Cancellation.Dispose();
+        rpcChannels = null;
+        rpcChannelRows = [];
+    }
+
+    private void CancelRpcCalls()
+    {
+        if (rpcCalls is not { } load)
+        {
+            return;
+        }
+
+        load.Cancellation.Cancel();
+        load.Cancellation.Dispose();
+        rpcCalls = null;
+        rpcCallRows = [];
+    }
+
+    private void RaiseRpcChanged()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(IsEmptyRung));
+        OnPropertyChanged(nameof(ShowsRankedTable));
+        OnPropertyChanged(nameof(ShowsEmptyReason));
+        OnPropertyChanged(nameof(EmptyReason));
+        OnPropertyChanged(nameof(OffersEvidenceStep));
+        OnPropertyChanged(nameof(LevelSummary));
+        OnPropertyChanged(nameof(LevelSummaryShort));
+        OnPropertyChanged(nameof(CanLoadMore));
+        OnPropertyChanged(nameof(ShowsLoadMore));
+        OnPropertyChanged(nameof(LoadMoreLabel));
+        OnPropertyChanged(nameof(LoadMoreName));
+    }
+
+    /// <summary>One process's RPC channels as read for its rung.</summary>
+    private sealed class RpcChannelsLoad(ProcessInstanceId instance)
+    {
+        public ProcessInstanceId Instance { get; } = instance;
+
+        public IReadOnlyList<RpcChannelSummary> Channels { get; set; } = [];
+
+        public bool Loading { get; set; }
+
+        public string? Problem { get; set; }
+
+        public CancellationTokenSource Cancellation { get; } = new();
+    }
+
+    /// <summary>One RPC channel's calls as read for its rung, a page at a time.</summary>
+    private sealed class RpcCallsLoad(string channelKey)
+    {
+        public string ChannelKey { get; } = channelKey;
+
+        public RpcChannelSummary? Channel { get; set; }
+
+        public List<RpcCallRow> Calls { get; } = [];
+
+        public bool More { get; set; }
+
+        public bool Loading { get; set; }
+
+        public string? Problem { get; set; }
+
+        public CancellationTokenSource Cancellation { get; } = new();
     }
 
     /// <summary>The evidence rung's loaded rows for one scope. A new scope starts a new list and cancels the old read.</summary>

@@ -150,9 +150,9 @@
           </ScrollViewer>
 
           <Button Grid.Row="2" Margin="0,8,0,0" HorizontalAlignment="Stretch"
-                  Content="Load more records (M)" Click="LoadMoreRecords"
-                  IsVisible="{Binding ShowsLoadMoreEvidence}"
-                  AutomationProperties.Name="Load the next page of source records" />
+                  Content="{Binding LoadMoreLabel}" Click="LoadMoreRecords"
+                  IsVisible="{Binding ShowsLoadMore}"
+                  AutomationProperties.Name="{Binding LoadMoreName}" />
         </Grid>
 
         <StackPanel Grid.Row="3" Margin="0,12,0,0" Spacing="8">

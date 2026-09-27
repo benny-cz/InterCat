@@ -45,6 +45,14 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             focus,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>One process instance's RPC channels in the current generation (`contracts/operations-v1.md` §5).</summary>
+    public Task<RpcChannelList> RpcChannelsAsync(ProcessInstanceId instance, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionRpcCalls.Channels(Store(), instance, cancellationToken: cancellationToken), cancellationToken);
+
+    /// <summary>One RPC channel's calls in reading order, from <paramref name="offset"/>, one page.</summary>
+    public Task<RpcCallPage> RpcCallsAsync(string channelKey, int offset, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>
     /// The session's store, shared by every read and by every workspace of this session (<see cref="SharedSessionStores"/>).
     /// Opening verifies the pointer, the manifest and every file it names, which for a large session costs far more than a
@@ -84,6 +92,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             cursor: cursor,
             ownerProcesses: scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses,
             resolveOwners: true,
+            rpcKey: scope.RpcKey,
             cancellationToken: cancellationToken), cancellationToken);
     }
 }

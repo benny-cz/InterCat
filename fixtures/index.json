@@ -936,11 +936,14 @@
       ],
       "P8": [
         "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
+        "P8: a channel's calls page in reading order, and each call's key finds it again",
         "P8: a completion is paired by I/O request identity, not by time proximity",
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",
+        "P8: a process's RPC calls are channels by interface, listed a page at a time, each call's records one step away",
         "P8: a start still open at capture end is censored, and a stop without its start is given none",
         "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
-        "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after"
+        "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after",
+        "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
       ],
       "R1": [
         "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
@@ -1193,6 +1196,7 @@
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
+        "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",

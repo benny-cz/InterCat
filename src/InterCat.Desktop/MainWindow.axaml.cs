@@ -270,8 +270,8 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.E when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = viewModel.ShowEvidence();
                 break;
-            case Key.M when viewModel.CanLoadMoreEvidence:
-                _ = viewModel.LoadMoreEvidenceAsync();
+            case Key.M when viewModel.CanLoadMore:
+                _ = viewModel.LoadMoreAsync();
                 e.Handled = true;
                 break;
             case Key.F5:
@@ -417,7 +417,7 @@ public sealed partial class MainWindow : Window, IDisposable
         return true;
     }
 
-    private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreEvidenceAsync();
+    private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreAsync();
 
     /// <summary>The pointer equivalent of P: pins the selected graph node where it is drawn, or releases its pin.</summary>
     private void TogglePinNode(object? sender, RoutedEventArgs eventArgs) => _ = workspace.TogglePinSelectedGraphNode();

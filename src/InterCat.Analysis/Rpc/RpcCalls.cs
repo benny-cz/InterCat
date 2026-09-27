@@ -183,6 +183,93 @@ public sealed class RpcCallIndex
     public RpcCallCounts Totals { get; }
 
     /// <summary>
+    /// The published names of the segments the calls were derived from, by the positions <see cref="RecordsOf"/> gives;
+    /// null for a segment with no published identity.
+    /// </summary>
+    public IReadOnlyList<string?> SegmentNames => segmentNames;
+
+    /// <summary>
+    /// The group of one process instance's calls on one side to one interface, or null when it made none. Calls bound to
+    /// no instance belong to no instance's group.
+    /// </summary>
+    public RpcCallGroup? GroupOf(ProcessInstanceId instance, RpcCallSide side, Guid? rpcInterface)
+    {
+        foreach (RpcCallGroup group in Groups)
+        {
+            if (group.Process.IsBound
+                && group.Side == side
+                && group.Interface == rpcInterface
+                && Processes.Instances[group.Process.Instance].Id == instance)
+            {
+                return group;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Where in <paramref name="group"/>'s reading order the call is whose first record has this raw locator and fact key:
+    /// the call's identity, without the capture every record here shares. Null when no call of the group has it.
+    /// </summary>
+    public int? PositionOf(RpcCallGroup group, uint stream, uint epoch, ulong ordinal, FactKey factKey)
+    {
+        RequireGroup(group);
+        var address = new RecordAddress(stream, epoch, ordinal, factKey);
+        for (int index = 0; index < group.Counts.Calls; index++)
+        {
+            if (entries[group.First + index].FirstAddress == address)
+            {
+                return index;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The records of <paramref name="group"/>'s calls, or of its one call at <paramref name="position"/>, by segment
+    /// position (<see cref="SegmentNames"/>) and row: a call's start, then its stop.
+    /// </summary>
+    public IEnumerable<(int Segment, int Row)> RecordsOf(RpcCallGroup group, int? position = null)
+    {
+        RequireGroup(group);
+        if (position is { } one)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(one);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(one, group.Counts.Calls);
+        }
+
+        return Records(group.First + (position ?? 0), position is null ? group.First + (int)group.Counts.Calls : group.First + position.Value + 1);
+    }
+
+    private IEnumerable<(int Segment, int Row)> Records(int from, int to)
+    {
+        for (int index = from; index < to; index++)
+        {
+            Entry entry = entries[index];
+            if (entry.StartSegment >= 0)
+            {
+                yield return (entry.StartSegment, entry.StartRow);
+            }
+
+            if (entry.StopSegment >= 0)
+            {
+                yield return (entry.StopSegment, entry.StopRow);
+            }
+        }
+    }
+
+    private void RequireGroup(RpcCallGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        if (!Groups.Contains(group))
+        {
+            throw new ArgumentException("The group is not one of this index's.", nameof(group));
+        }
+    }
+
+    /// <summary>
     /// Pairs the call records of <paramref name="segments"/>, whose process instances are <paramref name="processes"/>,
     /// with the procedure and protocol <paramref name="fieldSegments"/> carry for their starts.
     /// </summary>
@@ -270,11 +357,7 @@ public sealed class RpcCallIndex
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
-        if (!Groups.Contains(group))
-        {
-            throw new ArgumentException("The group is not one of this index's.", nameof(group));
-        }
-
+        RequireGroup(group);
         if (segments.Count != segmentNames.Length
             || segments.Select(segment => segment.Published?.Name).Where((name, position) => name != segmentNames[position]).Any())
         {
@@ -559,6 +642,7 @@ public sealed class RpcCallIndex
 
     private static Entry Paired(CallRecord start, CallRecord stop) => new()
     {
+        FirstAddress = start.Address,
         ProcessId = start.ProcessId,
         Side = start.Side,
         State = RpcCallState.Completed,
@@ -580,6 +664,7 @@ public sealed class RpcCallIndex
     private static Entry Single(CallRecord record, RpcCallState state) => record.IsStart
         ? new()
         {
+            FirstAddress = record.Address,
             ProcessId = record.ProcessId,
             Side = record.Side,
             State = state,
@@ -596,6 +681,7 @@ public sealed class RpcCallIndex
         }
         : new()
         {
+            FirstAddress = record.Address,
             ProcessId = record.ProcessId,
             Side = record.Side,
             State = state,
@@ -700,6 +786,9 @@ public sealed class RpcCallIndex
     /// <summary>One call as the index holds it: a summary's worth, with its records by segment position and row.</summary>
     private readonly record struct Entry
     {
+        /// <summary>The call's identity: its first record's raw locator and fact key.</summary>
+        public RecordAddress FirstAddress { get; init; }
+
         public int ProcessId { get; init; }
 
         public ProcessBinding Process { get; init; }
