@@ -1,7 +1,8 @@
 # InterCat operations v1
 
-Status: **implemented** as `rpc-call-operation-v1`, for RPC calls (revision 178). No other mechanism derives an
-operation at this version (§8).
+Status: **implemented** as `rpc-call-operation-v1`, for RPC calls (revision 178), and counted on the logical-operations
+metric basis since revision 183 (`contracts/metrics-v1.md` §8a). No other mechanism derives an operation at this
+version (§8).
 
 This contract fixes how §7.1's `Operation` - a derived logical call with an optional start, end and status and the
 observations it is made of - is derived from a generation's published segments. It is §7.4's RPC correlator, with the
@@ -89,6 +90,14 @@ records of a channel's calls or of one call: each call's start, then its stop. A
 holds is stated as such, never read as an empty one. A channel belongs to one process, so a process's channels add
 up to its calls; unlike a paired channel, it is not listed for any other process.
 
+## 5b. Counting calls (revision 183)
+
+`contracts/metrics-v1.md` §8a counts these calls: a started count takes a call by its start, and a completed or failed
+count by its stop when the stop is paired with its start, each where that record's reading falls. Its completed and
+failed calls are this contract's, so a metric, `icat operations` and the ladder give one number for one channel's
+calls over the whole capture. A call counted in one interval is outside every other, and a stop with no start is stated
+with its state and status rather than counted (ADR-032).
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as
@@ -106,8 +115,9 @@ generation it was derived from. A change to what pairs, how, or what a call hold
 
 ## 8. Not defined at this version
 
-- Operations of any other mechanism, and a logical-operations metric basis over these calls
-  (`contracts/metrics-v1.md` §8, `NoLogicalOperations`).
+- Operations of any other mechanism.
+- A duration metric over these calls, which needs a cohort a metric request cannot name yet (`contracts/metrics-v1.md`
+  §12).
 - Pairing a client call with the server call that served it, and pairing by thread nesting.
 - Persisting calls in a checkpoint, or extending them from one live generation to the next: a derivation reads its
   generation whole, holding each call record's key while it pairs.

@@ -737,6 +737,7 @@
       ],
       "I16": [
         "I16: a result names the materialized request it answers, so two spellings are one request",
+        "I16: an operation answer names the operation rule and the binding rule in its identity",
         "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
         "I16: every answer names the identity of the specification and snapshot it answers",
         "I16: every golden specification canonicalizes to exactly its recorded bytes and identity"
@@ -923,6 +924,10 @@
         "P3: a byte metric names one traffic domain, and another metric's domain is never relabelled",
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
+      "P4": [
+        "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
+        "P4: what no derived operation can answer is unavailable with its reason, never a zero"
+      ],
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
@@ -943,6 +948,7 @@
         "P8: a start still open at capture end is censored, and a stop without its start is given none",
         "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
         "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after",
+        "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently",
         "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
         "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
       ],
@@ -1213,6 +1219,7 @@
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
         "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
+        "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
@@ -1243,6 +1250,7 @@
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an address is kept whole in its family's columns, never narrowed into another's",
         "R3: an empty latency histogram reports no quantile rather than zero",
+        "R3: an error count over calls none of which says how it ended is unmeasured, never zero",
         "R3: an operation without a paired completion keeps completed bytes unknown",
         "R3: an unknown measurement is counted as unknown, never as a zero contribution",
         "R3: an unreadable loss counter leaves loss unknown rather than zero",
@@ -1361,10 +1369,6 @@
       },
       "P28": {
         "reason": "The catalog denies payload-producing descriptors; a fixture asserting it arrives with IC-006.",
-        "plannedBy": "IC-006"
-      },
-      "P4": {
-        "reason": "Layered double counting needs the RPC correlators of IC-006.",
         "plannedBy": "IC-006"
       },
       "P5": {

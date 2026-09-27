@@ -242,12 +242,18 @@ public sealed class SessionMetricsTests
         Assert.Equal(MetricUnavailableReason.NoTransferAssociations, owner.Unavailable);
         Assert.Null(owner.Value);
 
-        // The logical basis would answer "one call" and there is no correlator, so it is unavailable with the
-        // reason rather than answered from the two source records.
+        // The logical basis counts the operations a correlator derives, and a transport exchange derives none: the two
+        // source records are never renamed as a call. The scenario's one call is counted when it is an RPC call
+        // (OperationMetricsTests); here no call is in scope, which is not a finding that none happened.
         MetricResult logical = Evaluate(session.Store, AnalysisBasis.LogicalOperations, Metric.OperationsCompleted);
-        Assert.False(logical.IsAvailable);
-        Assert.Equal(MetricUnavailableReason.NoLogicalOperations, logical.Unavailable);
-        Assert.Contains("renamed as operations", logical.UnavailableExplanation!, StringComparison.Ordinal);
+        Assert.True(logical.IsAvailable);
+        Assert.Equal(0, logical.Value);
+        Assert.Empty(logical.Operations!.InScope);
+        Assert.Contains(logical.Caveats, caveat => caveat.StartsWith("No call is in scope", StringComparison.Ordinal));
+        Assert.Contains(logical.Caveats, caveat => caveat.Contains("no other record is counted as one", StringComparison.Ordinal));
+        Assert.Equal(
+            MetricUnavailableReason.NoLogicalOperations,
+            Evaluate(session.Store, AnalysisBasis.LogicalOperations, Metric.OperationsCompleted, mechanism: Mechanism.Tcp).Unavailable);
     }
 
     [Fact(DisplayName = "P3: 21.1 scenario 2 - requested and completed bytes stay different quantities")]

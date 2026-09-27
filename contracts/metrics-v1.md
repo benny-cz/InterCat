@@ -1,9 +1,10 @@
 # InterCat metrics v1
 
 Status: **frozen for the source-observations basis, with process filters, grouping by process instance, executable,
-mechanism and peer, and implemented**. The logical-operations and resource-topology bases, grouping by any other entity and canonical-owner
-accounting are defined here as contract and reported as unavailable by every session until the derivations they need
-exist (§12).
+mechanism and peer, and implemented; on the logical-operations basis, operations started, completed and failed are
+counted from RPC calls since revision 183 (§8a)**. The resource-topology basis, the rest of the logical-operations
+basis, grouping by any other entity and canonical-owner accounting are defined here as contract and reported as
+unavailable by every session until the derivations they need exist (§12).
 
 This contract is §21.2's `metrics-v1`: contribution keys, byte domains, accounting sides, cohorts, unknown
 values and the exact scenarios of §21.1. It owns what a metric **means** — which records a total takes, which
@@ -102,7 +103,9 @@ MetricContribution = (basis identity, byte domain, observation side)
 ```
 
 On the source-observations basis the basis identity is the observation identity of `contracts/identity-v1.md`
-§7.2, so a contribution is one row's declared measurement slot. Its **observation side** is the row's
+§7.2, so a contribution is one row's declared measurement slot. On the logical-operations basis it is an operation's
+identity - a call's first record's observation identity (`contracts/operations-v1.md` §4) - so a contribution is one
+operation (§8a). Its **observation side** is the row's
 `AccountingSide` column: a fact about the record — which end of the exchange its measurement describes.
 
 | Row side | Written by the normalizer for | Means |
@@ -303,13 +306,13 @@ with no value:
 | Reason | When |
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
-| `NoLogicalOperations` | a logical-operations basis: no metric reads derived operations at this version, though RPC calls are derived (`contracts/operations-v1.md`) |
+| `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, `Duration`, a count of channels or peers, `Errors` with an accounting side, or a filter or grouping that needs an operation's other end (§8a) |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
 | `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
 | `NoInterval` | a rate with no interval |
-| `NothingMeasured` | a byte total that takes no known contribution |
+| `NothingMeasured` | a byte total that takes no known contribution, and an error count over completed calls none of which carried a status (§8a) |
 | `GroupingNotDerived` | a grouping whose derivation this session does not have |
 | `NoParticipantRelations` | not produced since `relations-v1`; it answered `participant(P)` before any relation was derived, and keeps that meaning for older results |
 | `ProcessInstanceNotFound` | a process filter or its `peer` names no instance in the selected generation |
@@ -322,9 +325,56 @@ An observed zero is a known contribution, and a total of known zeros is zero.
 An observation count of zero is a count of records, not a finding that nothing happened: coverage is stated
 separately from data (R21), and the result says so.
 
+## 8a. The logical-operations basis (revision 183)
+
+An operation is a call `contracts/operations-v1.md` derives: an RPC call, its start and its stop paired by activity id on
+one side of one process. It is the only operation at this version, and its records are never also counted as
+observations on this basis (§5.1, P4). ADR-032 records the decisions below.
+
+**A call is counted by the record that puts it in scope.** A started count takes a call when its start's reading is in
+scope; a completed or failed count, when its stop's is. So a call from 0.5 s to 2.5 s counts as started in [0, 1) and
+completed in [2, 3), and never in [1, 2) (§21.1). The interval is half-open, and a call whose counted record lies
+outside it is excluded by the interval.
+
+| Metric | Takes | States, not counted |
+|---|---|---|
+| `OperationsStarted` | every call with its start in scope, however it ended: `Completed`, `OpenAtCaptureEnd` (censored, not failed), `NoActivityId`, `Ambiguous` | - |
+| `OperationsCompleted` | a call whose stop is in scope and is paired with its start (`Completed`) | stops in scope paired with no start, by state: `StartNotObserved`, `NoActivityId`, `Ambiguous` |
+| `Errors` | a `Completed` call whose stop reports a status other than 0; one whose stop carried no status is an unknown contribution | the same unpaired stops, and how many of them report a failure status |
+
+A status is the RPC status the provider reports; 0 is success. An error count whose every completed call in scope
+carried no status is `NothingMeasured`: reporting 0 would call every one of those calls a success (R3). A result carries
+every call in scope by state, the record that put it there, and the calls the generation derives in all.
+
+**Filters, groupings and projections.** `owner(P)` keeps the calls bound to P under the evidence policy, a call binding
+by its first record (`operations-v1` §4); a call of another instance, or a binding the policy excludes, is excluded by
+the process filter. Grouping by process instance, executable or mechanism partitions a count exactly as §6 partitions
+a source total, with a call bound to no instance unattributed by its reason; an error group whose completed calls all
+carried no status is unmeasured and sorts after the ranked groups. A rate divides a count by the whole interval (§7).
+A projection onto `Rpc` or the application layer keeps every call.
+
+**What no derived operation answers** is `NoLogicalOperations`, with what it needs:
+
+- `participant`, `sender`, `receiver`, `peer`, `between` and grouping by peer, which need an operation's other end: no
+  rule pairs a client call with the server call that served it (`operations-v1` §3, P7);
+- `ActivePeers`, for the same reason, and `ActiveChannels`, which counts connection incarnations, not RPC channels;
+- `Duration`, whose cohort a request cannot name at this version (§12);
+- `Errors` with an accounting side: a call is made at a client and served at a server, not sent or received;
+- a mechanism other than `Rpc`, or a layer other than the application layer: no correlator derives those operations.
+
+A byte total on this basis is `NothingMeasured`: no call carries a length.
+
+**Zero and coverage.** A count with no call in scope is 0, stated as a count of derived calls and not a finding that no
+call happened (R21). Every operation is an RPC call, so an answer that names no mechanism states RPC's capture coverage
+beside the per-mechanism states.
+
+**Identity.** An answer on this basis depends on the operation rule, `rpc-call-operation-v1`, and on the binding rule its
+calls are joined under, and names both (`contracts/query-identity-v1.md` §4).
+
 ## 9. Evidence
 
-An ungrouped result may carry the first records it counted, in segment order, bounded by the request. Each carries
+An ungrouped result may carry the first records it counted, in segment order, bounded by the request. On the
+logical-operations basis those are the records that put each counted call in scope. Each carries
 its segment and row — an address inside this generation only — and its observation identity, which survives every
 re-read, replay and re-derivation (I1, I2). The bound limits the listing, never the total. A grouped request refuses
 evidence: the records of one group are the records of an ungrouped request projected onto it.
@@ -332,8 +382,8 @@ evidence: the records of one group are the records of an ungrouped request proje
 ## 10. Reading a generation
 
 A result answers exactly one generation and names it, together with the normalizer derivations it read and, when
-grouped by process or filtered by a process, the binding rule and - when records' other ends were used - the
-relation rule (I16). It is computed under an evidence lease and from the manifest that lease
+grouped by process or filtered by a process, the binding rule, when records' other ends were used, the relation rule,
+and on the logical-operations basis, the operation rule and the binding rule beneath it (I16). It is computed under an evidence lease and from the manifest that lease
 holds, so neither a retention nor a later commit changes what it reads (I18).
 
 A generation whose segments hold two derivations of one capture is refused: they describe the same evidence
@@ -347,8 +397,9 @@ not exist yet and are answered as unavailable today.
 
 | Scenario | Expected |
 |---|---|
-| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end; with the endpoint pair each record names, grouped by process it is A's 100, and `sender(A)` takes it. `participant(B)` keeps both records, and so does `between({A},{B})` either way or `FirstToSecond`; `SecondToFirst` keeps neither. `CanonicalOwner`: `NoTransferAssociations`. Logical basis, 1 call: owed, `NoLogicalOperations`. |
+| A sends 100 bytes to B; B receives the same transfer | 2 observations. `BytesSent`/`SendSide` 100, one contribution taken, the receive row reported as another side. `BytesReceived`/`ReceiveSide` 100. `EndpointActivityBytes` 200, both taken, labelled as counting both endpoints. `BytesSent`/`ReceiveSide` 100, labelled as measured at the other end; with the endpoint pair each record names, grouped by process it is A's 100, and `sender(A)` takes it. `participant(B)` keeps both records, and so does `between({A},{B})` either way or `FirstToSecond`; `SecondToFirst` keeps neither. `CanonicalOwner`: `NoTransferAssociations`. Logical basis: 1 call when that call is an RPC call (§8a); the two transport records are never renamed as one, and alone give `OperationsCompleted` 0 beside RPC's coverage, with a TCP projection unavailable. |
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
+| An operation starts at 0.5 s and ends at 2.5 s; buckets [0,1), [1,2), [2,3) | `OperationsStarted` 1/0/0 and `OperationsCompleted` 0/0/1, each by the record that puts the call in a bucket (§8a). Overlap counts and occupied durations are owed with cohorts (§12). |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
 | Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
 | PID 400 exits, is reused, and a late event belongs to the earlier instance | Grouped by process or filtered with `owner(P)`, the late event binds to the earlier instance by its reading, and the newer instance's total never includes it. By default the newer instance's own non-lifecycle records are unadmitted candidates; `IncludeCandidates` includes them, labelled by the selected policy. Provider start keys carried by `source-fields-v1` strengthen lifecycle identity where the source supplies them. |
@@ -359,7 +410,10 @@ not exist yet and are answered as unavailable today.
   version does not have.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
-- Cohorts. `Duration` and the latency distributions of §19.2 need operations; the cohort a distribution
-  describes is part of the request when they exist.
+- Cohorts. `Duration` and the latency distributions of §19.2 read the calls §8a counts; the cohort a distribution
+  describes - completed in range by default, or started in range - is part of the request, and a request cannot name
+  one yet. `icat operations` lists each RPC channel's completed-call durations meanwhile.
+- Operations of any mechanism but RPC, and an operation's other end, which the filters and groupings §8a leaves
+  unavailable need.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.
 - Aggregate cells over a boundary set (§10.3). A result here is one total, or one total per group, over one scope.

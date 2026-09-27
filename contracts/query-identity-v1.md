@@ -71,8 +71,8 @@ answers.
 | Member | Value | Present |
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
-| `entityRevision` | the process binding rule, e.g. `process-binding-v3` | when the answer reads a process binding: a process filter, a process or peer grouping, or a relation |
-| `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v4` | when the answer uses records' other ends |
+| `entityRevision` | the process binding rule, e.g. `process-binding-v3` | when the answer reads a process binding: a process filter, a process or peer grouping, a relation, or an operation |
+| `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v4`; on the logical-operations basis, the operation rule, e.g. `rpc-call-operation-v1` | when the answer uses records' other ends, and for every answer on the logical-operations basis |
 | `metricsContract` | `metrics-v1` | always |
 
 Entity and correlation revisions are named by their rule while derivations are computed on demand from one generation:
@@ -86,6 +86,12 @@ sent or received total grouped by process or executable (`metrics-v1` §5, §6).
 instances, so an answer that depends on a relation rule depends on the binding rule as well: `entityRevision` is
 present whenever `correlationRevision` is. A channel count over every process, answered from plan revision 47, omitted
 it until revision 48 (ADR-017); no other identity changed, and no line of the golden corpus.
+
+An operation is a correlator's result (§24), joined within one process, so every answer on the logical-operations basis
+depends on the operation rule and on the binding rule beneath it, and names both: `correlationRevision` is the operation
+rule there. At this version such an answer reads no relation (`metrics-v1` §8a), so the axis never has to hold two
+rules; an answer that did would need a new canonicalization version. Added by plan revision 183 under this version, as
+§9 allows: no earlier specification could name an answer on that basis, since every one was unavailable before it.
 
 The axis values are an input to the form, not part of it: a new binding or relation rule changes the identities of the
 requests that depend on it, as §24 requires, and changes no rule of this contract.
@@ -134,8 +140,9 @@ canonical specification and identity without answering.
 canonical bytes and identities, one line each: name, identity token, canonical specification. It covers every rule
 above: a whole-capture count, an interval, an implied domain, an implied layer, an implied side, a rate, a grouping
 that drops the policy, a grouping by process with rows outside the hash, an executable grouping with candidates, and
-owner, participant-by-peer and sender-with-peer focus, a `between` filter written from the first set to the second, and
-a channel count that names the binding rule and no policy. The corpus fixes the axis values as well as the snapshot, so it
+owner, participant-by-peer and sender-with-peer focus, a `between` filter written from the first set to the second, a
+channel count that names the binding rule and no policy, and on the logical-operations basis a started count that names
+the operation rule, an owner's failed calls in an interval, and completed calls by process. The corpus fixes the axis values as well as the snapshot, so it
 pins the form alone: a new rule changes what the CLI prints, never these bytes. The test recomputes each line and each
 hash; a change to this file is a new canonicalization version or an ADR, never a test update.
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 182 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 183 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -57,16 +57,38 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
-| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`) | Canonical transfer owner, operations/topology, relations beyond TCP and UDP, full coverage epoch publication. |
+| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`); since revision 178 RPC calls are derived as operations (`rpc-call-operation-v1`), and since revision 183 counted on the logical-operations basis (`metrics-v1` §8a) | Canonical transfer owner, operation durations and operations beyond RPC calls (counted since revision 183), topology, relations beyond TCP and UDP, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget; since revision 172 `observation-v2` holds IPv6 endpoint addresses, written only for a segment that has one | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
-| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
+| IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 lanes beyond RPC calls (drawn since revision 181), and byte composition once IC-015 derives operations that carry a length. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 183 — operations started, completed and failed, counted from the RPC calls (ADR-032):**
+  - **The basis answers:** `icat metric --basis logical-operations` counts `operations-started`,
+    `operations-completed` and `errors`, and their rates, over an interval, for one `--owner`, ungrouped or grouped by
+    process, executable or mechanism, with the counted records as `--evidence` (`contracts/metrics-v1.md` §8a). Until
+    now every session answered that basis as unavailable.
+  - **By the record that puts a call in scope:** a started count takes a call by its start, a completed count by its
+    stop when the stop is paired with its start, and an error count the completed calls whose stop reports a status
+    other than 0; §21.1's call from 0.5 s to 2.5 s starts in the first second and completes in the third. A call open at
+    capture end is started, never failed.
+  - **Stated, not counted:** each answer lists the calls in scope by state. A stop paired with no start is stated with
+    its reason, and with its status when that is a failure, so the completions a metric counts are the ones
+    `icat operations` and the ladder count. A completed call with no status is unknown, and an error count of only such
+    calls is unmeasured, never zero.
+  - **Still unavailable, with the reason:** anything that needs a call's other end (participant, sender, receiver,
+    peer and between filters, a peer grouping, peer counts), durations (no cohort in a request yet), byte totals (a
+    call carries no length) and every mechanism but RPC. The two TCP records of one transfer are never renamed as a
+    call, which asserts P4 for the first time.
+  - **Identity:** an answer names `rpc-call-operation-v1` as its correlation revision and `process-binding-v3` beneath
+    it; the canonical corpus gains three lines and changes none.
+  - On revision 180's real Explore minute: 2,007 calls started, 2,000 completed, none failed, 7 stops stated as paired
+    with no start; the same 2,000 completions `icat operations` lists.
 
 - **Revision 182 — the RPC rungs tried in the real window, and what that found:**
   - **Opening a session by name:** `InterCat.Desktop.exe <session folder>` opens it once the window is shown, as
@@ -1574,11 +1596,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - **RPC operations (M3).** Revision 176 measured RPC's capture cost (Low), revision 177 binds an RPC record to the
      process that raised it (ADR-030), revision 178 pairs its calls (ADR-031, `icat operations`), revision 179 puts a
      process's RPC channels and their calls on the ladder, revision 180 admits RPC to Explore, 32-bit callers included,
-     and revision 181 draws a channel's calls in the timeline. Next, in order:
-     1. Answer `OperationsStarted`, `OperationsCompleted` and `Errors` on the logical-operations basis from the calls;
-        today that basis still says `NoLogicalOperations`.
-     2. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
-        from every call record on first use: 0.66 s for 500,000 calls, 0.43 s for a real minute of Explore.
+     revision 181 draws a channel's calls in the timeline, and revision 183 counts them on the logical-operations
+     metric basis (ADR-032). Next, in order:
+     1. Keep the calls with the derivation checkpoint, or extend them between live generations. Today they are paired
+        from every call record on first use: 0.66 s for 500,000 calls, 0.43 s for a real minute of Explore, and each
+        operation metric pairs them again.
+     2. A duration metric over the calls, once a request can name its cohort (§19.2: completed in range by default,
+        started in range on request), with left- and right-censored calls marked.
      3. Name more RPC interfaces. Most of a real session's are undocumented UUIDs, shown as such; only interfaces a
         protocol specification names get a name.
      4. The call lane draws at most 4,000 calls per view and says so; a denser view needs §6.2's density regime.
@@ -1615,6 +1639,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 183 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,237 tests: 1,234
+  passed, 3 skipped**, zero failures. `icat metric --basis logical-operations` answered each count, a grouped rate, an
+  owner filter and every unavailable case over revision 180's real Explore recording, which stays in scratch.
 - Revision 182 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,229 tests: 1,226
   passed, 3 skipped**, zero failures. The Release Desktop was run on real data, driven through UI Automation with keys
   posted to its window, and only its window was captured; the session and the captures stay in scratch.

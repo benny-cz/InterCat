@@ -120,6 +120,20 @@ public readonly record struct RpcCallSpan(
     ulong Ordinal,
     FactKey FactKey);
 
+/// <summary>Where one record of a call is: its native reading and its place in the index's segments.</summary>
+public readonly record struct RpcCallMark(long NativeTicks, int Segment, int Row);
+
+/// <summary>
+/// One call as a count reads it (`contracts/metrics-v1.md` §8a): its process binding, what its records establish, its
+/// stop's status, and where each of its records is. A record the call does not have is null.
+/// </summary>
+public readonly record struct RpcCallOutcome(
+    ProcessBinding Process,
+    RpcCallState State,
+    long? Status,
+    RpcCallMark? Start,
+    RpcCallMark? Stop);
+
 /// <summary>The calls of one process binding, side and interface (`contracts/operations-v1.md` §5).</summary>
 public sealed record RpcCallGroup
 {
@@ -266,6 +280,23 @@ public sealed class RpcCallIndex
     {
         RequireGroup(group);
         return Spans(group.First, group.First + (int)group.Counts.Calls);
+    }
+
+    /// <summary>
+    /// Every call, group by group, each group's in reading order: what a count of operations reads, with no segment
+    /// read. A record's segment is a position in <see cref="SegmentNames"/>.
+    /// </summary>
+    public IEnumerable<RpcCallOutcome> Outcomes()
+    {
+        foreach (Entry entry in entries)
+        {
+            yield return new(
+                entry.Process,
+                entry.State,
+                entry.HasStatus ? entry.Status : null,
+                entry.StartSegment >= 0 ? new RpcCallMark(entry.StartTicks, entry.StartSegment, entry.StartRow) : null,
+                entry.StopSegment >= 0 ? new RpcCallMark(entry.StopTicks, entry.StopSegment, entry.StopRow) : null);
+        }
     }
 
     private IEnumerable<RpcCallSpan> Spans(int from, int to)

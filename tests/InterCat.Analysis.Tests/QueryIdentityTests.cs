@@ -17,9 +17,9 @@ public sealed class QueryIdentityTests
 {
     private static readonly ProcessInstanceId Focus = new(Guid.Parse("7f0c5b3d-914a-42e8-b0d6-1c2fa3845e19"));
     private static readonly ProcessInstanceId Counterpart = new(Guid.Parse("2b8e4f6a-1c3d-4e5f-9a7b-8c9d0e1f2a3b"));
-    // The corpus fixes the axis values as well as the snapshot, so it pins the form: a new binding or relation rule
-    // changes what the CLI prints, never these bytes.
-    private static readonly AnalysisAxes Axes = new(1, "process-binding-v2", "tcp-endpoint-relation-v1", "metrics-v1");
+    // The corpus fixes the axis values as well as the snapshot, so it pins the form: a new binding, relation or operation
+    // rule changes what the CLI prints, never these bytes.
+    private static readonly AnalysisAxes Axes = new(1, "process-binding-v2", "tcp-endpoint-relation-v1", "rpc-call-operation-v1", "metrics-v1");
 
     private static readonly SnapshotEntry[] Snapshot =
     [
@@ -212,6 +212,19 @@ public sealed class QueryIdentityTests
             Between = new([Counterpart], [Focus], BetweenDirection.SecondToFirst),
         }),
         ("channels-over-every-process-name-the-binding-rule", Request(Metric.ActiveChannels)),
+        ("operations-started-name-the-operation-rule", Request(Metric.OperationsStarted) with { Basis = AnalysisBasis.LogicalOperations }),
+        ("failed-calls-of-one-owner-in-an-interval", Request(Metric.Errors) with
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            Owner = Focus,
+            Interval = new TimeRange(1_200_000_000, 1_800_000_000),
+        }),
+        ("completed-calls-by-process-top-10", Request(Metric.OperationsCompleted) with
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            Grouping = LaneGrouping.InstanceOnly,
+            RequestedRows = 10,
+        }),
     ];
 
     private static string Identity(MetricRequest request, SnapshotEntry[]? snapshot = null) =>

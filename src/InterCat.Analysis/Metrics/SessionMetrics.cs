@@ -261,7 +261,11 @@ public enum MetricUnavailableReason
     /// <summary>It can be answered.</summary>
     None = 0,
 
-    /// <summary>Nothing in this session derives operations yet.</summary>
+    /// <summary>
+    /// No operation this version derives answers the request: it selects a mechanism or layer no correlator derives
+    /// operations for, a duration without a cohort, a count of channels or peers, or a filter or grouping that needs an
+    /// operation's other end. RPC calls are the only operations (`contracts/metrics-v1.md` §8a).
+    /// </summary>
     NoLogicalOperations = 1,
 
     /// <summary>Nothing in this session derives resources or memberships yet.</summary>
@@ -284,7 +288,8 @@ public enum MetricUnavailableReason
 
     /// <summary>
     /// Nothing in scope measured this domain: there is no declared slot, or every declared slot was unknown. A
-    /// byte sum of nothing is not an observed zero (R3, R21, P1).
+    /// byte sum of nothing is not an observed zero (R3, R21, P1). An error count over completed calls none of which
+    /// carried a status is unmeasured for the same reason.
     /// </summary>
     NothingMeasured = 8,
 
@@ -415,6 +420,28 @@ public sealed record MetricCoverage
 
     /// <summary>One state for an explicit mechanism filter, otherwise every mechanism's separate state.</summary>
     public required IReadOnlyList<MechanismCoverage> Mechanisms { get; init; }
+}
+
+/// <summary>
+/// What an answer on the logical-operations basis read: the calls whose counted record is in scope, by what their records
+/// establish, so a count of operations is read beside the calls it could not count (`contracts/metrics-v1.md` §8a).
+/// </summary>
+public sealed record MetricOperations
+{
+    /// <summary>
+    /// The record that puts a call in scope: its start (<see cref="ObservationKind.RequestStart"/>) for a started count,
+    /// its stop (<see cref="ObservationKind.RequestEnd"/>) for a completed or failed one.
+    /// </summary>
+    public required ObservationKind CountedRecord { get; init; }
+
+    /// <summary>The calls whose counted record is in scope, by state; a state no call is in is absent.</summary>
+    public required IReadOnlyDictionary<RpcCallState, long> InScope { get; init; }
+
+    /// <summary>Of the stops in scope that no start is paired with, how many report a status other than 0.</summary>
+    public long UnpairedFailures { get; init; }
+
+    /// <summary>Every call the generation's call records make, in scope or not.</summary>
+    public required long Calls { get; init; }
 }
 
 /// <summary>One record an answer counted, with the identities that let a caller navigate to it.</summary>
@@ -559,6 +586,15 @@ public sealed record MetricResult
     public string? RelationRule { get; init; }
 
     /// <summary>
+    /// The rule a logical-operations answer's operations were derived under, its `correlationRevision` (§24, I16); null on
+    /// any other basis.
+    /// </summary>
+    public string? OperationRule { get; init; }
+
+    /// <summary>The calls a logical-operations answer read, by state; null on any other basis.</summary>
+    public MetricOperations? Operations { get; init; }
+
+    /// <summary>
     /// What this result answers, as the canonical specification and its hash (§10.5): the same bytes for the same
     /// request from the CLI or a UI (R18), different ones for any meaningful difference. Null only when the generation
     /// publishes nothing derived to read.
@@ -667,12 +703,36 @@ public static partial class SessionMetrics
         MetricResult answer = Answer(store, manifest, materialized, segments, clock, bounds, cancellationToken);
         MetricCoverage coverage = CoverageOf(store, manifest, materialized);
         IReadOnlyList<string> caveats = answer.Caveats;
-        if (materialized.Metric == Metric.Rate && answer.IsAvailable)
+        // Every operation is an RPC call, so an operation answer that names no mechanism states RPC's coverage, which is
+        // what a count of them could have seen, rather than every mechanism's.
+        bool operations = materialized.Basis == AnalysisBasis.LogicalOperations && materialized.Mechanism is null;
+        if (materialized.Metric == Metric.Rate && answer.IsAvailable && !operations)
         {
             caveats = [.. caveats, RateCoverageCaveat(coverage, materialized.Mechanism)];
         }
 
+        if (operations && answer.IsAvailable)
+        {
+            caveats = [.. caveats, OperationCoverageCaveat(coverage)];
+        }
+
         return answer with { Identity = identity, Coverage = coverage, Caveats = caveats };
+    }
+
+    /// <summary>
+    /// The coverage an operation count rests on: every operation is an RPC call, so RPC's capture coverage is the one that
+    /// says what a count of them could have seen, whatever the other mechanisms' is.
+    /// </summary>
+    private static string OperationCoverageCaveat(MetricCoverage coverage)
+    {
+        if (!coverage.LedgerPublished)
+        {
+            return "RPC's capture coverage is unknown: this generation publishes no coverage ledger.";
+        }
+
+        MechanismCoverage rpc = coverage.Mechanisms.Single(state => state.Mechanism == Mechanism.Rpc);
+        return $"Every operation here is an RPC call, and RPC's capture coverage over the selected scope is {rpc.State}: "
+            + $"{rpc.Reason}.";
     }
 
     private static MetricCoverage CoverageOf(SessionStore store, SessionManifestV1 manifest, MetricRequest request)
@@ -798,6 +858,12 @@ public static partial class SessionMetrics
             };
         }
 
+        // Operations are counted from the calls a correlator derives, never from the records beneath them (§5.1, P4).
+        if (materialized.Basis == AnalysisBasis.LogicalOperations)
+        {
+            return Operations(context, cancellationToken);
+        }
+
         if (materialized.Focus is not null || materialized.Between is not null)
         {
             if (clock is null)
@@ -894,14 +960,7 @@ public static partial class SessionMetrics
     {
         if (request.Basis == AnalysisBasis.LogicalOperations)
         {
-            return Unavailable(
-                request,
-                generation,
-                MetricUnavailableReason.NoLogicalOperations,
-                "No metric counts logical operations yet. RPC calls are derived as operations "
-                + "(contracts/operations-v1.md), but this basis does not read them, and no other mechanism has a "
-                + "correlator. It is reported as unavailable rather than answered from source records renamed as "
-                + "operations (P4).");
+            return WhatOperationsNeed(request, generation) ?? NoIntervalFor(request, generation);
         }
 
         if (request.Basis == AnalysisBasis.ResourceTopology)
@@ -939,7 +998,11 @@ public static partial class SessionMetrics
                 + "themselves and need no association.");
         }
 
-        return request.Metric == Metric.Rate && request.Interval is null
+        return NoIntervalFor(request, generation);
+    }
+
+    private static MetricResult? NoIntervalFor(MetricRequest request, long generation) =>
+        request.Metric == Metric.Rate && request.Interval is null
             ? Unavailable(
                 request,
                 generation,
@@ -949,7 +1012,6 @@ public static partial class SessionMetrics
                 + "rate, and the span between the first and last observation is exactly such an interval, so "
                 + "there is no default.")
             : null;
-    }
 
     private static int IndexOf(ProcessInstanceIndex processes, ProcessInstanceId instance)
     {

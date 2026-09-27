@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -17,6 +18,7 @@ internal sealed record MetricDocument
     public required QueryIdentityDocument? QueryIdentity { get; init; }
     public required string? BindingRule { get; init; }
     public required string? RelationRule { get; init; }
+    public required string? OperationRule { get; init; }
     public required bool Available { get; init; }
     public required MetricUnavailableDocument? Unavailable { get; init; }
     public required long? Value { get; init; }
@@ -25,6 +27,7 @@ internal sealed record MetricDocument
     public required MetricCoverageDocument? Coverage { get; init; }
     public required MetricAccountingDocument? Accounting { get; init; }
     public required MetricContributionsDocument Contributions { get; init; }
+    public required MetricOperationsDocument? Operations { get; init; }
     public required MetricExclusionsDocument Excluded { get; init; }
     public required MetricReadDocument Read { get; init; }
     public required MetricClockDocument? Clock { get; init; }
@@ -233,6 +236,19 @@ internal sealed record MetricContributionsDocument
 
     /// <summary>For a count of peers: the records it took whose other end is unresolved, by reason.</summary>
     public required IReadOnlyDictionary<string, long> UnknownCounterparts { get; init; }
+}
+
+/// <summary>
+/// The calls a logical-operations answer read: the rule that paired them, which of a call's records put it in scope, and
+/// the calls in scope by what their records establish (`metrics-v1` §8a).
+/// </summary>
+internal sealed record MetricOperationsDocument
+{
+    public required string Rule { get; init; }
+    public required string CountedRecord { get; init; }
+    public required long Calls { get; init; }
+    public required IReadOnlyDictionary<string, long> InScope { get; init; }
+    public required long UnpairedFailures { get; init; }
 }
 
 internal sealed record MetricSideDocument
@@ -639,6 +655,7 @@ internal static class MetricCommand
             },
             BindingRule = result.BindingRule,
             RelationRule = result.RelationRule,
+            OperationRule = result.OperationRule,
             Available = result.IsAvailable,
             Unavailable = result.IsAvailable
                 ? null
@@ -699,6 +716,18 @@ internal static class MetricCommand
                     .OrderBy(entry => entry.Key)
                     .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
             },
+            Operations = result.Operations is { } operations
+                ? new()
+                {
+                    Rule = result.OperationRule ?? RpcCallIndex.OperationRule,
+                    CountedRecord = operations.CountedRecord == ObservationKind.RequestStart ? "start" : "stop",
+                    Calls = operations.Calls,
+                    InScope = operations.InScope
+                        .OrderBy(entry => entry.Key)
+                        .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+                    UnpairedFailures = operations.UnpairedFailures,
+                }
+                : null,
             Excluded = new()
             {
                 OtherSide = result.ExcludedOtherSide,
@@ -892,7 +921,7 @@ internal static class MetricCommand
     {
         if (group.PerSecond is { } perSecond)
         {
-            string unit = result.Rate?.NumeratorUnit == MeasurementUnit.Bytes ? "B" : "records";
+            string unit = result.Rate?.NumeratorUnit == MeasurementUnit.Bytes ? "B" : Unit(nameof(MeasurementUnit.Count), result.Request);
             return $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {unit}/s";
         }
 
@@ -967,6 +996,16 @@ internal static class MetricCommand
         if (request.Focus is not null || request.Between is not null)
         {
             ConsoleUi.Field("Binding policy", request.EvidencePolicy.ToString());
+        }
+
+        // An operation is a correlator's result joined within each process, so an answer on that basis always names both
+        // rules; any other answer names them when a process filter read them.
+        if (request.Basis == AnalysisBasis.LogicalOperations)
+        {
+            ConsoleUi.Field("Rules", $"{RpcCallIndex.OperationRule} over {result.BindingRule ?? ProcessInstanceIndex.BindingRule}");
+        }
+        else if (request.Focus is not null || request.Between is not null)
+        {
             ConsoleUi.Field(
                 "Rules",
                 result.RelationRule is { } relationRule
@@ -1005,7 +1044,7 @@ internal static class MetricCommand
                 "Exactly",
                 string.Create(
                     CultureInfo.CurrentCulture,
-                    $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit)} over {rate.IntervalTicks:N0} ticks")
+                    $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit, result.Request)} over {rate.IntervalTicks:N0} ticks")
                 + (rate.TicksPerSecond is { } perSecond
                     ? string.Create(CultureInfo.CurrentCulture, $" at {perSecond:N0} ticks/s")
                     : string.Empty));
@@ -1021,14 +1060,26 @@ internal static class MetricCommand
                         $"{availability:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} declared contributions")
                     : "no declared contribution");
         }
+        else if (IsErrorCount(request) && document.Contributions.MeasurementAvailability is { } statusKnown)
+        {
+            ConsoleUi.Field(
+                "Status known on",
+                string.Create(
+                    CultureInfo.CurrentCulture,
+                    $"{statusKnown:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} completed calls"));
+        }
 
         ConsoleUi.Field(
             "Read",
             string.Create(
                 CultureInfo.CurrentCulture,
-                $"{document.Read.Rows:N0} observations in {document.Read.Segments:N0} segment{(document.Read.Segments == 1 ? string.Empty : "s")}"));
+                $"{document.Read.Rows:N0} observations in {document.Read.Segments:N0} segment{(document.Read.Segments == 1 ? string.Empty : "s")}")
+            + (document.Operations is { } read
+                ? string.Create(CultureInfo.CurrentCulture, $", paired into {read.Calls:N0} {(read.Calls == 1 ? "call" : "calls")}")
+                : string.Empty));
 
         RenderGroups(document, result);
+        RenderOperations(document, result);
         RenderSides(document, result);
         RenderExclusions(document, result);
         RenderEvidence(document, result);
@@ -1061,6 +1112,60 @@ internal static class MetricCommand
         int uncollected = coverage.Mechanisms.Count - collected.Length;
         string observed = collected.Length == 0 ? "no mechanisms collected" : string.Join("; ", collected);
         ConsoleUi.Field("Capture coverage", $"{observed}; {uncollected} not collected (icat session for details)");
+    }
+
+    /// <summary>A count of errors, or a rate of them: the metric that counts completed calls by their status.</summary>
+    private static bool IsErrorCount(MetricRequest request) =>
+        (request.Metric == Metric.Rate ? request.RateNumerator : request.Metric) == Metric.Errors;
+
+    /// <summary>
+    /// The calls a logical-operations answer read, by what their records establish, and which of them it counted: the
+    /// number is read beside the calls in scope it could not count (`metrics-v1` §8a).
+    /// </summary>
+    private static void RenderOperations(MetricDocument document, MetricResult result)
+    {
+        if (document.Operations is not { } operations || result.Operations is not { } read)
+        {
+            return;
+        }
+
+        bool byStart = read.CountedRecord == ObservationKind.RequestStart;
+        bool errors = IsErrorCount(result.Request);
+        ConsoleUi.Line();
+        ConsoleUi.Line(byStart
+            ? "  Calls whose start is in scope, by what their records establish:"
+            : "  Calls whose stop is in scope, by what their records establish:");
+        if (read.InScope.Count == 0)
+        {
+            ConsoleUi.Line("  none");
+            return;
+        }
+
+        ConsoleUi.Table(
+            ["State", "Calls", "Counted"],
+            [
+                .. read.InScope.OrderBy(entry => entry.Key).Select(entry => new[]
+                {
+                    OperationText.State(entry.Key),
+                    ConsoleUi.Count(entry.Value),
+                    byStart ? "yes" : entry.Key != RpcCallState.Completed ? "no" : errors ? "when failed" : "yes",
+                }),
+            ]);
+        if (errors)
+        {
+            long known = document.Contributions.Known;
+            long failed = result.Value ?? result.Rate?.Numerator ?? 0;
+            ConsoleUi.Line(string.Create(
+                CultureInfo.CurrentCulture,
+                $"  Of {known + document.Contributions.Unknown:N0} completed calls: {failed:N0} failed, {known - failed:N0} succeeded, "
+                + $"{document.Contributions.Unknown:N0} without a status."));
+            if (operations.UnpairedFailures > 0)
+            {
+                ConsoleUi.Line(string.Create(
+                    CultureInfo.CurrentCulture,
+                    $"  {operations.UnpairedFailures:N0} stops paired with no start report a failure status; stated, not counted."));
+            }
+        }
     }
 
     private static void RenderSides(MetricDocument document, MetricResult result)
@@ -1096,7 +1201,14 @@ internal static class MetricCommand
             rows.Add(["no declared byte slot", ConsoleUi.Count(document.Excluded.NoDeclaredSlot)]);
         }
 
-        rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
+        // Operations are counted whole, by the record that put each in scope, and a projection either keeps every call or
+        // is unavailable, so an operation answer states only what the filter and the interval left out.
+        bool operations = result.Request.Basis == AnalysisBasis.LogicalOperations;
+        if (!operations)
+        {
+            rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
+        }
+
         if (result.Request.Focus is not null || result.Request.Between is not null)
         {
             rows.Add(["outside the process filter", ConsoleUi.Count(document.Excluded.ByProcessFilter)]);
@@ -1109,8 +1221,8 @@ internal static class MetricCommand
 
         rows.Add(["outside the interval", ConsoleUi.Count(document.Excluded.OutsideInterval)]);
         ConsoleUi.Line();
-        ConsoleUi.Line("  Records left out of this answer:");
-        ConsoleUi.Table(["Why", "Records"], rows);
+        ConsoleUi.Line(operations ? "  Calls left out of this answer:" : "  Records left out of this answer:");
+        ConsoleUi.Table(["Why", operations ? "Calls" : "Records"], rows);
         if (document.Contributions.OtherDomains.Count > 0)
         {
             ConsoleUi.Line(
@@ -1129,11 +1241,17 @@ internal static class MetricCommand
             return;
         }
 
-        long counted = result.TakenSides.Count > 0 ? result.KnownContributions + result.UnknownContributions : result.Value ?? 0;
+        long counted = result.TakenSides.Count > 0
+            ? result.KnownContributions + result.UnknownContributions
+            : result.Value ?? result.Rate?.Numerator ?? 0;
         ConsoleUi.Line();
-        ConsoleUi.Line(string.Create(
-            CultureInfo.CurrentCulture,
-            $"  The first {document.Evidence.Count:N0} of {counted:N0} records this answer counted:"));
+        ConsoleUi.Line(result.Operations is { } read
+            ? string.Create(
+                CultureInfo.CurrentCulture,
+                $"  The first {document.Evidence.Count:N0} of {counted:N0} calls this answer counted, each by its {(read.CountedRecord == ObservationKind.RequestStart ? "start" : "stop")}:")
+            : string.Create(
+                CultureInfo.CurrentCulture,
+                $"  The first {document.Evidence.Count:N0} of {counted:N0} records this answer counted:"));
         ConsoleUi.Table(
             ["Time", "Mechanism", "Kind", "Owner PID", "Bytes", "Side", "Journal record"],
             [
@@ -1158,10 +1276,10 @@ internal static class MetricCommand
         if (document.Rate is { } rate)
         {
             return rate.PerSecond is { } perSecond
-                ? $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {Unit(rate.NumeratorUnit)}/s"
+                ? $"{decimal.Parse(perSecond, CultureInfo.InvariantCulture).ToString("N3", CultureInfo.CurrentCulture)} {Unit(rate.NumeratorUnit, result.Request)}/s"
                 : string.Create(
                     CultureInfo.CurrentCulture,
-                    $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit)} per {rate.IntervalTicks:N0} native ticks");
+                    $"{rate.Numerator:N0} {Unit(rate.NumeratorUnit, result.Request)} per {rate.IntervalTicks:N0} native ticks");
         }
 
         if (result.Unit != MeasurementUnit.Count)
@@ -1184,6 +1302,9 @@ internal static class MetricCommand
             Metric.ActiveChannels =>
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "channel" : "channels")}",
+            Metric.OperationsStarted => $"{ConsoleUi.Count(count)} {(count == 1 ? "call" : "calls")} started",
+            Metric.OperationsCompleted => $"{ConsoleUi.Count(count)} {(count == 1 ? "call" : "calls")} completed",
+            Metric.Errors => $"{ConsoleUi.Count(count)} failed {(count == 1 ? "call" : "calls")}",
             _ => $"{ConsoleUi.Count(count)} counted",
         };
     }
@@ -1502,10 +1623,11 @@ internal static class MetricCommand
         _ => metric.ToString(),
     };
 
-    private static string Unit(string unit) => unit switch
+    /// <summary>A numerator's unit as a reader says it: a count on the logical-operations basis counts calls, not records.</summary>
+    private static string Unit(string unit, MetricRequest request) => unit switch
     {
         nameof(MeasurementUnit.Bytes) => "B",
-        nameof(MeasurementUnit.Count) => "records",
+        nameof(MeasurementUnit.Count) => request.Basis == AnalysisBasis.LogicalOperations ? "calls" : "records",
         _ => unit,
     };
 
@@ -1561,6 +1683,12 @@ internal static class MetricCommand
         ConsoleUi.Line("      unresolved peers separate; unknown channels make the focused count a lower bound;");
         ConsoleUi.Line("      --evidence-policy include-candidates also attributes the records of reused PIDs,");
         ConsoleUi.Line("      labelled as candidates.");
+        ConsoleUi.Line("      --basis logical-operations counts operations: the RPC calls paired start to stop");
+        ConsoleUi.Line($"      by activity id ({RpcCallIndex.OperationRule}). operations-started counts the calls");
+        ConsoleUi.Line("      whose start is in scope, operations-completed those whose stop is and is paired");
+        ConsoleUi.Line("      with its start, errors the completed ones whose stop reports a failure status.");
+        ConsoleUi.Line("      Every other call in scope is stated by what its records establish, never counted;");
+        ConsoleUi.Line("      --owner filters the calls, and --group-by ranks them by process or executable.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

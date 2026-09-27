@@ -11,15 +11,26 @@ public sealed record SnapshotEntry(CaptureId CaptureId, long Generation, string 
 
 /// <summary>
 /// The values of the §24 version axes a metric answer can depend on, as the canonical form writes them. The form is a
-/// function of these values, so a new binding or relation rule changes identities without changing the form.
+/// function of these values, so a new binding, relation or operation rule changes identities without changing the form.
 /// </summary>
-public sealed record AnalysisAxes(uint NormalizerContract, string EntityRevision, string CorrelationRevision, string MetricsContract)
+/// <param name="CorrelationRevision">The relation rule: the `correlationRevision` of an answer that uses records' other ends.</param>
+/// <param name="OperationRevision">
+/// The operation rule: the `correlationRevision` of an answer on the logical-operations basis, whose operations are a
+/// correlator's result (§24).
+/// </param>
+public sealed record AnalysisAxes(
+    uint NormalizerContract,
+    string EntityRevision,
+    string CorrelationRevision,
+    string OperationRevision,
+    string MetricsContract)
 {
     /// <summary>The axes this build answers under, over segments derived by the given normalizer contract.</summary>
     public static AnalysisAxes Current(NormalizerContractVersion normalizer) => new(
         normalizer.Value,
         ProcessInstanceIndex.BindingRule,
         TransportRelationIndex.RelationRule,
+        RpcCallIndex.OperationRule,
         AnalysisSpecification.MetricsContract);
 }
 
@@ -111,7 +122,10 @@ public static class AnalysisSpecification
 
         // The version axes this answer depends on, in §24's order, and only those: a total that reads no process
         // binding does not depend on the binding rule, so naming it would split one query into two. A relation's ends
-        // are held by process instances, so an answer read through relations depends on the binding rule too.
+        // are held by process instances, so an answer read through relations depends on the binding rule too. An
+        // operation is a correlator's result joined within each process, so a logical-operations answer names the
+        // operation rule as its correlation revision, and the binding rule beneath it, and at this version reads no
+        // relation (metrics-v1 §8a).
         json.BeginObject("versions");
         json.Number("normalizerContract", axes.NormalizerContract);
         if (ReadsProcesses(request))
@@ -119,7 +133,11 @@ public static class AnalysisSpecification
             json.Token("entityRevision", axes.EntityRevision);
         }
 
-        if (UsesRelations(request))
+        if (request.Basis == AnalysisBasis.LogicalOperations)
+        {
+            json.Token("correlationRevision", axes.OperationRevision);
+        }
+        else if (UsesRelations(request))
         {
             json.Token("correlationRevision", axes.CorrelationRevision);
         }
@@ -293,10 +311,12 @@ public static class AnalysisSpecification
         || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
 
     /// <summary>
-    /// Whether the answer reads process bindings - through a policy, or through relations, whose ends processes hold -
-    /// so it depends on the entity revision and derives instances from every start key the session holds.
+    /// Whether the answer reads process bindings - through a policy, through relations, whose ends processes hold, or
+    /// through operations, which are joined within each process - so it depends on the entity revision and derives
+    /// instances from every start key the session holds.
     /// </summary>
-    internal static bool ReadsProcesses(MetricRequest request) => AdmitsByPolicy(request) || UsesRelations(request);
+    internal static bool ReadsProcesses(MetricRequest request) =>
+        request.Basis == AnalysisBasis.LogicalOperations || AdmitsByPolicy(request) || UsesRelations(request);
 
     internal static bool UsesRelations(MetricRequest request)
     {
