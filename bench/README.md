@@ -79,6 +79,24 @@ truth logs, because they are the independent expected result those runs are scor
 per-level truth logs are gitignored instead, because its high levels reach tens of megabytes and every
 one of them is reproducible from the recorded seed and level.
 
+## Scale gates
+
+Measures §12's query gates over finished synthetic sessions of 1M and 10M observations, in Release, headlessly:
+the reopen until usable, the 2,000-column timeline query at L0 and at a 40-process group, the bounded graph and top-100
+ranking over the whole session and within brushed intervals, and the first evidence page of a process and of a
+channel, each cold and then warm as a distribution.
+
+```powershell
+$env:INTERCAT_SCALE_OUTPUT = "bench/results/scale-gates-<UTC>"
+$env:INTERCAT_SCALE_SESSIONS = "artifacts/claude-work/scale-sessions"   # kept between runs; about 3.4 GB
+dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
+```
+
+`INTERCAT_SCALE_ROWS` overrides the sizes (comma separated). A session is generated the first time, in chunks of
+500,000 records with its checkpoint and overview published after, about 45 s for 10M rows, and reused afterwards; a
+directory holding anything else is refused rather than overwritten. Only `report.json` is committed. Without the
+variable the test is skipped, never passed.
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a

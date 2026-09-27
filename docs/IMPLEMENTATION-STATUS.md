@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 167 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 168 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 168 — §12's query gates measured at 1M and 10M observations:**
+  - **The benchmark:** the opt-in `ScaleGateTests` (`bench/README.md`) builds finished synthetic sessions of 1M and 10M
+    records on disk in chunks, 400 processes in 10 executables, and reuses them between runs. It measures, cold and
+    then warm, the reopen until usable, the 2,000-column timeline at L0 and at a 40-process group, the bounded graph
+    and top-100 ranking over the whole session and within brushes, and the first evidence page of a process and a
+    channel, through the store the window shares. Result: `bench/results/scale-gates-*`.
+  - **Met at 10M, warm p95:** reopen 8 ms with no segment opened (budget 3 s), L0 timeline 5 ms (100), whole-session
+    ranking 1 ms (250), first evidence page of a process 144 ms (150).
+  - **Missed at 10M:** a brushed ranking 1,226 ms (250; 272 ms already at 1M); a group's timeline 223 ms with its 40
+    lanes and 238 ms at 2,000 columns (100); the first evidence page of a channel 193 ms (150). What misses counts
+    rows by owner or channel, which tiles holding per-owner and per-channel counts would answer whole.
+  - **Also found:** §12's 2,000-column × 40-lane query is refused by the 20,000-cell lane bound, which the window never
+    meets at its 256 columns. At 10M rows the retained heap is 290 MiB, 253 MiB of it the reader cache at its budget,
+    but the working set peaks near 2.3 GB from transient allocation.
 
 - **Revision 167 — process and thread lifecycle wear a family of their own (§6.6, theme 1.3.0):**
   - **The finding:** every capture collects process lifecycle, and it was drawn in the unknown grey and keyed
@@ -1301,9 +1316,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Revision 164 qualified both on real ETW and in the window. A 10-minute capture ends by publishing them, and its
      saved session reopens without opening a segment. The window opens a 1M-row session from them in 27 ms to laid
      out.
-   - **Next:** the 1M- and 10M-row gates as the plan states them (§12's table, cold and warm), with the window's own
-     open at 4M and 10M rows; the latency benchmark's in-memory synthetic builder stops at 1M. A live session still
-     counts its overview from tiles until its writer finishes.
+   - Revision 168 measured §12's query gates at 1M and 10M rows (`ScaleGateTests`). The reopen, the L0 timeline and
+     the whole-session ranking meet them with room; the window opens a 10M-row session in 57 ms to laid out.
+   - **Next, from those measurements:**
+     1. Tiles that also count each tile's records per owner instance and per channel, so a brushed ranking (1,226 ms
+        at 10M, budget 250) and a group's timeline and lanes (223–238 ms, budget 100) add whole tiles and read rows only
+        where a boundary crosses one (§10.3).
+     2. The first evidence page of a channel (193 ms at 10M, budget 150) and of a process (144 ms), which resolve every
+        row's owner or channel in a segment before the page's first rows.
+     3. Reconcile §12's 2,000 × 40 lane query with the 20,000-cell lane bound.
+     4. The transient allocation that lifts the working set near 2.3 GB at 10M rows, where 290 MiB stays reachable.
+   - A live session still counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Metric queries (`icat metric`) still derive their own instances and read no checkpoint.
@@ -1358,6 +1381,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 168 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,146 tests: 1,143
+  passed, 3 skipped**, zero failures; the third skipped test is the opt-in scale-gate benchmark, which ran in Release
+  at 1M and 10M rows for the committed report.
 - Revision 167 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,145 tests: 1,143
   passed, 2 skipped**, zero failures. The theme report was regenerated and meets every threshold, and the real sparse
   session was rendered headlessly in all four theme modes.

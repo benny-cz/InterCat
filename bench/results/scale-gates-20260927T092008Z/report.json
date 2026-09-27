@@ -1,0 +1,262 @@
+{
+  "schema": "intercat.scale-gates.v1",
+  "measuredUtc": "2026-09-27T09:20:35.576403+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "configuration": "Release",
+  "budgetsMs": {
+    "reopenUsable": 3000,
+    "timelineQueryWarmP95": 100,
+    "graphAndRankingP95": 250,
+    "firstEvidencePageP95": 150
+  },
+  "notes": [
+    "Sessions are synthetic and finished: 200 loopback TCP conversations between 400 processes of 10 executables of 40 processes each, every conversation also sending UDP to an off-machine resolver, every process created at the start, one record every 60 \u00B5s. Each was published in chunks of 500,000 records, as a live capture publishes, and then its derivation checkpoint and overview.",
+    "Cold is the first time this process answers a question of the session after reopening it: nothing derived is in memory and no segment is open, but the operating system\u0027s file cache may hold the files. Warm is the same question asked again over other viewports, brushes or scopes.",
+    "The reopen is the store\u0027s open and the first overview projection; the window\u0027s open to laid out is reported beside it. The L0 timeline query counts 2,000 columns. At a 40-process group it is timed twice: with the group\u0027s 40 process lanes, counted in the same pass, at the window\u0027s widest request of 256 columns; and at 2,000 columns, where the lane bound of 20,000 cells refuses the lanes and says so, and the group\u0027s own count is what is timed.",
+    "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it includes counting the interval\u0027s records per process, edge and channel."
+  ],
+  "sessions": [
+    {
+      "rows": 1000000,
+      "generatedSeconds": null,
+      "bytesOnDisk": 323340661,
+      "reopen": {
+        "storeOpenMs": 60.74,
+        "segmentsOpenedBeforeFirstView": 0,
+        "processes": 400,
+        "relationships": 200,
+        "ms": 172.35,
+        "budgetMs": 3000,
+        "withinBudget": true
+      },
+      "windowOpenToLaidOutMs": 309.27,
+      "timelineL0": {
+        "coldMs": 185.44,
+        "warmP50Ms": 5.04,
+        "warmP95Ms": 7.98,
+        "warmMaxMs": 7.98,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": false
+      },
+      "timelineL1FortyLanesAtWindowColumns": {
+        "coldMs": 345.42,
+        "warmP50Ms": 25.39,
+        "warmP95Ms": 102.32,
+        "warmMaxMs": 102.32,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": false
+      },
+      "processLanesCounted": 40,
+      "timelineL1At2000Columns": {
+        "coldMs": 51.78,
+        "warmP50Ms": 24.16,
+        "warmP95Ms": 27.19,
+        "warmMaxMs": 27.19,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "processLaneProblemAt2000Columns": "This group needs 40 process lanes and 80\u00A0000 cells; the current bounds are 200 lanes and 20\u00A0000 cells. Its aggregate timeline remains exact. A bounded grouping or paging control is required to inspect these process rows; the query does not silently drop them.",
+      "rankingWhole": {
+        "coldMs": 3.42,
+        "warmP50Ms": 2.3,
+        "warmP95Ms": 2.67,
+        "warmMaxMs": 2.67,
+        "samples": 20,
+        "budgetMs": 250,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "rankingBrushed": {
+        "coldMs": 285.33,
+        "warmP50Ms": 164.42,
+        "warmP95Ms": 271.86,
+        "warmMaxMs": 271.86,
+        "samples": 10,
+        "budgetMs": 250,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": false
+      },
+      "firstEvidencePageProcess": {
+        "coldMs": 71.92,
+        "warmP50Ms": 26.89,
+        "warmP95Ms": 27.25,
+        "warmMaxMs": 27.25,
+        "samples": 10,
+        "budgetMs": 150,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "firstEvidencePageChannel": {
+        "coldMs": 30.52,
+        "warmP50Ms": 29.5,
+        "warmP95Ms": 30.26,
+        "warmMaxMs": 30.26,
+        "samples": 10,
+        "budgetMs": 150,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "retained": {
+        "reopen": {
+          "heapMiB": 3,
+          "readerPayloadMiB": 0,
+          "readers": 0,
+          "workingSetMiB": 94
+        },
+        "window": {
+          "heapMiB": 8,
+          "readerPayloadMiB": 0,
+          "readers": 0,
+          "workingSetMiB": 123
+        },
+        "timeline": {
+          "heapMiB": 66,
+          "readerPayloadMiB": 52,
+          "readers": 4,
+          "workingSetMiB": 190
+        },
+        "brushed": {
+          "heapMiB": 81,
+          "readerPayloadMiB": 65,
+          "readers": 4,
+          "workingSetMiB": 204
+        },
+        "evidence": {
+          "heapMiB": 106,
+          "readerPayloadMiB": 90,
+          "readers": 4,
+          "workingSetMiB": 245
+        }
+      },
+      "workingSetMiB": 245,
+      "cachedReaders": 4
+    },
+    {
+      "rows": 10000000,
+      "generatedSeconds": null,
+      "bytesOnDisk": 3240807794,
+      "reopen": {
+        "storeOpenMs": 2.12,
+        "segmentsOpenedBeforeFirstView": 0,
+        "processes": 400,
+        "relationships": 200,
+        "ms": 8.11,
+        "budgetMs": 3000,
+        "withinBudget": true
+      },
+      "windowOpenToLaidOutMs": 57.23,
+      "timelineL0": {
+        "coldMs": 325.96,
+        "warmP50Ms": 3.18,
+        "warmP95Ms": 4.69,
+        "warmMaxMs": 4.69,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": false
+      },
+      "timelineL1FortyLanesAtWindowColumns": {
+        "coldMs": 696.77,
+        "warmP50Ms": 206.47,
+        "warmP95Ms": 223.21,
+        "warmMaxMs": 223.21,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": false
+      },
+      "processLanesCounted": 40,
+      "timelineL1At2000Columns": {
+        "coldMs": 663.94,
+        "warmP50Ms": 215.38,
+        "warmP95Ms": 237.9,
+        "warmMaxMs": 237.9,
+        "samples": 20,
+        "budgetMs": 100,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": false
+      },
+      "processLaneProblemAt2000Columns": "This group needs 40 process lanes and 80\u00A0000 cells; the current bounds are 200 lanes and 20\u00A0000 cells. Its aggregate timeline remains exact. A bounded grouping or paging control is required to inspect these process rows; the query does not silently drop them.",
+      "rankingWhole": {
+        "coldMs": 1.04,
+        "warmP50Ms": 0.84,
+        "warmP95Ms": 0.9,
+        "warmMaxMs": 0.9,
+        "samples": 20,
+        "budgetMs": 250,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "rankingBrushed": {
+        "coldMs": 1135.53,
+        "warmP50Ms": 791.78,
+        "warmP95Ms": 1225.63,
+        "warmMaxMs": 1225.63,
+        "samples": 10,
+        "budgetMs": 250,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": false
+      },
+      "firstEvidencePageProcess": {
+        "coldMs": 121.34,
+        "warmP50Ms": 109.44,
+        "warmP95Ms": 143.7,
+        "warmMaxMs": 143.7,
+        "samples": 10,
+        "budgetMs": 150,
+        "warmP95WithinBudget": true,
+        "coldWithinBudget": true
+      },
+      "firstEvidencePageChannel": {
+        "coldMs": 142.02,
+        "warmP50Ms": 130.98,
+        "warmP95Ms": 192.85,
+        "warmMaxMs": 192.85,
+        "samples": 10,
+        "budgetMs": 150,
+        "warmP95WithinBudget": false,
+        "coldWithinBudget": true
+      },
+      "retained": {
+        "reopen": {
+          "heapMiB": 13,
+          "readerPayloadMiB": 0,
+          "readers": 0,
+          "workingSetMiB": 237
+        },
+        "window": {
+          "heapMiB": 14,
+          "readerPayloadMiB": 0,
+          "readers": 0,
+          "workingSetMiB": 232
+        },
+        "timeline": {
+          "heapMiB": 292,
+          "readerPayloadMiB": 255,
+          "readers": 40,
+          "workingSetMiB": 2161
+        },
+        "brushed": {
+          "heapMiB": 280,
+          "readerPayloadMiB": 243,
+          "readers": 40,
+          "workingSetMiB": 1619
+        },
+        "evidence": {
+          "heapMiB": 290,
+          "readerPayloadMiB": 253,
+          "readers": 40,
+          "workingSetMiB": 2301
+        }
+      },
+      "workingSetMiB": 2301,
+      "cachedReaders": 40
+    }
+  ]
+}
