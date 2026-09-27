@@ -115,6 +115,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 // ScrollToEnd means bottom-left in Avalonia; the trail's end is its right edge.
                 CrumbScroller.Offset = new(Math.Max(0, CrumbScroller.Extent.Width - CrumbScroller.Viewport.Width), 0);
             }
+
+            HideCutCrumbs();
         };
         // The minimap shows and moves the timeline's viewport; the timeline owns it (presentation only, §6.4).
         MinimapSurface.Timeline = TimelineSurface;
@@ -149,6 +151,29 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Keyboard equivalents for the header actions. Every affordance on this window has one, so no
     /// behaviour is reachable by pointer alone (R15, section 6.7).
     /// </summary>
+    /// <summary>
+    /// Clears a crumb the trail's left edge cuts, so the sliver left of an earlier crumb does not read as a stray character
+    /// beside the current position (section 3.2). The crumb keeps its place, its hit target and its accessible name; only
+    /// what would be drawn of it goes. The current rung's crumb is never cleared.
+    /// </summary>
+    private void HideCutCrumbs()
+    {
+        double offset = CrumbScroller.Offset.X;
+        int count = CrumbList.ItemCount;
+        for (int index = 0; index < count; index++)
+        {
+            if (CrumbList.ContainerFromIndex(index) is not { } crumb)
+            {
+                continue;
+            }
+
+            bool cut = index < count - 1
+                && crumb.TranslatePoint(default, CrumbList) is { } left
+                && left.X < offset - 0.5;
+            crumb.Opacity = cut ? 0 : 1;
+        }
+    }
+
     private void OnShortcutKey(object? sender, KeyEventArgs e)
     {
         if (DataContext is not WorkspaceViewModel viewModel)

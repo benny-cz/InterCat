@@ -49,6 +49,27 @@ public sealed class EndpointTextTests
         Assert.Equal("[2001:db8::1]:50000", EndpointText.Endpoint(Number("2001:db8::1"), 50_000));
     }
 
+    [Fact]
+    public void AnAbbreviatedEndpointKeepsItsPortAndTheEndsOfItsAddress()
+    {
+        const string global = "[2001:db8:85a3:8d3:1319:8a2e:370:7348]:50000";
+
+        // The port tells a looped process's ends apart, so it survives; the address keeps its prefix and suffix.
+        Assert.Equal("[2001:db8…70:7348]:50000", EndpointText.Abbreviated(global, 24));
+        Assert.Equal(24, EndpointText.Abbreviated(global, 24).Length);
+        Assert.EndsWith("]:50000", EndpointText.Abbreviated(global, 12), StringComparison.Ordinal);
+
+        // What fits is unchanged: every IPv4 endpoint, and a short IPv6 one.
+        Assert.Equal("255.255.255.255:65535", EndpointText.Abbreviated("255.255.255.255:65535", 24));
+        Assert.Equal("[::1]:8080", EndpointText.Abbreviated("[::1]:8080", 24));
+
+        // The port stays while one character of each end of the address fits. With less room, or for text that is not a
+        // bracketed endpoint, the text loses its end instead.
+        Assert.Equal("[2…8]:50000", EndpointText.Abbreviated(global, 11));
+        Assert.Equal("[2001:db8…", EndpointText.Abbreviated(global, 10));
+        Assert.Equal("not an endpoint at…", EndpointText.Abbreviated("not an endpoint at all", 19));
+    }
+
     private static UInt128 Number(string address) =>
         BinaryPrimitives.ReadUInt128BigEndian(IPAddress.Parse(address).GetAddressBytes());
 }

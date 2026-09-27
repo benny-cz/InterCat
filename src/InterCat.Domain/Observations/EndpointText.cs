@@ -63,4 +63,30 @@ public static class EndpointText
     /// <summary>An IPv6 endpoint, "[address]:port", bracketed as a URI writes one so the port cannot read as a group.</summary>
     public static string Endpoint(UInt128 address, ushort port) =>
         "[" + Ipv6(address) + "]:" + port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// An endpoint's text in at most <paramref name="maximumLength"/> characters. An IPv6 endpoint loses the middle of
+    /// its address, never its port, because the port is what tells two ends of one host apart: "[2001:db8…70:7348]:50000".
+    /// Any other text too long for the room loses its end. An IPv4 endpoint is at most 21 characters.
+    /// </summary>
+    public static string Abbreviated(string endpoint, int maximumLength)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumLength, 1);
+        if (endpoint.Length <= maximumLength)
+        {
+            return endpoint;
+        }
+
+        int close = endpoint.LastIndexOf("]:", StringComparison.Ordinal);
+        int room = maximumLength - (endpoint.Length - close) - 2;
+        if (!endpoint.StartsWith('[') || close < 1 || room < 2)
+        {
+            return endpoint[..(maximumLength - 1)] + "…";
+        }
+
+        int head = (room + 1) / 2;
+        int tail = room - head;
+        return "[" + endpoint[1..(1 + head)] + "…" + endpoint[(close - tail)..];
+    }
 }

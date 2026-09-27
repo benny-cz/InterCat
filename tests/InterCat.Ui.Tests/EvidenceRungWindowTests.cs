@@ -8,6 +8,7 @@ using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -653,6 +654,64 @@ public sealed class EvidenceRungWindowTests
 
         DirectionTimelineLane Lane(Direction direction) =>
             workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == direction);
+    }
+
+    [AvaloniaFact(DisplayName = "§3.2: an IPv6 channel names its ends whole, and a lane keeps a long address's port")]
+    public async Task AnIpv6ChannelNamesItsEnds()
+    {
+        const string client = "[2001:db8:85a3:8d3:1319:8a2e:370:7348]:50000";
+        const string server = "[2001:db8:85a3:8d3:1319:8a2e:370:7349]:443";
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversation(20, client, server));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        Assert.Equal($"{client} ↔ {server}", channel.Name);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString(), channel.Key })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+            await workspace.TimelineDetailReady;
+        }
+
+        Dispatch();
+        Assert.True(workspace.ShowsChannelEndLanes, workspace.TimelineCaption);
+        IReadOnlyList<ChannelEndTimelineLane> ends = workspace.TimelineChannelEndLanes!;
+        Assert.Equal([client, server], ends.Select(end => end.Endpoint).Order(StringComparer.Ordinal));
+        Assert.All(ends, end => Assert.EndsWith($" · {end.Endpoint}", workspace.ChannelEndLabel(end), StringComparison.Ordinal));
+
+        // The lane's own line is 24 characters, so it drops the middle of the address and keeps each end's port.
+        Assert.Equal(["[2001:db8:…370:7349]:443", "[2001:db8…70:7348]:50000"],
+            ends.Select(end => EndpointText.Abbreviated(end.Endpoint, 24)).Order(StringComparer.Ordinal));
+
+        // The crumb and the filter chip abbreviate the same way; their tooltips and accessible names keep the whole name.
+        const string abbreviated = "[2001:db8…70:7348]:50000 ↔ [2001:db8:…370:7349]:443";
+        CrumbRow crumb = workspace.Crumbs[^1];
+        Assert.Equal(($"Channel: {abbreviated}", $"Channel: {channel.Name}"), (crumb.Display, crumb.Label));
+        Assert.Contains(channel.Name, crumb.AccessibleName, StringComparison.Ordinal);
+        FilterRow filter = workspace.Filters.Single(row => row.Field == "channel");
+        Assert.Equal($"Channel: {abbreviated}", filter.Chip);
+        Assert.StartsWith($"Channel: {channel.Name}\n", filter.Tip, StringComparison.Ordinal);
+
+        // The trail keeps its current crumb in view, and a crumb its left edge cuts is not drawn at all, so no sliver of
+        // an earlier one reads as a stray character.
+        ScrollViewer crumbScroller = window.GetControl<ScrollViewer>("CrumbScroller");
+        ListBox crumbList = window.GetControl<ListBox>("CrumbList");
+        Assert.True(crumbScroller.Offset.X > 0, "Four crumbs at this width scroll.");
+        for (int index = 0; index < crumbList.ItemCount; index++)
+        {
+            Control drawn = crumbList.ContainerFromIndex(index)!;
+            double left = drawn.TranslatePoint(default, crumbList)!.Value.X;
+            bool whole = left >= crumbScroller.Offset.X - 0.5;
+            Assert.Equal(whole ? 1 : 0, drawn.Opacity);
+        }
+
+        Assert.Equal(1, crumbList.ContainerFromIndex(crumbList.ItemCount - 1)!.Opacity);
+        Save(window.CaptureRenderedFrame()!, "l3-ipv6-channel-ends-1080x700.png");
     }
 
     [AvaloniaFact(DisplayName = "§3.2/R15: a channel's ends are lanes banded by direction that hover, select and step")]
@@ -1302,12 +1361,12 @@ public sealed class EvidenceRungWindowTests
     /// A client that sends for the first half of <paramref name="count"/> exchanges and receives for the second, so its
     /// instance's outbound and inbound rows are busy at different times.
     /// </summary>
-    private static ObservationRowV1[] Conversation(int count) =>
+    private static ObservationRowV1[] Conversation(int count, string clientEnd = ClientEnd, string serverEnd = ServerEnd) =>
     [
         .. Enumerable.Range(0, count).SelectMany(index =>
         {
             (int sender, int receiver) = index < count / 2 ? (100, 200) : (200, 100);
-            (string from, string to) = sender == 100 ? (ClientEnd, ServerEnd) : (ServerEnd, ClientEnd);
+            (string from, string to) = sender == 100 ? (clientEnd, serverEnd) : (serverEnd, clientEnd);
             return new[]
             {
                 Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, sender,

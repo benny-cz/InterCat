@@ -239,7 +239,7 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:CrumbRow">
-                <TextBlock Text="{Binding Label}" FontSize="11" Padding="4,1"
+                <TextBlock Text="{Binding Display}" FontSize="11" Padding="4,1"
                            TextTrimming="CharacterEllipsis" MaxWidth="220" ToolTip.Tip="{Binding Label}" />
               </DataTemplate>
             </ListBox.ItemTemplate>

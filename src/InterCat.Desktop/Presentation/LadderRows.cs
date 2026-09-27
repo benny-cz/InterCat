@@ -40,6 +40,12 @@ public sealed record RungRow(
 /// <summary>One crumb of the breadcrumb. Selecting it returns to that rung, which is why it has a depth.</summary>
 public sealed record CrumbRow(int Depth, string Label, bool IsCurrent) : IAccessibleRow
 {
+    /// <summary>
+    /// What the crumb shows: its label, with a channel's endpoints abbreviated to keep their ports. The tooltip and the
+    /// accessible name keep the whole label.
+    /// </summary>
+    public string Display { get; init; } = Label;
+
     public string AccessibleName => IsCurrent
         ? $"{Label}, the current level"
         : $"{Label}, press Enter to return to this level";
@@ -54,7 +60,12 @@ public sealed record FilterRow(string Field, string Label, string Reason) : IAcc
     /// The chip's words: what the filter narrows, then to what, as a crumb reads. A channel's filter and the evidence
     /// scope of the same channel otherwise showed the same endpoint pair twice, as if one filter were repeated.
     /// </summary>
-    public string Chip => $"{Field switch
+    public string Chip => $"{Name}: {(Field == "channel" ? ChannelNames.Abbreviated(Label) : Label)}";
+
+    /// <summary>The chip's tooltip: its whole text, which a long endpoint pair can cut short, and why it applies.</summary>
+    public string Tip => $"{Name}: {Label}\n{Reason}";
+
+    private string Name => Field switch
     {
         "group" => "Group",
         "process" => "Process",
@@ -62,10 +73,7 @@ public sealed record FilterRow(string Field, string Label, string Reason) : IAcc
         "operation" => "Operation",
         "scope" => "Records of",
         _ => Field,
-    }}: {Label}";
-
-    /// <summary>The chip's tooltip: its whole text, which a long endpoint pair can cut short, and why it applies.</summary>
-    public string Tip => $"{Chip}\n{Reason}";
+    };
 }
 
 /// <summary>Builds the ladder's presentation rows from a projection, using the projection's own values.</summary>
@@ -102,7 +110,13 @@ public static class LadderRowBuilder
         var crumbs = new List<CrumbRow>(ladder.Breadcrumb.Count);
         for (int depth = 0; depth < ladder.Breadcrumb.Count; depth++)
         {
-            crumbs.Add(new(depth, ladder.Breadcrumb[depth].Crumb, depth == ladder.Depth));
+            NavigationState rung = ladder.Breadcrumb[depth];
+            crumbs.Add(new(depth, rung.Crumb, depth == ladder.Depth)
+            {
+                Display = rung.Level == DetailLevel.Channel && rung.Focus is { } channel
+                    ? $"{NavigationState.Name(DetailLevel.Channel)}: {ChannelNames.Abbreviated(channel.Label)}"
+                    : rung.Crumb,
+            });
         }
 
         return crumbs;

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 174 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 175 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 175 — a long IPv6 endpoint keeps its port on screen, from a render of the channel rung:**
+  - **The lane:** a channel-end lane's endpoint line holds 24 characters and cut the end off, which a global IPv6
+    endpoint reaches and loses its port to, though the port is what tells a looped process's two ends apart. It now
+    drops the middle of the address: `[2001:db8…70:7348]:50000` (`EndpointText.Abbreviated`).
+  - **The chips:** the breadcrumb and the filter chip abbreviate a channel's two endpoints the same way
+    (`ChannelNames`), and their tooltips and accessible names keep the whole name.
+  - **A stray character:** the breadcrumb pins its current crumb to the right, and the crumb cut at its left edge
+    showed as a lone `0` or `)` beside the position, over IPv4 as over IPv6. A crumb the edge cuts is no longer drawn,
+    and keeps its place and accessible name.
 
 - **Revision 174 — IPv6 traffic is captured, measured on real ETW (ADR-029):**
   - **Admitted by measurement:** TCPv6 26-31 and UDPv6 58-59 under both keywords (0x30). FX-TCP-002 and FX-UDP-002
@@ -1478,6 +1488,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 175 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,199 tests: 1,196
+  passed, 3 skipped**, zero failures. The channel rung was checked in headless renders at 1080×700 over IPv4 and IPv6.
 - Revision 174 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,197 tests: 1,194
   passed, 3 skipped**, zero failures. FX-TCP-002 and FX-UDP-002 were measured on real ETW with adapter 0.7.0, twice each,
   and a focused TCP and a focused UDP recording over `::1` were checked end to end; the capture-impact harness ran

@@ -1277,7 +1277,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             DrawText(context, RowLabel(end, 0, viewModel, static (row, _, model) =>
                 Shortened(model.ChannelEndHolder((ChannelEndTimelineLane)row), 24)), new(9, row.Center.Y - 14));
             DrawText(context, RowLabel(end, 1, viewModel, static (row, _, _) =>
-                Shortened(((ChannelEndTimelineLane)row).Endpoint, 24)), new(9, row.Center.Y + 1));
+                EndpointText.Abbreviated(((ChannelEndTimelineLane)row).Endpoint, 24)), new(9, row.Center.Y + 1));
 
             // The bands keep clear of the coverage strip along the row's foot; the arrows name their sides in place.
             double bandTop = row.Top + 3;

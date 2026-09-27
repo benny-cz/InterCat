@@ -348,7 +348,7 @@ public static class SessionOverviewProjector
     internal static Channel ProjectChannel(TransportRelation relation) => new(
         relation.StableKey,
         EdgeKeyOf(relation),
-        $"{relation.FirstEndpoint} ↔ {relation.SecondEndpoint}",
+        ChannelNames.Of(relation.FirstEndpoint, relation.SecondEndpoint),
         Mechanism.Tcp,
         Direction.UnknownDirection,
         relation.Records,
