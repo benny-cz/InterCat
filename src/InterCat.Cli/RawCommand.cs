@@ -85,7 +85,15 @@ internal static class RawCommand
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Session ID", detail.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", detail.Generation.ToString(CultureInfo.InvariantCulture));
-        ConsoleUi.Field("Normalized fact", detail.ObservationId.ToString()!);
+        // The same locator an evidence page prints for the row, and the fact and normalizer derivation that name it.
+        RawRecordId raw = detail.ObservationId.RawRecordId;
+        ConsoleUi.Field("Normalized fact", string.Create(CultureInfo.InvariantCulture,
+            $"raw {raw.StreamId}/{raw.SourceEpoch}/{raw.RecordOrdinal} · fact {detail.ObservationId.FactKey} · "
+            + $"observation-v{detail.ObservationId.NormalizerContractVersion.Value}"));
+        if (raw.CaptureId.Value != detail.SessionId)
+        {
+            ConsoleUi.Field("Capture", raw.CaptureId.ToString());
+        }
         if (!detail.Available)
         {
             ConsoleUi.Warn(detail.UnavailableReason!);

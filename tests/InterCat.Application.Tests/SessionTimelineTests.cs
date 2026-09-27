@@ -340,6 +340,37 @@ public sealed class SessionTimelineTests
                 bounded.ProcessLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
     }
 
+    [Fact(DisplayName = "R21: a process lane's quiet interval is judged by what the capture collected, not left unknown")]
+    public void AQuietProcessLaneIsJudgedByTheCapture()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1)),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2)),
+            .. Enumerable.Range(0, 10).Select(index => Timed(Transfer(100 + (index * 10), ObservationKind.Send,
+                AccountingSide.SendSide, 8, 100, (ulong)(10 + index)).Between(ClientEnd, ServerEnd))),
+            .. Enumerable.Range(0, 10).Select(index => Timed(Transfer(9_000 + (index * 10), ObservationKind.Send,
+                AccountingSide.SendSide, 8, 200, (ulong)(30 + index)).Between(ServerEnd, ClientEnd))),
+        ], coverage: TwoEpochs());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessInstanceId first = overview.Nodes.Single(node => node.ProcessId == 100).Id;
+        ProcessInstanceId second = overview.Nodes.Single(node => node.ProcessId == 200).Id;
+        SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(
+            session.Store, new TimeRange(0, 12_000), 12, new TimelineFocus(null, [first, second]));
+        IReadOnlyList<TimelineBucket> quiet = timeline.ProcessLanes.Single(lane => lane.ProcessId == first).Buckets;
+
+        // The first process is quiet after its first second. That reads as observed-empty where the capture covered
+        // what it collects, as a gap where the capture lost records, and as unknown past the readings it delivered.
+        Assert.Equal((0, CoverageState.Covered), (quiet[3].ObservationCount, quiet[3].Coverage));
+        Assert.Equal((0, CoverageState.PartialGap), (quiet[6].ObservationCount, quiet[6].Coverage));
+        Assert.Equal((0, CoverageState.UnknownCoverage), (quiet[11].ObservationCount, quiet[11].Coverage));
+        Assert.Equal(CoverageState.Covered, quiet[0].Coverage);
+
+        // The whole timeline keeps its own rule: an interval with nothing observed has no mechanism to judge.
+        Assert.Equal((0, CoverageState.UnknownCoverage), (timeline.Whole.Buckets[3].ObservationCount, timeline.Whole.Buckets[3].Coverage));
+    }
+
     [Fact(DisplayName = "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed")]
     public void TheMinimapShowsTheCapturesOwnCoverage()
     {

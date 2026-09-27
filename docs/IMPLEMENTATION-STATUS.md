@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 164 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 165 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -66,6 +66,47 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 165 — fixes from a live test of the whole product:**
+  - **Tested live:** the CLI end to end on real ETW and real data:
+    - `record`, including evidence-only, and `follow`;
+    - `import` of a real ETL;
+    - `session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `channels` and `raw`;
+    - `export`, and both packages, redacted and original;
+    - `compact`, `rederive`, `checkpoint`, `recover` and `staging`;
+    - `measure tcp`, and the broker qualification suite
+      (`bench/results/broker-qualification-20260926T234418Z`, all five scenarios).
+
+    Then the real Desktop, driven through UI Automation:
+    - it opened a saved Explore session;
+    - searched, descended to a group, jumped to evidence and hovered the timeline;
+    - recorded a live Explore capture through the broker, stopped it and saved it, with its checkpoint and overview.
+
+    No ETW session, broker or window was left behind.
+  - **Fixed:**
+    - **CLI text on a console with a legacy code page.** The ellipsis, arrows, middle dots and group separators
+      printed as full stops, question marks or nothing, and piped output was in the console's code page. A console is
+      now written in UTF-16, changing no code page, and redirected output in UTF-8.
+    - **`icat raw`** printed its record's identity as a C# record dump. It now prints the locator an evidence page
+      shows.
+    - **Superseded manifests kept after a checkpoint.** Publishing a checkpoint held its evidence lease across its
+      commit, so the writer could not remove manifests no pointer names (store-v1 §9), and a finished session kept
+      them. The lease now ends before the commit.
+    - **Process lanes all marked as gaps.** L1's lanes judged an empty interval by the process's own records, so
+      every quiet interval of every process was coverage-unknown. The live test showed 82 `chrome.exe` lanes hatched
+      end to end. A lane is now judged by what the capture collected there, as a mechanism lane is: quiet where the
+      capture covered it, a gap where it lost records.
+    - **A live capture looked broken.** Until its coverage ledger arrives at the stop, the status read "64
+      coverage-unknown intervals" in the caution ink. It now says coverage is unknown until a ledger is published,
+      plainly, and a single limited interval is named as one.
+    - **Legend order.** The legend listed mechanisms in the order the first bucket showed them. It now follows the
+      lanes.
+  - **Found, next:**
+    - **Revision 166.** L0 and L1 rank groups and processes by paired-TCP records only. A real capture, whose traffic
+      mostly leaves the machine, ranks a table of zeros; search results say "0 records"; and L1's lanes run in PID order.
+    - **§6.6 violation.** Process lifecycle, a supported mechanism, is drawn in the unknown grey and keyed "Unknown",
+      which §6.6 forbids.
+  - **Tests:** +4, one each for the superseded manifests, a quiet process lane, the no-ledger summary and plural, and
+    the legend order. The superseded-manifest test fails without its fix.
 - **Revision 164 — checkpoints qualified on real ETW and in the window:**
   - **Changed:**
     - `first-feedback` report schema v5 records what the viewer publishes when the follow finishes: the checkpoint's and
@@ -1204,6 +1245,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Open work, dependency order
 
+0. Finish what revision 165's live test found:
+   - **Rank L0 and L1 by what each process was observed doing.** Today the rows count paired-TCP records only, so a
+     real capture ranks zeros. Per-instance record counts are to be derived with the relations, extended between live
+     generations and held in the checkpoint (S3: ranking from persisted summaries). L1's lanes and search results
+     should follow that ranking.
+   - **Give process and thread lifecycle a palette family of its own.** It is supported and must not wear the unknown
+     grey (§6.6). A contract test must hold every supported mechanism to a family other than unknown.
 1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
    - Revision 156 took the per-row relation lookups out of the overview.
    - Revision 157 extends each live generation's derivation from the previous one's.
@@ -1274,6 +1322,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 165 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,129 tests: 1,127
+  passed, 2 skipped**, zero failures, after the ledger gained its new names (the first pass caught them missing).
+  Every CLI command, the broker qualification suite and the Desktop were exercised live, on real ETW.
 - Revision 164 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,125 tests: 1,123
   passed, 2 skipped**, zero failures. The bounded 10-minute first-feedback passed on real ETW, and the opt-in latency
   benchmark ran in Release.
@@ -1354,8 +1405,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 - Two Claude sessions pushed to `main` in parallel on 2026-09-25/26. A Linux container session built a duplicate live
   edge while a Windows session shipped revisions 126–129. The duplicate was discarded, and only its additive parts
   became revision 130. Fetch `origin/main` before starting a slice and again before pushing.
-- Last executed clean baseline on Windows: revision 164, **1,123 passed, 2 skipped, in Debug and Release**. Before
-  it, revision 163: 1,123 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
+- Last executed clean baseline on Windows: revision 165, **1,127 passed, 2 skipped, in Debug and Release**. Before
+  it, revision 164: 1,123 passed, 2 skipped; revision 129: 959 passed, 2 skipped. Revision 129 adds two store, two
   Desktop and two broker tests (+6). Its real-ETW measurements are
   `bench/results/first-feedback-20260925T215018Z-10min-bounded` and
   `bench/results/broker-qualification-20260925T214822Z`.

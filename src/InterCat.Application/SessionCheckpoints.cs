@@ -100,6 +100,11 @@ public static class SessionCheckpoints
             bytes += SessionOverviewIndex.Write(
                 overview.Content, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest), counts);
             _ = overview.Complete();
+
+            // Everything read is written, so the lease goes before the commit: a writer removes superseded manifests
+            // only while no lease anywhere holds the session (store-v1 §9), and this one would keep them. The commit
+            // re-measures every dependency and refuses a generation that is no longer current, so nothing relies on it.
+            lease.Dispose();
             StoreCommitResult result = store.CommitIndex([checkpoint, overview], manifest.Generation, committedUtc, next, cancellationToken);
             return new(CheckpointOutcome.Published, manifest.Generation, result.Manifest.Generation, bytes,
                 Stopwatch.GetElapsedTime(started), null);

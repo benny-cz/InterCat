@@ -2143,9 +2143,11 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>
     /// Whether any interval's coverage is limited. The summary then reads in the caution ink; complete coverage, or none
-    /// to report, is a plain statement and must not look like a warning (§6.6).
+    /// to report, is a plain statement and must not look like a warning (§6.6). A generation that publishes no coverage
+    /// ledger, as a capture's do until it stops, has judged nothing yet: that is said plainly, not counted as limits.
     /// </summary>
-    public bool CoverageLimited => Snapshot.Timeline.Any(bucket => bucket.Coverage != CoverageState.Covered);
+    public bool CoverageLimited => Snapshot.CoverageLedgerPublished
+        && Snapshot.Timeline.Any(bucket => bucket.Coverage != CoverageState.Covered);
 
     /// <summary>Coverage is derived from the snapshot's intervals, never from a prototype constant.</summary>
     public string CoverageSummary
@@ -2157,34 +2159,42 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
                 return "Coverage not quantified";
             }
 
+            if (!Snapshot.CoverageLedgerPublished)
+            {
+                return "Coverage unknown until a coverage ledger is published";
+            }
+
             var limitations = new List<string>();
             int gaps = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.PartialGap);
             if (gaps > 0)
             {
-                limitations.Add($"{gaps:N0} partial-gap intervals");
+                limitations.Add(Intervals(gaps, "partial-gap"));
             }
 
             int unknown = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.UnknownCoverage);
             if (unknown > 0)
             {
-                limitations.Add($"{unknown:N0} coverage-unknown intervals");
+                limitations.Add(Intervals(unknown, "coverage-unknown"));
             }
 
             int omitted = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.NotCollected);
             if (omitted > 0)
             {
-                limitations.Add($"{omitted:N0} not-collected intervals");
+                limitations.Add(Intervals(omitted, "not-collected"));
             }
 
             int reduced = Snapshot.Timeline.Count(bucket => bucket.Coverage == CoverageState.ReducedFidelity);
             if (reduced > 0)
             {
-                limitations.Add($"{reduced:N0} reduced-fidelity intervals");
+                limitations.Add(Intervals(reduced, "reduced-fidelity"));
             }
 
             return limitations.Count == 0
-                ? $"Coverage reported for {Snapshot.Timeline.Count:N0} intervals"
+                ? $"Coverage reported for {Intervals(Snapshot.Timeline.Count, null)}"
                 : string.Join(" · ", limitations) + " · not extrapolated";
+
+            static string Intervals(int count, string? kind) => string.Create(CultureInfo.CurrentCulture,
+                $"{count:N0} {(kind is null ? string.Empty : kind + " ")}{(count == 1 ? "interval" : "intervals")}");
         }
     }
 

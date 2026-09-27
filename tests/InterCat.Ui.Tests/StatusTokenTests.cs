@@ -24,6 +24,30 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class StatusTokenTests
 {
+    [AvaloniaFact(DisplayName = "R21: a generation with no coverage ledger yet says so plainly, and one limited interval is named as one")]
+    public void CoverageWithoutALedgerIsStatedPlainly()
+    {
+        WorkspaceSnapshot source = SyntheticWorkspace.Create();
+
+        // A capture that records publishes its ledger when it stops. Until then every interval is unknown, and the
+        // status says why in plain ink rather than counting all of them as limits in the caution ink.
+        using var recording = new WorkspaceViewModel(source with
+        {
+            Timeline = [.. source.Timeline.Select(bucket => bucket with { Coverage = CoverageState.UnknownCoverage })],
+            CoverageLedgerPublished = false,
+        }, "generation-1");
+        Assert.False(recording.CoverageLimited);
+        Assert.Equal("Coverage unknown until a coverage ledger is published", recording.CoverageSummary);
+
+        using var one = new WorkspaceViewModel(source with
+        {
+            Timeline = [.. source.Timeline.Select((bucket, index) =>
+                bucket with { Coverage = index == 0 ? CoverageState.UnknownCoverage : CoverageState.Covered })],
+        }, "generation-2");
+        Assert.True(one.CoverageLimited);
+        Assert.Equal("1 coverage-unknown interval · not extrapolated", one.CoverageSummary);
+    }
+
     [AvaloniaFact(DisplayName = "P24: the coverage hatch and a warning's words draw in the caution ink, which no mechanism uses, in every mode")]
     public async Task TheHatchAndWarningsTakeTheCautionInk()
     {

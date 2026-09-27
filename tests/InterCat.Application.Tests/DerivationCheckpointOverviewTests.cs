@@ -177,6 +177,27 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.NotNull(SessionOverviewIndex.NamedBy(session.Store.Current!));
     }
 
+    [Fact(DisplayName = "I15: publishing a checkpoint removes the manifests no pointer names, as every publication does")]
+    public void PublishingACheckpointRemovesSupersededManifests()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        ObservationRowV1[][] chunks = IncrementalOverviewTests.LiveChunks();
+        for (int index = 0; index < 3; index++)
+        {
+            Publish(session.Store, chunks[index]);
+        }
+
+        Assert.Equal(["manifest-0000000002.json", "manifest-0000000003.json"], Manifests(session.Path));
+
+        // Its lease ends before its commit, so the writer can remove what the new pointers no longer name (store-v1 §9).
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal(["manifest-0000000003.json", "manifest-0000000004.json"], Manifests(session.Path));
+
+        static string[] Manifests(string directory) =>
+            [.. Directory.EnumerateFiles(directory, "manifest-*.json").Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
+    }
+
     [Fact(DisplayName = "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged")]
     public void APersistedOverviewReadsBackOrIsRefused()
     {

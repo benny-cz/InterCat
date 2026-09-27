@@ -37,6 +37,7 @@ public static class OverviewWorkspace
         {
             MechanismLanes = overview.MechanismLanes,
             Clock = overview.Clock,
+            CoverageLedgerPublished = overview.CoverageLedgerPublished,
         };
     }
 

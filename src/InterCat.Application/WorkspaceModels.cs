@@ -191,4 +191,10 @@ public sealed record WorkspaceSnapshot(
 
     /// <summary>The clock the snapshot's readings are on; null for a snapshot that was not projected from a session.</summary>
     public SourceClockDescriptor? Clock { get; init; }
+
+    /// <summary>
+    /// Whether the generation publishes a coverage ledger. Without one, as while a capture records, every interval's
+    /// coverage is unknown because nothing has judged it yet, which is a different statement from a gap.
+    /// </summary>
+    public bool CoverageLedgerPublished { get; init; } = true;
 }

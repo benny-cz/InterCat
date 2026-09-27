@@ -1,6 +1,7 @@
 using InterCat.Cli;
 using InterCat.Domain;
 
+ConsoleOutput.Install();
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
 {

@@ -330,11 +330,14 @@ public static class SessionTimelineQuery
         {
             MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
         };
+
+        // Every process lane shares the columns, and so the capture's coverage over each: it is judged once.
+        CoverageState[]? capture = processColumns is null ? null : counted.CaptureCoverage(coverage, clock);
         return new(whole, focused is null ? [] : Array.AsReadOnly(focused.Buckets(coverage, clock)))
         {
             FocusLanes = focused is null ? [] : Array.AsReadOnly(focused.MechanismLanes(coverage, clock)),
             ProcessLanes = processColumns is null ? [] : Array.AsReadOnly([.. focus!.OwnerProcesses.Select(owner =>
-                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(coverage, clock))))]),
+                new ProcessTimelineLane(owner, Array.AsReadOnly(processColumns[owner].Buckets(capture!))))]),
             DirectionLanes = directionColumns is null ? [] : Array.AsReadOnly([.. LaneDirections.Select(direction =>
                 new DirectionTimelineLane(direction, Array.AsReadOnly(directionColumns[direction].Buckets(coverage, clock))))]),
             ChannelEndLanes = endColumns is null ? []
@@ -736,6 +739,32 @@ internal sealed class TimelineColumns
             buckets[index] = new TimelineBucket(range, counts[index], null, Dominant(tallies, index, mechanism),
                 coverage is null ? CoverageState.UnknownCoverage
                     : BucketCoverage(coverage, clock, range, Observed(tallies, index, mechanism)));
+        }
+
+        return buckets;
+    }
+
+    /// <summary>
+    /// The buckets of one process's lane, each judged by what the capture collected over its interval
+    /// (<paramref name="capture"/>, from <see cref="CaptureCoverage"/> over the same columns) rather than by what the
+    /// process did in it. A process can produce any mechanism the capture collects, so a quiet interval the capture
+    /// covered reads as observed-empty, as a mechanism lane's does, and a gap in any collected mechanism is still a gap.
+    /// Judged only by its own records, every quiet interval of every process was unknown (revision 165).
+    /// </summary>
+    public TimelineBucket[] Buckets(IReadOnlyList<CoverageState> capture)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        if (capture.Count != counts.Length)
+        {
+            throw new ArgumentException("The capture's coverage was judged over other columns.", nameof(capture));
+        }
+
+        int[] tallies = mechanisms ?? throw new InvalidOperationException("These columns were counted without their mechanisms.");
+        var buckets = new TimelineBucket[counts.Length];
+        for (int index = 0; index < counts.Length; index++)
+        {
+            buckets[index] = new TimelineBucket(IntervalOf(interval, counts.Length, index), counts[index], null,
+                Dominant(tallies, index, Mechanism.UnknownMechanism), capture[index]);
         }
 
         return buckets;

@@ -95,8 +95,10 @@ public static class WorkspaceRowBuilder
             }
         }
 
+        // In the lanes' order, by mechanism code, so the key reads in the order the timeline draws the lanes rather than
+        // in whichever order the first edge and the first bucket happened to show them.
         var entries = new List<LegendEntry>(seen.Count);
-        foreach (Mechanism mechanism in seen)
+        foreach (Mechanism mechanism in seen.Order())
         {
             LegendEntry entry = LegendEntry.For(mechanism, mode);
             if (!entries.Contains(entry))
