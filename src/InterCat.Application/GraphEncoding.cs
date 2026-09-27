@@ -22,9 +22,9 @@ public static class GraphEncoding
         for (int index = 0; index < display.Nodes.Count; index++)
         {
             GraphDisplayNode node = display.Nodes[index];
-            if (node.Kind != GraphNodeKind.Context && node.Observations > scale)
+            if (node.Kind != GraphNodeKind.Context && node.Weight > scale)
             {
-                scale = node.Observations;
+                scale = node.Weight;
             }
         }
 
@@ -41,16 +41,31 @@ public static class GraphEncoding
         ArgumentNullException.ThrowIfNull(node);
         return node.Kind switch
         {
-            GraphNodeKind.Process => 6 + (10 * Intensity(node.Observations, scale)),
+            GraphNodeKind.Process => 6 + (10 * Intensity(node.Weight, scale)),
             GraphNodeKind.Context => 9,
-            _ => 9 + (10 * Intensity(node.Observations, scale)),
+            _ => 9 + (10 * Intensity(node.Weight, scale)),
         };
+    }
+
+    /// <summary>
+    /// The scale an edge's thickness is read against: the heaviest edge drawn, by the metric its thickness reads.
+    /// </summary>
+    public static long EdgeScale(GraphDisplay display)
+    {
+        ArgumentNullException.ThrowIfNull(display);
+        long scale = 0;
+        for (int index = 0; index < display.Edges.Count; index++)
+        {
+            scale = Math.Max(scale, display.Edges[index].Weight);
+        }
+
+        return scale;
     }
 
     /// <summary>An edge's thickness in logical pixels: 1.25 + 4.75 × intensity of its metric.</summary>
     public static double EdgeThickness(GraphDisplayEdge edge, long scale)
     {
         ArgumentNullException.ThrowIfNull(edge);
-        return 1.25 + (4.75 * Intensity(edge.ObservationCount, scale));
+        return 1.25 + (4.75 * Intensity(edge.Weight, scale));
     }
 }

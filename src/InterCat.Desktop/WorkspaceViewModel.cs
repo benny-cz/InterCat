@@ -1523,7 +1523,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public IReadOnlyDictionary<ProcessInstanceId, GraphPoint> GraphPositions { get; private set; }
 
     /// <summary>The graph as drawn (§6.3): every process is represented by exactly one node, within the display budget.</summary>
-    public GraphDisplay GraphDisplay => graphDisplay;
+    /// <summary>
+    /// The drawn graph, sized by the ranking's metric: under a byte ranking whose bytes are shown, each edge's thickness
+    /// reads the bytes sent across it and each node's size the bytes its relationships carry, so the ranked table and the
+    /// graph never disagree about magnitude (§6.3); otherwise by records.
+    /// </summary>
+    public GraphDisplay GraphDisplay => Weighted(graphDisplay);
 
     /// <summary>
     /// The graph's scope in one short line for the pane header: how many processes, how many relationships and among how
@@ -2818,9 +2823,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string scope = appliedInterval is { } interval
             ? "Scope: " + WorkspaceTime.FormatHalfOpenRange(interval, CultureInfo.CurrentCulture) + " · brushed interval"
             : "Scope: " + WorkspaceTime.FormatHalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
-        if (graphDisplay.Node(key) is { } node)
+        GraphDisplay drawnDisplay = GraphDisplay;
+        string magnitude = drawnDisplay.Edges.Any(edge => edge.Magnitude is not null) ? "bytes sent across its relationships" : "records";
+        if (drawnDisplay.Node(key) is { } node)
         {
-            long scale = GraphEncoding.NodeScale(graphDisplay);
+            long scale = GraphEncoding.NodeScale(drawnDisplay);
             string title = node.ProcessId is { } pid && node.Label != ProcessNode.PidName(pid)
                 ? string.Create(CultureInfo.CurrentCulture, $"{node.Label} · PID {pid}")
                 : node.Label;
@@ -2848,7 +2855,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 "Coverage: " + DescribeCoverage(coverage),
                 node.Kind == GraphNodeKind.Context
                     ? "Size: fixed; the rest of the machine is not read on this focus's scale"
-                    : string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}"),
+                    : magnitude == "records"
+                        ? string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}")
+                        : $"Size: {magnitude}, log scale against the busiest drawn node, {WorkspaceRowBuilder.DescribeSize(scale)}",
             };
             if (graphPins.ContainsKey(node.Key))
             {
@@ -2863,7 +2872,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return null;
         }
 
-        long edgeScale = graphDisplay.Edges.Max(edge => edge.ObservationCount);
+        long edgeScale = GraphEncoding.EdgeScale(drawnDisplay);
         HashSet<string> relationships = [.. drawn.Relationships];
         Channel[] channels = [.. Snapshot.Channels.Where(channel => relationships.Contains(channel.EdgeKey))];
         var lines = new List<string>
@@ -2886,7 +2895,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         lines.Add("Coverage: " + DescribeCoverage(channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
-        lines.Add(string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}"));
+        lines.Add(magnitude == "records"
+            ? string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}")
+            : $"Thickness: bytes sent across, log scale against the busiest drawn edge, {WorkspaceRowBuilder.DescribeSize(edgeScale)}");
         if (drawn.Relationships.Count == 1)
         {
             // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read.

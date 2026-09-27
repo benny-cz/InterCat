@@ -19,6 +19,9 @@ public sealed partial class WorkspaceViewModel
     private readonly RankingReads<SessionByteMeasures> selectionBytes = new((source, scope, cancellation) =>
         source.ByteMeasuresAsync(scope, cancellation));
 
+    // The drawn graph sized by bytes, for the display and the bytes it was sized from, so a repaint never re-sums it.
+    private (GraphDisplay Source, SessionByteMeasures Bytes, GraphDisplay Drawn)? weightedGraph;
+
     /// <summary>Completes when the most recent read of the bytes a description needs has applied, been superseded or failed.</summary>
     public Task SelectionBytesReady { get; private set; } = Task.CompletedTask;
 
@@ -73,8 +76,18 @@ public sealed partial class WorkspaceViewModel
             return [.. edges];
         }
 
+        Dictionary<string, long?> sent = SentAcrossEdges(bytes);
+        return [.. edges.Select(edge => edge with { KnownBytes = sent.GetValueOrDefault(edge.Key) })];
+    }
+
+    /// <summary>
+    /// The bytes sent across each relationship's channels by either end, each transfer counted once at its sender; null for
+    /// a relationship none of whose sends measured a size.
+    /// </summary>
+    private Dictionary<string, long?> SentAcrossEdges(SessionByteMeasures bytes)
+    {
         ILookup<string, Channel> channels = Snapshot.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
-        return [.. edges.Select(edge => edge with { KnownBytes = SentAcross(edge, channels[edge.Key], bytes) })];
+        return Snapshot.Edges.ToDictionary(edge => edge.Key, edge => SentAcross(edge, channels[edge.Key], bytes), StringComparer.Ordinal);
     }
 
     private static long? SentAcross(CommunicationEdge edge, IEnumerable<Channel> channels, SessionByteMeasures bytes)
@@ -110,6 +123,38 @@ public sealed partial class WorkspaceViewModel
             (total, member) => total.Plus(bytes.ByProcess.GetValueOrDefault(member.Id) ?? ProcessBytes.None));
         return Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "sends") + " · "
             + Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receives");
+    }
+
+    /// <summary>
+    /// The graph sized by the ranking's metric (§6.3): under a byte ranking whose bytes are shown, an edge carries the bytes
+    /// sent across the relationships it draws, and a node the bytes its members' relationships carry, each relationship
+    /// once; otherwise the graph as projected, sized by records.
+    /// </summary>
+    private GraphDisplay Weighted(GraphDisplay display)
+    {
+        if (!ReadsBytes || ShownMeasures is not SessionByteMeasures bytes || !RanksThisRung)
+        {
+            return display;
+        }
+
+        if (weightedGraph is { } cached && ReferenceEquals(cached.Source, display) && ReferenceEquals(cached.Bytes, bytes))
+        {
+            return cached.Drawn;
+        }
+
+        // The bytes shown size the graph, an earlier publication's standing in included, as they rank the rows.
+        Dictionary<string, long?> sent = SentAcrossEdges(bytes);
+        GraphDisplay drawn = display.WithMagnitudes(
+            edge => edge.Relationships.Sum(key => sent.GetValueOrDefault(key) ?? 0),
+            node =>
+            {
+                HashSet<ProcessInstanceId> members = [.. node.Members];
+                return Snapshot.Edges
+                    .Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId))
+                    .Sum(edge => sent.GetValueOrDefault(edge.Key) ?? 0);
+            });
+        weightedGraph = (display, bytes, drawn);
+        return drawn;
     }
 
     /// <summary>One direction's bytes in words: a measured sum, sizes not recorded, or nothing in that direction (R21).</summary>

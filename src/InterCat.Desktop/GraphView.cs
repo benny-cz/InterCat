@@ -374,11 +374,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         // Everything a repaint gathers lives in maps and buffers this view keeps, so a frame allocates nothing (R11).
         GraphDisplay display = viewModel.GraphDisplay;
         long nodeScale = GraphEncoding.NodeScale(display);
-        long edgeScale = 0;
-        for (int index = 0; index < display.Edges.Count; index++)
-        {
-            edgeScale = Math.Max(edgeScale, display.Edges[index].ObservationCount);
-        }
+        long edgeScale = GraphEncoding.EdgeScale(display);
 
         Dictionary<string, Point> points = drawnPoints;
         points.Clear();
@@ -681,11 +677,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         // Run on every pointer move, so it scans by index and allocates nothing (R11).
         GraphDisplay display = viewModel.GraphDisplay;
-        long scale = 0;
-        for (int index = 0; index < display.Edges.Count; index++)
-        {
-            scale = Math.Max(scale, display.Edges[index].ObservationCount);
-        }
+        long scale = GraphEncoding.EdgeScale(display);
 
         string? best = null;
         double bestDistance = double.MaxValue;

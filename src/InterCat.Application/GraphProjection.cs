@@ -70,7 +70,17 @@ public sealed record GraphDisplayNode(
     IReadOnlyList<ProcessInstanceId> Members,
     long Observations,
     int Relationships,
-    int InternalRelationships);
+    int InternalRelationships)
+{
+    /// <summary>
+    /// What the node's size reads in place of its relationships' records when the ranking's metric is another (§6.3): the
+    /// bytes its relationships carry under a byte ranking. Null when the records are the metric.
+    /// </summary>
+    public long? Magnitude { get; init; }
+
+    /// <summary>The value the node's size is read from: its magnitude when it has one, else its relationships' records.</summary>
+    public long Weight => Magnitude ?? Observations;
+}
 
 /// <summary>
 /// One drawn edge. Several source relationships may collapse into it; <see cref="Relationships"/> preserves the exact
@@ -83,7 +93,17 @@ public sealed record GraphDisplayEdge(
     Mechanism Mechanism,
     long ObservationCount,
     RelationStrength Strength,
-    IReadOnlyList<string> Relationships);
+    IReadOnlyList<string> Relationships)
+{
+    /// <summary>
+    /// What the edge's thickness reads in place of its records when the ranking's metric is another (§6.3): the bytes sent
+    /// across it under a byte ranking. Null when the records are the metric.
+    /// </summary>
+    public long? Magnitude { get; init; }
+
+    /// <summary>The value the edge's thickness is read from: its magnitude when it has one, else its records.</summary>
+    public long Weight => Magnitude ?? ObservationCount;
+}
 
 /// <summary>
 /// The complete process membership of a bounded communication graph. Processes may share a drawn node, but none are
@@ -230,6 +250,21 @@ public sealed class GraphDisplay
     public ProcessInstanceId? Kept { get; }
     public IReadOnlyList<string> RelationshipKeys { get; }
     public bool IsClustered => Nodes.Any(node => node.Kind != GraphNodeKind.Process);
+
+    /// <summary>
+    /// The same graph with each drawn edge and node carrying the magnitude its drawing reads in place of its records - the
+    /// ranking's metric, so the ranked table and the graph never disagree about magnitude (§6.3). Structure, membership
+    /// and every count stay as they are.
+    /// </summary>
+    public GraphDisplay WithMagnitudes(Func<GraphDisplayEdge, long?> edge, Func<GraphDisplayNode, long?> node)
+    {
+        ArgumentNullException.ThrowIfNull(edge);
+        ArgumentNullException.ThrowIfNull(node);
+        GraphDisplayNode[] nodes = [.. Nodes.Select(drawn => drawn with { Magnitude = node(drawn) })];
+        GraphDisplayEdge[] edges = [.. Edges.Select(drawn => drawn with { Magnitude = edge(drawn) })];
+        return new GraphDisplay(nodes, edges, TotalProcesses, ExpandedGroup, Kept, TotalRelationships, RelationshipKeys,
+            nodesByRelationship.ToDictionary(pair => pair.Key, pair => pair.Value.Key, StringComparer.Ordinal));
+    }
 
     public GraphDisplayNode? Node(string key) => nodesByKey.GetValueOrDefault(key);
     public GraphDisplayNode? NodeOf(ProcessInstanceId process) => nodesByProcess.GetValueOrDefault(process);

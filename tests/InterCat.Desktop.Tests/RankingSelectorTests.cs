@@ -333,6 +333,37 @@ public sealed class RankingSelectorTests
         Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.3: under a byte ranking the graph's edges and nodes are sized by bytes, so the panes agree on magnitude")]
+    public void TheGraphIsSizedByTheRankingsMetric() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayEdge byRecords = Assert.Single(workspace.GraphDisplay.Edges);
+        Assert.Null(byRecords.Magnitude);
+        Assert.Equal(byRecords.ObservationCount, byRecords.Weight);
+        Assert.Contains(workspace.DescribeGraphHover(byRecords.Key)!.Lines,
+            line => line.StartsWith("Thickness: log scale against the busiest drawn edge", StringComparison.Ordinal));
+
+        // Ranked by bytes sent, the relationship is as thick as the 5,300 bytes sent across it, and each end as large.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        GraphDisplayEdge byBytes = Assert.Single(workspace.GraphDisplay.Edges);
+        Assert.Equal(5_300, byBytes.Weight);
+        Assert.Equal(byRecords.ObservationCount, byBytes.ObservationCount);
+        Assert.All(workspace.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Process && node.Relationships > 0),
+            node => Assert.Equal(5_300, node.Weight));
+        Assert.Contains($"Thickness: bytes sent across, log scale against the busiest drawn edge, {WorkspaceRowBuilder.DescribeSize(5_300)}",
+            workspace.DescribeGraphHover(byBytes.Key)!.Lines);
+        Assert.Same(workspace.GraphDisplay, workspace.GraphDisplay);
+
+        // A call ranking does not size a graph of TCP relationships: back to records.
+        workspace.RankBy = RankingMetric.RpcCallsMade;
+        await workspace.RankingReady;
+        Assert.Null(Assert.Single(workspace.GraphDisplay.Edges).Magnitude);
+    });
+
     /// <summary>
     /// A client, PID 100, and a server, PID 200, on two connections - three 100-byte messages on the first, one of 5,000
     /// bytes on the second - and two RPC calls the client makes to the service control manager.

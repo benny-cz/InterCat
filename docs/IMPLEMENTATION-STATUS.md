@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 194 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 195 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 195 — the graph is sized by the ranking's metric (§6.3):**
+  - **Why:** §6.3 fixes edge thickness and node size to the selected metric so the panes cannot disagree about magnitude;
+    since revision 189 the table could rank by bytes while the graph drew records.
+  - **Now:** under a shown byte ranking, an edge's thickness reads the bytes sent across the relationships it draws
+    (each transfer once at its sender) and a node's size the bytes its members' relationships carry, on the same log
+    scale (`GraphDisplayEdge.Weight`, `GraphDisplayNode.Weight`, `GraphDisplay.WithMagnitudes`). Hovers name the scale in
+    bytes; records stay what texts and in-brush dimming read; a call ranking keeps the TCP graph by records.
+  - **Live run:** a 20-second dense capture drew by bytes sent without disturbing its layout.
 
 - **Revision 194 — a real session's bytes are read and stated, not called unknown:**
   - **Why:** the overview sums no bytes, so "bytes unknown" in a real session's totals, rows, inspector, hovers and
@@ -1807,6 +1816,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 195 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,270 tests: 1,266
+  passed, 4 skipped**, zero failures. The 20-second dense capture was recorded with `icat record` from the elevated
+  shell into scratch and deleted afterwards.
 - Revision 194 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,269 tests: 1,265
   passed, 4 skipped**, zero failures. The 12-second TCP recording was made with `icat record` from the elevated shell
   into scratch and deleted afterwards; the Release app received UI Automation selections only.

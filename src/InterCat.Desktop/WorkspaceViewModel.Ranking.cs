@@ -339,6 +339,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
+        OnPropertyChanged(nameof(GraphDisplay));
     }
 
     private void RaiseRankingChanged()
