@@ -121,7 +121,12 @@ public static class WorkspaceRowBuilder
         return entries;
     }
 
-    public static IReadOnlyList<RelationshipRow> Relationships(WorkspaceSnapshot snapshot, ThemeMode mode)
+    /// <summary>
+    /// The relationship table's rows. Where <paramref name="readsBytes"/>, as for a real session, whose overview sums no
+    /// bytes, a relationship states the bytes read as sent across it, or that they have not been read, rather than calling
+    /// them unknown.
+    /// </summary>
+    public static IReadOnlyList<RelationshipRow> Relationships(WorkspaceSnapshot snapshot, ThemeMode mode, bool readsBytes = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -136,7 +141,9 @@ public static class WorkspaceRowBuilder
                 tokens.Label,
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
-                DescribeBytes(edge.KnownBytes),
+                !readsBytes ? DescribeBytes(edge.KnownBytes)
+                    : edge.KnownBytes is { } sent ? DescribeSize(sent) + " sent across"
+                    : "bytes not read",
                 DescribeStrength(edge.Strength))
             {
                 ObservationCount = edge.ObservationCount,

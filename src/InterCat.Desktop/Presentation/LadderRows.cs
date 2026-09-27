@@ -63,7 +63,7 @@ public sealed record RungRow(
     /// </summary>
     public string AccessibleName => SpokenName
         ?? $"{Label}, {Detail}, {(RankedSpoken is { } ranked ? ranked + ", " : string.Empty)}"
-            + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RanksByBytes ? string.Empty : KnownBytes + ", ")}"
+            + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RanksByBytes || KnownBytes.Length == 0 ? string.Empty : KnownBytes + ", ")}"
             + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";
 }
 
@@ -109,7 +109,11 @@ public sealed record FilterRow(string Field, string Label, string Reason) : IAcc
 /// <summary>Builds the ladder's presentation rows from a projection, using the projection's own values.</summary>
 public static class LadderRowBuilder
 {
-    public static IReadOnlyList<RungRow> Rows(LadderView view, ThemeMode mode)
+    /// <summary>
+    /// The rung's presentation rows. Where <paramref name="bytesSummed"/> is false, as for a real session whose overview
+    /// sums no bytes, a row with no byte total states none rather than calling its bytes unknown.
+    /// </summary>
+    public static IReadOnlyList<RungRow> Rows(LadderView view, ThemeMode mode, bool bytesSummed = true)
     {
         ArgumentNullException.ThrowIfNull(view);
 
@@ -122,7 +126,7 @@ public static class LadderRowBuilder
                 row.Label,
                 row.Detail,
                 row.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
-                WorkspaceRowBuilder.DescribeBytes(row.KnownBytes),
+                row.KnownBytes is null && !bytesSummed ? string.Empty : WorkspaceRowBuilder.DescribeBytes(row.KnownBytes),
                 tokens.Label,
                 tokens.Glyph,
                 DescribeCoverage(row.Coverage),

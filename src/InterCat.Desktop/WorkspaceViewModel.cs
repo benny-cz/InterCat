@@ -309,7 +309,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ladder = new(SyntheticWorkspace.Root(Snapshot));
         view = ProjectLadder();
         Legend = WorkspaceRowBuilder.Legend(Snapshot, ThemeResources.CurrentMode);
-        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
+        relationships = RelationshipRows();
         timelineLaneOptions = Array.AsReadOnly([new TimelineLaneOption(null, "All mechanisms"),
             .. wholeSnapshot.MechanismLanes.Select(lane =>
                 new TimelineLaneOption(lane.Mechanism, EvidenceRowText.MechanismName(lane.Mechanism)))]);
@@ -1918,6 +1918,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(PinActionLabel));
         OnPropertyChanged(nameof(CanTogglePin));
         UpdateHighlight();
+        FollowDescribedBytes();
     }
 
     private ReadOnlyDictionary<ProcessInstanceId, GraphPoint> ProcessPositions() =>
@@ -2319,6 +2320,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         intervalQuery = null;
         byteReads.Cancel();
         callReads.Cancel();
+        selectionBytes.Cancel();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -2385,8 +2387,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
         : IsRpcChannelRung ? rpcCallRows
-        : rpcChannelRows.Count == 0 ? LadderRowBuilder.Rows(view, ThemeResources.CurrentMode)
-        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode), .. rpcChannelRows.Select(RankedRpcChannel)]);
+        : rpcChannelRows.Count == 0 ? LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes)
+        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes), .. rpcChannelRows.Select(RankedRpcChannel)]);
 
     /// <summary>
     /// A process's TCP and RPC channels ranked together as the ladder ranks rows: by value when a byte ranking gave every
@@ -2445,7 +2447,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
             // paired channels' known bytes, which would read as a second, contradicting byte figure.
-            if (view.Rows.Count > 0 && view.Rows[0].Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived }
+            // A real session's overview sums no bytes, so its total never states "bytes unknown" for them.
+            if (((view.Rows.Count > 0 && view.Rows[0].Ranked is { Metric: RankingMetric.BytesSent or RankingMetric.BytesReceived })
+                    || (ReadsBytes && view.KnownBytes is null))
                 && view.ObservationCount is { } total)
             {
                 return string.Create(CultureInfo.CurrentCulture, $"{total:N0} observations");
@@ -2606,6 +2610,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             showTables = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(TableToggleLabel));
+            FollowDescribedBytes();
         }
     }
 
@@ -2838,7 +2843,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 scope,
                 semantics,
                 string.Create(CultureInfo.CurrentCulture, $"{metric} on its relationships: {node.Observations:N0}"),
-                HoverBytes(Snapshot.Edges.Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId)),
+                HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId))),
                     node.Observations),
                 "Coverage: " + DescribeCoverage(coverage),
                 node.Kind == GraphNodeKind.Context
@@ -2873,7 +2878,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + (drawn.ObservationCount == 0 && appliedInterval is not null
                     ? " · none in this interval; the relationship exists in the session"
                     : string.Empty),
-            HoverBytes(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key)), drawn.ObservationCount),
+            HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))), drawn.ObservationCount),
         };
         if (realOverview)
         {
@@ -2904,11 +2909,25 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// unknown. The model has relationship-level byte availability, not a per-observation byte-known bit, so the card
     /// states that granularity rather than fabricating a more precise denominator (R21).
     /// </summary>
-    private static string HoverBytes(IEnumerable<CommunicationEdge> edges, long observations)
+    private string HoverBytes(IEnumerable<CommunicationEdge> edges, long observations)
     {
         CommunicationEdge[] all = [.. edges];
         CommunicationEdge[] known = [.. all.Where(edge => edge.KnownBytes.HasValue)];
         long unknownObservations = all.Where(edge => !edge.KnownBytes.HasValue).Sum(edge => edge.ObservationCount);
+
+        // A real session's overview sums no bytes: they are read once something is selected, and then each relationship
+        // carries what was sent across it, each transfer counted once at its sender.
+        if (ReadsBytes && DescribedBytes is null)
+        {
+            return "Bytes: not read yet · selecting reads them for this scope";
+        }
+
+        if (ReadsBytes && known.Length > 0)
+        {
+            return "Bytes: " + WorkspaceRowBuilder.DescribeSize(known.Sum(edge => edge.KnownBytes!.Value))
+                + " sent across, each transfer counted once at its sender";
+        }
+
         if (known.Length == 0)
         {
             return observations == 0
@@ -3252,7 +3271,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind} on ")
                         + Counted(edges.Length, "relationship", "relationships");
 
-            // Bytes nothing measured are unknown, never zero (R3): a sum over no known value is no sum at all.
+            // A real session's bytes are the selection's own, read for the scope; the tour's are its relationships' known
+            // totals. Bytes nothing measured are unknown, never zero (R3): a sum over no known value is no sum at all.
+            if (ReadsBytes)
+            {
+                return OwnRecords(members) + " · " + relationships + " · " + SelectionBytes(members);
+            }
+
             long? knownBytes = edges.Any(edge => edge.KnownBytes.HasValue)
                 ? edges.Where(edge => edge.KnownBytes.HasValue).Sum(edge => edge.KnownBytes!.Value)
                 : null;
@@ -4676,7 +4701,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             graphDisplay = ScopeGraph(wholeDisplay, scoped);
         }
         view = ProjectLadder();
-        relationships = WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
+        relationships = RelationshipRows();
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(GraphSummary));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
@@ -4699,6 +4724,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRankingChanged();
         RankingReady = FollowRankedMeasuresAsync();
         SyncRpcScope();
+        FollowDescribedBytes();
     }
 
     /// <summary>

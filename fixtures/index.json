@@ -1173,6 +1173,7 @@
         "R21: a recording whose loss counters could not be read publishes its records and no coverage claim",
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",
+        "R21: a selection's bytes are read and stated for its scope, and a relationship's are what was sent across it",
         "R21: a variant with no queue reports no utilization rather than zero",
         "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview",
         "R21: an absent source-loss counter is never interpreted as a reported zero",

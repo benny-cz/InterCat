@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 193 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 194 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 194 — a real session's bytes are read and stated, not called unknown:**
+  - **Why:** the overview sums no bytes, so "bytes unknown" in a real session's totals, rows, inspector, hovers and
+    relationship table said nothing true: its records carry sizes no view had read.
+  - **Now:** selecting a process, group or set, or showing the tables, reads the scope's bytes through the byte ranking's
+    per-scope read (shared when a byte ranking already read them); the inspector says "reading bytes…" and then states
+    the selection's bytes sent and received, measured or unmeasured. A relationship's hover and table row carry the bytes
+    sent across its channels by either end, each transfer once at its sender. Totals and spoken rows drop the phrase.
+  - A view without the session's directory, which cannot read bytes, keeps saying they are unknown.
+  - **Live run:** on a 12-second TCP workload recording, selecting its group read 132 KB sent and 132 KB received.
 
 - **Revision 193 — RPC channels and calls answer the rung's scope:**
   - **Found:** under a brush or a zoomed view a process's paired channels counted the interval while its RPC channels
@@ -1789,11 +1799,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §6.1's metric selector ranks the machine and group rungs by records, bytes sent or received (revision 189), or RPC
      calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192). Still open: §5.2's other
      ranking metrics (rate, peers, errors, durations, endpoint activity bytes), a basis selector that says which basis a
-     metric is on, and bytes on the graph's edges and in the inspector, which still read "bytes unknown" where the
-     overview does not sum them.
+     metric is on, and bytes in the persisted overview itself (overview-index-v1 §4 sums none), so that edges and channels
+     carry them without a read and the graph can draw volume.
 
 ## Verification and cautions
 
+- Revision 194 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,269 tests: 1,265
+  passed, 4 skipped**, zero failures. The 12-second TCP recording was made with `icat record` from the elevated shell
+  into scratch and deleted afterwards; the Release app received UI Automation selections only.
 - Revision 193 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,268 tests: 1,264
   passed, 4 skipped**, zero failures.
 - Revision 192 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,266 tests: 1,262

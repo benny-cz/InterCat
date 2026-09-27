@@ -36,7 +36,7 @@ public sealed class RankingSelectorTests
         Assert.Equal("Reading bytes sent…", workspace.RankingNote);
         Assert.EndsWith("The rows rank by records until the bytes sent are read.", workspace.RankingNoteDetail, StringComparison.Ordinal);
         Assert.Equal("listen.exe", workspace.RungRows[0].Label);
-        Assert.Contains("bytes unknown", workspace.LevelSummaryShort, StringComparison.Ordinal);
+        Assert.DoesNotContain("bytes unknown", workspace.LevelSummaryShort, StringComparison.Ordinal);
         await workspace.RankingReady;
 
         // Measured rows first, a measured zero among them; then the sends that recorded no size; then no send at all.
@@ -295,6 +295,42 @@ public sealed class RankingSelectorTests
         Assert.Equal("Channels rank by records at a process's rung", workspace.RankingNote);
         Assert.Equal([6L, 4L, 2L], workspace.RungRows.Select(row => row.Source.ObservationCount));
         Assert.All(workspace.RungRows, row => Assert.Null(row.RankedFigure));
+    });
+
+    [Fact(DisplayName = "R21: a selection's bytes are read and stated for its scope, and a relationship's are what was sent across it")]
+    public void ASelectionsBytesAreReadAndStated() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        ProcessNode server = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
+
+        // Before anything is selected nothing is read, and no total calls the session's bytes unknown.
+        Assert.DoesNotContain("bytes unknown", workspace.LevelSummaryShort, StringComparison.Ordinal);
+        Assert.Equal("bytes not read", Assert.Single(workspace.Relationships).KnownBytes);
+        string edge = Assert.Single(workspace.GraphDisplay.Edges).Key;
+        Assert.Contains("Bytes: not read yet · selecting reads them for this scope", workspace.DescribeGraphHover(edge)!.Lines);
+
+        // Selecting the client reads its bytes; the inspector says so meanwhile, then states them.
+        workspace.SelectProcess(client.Id);
+        Assert.EndsWith("reading bytes…", workspace.EvidenceSummary, StringComparison.Ordinal);
+        await workspace.SelectionBytesReady;
+        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
+        workspace.SelectProcess(server.Id);
+        Assert.EndsWith($"nothing sent · {WorkspaceRowBuilder.DescribeSize(5_300)} received", workspace.EvidenceSummary, StringComparison.Ordinal);
+
+        // The relationship carries what was sent across it, each transfer counted once at its sender.
+        Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent across", Assert.Single(workspace.Relationships).KnownBytes);
+        Assert.Contains($"Bytes: {WorkspaceRowBuilder.DescribeSize(5_300)} sent across, each transfer counted once at its sender",
+            workspace.DescribeGraphHover(edge)!.Lines);
+
+        // A brush reads its own bytes: inside [10, 20) only the three 100-byte messages were sent.
+        workspace.SelectProcess(client.Id);
+        workspace.SelectInterval(new TimeRange(10, 20));
+        await workspace.IntervalReady;
+        await workspace.SelectionBytesReady;
+        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
     /// <summary>

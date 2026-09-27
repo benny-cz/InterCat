@@ -401,6 +401,10 @@ public sealed partial class WorkspaceViewModel
             if (scope is null || CountedScope == scope)
             {
                 reads.Keep(measured);
+                if (measured is SessionByteMeasures)
+                {
+                    RefreshDescribedBytes();
+                }
             }
 
             if (Family == family && CountedScope == scope)
