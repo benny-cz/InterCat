@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 196 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 197 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 197 — what a live pass found: coverage and bytes said truthfully, rows that read apart (R21, R5, §3.2):**
+  - **Coverage:** on a 20-second dense capture whose ledger covered every interval, a process's source-direction rows
+    hatched every quiet interval unknown, and every ranked row said "unknown coverage". Direction rows are now judged by
+    the capture's coverage, as process lanes are (revision 165); a real session's process and group rows state the
+    capture's coverage over the session or the brushed interval, and its paired channels TCP's.
+  - **Bytes:** the channel rung states the bytes sent across its channel instead of "bytes unknown"; a real session's
+    interval table leaves out the byte column its timeline never sums and says how an interval's are read; the
+    relationship table tells "nothing sent across" and "no size measured" from "reading bytes…" and "bytes could not
+    be read".
+  - **Rows that read apart:** a process's paired channels read by their peer, own port first (`:48048 ↔ :48058 on
+    127.0.0.1`), where the rail cut a server's channels to one truncated endpoint pair; relationship ends carry PIDs;
+    a process's role reads in words ("created during capture"); the rail widens with the window and its edge drags;
+    the channel browser opens from a group's rung.
 
 - **Revision 196 — rank by bytes sent and received, and by RPC errors (§5.2):**
   - **Bytes sent and received** (endpoint activity): every transport contribution of a process's own records, including
@@ -1715,7 +1729,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Open work, dependency order
 
 0. Done: what revision 165's live test found. Revision 166 ranks L0 and L1 by each process's own records, and revision
-   167 gives process and thread lifecycle a palette family of their own.
+   167 gives process and thread lifecycle a palette family of their own. Revision 197 fixed what a live pass on a dense
+   capture found: coverage and bytes stated where they are known, and channel and relationship rows that read apart.
 1. Keep large sessions inside their budgets. Revision 129 did this for the default 10-minute capture.
    - Revision 156 took the per-row relation lookups out of the overview.
    - Revision 157 extends each live generation's derivation from the previous one's.
@@ -1825,9 +1840,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      received and RPC errors (revision 196). Still open: §5.2's rate, peers and local duration statistics, a basis selector
      that says which basis a metric is on, and bytes in the persisted overview itself (overview-index-v1 §4 sums none), so that edges and channels
      carry them without a read and the graph can draw volume.
+   - Found by revision 197's live pass, left open: below the machine rung the graph draws only the rung's neighbourhood,
+     while the relationship table, its table equivalent (R15), still lists every relationship of the session. And a real
+     session's interval table has no bytes per interval until the persisted overview sums them.
 
 ## Verification and cautions
 
+- Revision 197 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,278 tests: 1,274
+  passed, 4 skipped**, zero failures. A live pass on a 20-second dense capture confirmed each fix in the window.
 - Revision 196 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,273 tests: 1,269
   passed, 4 skipped**, zero failures.
 - Revision 195 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,270 tests: 1,266

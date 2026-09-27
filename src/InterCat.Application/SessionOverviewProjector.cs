@@ -106,15 +106,20 @@ public static class SessionOverviewProjector
             [.. executables.Select(group => (group.Key, group.First().ImagePath))]);
         ProcessGroup[] groups = [.. executables.Select(group => new ProcessGroup(
             group.Key, names[group.Key], LaneGrouping.Executable, GroupPath(group.First())))];
+
+        // A row counts over the whole session, so it is as complete as the capture was over every epoch (§10.3): a
+        // process's by everything the capture collected, since it could have made any of it, and a channel's by TCP.
+        CoverageState captured = SessionCoverage.Capture(coverage);
+        CoverageState tcpCoverage = SessionCoverage.Of(coverage, Mechanism.Tcp).State;
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
             instance.ImageName ?? ProcessNode.PidName(instance.ProcessId),
-            instance.Witness.ToString(),
+            RoleOf(instance.Witness),
             GroupKey(instance),
             0.5 + 0.38 * Math.Cos(2 * Math.PI * index / Math.Max(1, ordered.Length)),
             0.5 + 0.38 * Math.Sin(2 * Math.PI * index / Math.Max(1, ordered.Length)),
-            CoverageState.UnknownCoverage)
+            captured)
         {
             Activity = ActivityOf(activity, positions[index], policy),
         })];
@@ -150,7 +155,7 @@ public static class SessionOverviewProjector
             : null;
         Channel[] channels = channelProblem is not null ? [] : [.. admitted
             .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)
-            .Select(ProjectChannel)];
+            .Select(relation => ProjectChannel(relation, tcpCoverage))];
         if (channelProblem is null
             && channels.Select(channel => channel.Key).Distinct(StringComparer.Ordinal).Count() != channels.Length)
         {
@@ -345,7 +350,8 @@ public static class SessionOverviewProjector
     internal static string EdgeKeyOf(TransportRelation relation) =>
         $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:{Pair(relation.First.Id, relation.Second.Id).Second}";
 
-    internal static Channel ProjectChannel(TransportRelation relation) => new(
+    /// <summary>A paired TCP relation as a channel, with TCP's coverage over the scope its count is over.</summary>
+    internal static Channel ProjectChannel(TransportRelation relation, CoverageState coverage) => new(
         relation.StableKey,
         EdgeKeyOf(relation),
         ChannelNames.Of(relation.FirstEndpoint, relation.SecondEndpoint),
@@ -353,7 +359,23 @@ public static class SessionOverviewProjector
         Direction.UnknownDirection,
         relation.Records,
         null,
-        CoverageState.UnknownCoverage);
+        coverage)
+    {
+        FirstHolder = relation.First.Id,
+    };
+
+    /// <summary>
+    /// What an instance's existence rests on, in the words `icat processes` uses (R5): the enumeration's own name read
+    /// "ActivityOnly" wherever a process was described.
+    /// </summary>
+    internal static string RoleOf(ProcessWitness witness) => witness switch
+    {
+        ProcessWitness.Created => "created during capture",
+        ProcessWitness.Rundown => "running at capture start",
+        ProcessWitness.ExitOnly => "running before its first record",
+        ProcessWitness.ActivityOnly => "seen only in its own records",
+        _ => witness.ToString(),
+    };
 
     private static (ProcessInstanceId First, ProcessInstanceId Second) Pair(
         ProcessInstanceId first, ProcessInstanceId second) =>

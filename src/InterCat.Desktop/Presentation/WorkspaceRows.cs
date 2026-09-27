@@ -65,10 +65,16 @@ public sealed record IntervalRow(
 
     public long? FocusCount { get; init; }
 
+    /// <summary>
+    /// Whether the row states bytes. A real session's timeline sums none per interval, so its rows leave the column out
+    /// rather than calling every interval's bytes unknown.
+    /// </summary>
+    public bool ShowsBytes { get; init; } = true;
+
     public string AccessibleName =>
         $"{Window}, {Spoken.Count(ObservationCount, "observation")}"
         + (FocusCount is { } focused ? string.Create(CultureInfo.CurrentCulture, $", {focused:N0} in focus") : string.Empty)
-        + $", {KnownBytes}, {Mechanism}, {Spoken.Coverage(Coverage)}";
+        + (ShowsBytes ? $", {KnownBytes}" : string.Empty) + $", {Mechanism}, {Spoken.Coverage(Coverage)}";
 }
 
 /// <summary>Builds the table equivalents from one snapshot, using the same values the canvas draws.</summary>
@@ -122,13 +128,21 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>
-    /// The relationship table's rows. Where <paramref name="readsBytes"/>, as for a real session, whose overview sums no
-    /// bytes, a relationship states the bytes read as sent across it, or that they have not been read, rather than calling
-    /// them unknown.
+    /// The relationship table's rows, each end named with its PID, since one executable's instances otherwise read as the
+    /// same row. Where <paramref name="bytesOf"/> is given, as for a real session, whose overview sums no bytes, it says
+    /// each relationship's bytes: what was read as sent across it, or why that is not known, rather than calling them
+    /// unknown.
     /// </summary>
-    public static IReadOnlyList<RelationshipRow> Relationships(WorkspaceSnapshot snapshot, ThemeMode mode, bool readsBytes = false)
+    public static IReadOnlyList<RelationshipRow> Relationships(
+        WorkspaceSnapshot snapshot, ThemeMode mode, Func<CommunicationEdge, string>? bytesOf = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+
+        Dictionary<ProcessInstanceId, string> names = [];
+        foreach (ProcessNode node in snapshot.Processes)
+        {
+            names.TryAdd(node.Id, node.NameWithPid);
+        }
 
         var rows = new List<RelationshipRow>(snapshot.Edges.Count);
         foreach (CommunicationEdge edge in snapshot.Edges)
@@ -136,14 +150,12 @@ public static class WorkspaceRowBuilder
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(edge.Mechanism));
             rows.Add(new(
                 edge.SourceId,
-                NameOf(snapshot, edge.SourceId),
-                NameOf(snapshot, edge.TargetId),
+                names.GetValueOrDefault(edge.SourceId, "unknown process"),
+                names.GetValueOrDefault(edge.TargetId, "unknown process"),
                 tokens.Label,
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
-                !readsBytes ? DescribeBytes(edge.KnownBytes)
-                    : edge.KnownBytes is { } sent ? DescribeSize(sent) + " sent across"
-                    : "bytes not read",
+                bytesOf is null ? DescribeBytes(edge.KnownBytes) : bytesOf(edge),
                 DescribeStrength(edge.Strength))
             {
                 ObservationCount = edge.ObservationCount,
@@ -153,19 +165,21 @@ public static class WorkspaceRowBuilder
         return rows;
     }
 
-    public static IReadOnlyList<IntervalRow> Intervals(WorkspaceSnapshot snapshot, ThemeMode mode)
+    public static IReadOnlyList<IntervalRow> Intervals(WorkspaceSnapshot snapshot, ThemeMode mode, bool sumsBytes = true)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return Intervals(snapshot.Timeline, mode);
+        return Intervals(snapshot.Timeline, mode, sumsBytes: sumsBytes);
     }
 
     /// <summary>
     /// The interval table for the buckets the timeline draws. Each window is stated in the unit its span needs, so a
     /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way). A focused rung's count for the same
-    /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2).
+    /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2). Where the
+    /// timeline sums no bytes (<paramref name="sumsBytes"/> false), the rows state none.
     /// </summary>
     public static IReadOnlyList<IntervalRow> Intervals(
-        IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null)
+        IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null,
+        bool sumsBytes = true)
     {
         ArgumentNullException.ThrowIfNull(buckets);
 
@@ -193,6 +207,7 @@ public static class WorkspaceRowBuilder
             {
                 ObservationCount = bucket.ObservationCount,
                 FocusCount = focusCount,
+                ShowsBytes = sumsBytes,
             });
         }
 
@@ -250,17 +265,4 @@ public static class WorkspaceRowBuilder
         CoverageState.NotCollected => "not collected",
         _ => "unknown coverage",
     };
-
-    private static string NameOf(WorkspaceSnapshot snapshot, ProcessInstanceId id)
-    {
-        foreach (ProcessNode node in snapshot.Processes)
-        {
-            if (node.Id == id)
-            {
-                return node.Name;
-            }
-        }
-
-        return "unknown process";
-    }
 }

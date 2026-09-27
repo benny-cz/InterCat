@@ -36,6 +36,12 @@ public sealed record RungRow(
     /// <summary>The right column: the ranked value under a byte ranking, else the records.</summary>
     public string Figure => RankedFigure ?? Observations;
 
+    /// <summary>How a screen reader says the label where the shown one leads with a symbol, as a channel named by its peer.</summary>
+    public string? SpokenLabel { get; init; }
+
+    /// <summary>The label's tooltip: the label, and the row's own name where the rail shows it by another.</summary>
+    public string Tip => string.Equals(Source.Label, Label, StringComparison.Ordinal) ? Label : $"{Label}\n{Source.Label}";
+
     /// <summary>
     /// The row's second line: what it holds, then its coverage. Coverage shares the line under the name rather than the
     /// count's column, where a phrase such as "partial gap, not extrapolated" left the name a few letters in the rail.
@@ -62,7 +68,7 @@ public sealed record RungRow(
     /// known bytes, which would be a second byte figure contradicting the first.
     /// </summary>
     public string AccessibleName => SpokenName
-        ?? $"{Label}, {Detail}, {(RankedSpoken is { } ranked ? ranked + ", " : string.Empty)}"
+        ?? $"{SpokenLabel ?? Label}, {Detail}, {(RankedSpoken is { } ranked ? ranked + ", " : string.Empty)}"
             + $"{Spoken.Count(Source.ObservationCount, "observation")}, {(RanksByBytes || KnownBytes.Length == 0 ? string.Empty : KnownBytes + ", ")}"
             + $"{Mechanism}, {Spoken.Coverage(Coverage)}. Press Enter to open the {DescendsTo} level.";
 }

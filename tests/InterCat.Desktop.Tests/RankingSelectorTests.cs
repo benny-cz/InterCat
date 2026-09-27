@@ -360,6 +360,98 @@ public sealed class RankingSelectorTests
         Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "R21: a channel rung states the bytes sent across it, and the tables say what a real session's timeline does not sum")]
+    public void AChannelRungAndTheTablesStateBytesTruthfully() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+
+        // The relationship table names each end with its PID, so one executable's instances read as different rows. The
+        // interval table, whose timeline sums no bytes, leaves them out and says how an interval's are read.
+        RelationshipRow relationship = Assert.Single(workspace.Relationships);
+        Assert.Equal(["client.exe · PID 100", "server.exe · PID 200"],
+            new[] { relationship.Source, relationship.Target }.Order(StringComparer.Ordinal));
+        Assert.False(workspace.IntervalTableShowsBytes);
+        Assert.All(workspace.Intervals, row => Assert.False(row.ShowsBytes));
+        Assert.All(workspace.Intervals, row => Assert.DoesNotContain("bytes", row.AccessibleName, StringComparison.Ordinal));
+        Assert.EndsWith(" · bytes not summed per interval; select one, then rank by bytes", workspace.IntervalTableScope,
+            StringComparison.Ordinal);
+
+        // Showing the tables reads the bytes: the relationship says so meanwhile, then states them.
+        workspace.ShowTables = true;
+        Assert.Equal("reading bytes…", Assert.Single(workspace.Relationships).KnownBytes);
+        await workspace.SelectionBytesReady;
+        Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent across", Assert.Single(workspace.Relationships).KnownBytes);
+        workspace.ShowTables = false;
+
+        // Down to the channel of the one 5,000-byte message, whose rung states what was sent across it.
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source is { Mechanism: Mechanism.Tcp, ObservationCount: 2 });
+        Assert.True(workspace.Descend());
+        await workspace.SelectionBytesReady;
+        Assert.Equal(
+            $"2 observed records at this channel's two ends · {WorkspaceRowBuilder.DescribeSize(5_000)} sent across · no operation rung; E shows the records",
+            workspace.LevelSummary);
+
+        // No ranking is chosen at a channel's rung: its interval table says the channel's own bytes count a chosen interval.
+        Assert.EndsWith(" · bytes not summed per interval; select one and the channel's bytes are counted in it",
+            workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        // They do, and an interval the channel sent nothing in says so rather than showing a zero-byte total.
+        workspace.SelectInterval(new TimeRange(10, 20));
+        await workspace.IntervalReady;
+        await workspace.SelectionBytesReady;
+        Assert.StartsWith("0 observed records at this channel's two ends · nothing sent across · ", workspace.LevelSummary,
+            StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "§3.2: at a process's rung a paired channel reads by its peer, its own port first, and keeps its name")]
+    public void AProcesssChannelsReadByTheirPeer() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        foreach ((int pid, string peer, bool client) in new[] { (100, "server.exe · PID 200", true), (200, "client.exe · PID 100", false) })
+        {
+            // The client's two connections leave from ports 50000 and 50001 to the server's 8080.
+            string[] ends = [.. Enumerable.Range(50_000, 2).Select(port =>
+                client ? $":{port} ↔ :8080 on 127.0.0.1" : $":8080 ↔ :{port} on 127.0.0.1")];
+            ProcessNode process = workspace.Snapshot.Processes.Single(node => node.ProcessId == pid);
+            while (workspace.CanAscend)
+            {
+                workspace.Ascend();
+            }
+
+            foreach (string key in new[] { process.GroupKey, process.Id.ToString() })
+            {
+                workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+                Assert.True(workspace.Descend());
+            }
+
+            await workspace.RpcReady;
+            RungRow[] paired = [.. workspace.RungRows.Where(row => row.Source.Mechanism == Mechanism.Tcp)];
+            Assert.All(paired, row => Assert.Equal("↔ " + peer, row.Label));
+            Assert.Equal(ends, paired.Select(row => row.Detail[(row.Detail.IndexOf(" · ", StringComparison.Ordinal) + 3)..])
+                .Order(StringComparer.Ordinal));
+
+            // The channel keeps its own name where it is identified: the tooltip, the spoken row and the crumb it opens.
+            RungRow first = paired[0];
+            Assert.Equal($"↔ {peer}\n{first.Source.Label}", first.Tip);
+            Assert.StartsWith($"Channel with {peer}, TCP · ", first.AccessibleName, StringComparison.Ordinal);
+            workspace.SelectedRung = first;
+            Assert.True(workspace.Descend());
+            Assert.Equal($"Channel: {first.Source.Label}", workspace.Crumbs[^1].Label);
+        }
+    });
+
     [Fact(DisplayName = "§6.3: under a byte ranking the graph's edges and nodes are sized by bytes, so the panes agree on magnitude")]
     public void TheGraphIsSizedByTheRankingsMetric() => SingleThreadedContext.Run(async () =>
     {

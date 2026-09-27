@@ -26,6 +26,15 @@ public sealed record SessionIntervalCounts(
     /// </summary>
     public IReadOnlyDictionary<ProcessInstanceId, IReadOnlyList<MechanismCount>> ProcessRecords { get; init; } =
         new Dictionary<ProcessInstanceId, IReadOnlyList<MechanismCount>>();
+
+    /// <summary>
+    /// The capture's own coverage over the interval, whatever was observed in it: what a process's count there is judged
+    /// by, since it could have made any record the capture collects (§10.3). Null when not judged.
+    /// </summary>
+    public CoverageState? CaptureCoverage { get; init; }
+
+    /// <summary>TCP's coverage over the interval, which a paired channel's count there is judged by. Null when not judged.</summary>
+    public CoverageState? TcpCoverage { get; init; }
 }
 
 public static class SessionIntervalQuery
@@ -109,9 +118,14 @@ public static class SessionIntervalQuery
             }
         }
 
+        // An interval no source reading falls in has no coverage to judge.
+        CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
+        TimeRange? native = RankingScope.NativeInterval(clock, interval);
         return new(manifest.SessionId, manifest.Generation, interval, edgeRecords, channelRecords, total.Observed, total.Graph)
         {
             ProcessRecords = processRecords,
+            CaptureCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.CaptureStates(ledger, [native])[0],
+            TcpCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.Of(ledger, Mechanism.Tcp, native).State,
         };
     }
 

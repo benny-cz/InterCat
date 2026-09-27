@@ -439,6 +439,7 @@ public sealed partial class WorkspaceViewModel
         Task<T> read = reads.Read(source, scope);
         reads.Problem = null;
         RaiseRankingChanged();
+        RefreshBytesState<T>();
         try
         {
             T measured = await read;
@@ -479,7 +480,20 @@ public sealed partial class WorkspaceViewModel
             {
                 reads.Problem = exception.Message;
                 RaiseRankingChanged();
+                RefreshBytesState<T>();
             }
+        }
+    }
+
+    /// <summary>
+    /// Restates what says bytes when a read of them starts or fails, so the tables and inspector say "reading bytes…" or
+    /// that they could not be read rather than what they said before.
+    /// </summary>
+    private void RefreshBytesState<T>()
+    {
+        if (typeof(T) == typeof(SessionByteMeasures) && ReadsBytes)
+        {
+            RefreshDescribedBytes();
         }
     }
 
@@ -594,6 +608,13 @@ public sealed partial class WorkspaceViewModel
             Problem is not null && running is { Read.IsFaulted: true } failed && failed.Scope == scope;
 
         public bool IsCurrent(Task<T> read) => running?.Read == read;
+
+        /// <summary>
+        /// Whether a read of <paramref name="scope"/> is in flight, or has answered and is about to be kept: until then a
+        /// description of that scope's measures is still waiting for them.
+        /// </summary>
+        public bool Reads(TimeRange? scope) =>
+            running is { } current && current.Scope == scope && !current.Read.IsFaulted && !current.Read.IsCanceled;
 
         /// <summary>One read per scope: a read of the same scope still running is shared, and one of another is cancelled.</summary>
         public Task<T> Read(SessionEvidenceSource source, TimeRange? scope)

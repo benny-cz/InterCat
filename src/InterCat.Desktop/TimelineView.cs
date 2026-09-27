@@ -1394,8 +1394,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DirectionTimelineLane lane = lanes[index - 1];
 
-            // A row with nothing drawn still carries its coverage strip; naming it empty keeps that strip from being
-            // read as records, and says the source reported no record of this direction here.
+            // A row with nothing drawn still carries the capture's hatch wherever its coverage was not complete; naming
+            // it empty keeps that hatch from being read as records, and says the source reported no record of this
+            // direction here.
             bool none = !AnyObserved(lane.Buckets, scale.Visible);
             string label = DirectionLabels.TryGetValue((lane.Direction, none), out string? known) ? known
                 : DirectionLabels[(lane.Direction, none)] = WorkspaceViewModel.DirectionLabel(lane.Direction) + (none ? " · none" : string.Empty);

@@ -320,7 +320,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 new DirectionLaneOption(direction, DirectionLabel(direction))),
         ]);
         selectedDirectionLane = directionLaneOptions[0];
-        intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeResources.CurrentMode);
+        intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeResources.CurrentMode, IntervalTableShowsBytes);
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
         if (selectedProcess is not null)
@@ -619,7 +619,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode,
-            selected is null && processLane is null && directionLane is null && endLane is null ? focus : null);
+            selected is null && processLane is null && directionLane is null && endLane is null ? focus : null,
+            IntervalTableShowsBytes);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -2353,8 +2354,24 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public IReadOnlyList<IntervalRow> Intervals => intervals;
 
-    /// <summary>What the interval table lists, so a zoomed table is never read as the whole session.</summary>
-    public string IntervalTableScope
+    /// <summary>
+    /// Whether the interval table has bytes to state. A real session's timeline counts records per interval and sums no
+    /// bytes (`overview-index-v1`), so its table leaves the column out and says how to read an interval's bytes, rather
+    /// than calling every interval's bytes unknown.
+    /// </summary>
+    public bool IntervalTableShowsBytes => !realOverview;
+
+    /// <summary>
+    /// What the interval table lists, so a zoomed table is never read as the whole session. A real session's table says
+    /// its bytes are not summed, and how the rung it is on counts an interval's: a ranking by bytes, or a channel's own.
+    /// </summary>
+    public string IntervalTableScope => IntervalTableShowsBytes ? IntervalTableHolds
+        : IntervalTableHolds + " · bytes not summed per interval"
+            + (ShowsRankingChoice ? "; select one, then rank by bytes"
+                : FocusedRealChannel is not null ? "; select one and the channel's bytes are counted in it"
+                : string.Empty);
+
+    private string IntervalTableHolds
     {
         get
         {
@@ -2392,8 +2409,53 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
         : IsRpcChannelRung ? rpcCallRows
-        : rpcChannelRows.Count == 0 ? LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes)
-        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes), .. rpcChannelRows.Select(RankedRpcChannel)]);
+        : rpcChannelRows.Count == 0 ? LadderRows()
+        : Ranked([.. LadderRows(), .. rpcChannelRows.Select(RankedRpcChannel)]);
+
+    /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
+    private IReadOnlyList<RungRow> LadderRows()
+    {
+        IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes);
+        if (!realOverview || ladder.Current.Level != DetailLevel.ProcessInstance
+            || ladder.Current.Focus is not { } focus || !Guid.TryParse(focus.Key, out Guid id))
+        {
+            return rows;
+        }
+
+        var process = new ProcessInstanceId(id);
+        Dictionary<string, Channel> channels = Snapshot.Channels.ToDictionary(channel => channel.Key, StringComparer.Ordinal);
+        Dictionary<string, CommunicationEdge> edges = Snapshot.Edges.ToDictionary(edge => edge.Key, StringComparer.Ordinal);
+        Dictionary<ProcessInstanceId, string> names = [];
+        foreach (ProcessNode node in Snapshot.Processes)
+        {
+            names.TryAdd(node.Id, node.NameWithPid);
+        }
+
+        return [.. rows.Select(row => channels.TryGetValue(row.Key, out Channel? channel)
+            && edges.TryGetValue(channel.EdgeKey, out CommunicationEdge? edge)
+                ? PeerNamed(row, process, channel, edge, names)
+                : row)];
+    }
+
+    /// <summary>
+    /// A paired channel's row at its process's rung, named by the process at its other end. A channel's own name is its
+    /// endpoint pair, and a server's channels all begin with the server's own endpoint, so the rail cut every row before the
+    /// peer's port and they read alike. The peer leads, the process's own port and the peer's follow, and the tooltip,
+    /// crumb and export keep the channel's own name.
+    /// </summary>
+    private static RungRow PeerNamed(RungRow row, ProcessInstanceId process, Channel channel, CommunicationEdge edge,
+        Dictionary<ProcessInstanceId, string> names)
+    {
+        ProcessInstanceId peer = edge.SourceId == process ? edge.TargetId : edge.SourceId;
+        string peerName = peer == process ? "itself" : names.GetValueOrDefault(peer, "an unknown process");
+        string ends = ChannelNames.Compact(channel.Name, swap: channel.FirstHolder is { } first && first != process);
+        return row with
+        {
+            Label = "↔ " + peerName,
+            Detail = $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ends}",
+            SpokenLabel = "Channel with " + peerName,
+        };
+    }
 
     /// <summary>
     /// A process's TCP and RPC channels ranked together as the ladder ranks rows: by value when a byte ranking gave every
@@ -2439,7 +2501,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? RpcCallSummary(brief: false)
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture,
-                $"{channel.ObservationCount:N0} observed records at this channel's two ends · bytes unknown · no operation rung; E shows the records")
+                $"{channel.ObservationCount:N0} observed records at this channel's two ends · {FocusedChannelBytes(channel)} · no operation rung; E shows the records")
             : RungTotal(brief: false) + RealScopeNote(brief: false);
 
     /// <summary>
@@ -3692,6 +3754,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersEvidenceStep));
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         RaiseEvidenceChanged();
+
+        // A channel rung states its channel's bytes, which are read when no selection has read them yet.
+        FollowDescribedBytes();
     }
 
     /// <summary>Whether the user is at a published session's evidence rung, where rows are read from the session.</summary>

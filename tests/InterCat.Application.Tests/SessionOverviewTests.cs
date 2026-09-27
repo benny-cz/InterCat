@@ -500,6 +500,79 @@ public sealed class SessionOverviewTests
             page.SessionId, page.Generation, selected.SegmentName, selected.SegmentRow));
     }
 
+    [Fact(DisplayName = "R21: a process row states what the capture collected and a channel row TCP, over the session and within an interval")]
+    public void RowsStateTheCapturesCoverage()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(5, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 500 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 3)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 2_000 },
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 3_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [LiveEpoch(1, 0, 24, lost: 0), LiveEpoch(2, 25, 40, lost: 1)],
+        });
+
+        // Over the session the second epoch's loss is in every row: a count is only as complete as the capture was. How
+        // an instance is known to exist is said in words, not the enumeration's name (R5).
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        Assert.All(overview.Nodes, node => Assert.Equal(CoverageState.PartialGap, node.Coverage));
+        Assert.Equal(CoverageState.PartialGap, Assert.Single(overview.Channels).Coverage);
+        Assert.Equal(CoverageState.PartialGap, Assert.Single(SessionChannelQuery.Read(session.Store).Channels).Coverage);
+        Assert.Equal("created during capture", overview.Nodes.Single(node => node.ProcessId == 100).Role);
+        Assert.Equal("seen only in its own records", overview.Nodes.Single(node => node.ProcessId == 200).Role);
+
+        // Within the first epoch the same rows are covered: an interval judges its own readings.
+        WorkspaceSnapshot within = OverviewWorkspace.WithinInterval(OverviewWorkspace.From(overview),
+            SessionIntervalQuery.Count(session.Store, new TimeRange(0, 21)));
+        Assert.All(within.Processes, node => Assert.Equal(CoverageState.Covered, node.Coverage));
+        Assert.Equal(CoverageState.Covered, Assert.Single(within.Channels).Coverage);
+
+        // Past the delivered readings nothing is known, and nothing is called covered.
+        SessionIntervalCounts beyond = SessionIntervalQuery.Count(session.Store, new TimeRange(50, 60));
+        Assert.Equal((CoverageState.UnknownCoverage, CoverageState.UnknownCoverage), (beyond.CaptureCoverage, beyond.TcpCoverage));
+
+        // A generation without a ledger keeps every row unknown.
+        using var legacy = new TemporarySession();
+        Publish(legacy.Store, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd)]);
+        Assert.All(SessionOverviewProjector.Project(legacy.Store).Nodes,
+            node => Assert.Equal(CoverageState.UnknownCoverage, node.Coverage));
+    }
+
+    private static CoverageEpochV1 LiveEpoch(int number, long first, long last, long lost) => new()
+    {
+        Epoch = number,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = first,
+        LastDeliveredNativeTicks = last,
+        Collected =
+        [
+            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+        ],
+        Deliveries = [new CoverageDeliveryV1
+        {
+            ProviderId = NetworkProvider,
+            EventId = 10,
+            Version = 0,
+            Delivered = 2,
+            Admitted = 2,
+            Omitted = 0,
+        }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
+
     private static CoverageLedgerV1 TcpLedger(long first, long last, long lost) => new()
     {
         Contract = CoverageLedgerV1.ContractName,

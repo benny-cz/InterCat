@@ -11,7 +11,13 @@
         MinWidth="1080"
         MinHeight="700"
         Background="{DynamicResource Surface.Canvas}">
-  <Grid ColumnDefinitions="250,*,286" RowDefinitions="Auto,Auto,*,36">
+  <Grid x:Name="WindowGrid" RowDefinitions="Auto,Auto,*,36">
+    <!-- The rail widens with a wide window, and its edge can be dragged, so long names and a channel's ends read whole. -->
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="250" MinWidth="220" MaxWidth="560" />
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="286" />
+    </Grid.ColumnDefinitions>
 
     <!-- Left rail: ranked processes. Every canvas selection is reachable from this list (R15). -->
     <Border x:Name="Rail" Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
@@ -142,7 +148,7 @@
                   </Grid.ContextMenu>
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Margin="6,0,6,0" Text="{Binding Label}" FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Tip}" />
                   <TextBlock Grid.Column="2" Text="{Binding Figure}" FontSize="11" TextAlignment="Right"
                              VerticalAlignment="Center" />
                   <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="6,0,0,0"
@@ -236,6 +242,10 @@
         </StackPanel>
       </Grid>
     </Border>
+    <GridSplitter x:Name="RailSplitter" Grid.RowSpan="4" Width="5" HorizontalAlignment="Right"
+                  ResizeDirection="Columns" Background="Transparent"
+                  ToolTip.Tip="Drag to widen the ranked table"
+                  AutomationProperties.Name="Ranked table width; left and right arrows resize it" />
 
     <!-- Header -->
     <Border Grid.Column="1" Grid.ColumnSpan="2" Padding="20,11"
@@ -551,7 +561,8 @@
             IsVisible="{Binding ShowTables}">
       <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,*" Margin="16">
         <TextBlock Text="RELATIONSHIP TABLE" Classes="eyebrow" />
-        <Grid Grid.Row="1" ColumnDefinitions="18,140,140,120,150,110" Margin="2,8,0,2">
+        <!-- Each end is named with its PID, so one executable's instances are told apart. -->
+        <Grid Grid.Row="1" ColumnDefinitions="18,200,200,90,150,100" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Source" Classes="columnHeader" />
           <TextBlock Grid.Column="2" Text="Target" Classes="columnHeader" />
           <TextBlock Grid.Column="3" Text="Mechanism" Classes="columnHeader" />
@@ -565,10 +576,12 @@
                  AutomationProperties.Name="Relationship table, the table equivalent of the communication graph">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:RelationshipRow">
-              <Grid ColumnDefinitions="18,140,140,120,150,110" Margin="2,4">
+              <Grid ColumnDefinitions="18,200,200,90,150,100" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
-                <TextBlock Grid.Column="1" Text="{Binding Source}" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="2" Text="{Binding Target}" />
+                <TextBlock Grid.Column="1" Margin="0,0,8,0" Text="{Binding Source}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Source}" />
+                <TextBlock Grid.Column="2" Margin="0,0,8,0" Text="{Binding Target}"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Target}" />
                 <TextBlock Grid.Column="3" Text="{Binding Mechanism}" Classes="muted" />
                 <TextBlock Grid.Column="4" Text="{Binding KnownBytes}" />
                 <TextBlock Grid.Column="5" Text="{Binding Evidence}" Classes="muted" />
@@ -619,11 +632,12 @@
                   Click="ClearTimelineProcessFocus" IsVisible="{Binding HasSelectedProcessLane}"
                   AutomationProperties.Name="Clear the selected process lane and show group interval totals" />
         </Grid>
-        <Grid Grid.Row="4" ColumnDefinitions="18,160,180,150,150" Margin="2,8,0,2">
+        <!-- Bytes come last: a real session's timeline sums none per interval, and its table leaves the column out. -->
+        <Grid Grid.Row="4" ColumnDefinitions="18,160,180,190,150" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Window" Classes="columnHeader" />
           <TextBlock Grid.Column="2" Text="Observations" Classes="columnHeader" />
-          <TextBlock Grid.Column="3" Text="Bytes" Classes="columnHeader" />
-          <TextBlock Grid.Column="4" Text="Coverage" Classes="columnHeader" />
+          <TextBlock Grid.Column="3" Text="Coverage" Classes="columnHeader" />
+          <TextBlock Grid.Column="4" Text="Bytes" Classes="columnHeader" IsVisible="{Binding IntervalTableShowsBytes}" />
         </Grid>
         <ListBox x:Name="IntervalList" Grid.Row="5" Margin="0,4,0,0"
                  ItemsSource="{Binding Intervals}"
@@ -632,12 +646,12 @@
                  AutomationProperties.Name="Interval table, the table equivalent of the activity timeline">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:IntervalRow">
-              <Grid ColumnDefinitions="18,160,180,150,150" Margin="2,4">
+              <Grid ColumnDefinitions="18,160,180,190,150" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
                 <TextBlock Grid.Column="1" Text="{Binding Window}" FontWeight="SemiBold" />
                 <TextBlock Grid.Column="2" Text="{Binding Observations}" />
-                <TextBlock Grid.Column="3" Text="{Binding KnownBytes}" />
-                <TextBlock Grid.Column="4" Text="{Binding Coverage}" Classes="muted" />
+                <TextBlock Grid.Column="3" Text="{Binding Coverage}" Classes="muted" />
+                <TextBlock Grid.Column="4" Text="{Binding KnownBytes}" IsVisible="{Binding ShowsBytes}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>

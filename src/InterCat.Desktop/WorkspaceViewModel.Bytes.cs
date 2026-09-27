@@ -37,8 +37,21 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private bool ReadsBytes => realOverview && evidenceSource is not null;
 
-    /// <summary>Whether a description on screen needs bytes: a selected process, group or set, or the relationship table.</summary>
-    private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null || HasMultiSelection || showTables;
+    /// <summary>
+    /// Whether a description on screen needs bytes: a selected process, group or set, the relationship table, or the
+    /// channel a channel rung is focused on.
+    /// </summary>
+    private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null || HasMultiSelection || showTables
+        || FocusedRealChannel is not null;
+
+    /// <summary>
+    /// What a description says where the scope's bytes are not known: that they are being read, that they could not be,
+    /// or, while nothing on screen has asked for them, that they have not been read.
+    /// </summary>
+    private string UnreadBytes =>
+        selectionBytes.Problem is not null || byteReads.Problem is not null ? "bytes could not be read"
+        : selectionBytes.Reads(CountedScope) || byteReads.Reads(CountedScope) ? "reading bytes…"
+        : "bytes not read";
 
     /// <summary>Reads the bytes of the scope the rows count when a description needs them and none are known.</summary>
     private void FollowDescribedBytes()
@@ -51,19 +64,60 @@ public sealed partial class WorkspaceViewModel
         SelectionBytesReady = FollowAsync(selectionBytes, ranks: false);
     }
 
-    /// <summary>Rebuilds what states bytes once they are read: the relationship table and the inspector's summary.</summary>
+    /// <summary>
+    /// Rebuilds what states bytes once they are read, or once a read starts or fails: the relationship table, the
+    /// inspector's summary and a channel rung's total.
+    /// </summary>
     private void RefreshDescribedBytes()
     {
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
         OnPropertyChanged(nameof(EvidenceSummary));
+        OnPropertyChanged(nameof(LevelSummary));
     }
 
-    /// <summary>The relationship table's rows, with the bytes sent across each once they are read.</summary>
-    private IReadOnlyList<RelationshipRow> RelationshipRows() => WorkspaceRowBuilder.Relationships(
-        Snapshot with { Edges = DescribedEdges(Snapshot.Edges) },
-        ThemeResources.CurrentMode,
-        ReadsBytes);
+    /// <summary>
+    /// The relationship table's rows, with the bytes sent across each once they are read, or that none was sent or none of
+    /// its sends measured a size; until the bytes are read, each says why they are not known yet.
+    /// </summary>
+    private IReadOnlyList<RelationshipRow> RelationshipRows()
+    {
+        if (!ReadsBytes)
+        {
+            return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode);
+        }
+
+        if (DescribedBytes is not { } bytes)
+        {
+            string unread = UnreadBytes;
+            return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode, _ => unread);
+        }
+
+        ILookup<string, Channel> channels = Snapshot.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
+        return WorkspaceRowBuilder.Relationships(Snapshot, ThemeResources.CurrentMode,
+            edge => SentAcross(edge, channels[edge.Key], bytes).Phrase);
+    }
+
+    /// <summary>
+    /// A channel rung's bytes, as its total states them: on a session whose bytes are read, what its two ends sent across
+    /// it over the scope the rows count, each transfer counted once at its sender, as its relationship's row counts them.
+    /// </summary>
+    private string FocusedChannelBytes(Channel channel)
+    {
+        if (!ReadsBytes)
+        {
+            return "bytes unknown";
+        }
+
+        if (DescribedBytes is not { } bytes)
+        {
+            return UnreadBytes;
+        }
+
+        return Snapshot.Edges.FirstOrDefault(edge => edge.Key == channel.EdgeKey) is { } relationship
+            ? SentAcross(relationship, [channel], bytes).Phrase
+            : "nothing sent across";
+    }
 
     /// <summary>
     /// The edges as a description states them: on a real session whose bytes are read, each carries the bytes sent across
@@ -87,12 +141,14 @@ public sealed partial class WorkspaceViewModel
     private Dictionary<string, long?> SentAcrossEdges(SessionByteMeasures bytes)
     {
         ILookup<string, Channel> channels = Snapshot.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
-        return Snapshot.Edges.ToDictionary(edge => edge.Key, edge => SentAcross(edge, channels[edge.Key], bytes), StringComparer.Ordinal);
+        return Snapshot.Edges.ToDictionary(edge => edge.Key, edge => SentAcross(edge, channels[edge.Key], bytes).Known,
+            StringComparer.Ordinal);
     }
 
-    private static long? SentAcross(CommunicationEdge edge, IEnumerable<Channel> channels, SessionByteMeasures bytes)
+    /// <summary>What both ends of a relationship's channels sent across them, each transfer counted once at its sender.</summary>
+    private static SentAcrossTally SentAcross(CommunicationEdge edge, IEnumerable<Channel> channels, SessionByteMeasures bytes)
     {
-        long sent = 0, measured = 0;
+        long sent = 0, measured = 0, unmeasured = 0;
         foreach (Channel channel in channels)
         {
             foreach (ProcessInstanceId end in new[] { edge.SourceId, edge.TargetId }.Distinct())
@@ -101,11 +157,25 @@ public sealed partial class WorkspaceViewModel
                 {
                     sent = checked(sent + ofEnd.SentBytes);
                     measured += ofEnd.SentMeasured;
+                    unmeasured += ofEnd.SentUnmeasured;
                 }
             }
         }
 
-        return measured > 0 ? sent : null;
+        return new(sent, measured, unmeasured);
+    }
+
+    /// <summary>
+    /// Sends across a relationship or channel: the bytes the measured ones carried, and how many recorded no size. None
+    /// sent is not a zero-byte total, and sends that recorded no size are not nothing sent (R21).
+    /// </summary>
+    private readonly record struct SentAcrossTally(long Sent, long Measured, long Unmeasured)
+    {
+        public long? Known => Measured > 0 ? Sent : null;
+
+        public string Phrase => Measured > 0 ? WorkspaceRowBuilder.DescribeSize(Sent) + " sent across"
+            : Unmeasured > 0 ? "no size measured"
+            : "nothing sent across";
     }
 
     /// <summary>

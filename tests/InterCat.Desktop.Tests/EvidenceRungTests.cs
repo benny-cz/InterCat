@@ -608,14 +608,16 @@ public sealed class EvidenceRungTests
         DescendTo(workspace, client.Id.ToString());
         await workspace.RpcReady;
 
-        // The process's calls to each interface are channels of its own, ranked by records beside its paired channel.
+        // The process's calls to each interface are channels of its own, ranked by records beside its paired channel, which
+        // reads by the process at its other end and keeps its own name for its tooltip and crumb.
         Assert.Equal(
             [
                 other.ToString(),
-                workspace.Snapshot.Channels.Single().Name,
+                "↔ PID 200",
                 "svcctl (Service Control Manager)",
             ],
             workspace.RungRows.Select(row => row.Label));
+        Assert.Equal(workspace.Snapshot.Channels.Single().Name, workspace.RungRows[1].Source.Label);
         Assert.Equal("RPC client · 3 calls · 1 failed · median 400 ns", workspace.RungRows[2].Detail.Replace(' ', ' '));
         Assert.EndsWith(" · admitted paired TCP and this process's RPC calls by interface; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);

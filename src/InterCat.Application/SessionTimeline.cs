@@ -285,15 +285,19 @@ public static class SessionTimelineQuery
             MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
         };
 
-        // Every process lane shares the columns, and so the capture's coverage over each: it is judged once.
-        CoverageState[]? capture = laneOwners.Length == 0 ? null : counted.CaptureCoverage(coverage, clock);
+        // Every process lane and direction row shares the columns, and so the capture's coverage over each: it is judged
+        // once. A direction row splits one process's records, and that process could have made any record the capture
+        // collects in any of them, so its quiet interval is judged by the capture, as a process lane's is (R21).
+        CoverageState[]? capture = laneOwners.Length == 0 && total?.Directions is null
+            ? null
+            : counted.CaptureCoverage(coverage, clock);
         return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock)))
         {
             FocusLanes = total is null ? [] : Array.AsReadOnly(total.Focused.MechanismLanes(coverage, clock)),
             ProcessLanes = total?.Lanes is not { } lanes ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
                 new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(capture!))))]),
             DirectionLanes = total?.Directions is not { } directions ? [] : Array.AsReadOnly([.. LaneDirections.Select(
-                (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(coverage, clock))))]),
+                (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture!))))]),
             ChannelEndLanes = total?.Ends is not { } ends ? []
                 : Array.AsReadOnly([.. ends.Select(end => end.Lane(coverage, clock))]),
             ProcessLaneProblem = laneProblem,

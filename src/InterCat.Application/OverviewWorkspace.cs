@@ -61,11 +61,13 @@ public static class OverviewWorkspace
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(counts);
+        // A row counted within the interval is as complete as the capture was there, not over the whole session.
         return snapshot with
         {
             Processes = [.. snapshot.Processes.Select(process => process with
             {
                 Activity = counts.ProcessRecords.GetValueOrDefault(process.Id) ?? [],
+                Coverage = counts.CaptureCoverage ?? process.Coverage,
             })],
             Edges = [.. snapshot.Edges.Select(edge => edge with
             {
@@ -74,6 +76,7 @@ public static class OverviewWorkspace
             Channels = [.. snapshot.Channels.Select(channel => channel with
             {
                 ObservationCount = counts.ChannelRecords.GetValueOrDefault(channel.Key),
+                Coverage = counts.TcpCoverage ?? channel.Coverage,
             })],
             RowsNoProcessHolds = snapshot.RowsNoProcessHolds is null
                 ? null

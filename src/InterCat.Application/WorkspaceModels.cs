@@ -91,6 +91,13 @@ public sealed record Channel(
     /// byte ranking read them (<see cref="SessionByteRanking"/>); null until one has.
     /// </summary>
     public IReadOnlyDictionary<ProcessInstanceId, ProcessBytes>? EndBytes { get; init; }
+
+    /// <summary>
+    /// The process holding the first endpoint of <see cref="Name"/>, when known. A paired channel names its ends in its
+    /// relation's order, which is neither its relationship's source nor its target, so a view that puts one process's own
+    /// end first needs to know whose each is.
+    /// </summary>
+    public ProcessInstanceId? FirstHolder { get; init; }
 }
 
 /// <summary>

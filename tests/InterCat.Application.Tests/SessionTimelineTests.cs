@@ -304,9 +304,21 @@ public sealed class SessionTimelineTests
         Assert.Equal(4, result.DirectionLanes.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
         Assert.Equal(1, result.DirectionLanes.Single(lane => lane.Direction == Direction.UnknownDirection)
             .Buckets.Sum(bucket => bucket.ObservationCount));
+
+        // A row's quiet interval is judged by what the capture collected, as a process lane's is (R21): the rows split
+        // one process's records, and it could have made any of them. The whole extent lies in the first, lossless epoch.
         Assert.All(result.DirectionLanes.SelectMany(lane => lane.Buckets)
             .Where(bucket => bucket.ObservationCount == 0),
-            bucket => Assert.Equal(CoverageState.UnknownCoverage, bucket.Coverage));
+            bucket => Assert.Equal(CoverageState.Covered, bucket.Coverage));
+
+        // Observed-empty where the capture covered what it collects, a gap where it lost records, and unknown past the
+        // readings it delivered.
+        IReadOnlyList<TimelineBucket> inbound = SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 12_000), 12,
+                new TimelineFocus(null, [owner])).DirectionLanes.Single(lane => lane.Direction == Direction.Inbound).Buckets;
+        Assert.Equal((1, CoverageState.Covered), (inbound[2].ObservationCount, inbound[2].Coverage));
+        Assert.Equal((0, CoverageState.Covered), (inbound[3].ObservationCount, inbound[3].Coverage));
+        Assert.Equal((0, CoverageState.PartialGap), (inbound[6].ObservationCount, inbound[6].Coverage));
+        Assert.Equal((0, CoverageState.UnknownCoverage), (inbound[11].ObservationCount, inbound[11].Coverage));
     }
 
     [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]

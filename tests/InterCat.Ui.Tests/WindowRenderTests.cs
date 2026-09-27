@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -146,6 +147,37 @@ public sealed class WindowRenderTests
         }
 
         Assert.Equal("L5 · EVIDENCE", viewModel.LevelBadge);
+    }
+
+    [AvaloniaFact(DisplayName = "§6.1: the rail widens with a wide window until the user resizes it by its edge")]
+    public void TheRailFollowsTheWindowUntilResized()
+    {
+        var window = new MainWindow { Width = 1456, Height = 900 };
+        window.Show();
+        Dispatch();
+        Border rail = window.GetControl<Border>("Rail");
+        Assert.Equal(250, rail.Bounds.Width, 0.5);
+
+        // A 4K-wide window gives the rail more of its width, never more than 400 pixels.
+        window.Width = 2600;
+        Dispatch();
+        Assert.Equal(364, rail.Bounds.Width, 0.5);
+        window.Width = 3856;
+        Dispatch();
+        Assert.Equal(400, rail.Bounds.Width, 0.5);
+
+        // The edge is a named control the keyboard resizes, and a width the user chose is kept when the window changes.
+        GridSplitter edge = window.GetControl<GridSplitter>("RailSplitter");
+        Assert.False(string.IsNullOrWhiteSpace(Avalonia.Automation.AutomationProperties.GetName(edge)));
+        edge.Focus();
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Dispatch();
+        double chosen = rail.Bounds.Width;
+        Assert.True(chosen > 400, $"The rail is {chosen:F0} px after a keyboard resize.");
+        window.Width = 2600;
+        Dispatch();
+        Assert.Equal(chosen, rail.Bounds.Width, 0.5);
+        window.Close();
     }
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

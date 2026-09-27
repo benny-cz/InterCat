@@ -94,11 +94,7 @@ public static class SessionCoverage
         }
 
         ledger.Validate();
-        CoverageState[] judged = [.. ledger.Epochs.Select(epoch => Worst(epoch.Collected
-            .Select(descriptor => descriptor.Mechanism)
-            .Distinct()
-            .Select(mechanism => StateIn(epoch, mechanism).State)
-            .DefaultIfEmpty(CoverageState.NotCollected)))];
+        CoverageState[] judged = [.. ledger.Epochs.Select(CaptureStateIn)];
         for (int index = 0; index < states.Length; index++)
         {
             if (nativeIntervals[index] is not { } range)
@@ -124,6 +120,29 @@ public static class SessionCoverage
 
         return states;
     }
+
+    /// <summary>
+    /// The capture's own state over every epoch, whatever was observed: the worst state of every mechanism each epoch
+    /// collected, as <see cref="CaptureStates"/> judges one interval. A process can make any record the capture collects,
+    /// so this is the coverage of its count over the whole session (§10.3). Without a ledger, or an epoch, it is unknown.
+    /// </summary>
+    public static CoverageState Capture(CoverageLedgerV1? ledger)
+    {
+        if (ledger is null)
+        {
+            return CoverageState.UnknownCoverage;
+        }
+
+        ledger.Validate();
+        return Worst(ledger.Epochs.Select(CaptureStateIn));
+    }
+
+    /// <summary>One epoch's own state: the worst of every mechanism it collected, or not collected when it collected none.</summary>
+    private static CoverageState CaptureStateIn(CoverageEpochV1 epoch) => Worst(epoch.Collected
+        .Select(descriptor => descriptor.Mechanism)
+        .Distinct()
+        .Select(mechanism => StateIn(epoch, mechanism).State)
+        .DefaultIfEmpty(CoverageState.NotCollected));
 
     /// <summary>The worst of several states on the ordered lattice; nothing to span is unknown.</summary>
     public static CoverageState Worst(IEnumerable<CoverageState> states)

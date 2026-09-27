@@ -86,6 +86,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private string? appliedDetail;
     private readonly DispatcherTimer healthClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    // The rail's width as the window last set it, until the user resizes the rail by its edge (null once they have).
+    private double? followedRailWidth = RailDesignWidth;
+    private const double RailDesignWidth = 250;
+    private const double RailWidestFollowed = 400;
+
     public MainWindow() : this(new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace"))
     {
     }
@@ -131,6 +136,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         Opened += (_, _) => StartExploringButton.Focus();
+        SizeChanged += (_, change) => FollowRailWidth(change.NewSize.Width);
         UpdateThemeMenu();
 
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
@@ -564,9 +570,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (currentSessionPath is null || displayedSessionId is not { } sessionId
             || displayedGeneration < 1) return;
-        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        var (available, processScope) = ChannelDiscoveryScope(navigation);
-        if (!available) return;
+        if (workspace.IsEvidenceRung) return;
+        ProcessInstanceId? processScope = ChannelDiscoveryScope(workspace.CaptureNavigation());
         using var browser = new SessionChannelWindow(currentSessionPath, sessionId, displayedGeneration, processScope);
         try
         {
@@ -1908,11 +1913,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void UpdateEvidenceAction()
     {
-        WorkspaceNavigationMemento navigation = workspace.CaptureNavigation();
-        var (channelsAvailable, channelProcess) = ChannelDiscoveryScope(navigation);
+        ProcessInstanceId? channelProcess = ChannelDiscoveryScope(workspace.CaptureNavigation());
         bool session = currentSessionPath is not null && displayedGeneration > 0;
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
-        BrowseChannelsButton.IsEnabled = session && channelsAvailable && !workspace.IsEvidenceRung;
+        BrowseChannelsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         ToolTip.SetTip(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
@@ -1921,7 +1925,8 @@ public sealed partial class MainWindow : Window, IDisposable
             ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
                 : "Browse admitted paired TCP channels involving this process instance.")
                 + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
-            : "Open a session, or return to Machine or Process to browse paired channels.");
+            : workspace.IsEvidenceRung ? "Esc leaves the source records; paired channels can be browsed from any other level."
+            : "Open or record a session first.");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.
@@ -1952,15 +1957,41 @@ public sealed partial class MainWindow : Window, IDisposable
         : session ? "Wait for the session to finish opening."
         : "Open or record a session first.";
 
-    private static (bool Available, ProcessInstanceId? ProcessScope) ChannelDiscoveryScope(
-        WorkspaceNavigationMemento navigation)
+    /// <summary>
+    /// Widens the rail with the window: its design width up to a 1,786-pixel window, then 14% of the window, at most 400.
+    /// A fixed rail on a 4K window cut every long name and channel end short (revision 197's live pass). Once the user
+    /// resizes the rail by its edge, by pointer or by arrow keys, their width is kept.
+    /// </summary>
+    private void FollowRailWidth(double windowWidth)
+    {
+        ColumnDefinition rail = WindowGrid.ColumnDefinitions[0];
+        if (followedRailWidth is not { } followed || Math.Abs(rail.Width.Value - followed) > 0.5)
+        {
+            followedRailWidth = null;
+            return;
+        }
+
+        double width = Math.Clamp(Math.Round(windowWidth * 0.14), RailDesignWidth, RailWidestFollowed);
+        if (Math.Abs(width - followed) > 0.5)
+        {
+            rail.Width = new GridLength(width);
+            followedRailWidth = width;
+        }
+    }
+
+    /// <summary>
+    /// The process the channel browser lists channels of: the process rung's own on or below it, the selected process
+    /// above it, and none, which lists every channel, otherwise. A group's rung once disabled the browser with a process
+    /// selected on it (revision 197's live pass).
+    /// </summary>
+    private static ProcessInstanceId? ChannelDiscoveryScope(WorkspaceNavigationMemento navigation)
     {
         string? processKey = navigation.Breadcrumb.LastOrDefault(rung => rung.Level == DetailLevel.ProcessInstance)
             ?.Focus?.Key;
         if (processKey is not null && Guid.TryParse(processKey, out Guid id) && id != Guid.Empty)
-            return (true, new ProcessInstanceId(id));
-        return navigation.Breadcrumb[^1].Level == DetailLevel.Machine
-            ? (true, navigation.SelectedProcess) : (false, null);
+            return new ProcessInstanceId(id);
+
+        return navigation.Breadcrumb[^1].Level is DetailLevel.Machine or DetailLevel.Group ? navigation.SelectedProcess : null;
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)

@@ -76,7 +76,9 @@ public static class SessionChannelQuery
             throw new ArgumentException("The cursor points outside this generation's channel set.", nameof(cursor));
 
         int count = Math.Min(pageSize, admitted.Length - offset);
-        Channel[] channels = [.. admitted.Skip(offset).Take(count).Select(SessionOverviewProjector.ProjectChannel)];
+        CoverageState tcp = SessionCoverage.Of(SessionSegments.CoverageLedger(store.Root, manifest), Mechanism.Tcp).State;
+        Channel[] channels = [.. admitted.Skip(offset).Take(count)
+            .Select(relation => SessionOverviewProjector.ProjectChannel(relation, tcp))];
         int next = offset + count;
         return new(identity, manifest.SessionId, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
             next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat);
