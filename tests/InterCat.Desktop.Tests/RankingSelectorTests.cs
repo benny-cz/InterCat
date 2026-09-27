@@ -66,11 +66,11 @@ public sealed class RankingSelectorTests
         Assert.Equal([WorkspaceRowBuilder.DescribeSize(1_000), WorkspaceRowBuilder.DescribeSize(750)],
             workspace.RungRows.Select(row => row.Figure));
 
-        // A process's rung lists its channels, which a byte ranking does not order: the selector steps aside.
+        // A process's rung ranks its channels by its own bytes on each; this one has no paired channel, and says so.
         workspace.SelectedRung = workspace.RungRows[0];
         Assert.True(workspace.Descend());
-        Assert.False(workspace.ShowsRankingChoice);
-        Assert.False(workspace.ShowsRankingNote);
+        Assert.True(workspace.ShowsRankingChoice);
+        Assert.Equal("No sends in scope", workspace.RankingNote);
         Assert.True(workspace.Ascend());
         Assert.True(workspace.Ascend());
 
@@ -256,6 +256,74 @@ public sealed class RankingSelectorTests
         Assert.Equal(SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Json, RankBy: RankingMetric.RpcCallsMade), Exported).Content, exported.Content);
     });
+
+    [Fact(DisplayName = "§6.1: at a process's rung bytes rank its TCP channels by its own bytes, and its RPC channels say they carry no size")]
+    public void AProcessesChannelsRankByItsBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        Assert.True(workspace.ShowsRankingChoice);
+        Assert.Equal(RankingMetric.BytesSent, workspace.AppliedRanking);
+        Assert.Equal(
+            [WorkspaceRowBuilder.DescribeSize(5_000), WorkspaceRowBuilder.DescribeSize(300), "no size"],
+            workspace.RungRows.Select(row => row.Figure));
+        Assert.Equal("RPC carries no size", workspace.RungRows[2].RankedSpoken);
+        Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_300)} on 4 sends", workspace.RankingNote);
+        Assert.StartsWith("Bytes sent are the transport-observed bytes of this process's own send records on each channel",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // The export at this rung is icat export's (R18).
+        string[] path = [client.GroupKey, client.Id.ToString()];
+        Assert.Equal((await workspace.ExportAsync(ExportFormat.Csv, Exported)).Content,
+            SessionExport.Build(session.Store, new(path, null, false, ExportFormat.Csv, RankBy: RankingMetric.BytesSent), Exported).Content);
+
+        // A call ranking ranks groups and processes; here the channels, which already list their calls, rank by records.
+        workspace.RankBy = RankingMetric.RpcCallsMade;
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.Records, workspace.AppliedRanking);
+        Assert.Equal("Channels rank by records at a process's rung", workspace.RankingNote);
+        Assert.Equal([6L, 4L, 2L], workspace.RungRows.Select(row => row.Source.ObservationCount));
+        Assert.All(workspace.RungRows, row => Assert.Null(row.RankedFigure));
+    });
+
+    /// <summary>
+    /// A client, PID 100, and a server, PID 200, on two connections - three 100-byte messages on the first, one of 5,000
+    /// bytes on the second - and two RPC calls the client makes to the service control manager.
+    /// </summary>
+    private static ObservationRowV1[] ClientAndServer()
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 2);
+        return
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            .. Enumerable.Range(0, 3).SelectMany(index => new[]
+            {
+                Timed(Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 100, 100, (ulong)(10 + (2 * index)))
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080")),
+                Timed(Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, (ulong)(11 + (2 * index)))
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000")),
+            }),
+            Timed(Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 5_000, 100, 30).Between("127.0.0.1:50001", "127.0.0.1:8080")),
+            Timed(Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 5_000, 200, 31).Between("127.0.0.1:8080", "127.0.0.1:50001")),
+            Timed(RpcCall(40, ObservationKind.RequestStart, Direction.Outbound, 100, 40, Activity(1), serviceControl)),
+            Timed(RpcCall(41, ObservationKind.RequestEnd, Direction.Outbound, 100, 41, Activity(1), status: 0)),
+            Timed(RpcCall(42, ObservationKind.RequestStart, Direction.Outbound, 100, 42, Activity(2), serviceControl)),
+            Timed(RpcCall(43, ObservationKind.RequestEnd, Direction.Outbound, 100, 43, Activity(2), status: 0)),
+        ];
+    }
 
     /// <summary>
     /// caller.exe makes three calls to service.exe, which serves two of them; one of the three fails. orphan.exe has one

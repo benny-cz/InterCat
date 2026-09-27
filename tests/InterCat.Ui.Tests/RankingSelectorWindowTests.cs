@@ -78,11 +78,16 @@ public sealed class RankingSelectorWindowTests
         Assert.Equal("zero.exe", FirstLabel(rail));
         Assert.DoesNotContain("updating", note.Text, StringComparison.Ordinal);
 
-        // A process's rung lists channels, which the selector does not rank: it steps aside there and returns above.
+        // A process's rung ranks its channels by its own bytes, so the selector stays; its evidence lists records in reading
+        // order, where the selector steps aside, and returns above it.
         second.SelectedRung = second.RungRows[0];
         Assert.True(second.Descend());
         second.SelectedRung = second.RungRows[0];
         Assert.True(second.Descend());
+        Dispatch();
+        Assert.True(selector.IsEffectivelyVisible);
+        Assert.True(second.ShowEvidence());
+        await second.EvidenceReady;
         Dispatch();
         Assert.False(selector.IsEffectivelyVisible);
         Assert.False(note.IsEffectivelyVisible);

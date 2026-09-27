@@ -82,19 +82,29 @@ public static class OverviewWorkspace
     }
 
     /// <summary>
-    /// The same workspace with each process's transport bytes over the measured scope, for a ranking by bytes
-    /// (<see cref="SessionByteRanking"/>); a process the measurement found no send or receive record of holds none.
+    /// The same workspace with each process's transport bytes over the measured scope, and each channel end's, for a
+    /// ranking by bytes (<see cref="SessionByteRanking"/>); a process or end the measurement found no send or receive
+    /// record of holds none.
     /// </summary>
     public static WorkspaceSnapshot WithBytes(WorkspaceSnapshot snapshot, SessionByteMeasures measures)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(measures);
+        Dictionary<string, CommunicationEdge> edges = snapshot.Edges.ToDictionary(edge => edge.Key, StringComparer.Ordinal);
         return snapshot with
         {
             Processes = [.. snapshot.Processes.Select(process => process with
             {
                 Bytes = measures.ByProcess.GetValueOrDefault(process.Id) ?? ProcessBytes.None,
             })],
+            Channels = [.. snapshot.Channels.Select(channel => edges.TryGetValue(channel.EdgeKey, out CommunicationEdge? edge)
+                ? channel with
+                {
+                    EndBytes = new[] { edge.SourceId, edge.TargetId }.Distinct().ToDictionary(
+                        end => end,
+                        end => measures.ByChannelEnd.GetValueOrDefault(new ChannelEnd(channel.Key, end)) ?? ProcessBytes.None),
+                }
+                : channel)],
         };
     }
 

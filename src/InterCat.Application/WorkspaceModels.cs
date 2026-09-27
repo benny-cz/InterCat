@@ -84,7 +84,14 @@ public sealed record Channel(
     Direction Direction,
     long ObservationCount,
     long? KnownBytes,
-    CoverageState Coverage);
+    CoverageState Coverage)
+{
+    /// <summary>
+    /// The transport bytes each end's own records measured over the ranked scope, by the process holding that end, when a
+    /// byte ranking read them (<see cref="SessionByteRanking"/>); null until one has.
+    /// </summary>
+    public IReadOnlyDictionary<ProcessInstanceId, ProcessBytes>? EndBytes { get; init; }
+}
 
 /// <summary>
 /// An L4 rung: one logical operation on a channel. Requested and completed sizes stay separate, and an

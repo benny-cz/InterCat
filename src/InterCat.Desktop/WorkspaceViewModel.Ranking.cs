@@ -81,12 +81,22 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Completes when the most recent read for the ranking has applied, been superseded or failed.</summary>
     public Task RankingReady { get; private set; } = Task.CompletedTask;
 
-    /// <summary>Whether this rung offers the selector: a session's machine and group rungs, whose rows are groups and processes.</summary>
+    /// <summary>
+    /// Whether this rung offers the selector: a session's machine and group rungs, whose rows are groups and processes, and a
+    /// process's rung, whose TCP channels a byte ranking orders by the process's own bytes on each.
+    /// </summary>
     public bool ShowsRankingChoice => evidenceSource is not null
-        && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group;
+        && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group or DetailLevel.ProcessInstance;
 
     /// <summary>What the rows are ranked by now: the chosen ranking once its measures answer the rows' scope, else records.</summary>
-    public RankingMetric AppliedRanking => ShownMeasures is null ? RankingMetric.Records : rankBy;
+    public RankingMetric AppliedRanking => ShownMeasures is null || !RanksThisRung ? RankingMetric.Records : rankBy;
+
+    /// <summary>
+    /// Whether the chosen ranking orders this rung's rows: every ranking orders groups and processes; at a process's rung
+    /// only bytes do, since its RPC channels already list their calls and no TCP channel carries one.
+    /// </summary>
+    private bool RanksThisRung => ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group
+        || (ladder.Current.Level == DetailLevel.ProcessInstance && Family == RankingFamily.Bytes);
 
     /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet.</summary>
     public bool ShowsRankingNote => ShowsRankingChoice && rankBy != RankingMetric.Records;
@@ -101,6 +111,7 @@ public sealed partial class WorkspaceViewModel
         get
         {
             if (!ShowsRankingNote) return string.Empty;
+            if (!RanksThisRung) return "Channels rank by records at a process's rung";
             string name = Capitalized(Phrase(rankBy));
             if (CurrentMeasures is SessionCallMeasures { Unavailable: not null })
             {
@@ -148,7 +159,15 @@ public sealed partial class WorkspaceViewModel
         get
         {
             if (!ShowsRankingNote) return string.Empty;
-            string definition = Definition(rankBy);
+            if (!RanksThisRung)
+            {
+                return "RPC calls made and served rank groups and processes. At a process's rung its RPC channels list their "
+                    + "calls, no TCP channel carries one, and the channels rank by records.";
+            }
+
+            string definition = ladder.Current.Level == DetailLevel.ProcessInstance
+                ? ChannelDefinition(rankBy)
+                : Definition(rankBy);
             if (CurrentMeasures is SessionCallMeasures { Unavailable: { } unavailable })
             {
                 return $"{definition} They cannot rank the rows: {unavailable}. The rows rank by records.";
@@ -255,7 +274,8 @@ public sealed partial class WorkspaceViewModel
     };
 
     /// <summary>What an export adds for a call ranking, as <c>icat export</c> does: why it could not rank, or its coverage.</summary>
-    private string? RankingExportCaveat => ShowsRankingChoice && CurrentMeasures is SessionCallMeasures calls
+    private string? RankingExportCaveat => ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group
+        && CurrentMeasures is SessionCallMeasures calls
         ? SessionExport.CallCaveat(calls)
         : null;
 
@@ -285,6 +305,12 @@ public sealed partial class WorkspaceViewModel
     };
 
     private static string Capitalized(string phrase) => char.ToUpperInvariant(phrase[0]) + phrase[1..];
+
+    private static string ChannelDefinition(RankingMetric metric) => metric == RankingMetric.BytesSent
+        ? "Bytes sent are the transport-observed bytes of this process's own send records on each channel, sender-accounted; "
+            + "its RPC channels carry no size."
+        : "Bytes received are the transport-observed bytes of this process's own receive records on each channel, "
+            + "receiver-accounted; its RPC channels carry no size.";
 
     private static string Definition(RankingMetric metric) => metric switch
     {

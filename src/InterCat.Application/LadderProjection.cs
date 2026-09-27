@@ -86,7 +86,7 @@ public static class LadderProjection
         {
             DetailLevel.Machine => Groups(snapshot, ranking),
             DetailLevel.Group => Processes(snapshot, state.Focus?.Key, ranking),
-            DetailLevel.ProcessInstance => Channels(snapshot, state.Focus?.Key),
+            DetailLevel.ProcessInstance => Channels(snapshot, state.Focus?.Key, ranking),
             DetailLevel.Channel => Operations(snapshot, state.Focus?.Key),
             DetailLevel.Operation => Evidence(snapshot, state.Focus?.Key),
             DetailLevel.Evidence => EvidenceDetail(snapshot, state.Focus?.Key),
@@ -281,8 +281,12 @@ public static class LadderProjection
         return Rank(rows);
     }
 
-    private static List<LadderRow> Channels(WorkspaceSnapshot snapshot, string? processKey)
+    private static List<LadderRow> Channels(WorkspaceSnapshot snapshot, string? processKey, RankingMetric ranking)
     {
+        // A byte ranking ranks a process's channels by its own end's bytes on each; a call ranking leaves them by records,
+        // since no TCP channel carries a call.
+        ProcessInstanceId? focus = processKey is not null && Guid.TryParse(processKey, out Guid id) ? new ProcessInstanceId(id) : null;
+        bool byBytes = RankingMetrics.FamilyOf(ranking) == RankingFamily.Bytes && focus is not null;
         var rows = new List<LadderRow>();
         foreach (Channel channel in snapshot.Channels)
         {
@@ -312,10 +316,23 @@ public static class LadderProjection
                 channel.Mechanism,
                 channel.Coverage,
                 DetailLevel.Channel,
-                AccountingSide.EndpointActivity));
+                AccountingSide.EndpointActivity)
+            {
+                Ranked = byBytes && channel.EndBytes?.GetValueOrDefault(focus!.Value) is { } end ? end.Of(ranking) : null,
+            });
         }
 
         return Rank(rows);
+    }
+
+    /// <summary>
+    /// The order a ranked table's rows take, for rows ranked together outside a projection, as a process's TCP and RPC
+    /// channels are: by value when every row carries one, else by records, then by key (R13).
+    /// </summary>
+    public static IReadOnlyList<LadderRow> Order(IEnumerable<LadderRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return Rank([.. rows]);
     }
 
     private static List<LadderRow> Operations(WorkspaceSnapshot snapshot, string? channelKey)

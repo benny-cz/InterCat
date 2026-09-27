@@ -2386,18 +2386,32 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
         : IsRpcChannelRung ? rpcCallRows
         : rpcChannelRows.Count == 0 ? LadderRowBuilder.Rows(view, ThemeResources.CurrentMode)
-        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode), .. rpcChannelRows]);
+        : Ranked([.. LadderRowBuilder.Rows(view, ThemeResources.CurrentMode), .. rpcChannelRows.Select(RankedRpcChannel)]);
 
-    /// <summary>A rung's rows ranked as the ladder ranks them: most records first, then by key (R13).</summary>
+    /// <summary>
+    /// A process's TCP and RPC channels ranked together as the ladder ranks rows: by value when a byte ranking gave every
+    /// one a value, else by records, then by key (R13).
+    /// </summary>
     private static List<RungRow> Ranked(List<RungRow> rows)
     {
-        rows.Sort(static (left, right) =>
-        {
-            int byCount = right.Source.ObservationCount.CompareTo(left.Source.ObservationCount);
-            return byCount != 0 ? byCount : string.CompareOrdinal(left.Key, right.Key);
-        });
-        return rows;
+        Dictionary<string, RungRow> byKey = rows.ToDictionary(row => row.Key, StringComparer.Ordinal);
+        return [.. LadderProjection.Order(rows.Select(row => row.Source)).Select(source => byKey[source.Key])];
     }
+
+    /// <summary>
+    /// An RPC channel row under a byte ranking of its process's channels: RPC carries no size, so the row says so and
+    /// ranks after every TCP channel, whose own bytes rank them.
+    /// </summary>
+    private RungRow RankedRpcChannel(RungRow row) => ShownMeasures is SessionByteMeasures
+        && ladder.Current.Level == DetailLevel.ProcessInstance
+        && view.Rows.All(channel => channel.Ranked is not null)
+            ? row with
+            {
+                Source = row.Source with { Ranked = new RankedValue(rankBy, null, 0, 0) },
+                RankedFigure = "no size",
+                RankedSpoken = "RPC carries no size",
+            }
+            : row;
 
     /// <summary>The breadcrumb. It always names the level and the selection at each rung (section 3.2).</summary>
     public IReadOnlyList<CrumbRow> Crumbs => LadderRowBuilder.Crumbs(ladder);

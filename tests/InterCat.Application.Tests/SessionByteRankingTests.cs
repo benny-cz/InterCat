@@ -242,6 +242,80 @@ public sealed class SessionByteRankingTests
     /// <summary>A row whose session time is its reading in workspace ticks.</summary>
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 
+    [Fact(DisplayName = "§5.2: at a process's rung its channels rank by its own bytes on each, which its records there measured")]
+    public void AProcessesChannelsRankByItsOwnBytesOnEach()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TwoConnections());
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+        SessionByteMeasures measured = SessionByteRanking.Measure(session.Store, null);
+        ProcessNode client = whole.Processes.Single(node => node.ProcessId == 100);
+        ProcessNode server = whole.Processes.Single(node => node.ProcessId == 200);
+        Channel busy = whole.Channels.Single(channel => channel.Name.Contains(":50000", StringComparison.Ordinal));
+        Channel large = whole.Channels.Single(channel => channel.Name.Contains(":50001", StringComparison.Ordinal));
+
+        // Each end holds its own records: the client's sends and the server's receives, on each connection.
+        Assert.Equal(new ProcessBytes(300, 3, 0, 0, 0, 0), measured.ByChannelEnd[new(busy.Key, client.Id)]);
+        Assert.Equal(new ProcessBytes(0, 0, 0, 300, 3, 0), measured.ByChannelEnd[new(busy.Key, server.Id)]);
+        Assert.Equal(new ProcessBytes(5_000, 1, 0, 0, 0, 0), measured.ByChannelEnd[new(large.Key, client.Id)]);
+        Assert.Equal(new ProcessBytes(0, 0, 0, 5_000, 1, 0), measured.ByChannelEnd[new(large.Key, server.Id)]);
+
+        // By records the busy connection leads the client's rung; by the client's bytes sent the large one does.
+        WorkspaceSnapshot counted = OverviewWorkspace.WithBytes(whole, measured);
+        NavigationState rung = ProcessRung(counted, client);
+        Assert.Equal([busy.Key, large.Key], LadderProjection.Project(counted, rung).Rows.Select(row => row.Key));
+        LadderView sent = LadderProjection.Project(counted, rung, RankingMetric.BytesSent);
+        Assert.Equal([(large.Key, 5_000L), (busy.Key, 300L)], sent.Rows.Select(row => (row.Key, row.Ranked!.Value!.Value)));
+
+        // The client received nothing on either; the server's received bytes rank its rung the same way.
+        Assert.All(LadderProjection.Project(counted, rung, RankingMetric.BytesReceived).Rows, row => Assert.False(row.Ranked!.Holds));
+        LadderView received = LadderProjection.Project(counted, ProcessRung(counted, server), RankingMetric.BytesReceived);
+        Assert.Equal([large.Key, busy.Key], received.Rows.Select(row => row.Key));
+
+        // A call ranking leaves a process's channels by records: no TCP channel carries a call.
+        Assert.All(LadderProjection.Project(counted, rung, RankingMetric.RpcCallsMade).Rows, row => Assert.Null(row.Ranked));
+
+        // The export at the client's rung is ranked the same way and says what its rows' bytes are.
+        SessionExportResult export = SessionExport.Build(session.Store,
+            new([client.GroupKey, client.Id.ToString()], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent),
+            DateTimeOffset.UnixEpoch);
+        Assert.Equal(RankingMetric.BytesSent, export.Context.RankedBy);
+        Assert.Contains(export.Context.Caveats, caveat => caveat.Contains("this process's own send records on each channel", StringComparison.Ordinal));
+        using JsonDocument document = JsonDocument.Parse(export.Content);
+        Assert.Equal([large.Key, busy.Key], document.RootElement.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("key").GetString()));
+    }
+
+    private static NavigationState ProcessRung(WorkspaceSnapshot snapshot, ProcessNode process)
+    {
+        var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));
+        foreach (string key in new[] { process.GroupKey, process.Id.ToString() })
+        {
+            LadderRow row = LadderProjection.Project(snapshot, ladder.Current).Rows.Single(candidate => candidate.Key == key);
+            Assert.True(ladder.TryDescend(LadderProjection.DescentFor(row, ladder.Current, snapshot.Extent), out string? refusal), refusal);
+        }
+
+        return ladder.Current;
+    }
+
+    /// <summary>
+    /// A client, PID 100, and a server, PID 200, on two connections: three 100-byte messages on the first and one of
+    /// 5,000 bytes on the second, each sent by the client and received by the server.
+    /// </summary>
+    private static ObservationRowV1[] TwoConnections() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+        Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+        .. Enumerable.Range(0, 3).SelectMany(index => new[]
+        {
+            Timed(Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 100, 100, (ulong)(10 + (2 * index)))
+                .Between("127.0.0.1:50000", "127.0.0.1:8080")),
+            Timed(Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, (ulong)(11 + (2 * index)))
+                .Between("127.0.0.1:8080", "127.0.0.1:50000")),
+        }),
+        Timed(Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 5_000, 100, 30).Between("127.0.0.1:50001", "127.0.0.1:8080")),
+        Timed(Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 5_000, 200, 31).Between("127.0.0.1:8080", "127.0.0.1:50001")),
+    ];
+
     /// <summary>Random sends and receives, some unmeasured and some of an owner no lifecycle names, from reused PIDs.</summary>
     private static List<ObservationRowV1> RandomTraffic(Random random)
     {

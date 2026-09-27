@@ -42,13 +42,26 @@ public sealed record ProcessBytes(
     }
 }
 
-/// <summary>Every process instance's transport bytes over one scope of one generation.</summary>
+/// <summary>One end of a drawn channel: the channel's key and the process instance holding that end.</summary>
+public readonly record struct ChannelEnd(string ChannelKey, ProcessInstanceId Process);
+
+/// <summary>
+/// Every process instance's transport bytes over one scope of one generation, and each end's bytes on every channel the
+/// overview draws: an admitted paired TCP incarnation, whose two ends are held by the two processes it relates.
+/// </summary>
 public sealed record SessionByteMeasures(
     Guid SessionId,
     long Generation,
     TimeRange? Interval,
     IReadOnlyDictionary<ProcessInstanceId, ProcessBytes> ByProcess,
-    ProcessBytes Unattributed) : IRankingMeasures;
+    ProcessBytes Unattributed) : IRankingMeasures
+{
+    /// <summary>
+    /// The bytes each end's own records measured on each drawn channel; an end with no send or receive record in scope is
+    /// absent. A record belongs to the end its owner holds, under the evidence policy, as it belongs to that process.
+    /// </summary>
+    public IReadOnlyDictionary<ChannelEnd, ProcessBytes> ByChannelEnd { get; init; } = new Dictionary<ChannelEnd, ProcessBytes>();
+}
 
 /// <summary>
 /// Reads each process's transport bytes for the ranked table: what `icat metric --metric bytes-sent --byte-domain
@@ -77,19 +90,41 @@ public static class SessionByteRanking
             ?? throw new InvalidDataException("This generation names no source clock, so its processes cannot be identified.");
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        ProcessInstanceIndex processes = SessionDerivationCache.For(manifest).Processes(store.Root, segments, clock, fields, cancellationToken);
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
+        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
 
-        // One slot per instance, then one for every row no instance takes under the policy. An interval no reading can
-        // fall in holds nothing, and no segment is read for it.
+        // The channels the overview draws, each with a dense slot and the instance holding each of its ends.
         int instances = processes.Instances.Count;
-        var total = new ByteTally(instances + 1);
+        var indexOf = new Dictionary<ProcessInstanceId, int>(instances);
+        for (int instance = 0; instance < instances; instance++)
+        {
+            indexOf[processes.Instances[instance].Id] = instance;
+        }
+
+        int[] slotOfChannel = new int[relations.Channels];
+        Array.Fill(slotOfChannel, -1);
+        var drawn = new List<(string Key, int First, int Second)>();
+        foreach (TransportRelation relation in relations.Relations)
+        {
+            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy)
+                && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
+            {
+                slotOfChannel[relation.Channel] = drawn.Count;
+                drawn.Add((relation.StableKey, indexOf[relation.First.Id], indexOf[relation.Second.Id]));
+            }
+        }
+
+        // One slot per instance, then one for every row no instance takes under the policy; one per channel end, then
+        // one for every row at no drawn end. An interval no reading can fall in holds nothing, and no segment is read.
+        var total = new Tallies(instances + 1, (drawn.Count * 2) + 1);
         if (interval is null || native is not null)
         {
             SegmentPasses.Run(
                 segments,
-                () => new ByteTally(instances + 1),
-                (segment, tally) => MeasureSegment(segment, native, policy, processes, instances, tally),
+                () => new Tallies(instances + 1, (drawn.Count * 2) + 1),
+                (segment, tally) => MeasureSegment(segment, native, policy, processes, relations, slotOfChannel, drawn, tally),
                 total.Add,
                 cancellationToken);
         }
@@ -97,14 +132,31 @@ public static class SessionByteRanking
         var byProcess = new Dictionary<ProcessInstanceId, ProcessBytes>();
         for (int instance = 0; instance < instances; instance++)
         {
-            ProcessBytes measured = total.Of(instance);
+            ProcessBytes measured = total.Processes.Of(instance);
             if (measured != ProcessBytes.None)
             {
                 byProcess[processes.Instances[instance].Id] = measured;
             }
         }
 
-        return new(manifest.SessionId, manifest.Generation, interval, byProcess, total.Of(instances));
+        var byChannelEnd = new Dictionary<ChannelEnd, ProcessBytes>();
+        for (int slot = 0; slot < drawn.Count; slot++)
+        {
+            (string key, int first, int second) = drawn[slot];
+            foreach ((int end, int instance) in new[] { (0, first), (1, second) })
+            {
+                ProcessBytes measured = total.Ends.Of((slot * 2) + end);
+                if (measured != ProcessBytes.None)
+                {
+                    byChannelEnd[new(key, processes.Instances[instance].Id)] = measured;
+                }
+            }
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, byProcess, total.Processes.Of(instances))
+        {
+            ByChannelEnd = byChannelEnd,
+        };
     }
 
     private static void MeasureSegment(
@@ -112,28 +164,63 @@ public static class SessionByteRanking
         TimeRange? native,
         EvidencePolicy policy,
         ProcessInstanceIndex processes,
-        int instances,
-        ByteTally tally)
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        List<(string Key, int First, int Second)> drawn,
+        Tallies tally)
     {
+        int instances = processes.Instances.Count;
+        int noEnd = drawn.Count * 2;
         PackedOwners owners = SegmentBindings.OwnersOf(segment, processes);
+        PackedChannels channels = SegmentBindings.ChannelsOf(segment, relations);
         int[] groups = new int[segment.RowCount];
+        int[] ends = new int[segment.RowCount];
         for (int row = 0; row < groups.Length; row++)
         {
             ProcessBinding owner = owners[row];
-            groups[row] = owner.IsAdmittedUnder(policy) ? owner.Instance : instances;
+            bool admitted = owner.IsAdmittedUnder(policy);
+            groups[row] = admitted ? owner.Instance : instances;
+
+            // A row is at the end its own owner holds of the channel it belongs to; a process connected to itself holds
+            // both, and its records are counted at the first.
+            ChannelBinding binding = channels[row];
+            int slot = admitted && binding.IsKnown && binding.Channel < slotOfChannel.Length ? slotOfChannel[binding.Channel] : -1;
+            ends[row] = slot < 0 ? noEnd
+                : owner.Instance == drawn[slot].First ? slot * 2
+                : owner.Instance == drawn[slot].Second ? (slot * 2) + 1
+                : noEnd;
         }
 
-        GroupedDomainMeasurement measured = SegmentMeasurement.MeasureDomainByGroup(
-            segment,
-            new() { Domain = ByteDomain.TransportObserved, Interval = native },
-            groups,
-            instances + 1);
-        for (int group = 0; group <= instances; group++)
+        var domain = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved, Interval = native };
+        Add(tally.Processes, SegmentMeasurement.MeasureDomainByGroup(segment, domain, groups, instances + 1));
+        if (drawn.Count > 0)
+        {
+            Add(tally.Ends, SegmentMeasurement.MeasureDomainByGroup(segment, domain, ends, noEnd + 1));
+        }
+    }
+
+    private static void Add(ByteTally tally, GroupedDomainMeasurement measured)
+    {
+        for (int group = 0; group < measured.Groups.Count; group++)
         {
             foreach (SideMeasurement side in measured.Groups[group])
             {
                 tally.Add(group, side);
             }
+        }
+    }
+
+    /// <summary>One worker's sums by process and by channel end, merged once it has no segment left.</summary>
+    private sealed class Tallies(int processSlots, int endSlots)
+    {
+        public ByteTally Processes { get; } = new(processSlots);
+
+        public ByteTally Ends { get; } = new(endSlots);
+
+        public void Add(Tallies other)
+        {
+            Processes.Add(other.Processes);
+            Ends.Add(other.Ends);
         }
     }
 

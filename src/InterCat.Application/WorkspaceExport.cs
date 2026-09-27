@@ -75,15 +75,29 @@ public static class WorkspaceExport
                 ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
                 : "Whole session",
             true,
-            rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy)],
+            rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)],
             exportedUtc)
         {
             RankedBy = rankedBy,
         };
     }
 
-    /// <summary>What a byte or call ranking measures, as an export states it beside its rows.</summary>
-    public static string RankingCaveat(RankingMetric rankedBy) => rankedBy switch
+    /// <summary>
+    /// What a byte or call ranking measures, as an export states it beside its rows. At a process's rung its rows are its
+    /// channels, ranked by its own end's bytes on each.
+    /// </summary>
+    public static string RankingCaveat(RankingMetric rankedBy, DetailLevel rung = DetailLevel.Machine) => (rankedBy, rung) switch
+    {
+        (RankingMetric.BytesSent, DetailLevel.ProcessInstance) => "Rows are ranked by bytes sent: transport-observed bytes on "
+            + "this process's own send records on each channel, sender-accounted. A channel none of whose sends recorded a size "
+            + "is unmeasured and ranks after every measured channel, then channels with no send.",
+        (RankingMetric.BytesReceived, DetailLevel.ProcessInstance) => "Rows are ranked by bytes received: transport-observed "
+            + "bytes on this process's own receive records on each channel, receiver-accounted. A channel none of whose "
+            + "receives recorded a size is unmeasured and ranks after every measured channel, then channels with no receive.",
+        _ => MachineCaveat(rankedBy),
+    };
+
+    private static string MachineCaveat(RankingMetric rankedBy) => rankedBy switch
     {
         RankingMetric.BytesSent => "Rows are ranked by bytes sent: transport-observed bytes on each process's own send "
             + "records, sender-accounted. A row none of whose sends recorded a size is unmeasured and ranks after every "
