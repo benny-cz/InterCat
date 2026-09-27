@@ -21,11 +21,7 @@ public static partial class SessionMetrics
         bool peers = request.Metric == Metric.ActivePeers;
         ProcessRoles roles = context.Roles ?? RolesFor(
             context,
-            ProcessInstanceIndex.Derive(
-                [.. context.Segments.Select(segment => segment.Reader)],
-                context.Clock!.Value,
-                context.FieldSegments,
-                cancellationToken),
+            ProcessesOf(context, cancellationToken),
             withRelations: true,
             cancellationToken);
         ProcessFilter? filter = context.Filter;
@@ -131,11 +127,7 @@ public static partial class SessionMetrics
         EvidencePolicy policy = request.EvidencePolicy;
         ProcessRoles roles = context.Roles ?? RolesFor(
             context,
-            ProcessInstanceIndex.Derive(
-                [.. context.Segments.Select(segment => segment.Reader)],
-                context.Clock!.Value,
-                context.FieldSegments,
-                cancellationToken),
+            ProcessesOf(context, cancellationToken),
             withRelations: true,
             cancellationToken);
         ProcessInstanceIndex processes = roles.Processes;

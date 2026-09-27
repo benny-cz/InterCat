@@ -96,7 +96,7 @@ public static partial class SessionMetrics
         }
 
         SegmentReaderV1[] readers = [.. context.Segments.Select(segment => segment.Reader)];
-        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(readers, clock, context.FieldSegments, cancellationToken);
+        ProcessInstanceIndex processes = ProcessesOf(context, cancellationToken);
         int owner = -1;
         if (request.Owner is { } named)
         {
@@ -122,7 +122,9 @@ public static partial class SessionMetrics
                 + "identified from a PID or an exit basename; import evidence with admitted process image names.");
         }
 
-        RpcCallIndex calls = RpcCallIndex.Derive(readers, context.FieldSegments, processes, clock, cancellationToken);
+        RpcCallIndex calls = context.Derived is { } derived && ReferenceEquals(processes, derived.Processes)
+            ? derived.Calls(cancellationToken)
+            : RpcCallIndex.Derive(readers, context.FieldSegments, processes, clock, cancellationToken);
         if (request.Metric == Metric.Duration)
         {
             return Durations(context, calls, processes, clock, owner, cancellationToken);

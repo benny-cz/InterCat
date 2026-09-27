@@ -554,7 +554,13 @@ internal static class MetricCommand
         MetricResult result;
         try
         {
-            result = SessionMetrics.Evaluate(store, request, new() { EvidenceLimit = evidence }, cancellationToken);
+            result = SessionMetrics.Evaluate(store, request, new()
+            {
+                EvidenceLimit = evidence,
+
+                // A finished session's checkpoint names its processes and relations, so the answer does not derive them again.
+                Derivations = SessionMetricDerivations.For(store, cancellationToken),
+            }, cancellationToken);
         }
         catch (ArgumentException exception)
         {

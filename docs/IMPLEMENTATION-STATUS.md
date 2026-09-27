@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 203 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 204 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 204 — metric queries reuse the session's derivation (§12.1 S1):**
+  - `SessionMetrics.Evaluate` takes a caller's derivation of the generation (`MetricDerivations`) and uses it only for the
+    very generation it leases; `icat metric` and `icat processes` pass the overview cache's, from the checkpoint.
+  - Answers are identical with and without it (random sessions, eight metric kinds, whole and interval).
+  - 1M rows: active peers by process 1.85 → 1.64 s; a records count by process stays ~1.0 s, since store verification
+    (0.86 s) and per-row binding dominate - the next costs to take on.
 
 - **Revision 203 — a TCP connection event measures no bytes (R3):**
   - Connect, accept and disconnect events (12, 13, 15, 28, 29, 31) admitted the provider's `size` field, always zero, as
@@ -1798,7 +1805,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - A live session still counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
-   - Metric queries (`icat metric`) still derive their own instances and read no checkpoint.
+   - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
+     a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
    - Viewer memory is bounded by the reader cache since revision 161 (S2), and a reopen fills it only as views read.
    - **Measured next step:** a warm query re-reads and re-verifies every segment the reader cache cannot hold. In a
      sampled trace at 1M rows under the old 64 MiB budget, opening segments took 13.7% of the samples, 8.7% of them the
@@ -1889,6 +1897,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 204 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,288 tests: 1,284
+  passed, 4 skipped**, zero failures. Timings on a generated 1M-row session, Release CLI, this workstation.
 - Revision 203 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,287 tests: 1,283
   passed, 4 skipped**, zero failures. On real ETW, `icat measure tcp` computed TrafficVisualization with every criterion
   met, and a 15-second recording's connection records stated no size.

@@ -52,11 +52,7 @@ public static partial class SessionMetrics
         ProcessRoles? roles = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer
             ? context.Roles ?? RolesFor(
                 context,
-                ProcessInstanceIndex.Derive(
-                    [.. context.Segments.Select(segment => segment.Reader)],
-                    context.Clock!.Value,
-                    context.FieldSegments,
-                    cancellationToken),
+                ProcessesOf(context, cancellationToken),
                 NeedsRelations(request),
                 cancellationToken)
             : null;

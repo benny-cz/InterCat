@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -220,7 +221,12 @@ internal static class ProcessesCommand
                 Grouping = LaneGrouping.InstanceOnly,
                 EvidencePolicy = policy,
             },
-            cancellationToken: cancellationToken);
+            Checkpointed(store, cancellationToken),
+            cancellationToken);
+
+    /// <summary>The answer's options: the session's checkpointed derivation, so each question derives no instance again.</summary>
+    private static MetricEvaluationOptions Checkpointed(SessionStore store, CancellationToken cancellationToken) =>
+        new() { Derivations = SessionMetricDerivations.For(store, cancellationToken) };
 
     private static ProcessesDocument Describe(
         string path,
@@ -311,11 +317,11 @@ internal static class ProcessesCommand
         MetricResult sentTo = SessionMetrics.Evaluate(store, PeerRequest(Metric.BytesSent, AccountingSide.SendSide, policy) with
         {
             Sender = instance,
-        }, cancellationToken: cancellationToken);
+        }, Checkpointed(store, cancellationToken), cancellationToken);
         MetricResult receivedFrom = SessionMetrics.Evaluate(store, PeerRequest(Metric.BytesReceived, AccountingSide.ReceiveSide, policy) with
         {
             Receiver = instance,
-        }, cancellationToken: cancellationToken);
+        }, Checkpointed(store, cancellationToken), cancellationToken);
 
         var peers = new Dictionary<string, (ProcessInstance? Peer, ProcessBindingReason? Reason, long? Sent, long? Received)>(StringComparer.Ordinal);
         foreach ((MetricResult result, bool sent) in new[] { (sentTo, true), (receivedFrom, false) })

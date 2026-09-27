@@ -319,7 +319,27 @@ public sealed record MetricEvaluationOptions
     /// none. Every number navigates to its evidence (§3.2); this is the one-step path from a total to the rows.
     /// </summary>
     public int EvidenceLimit { get; init; }
+
+    /// <summary>
+    /// A derivation of the session the caller already holds, which the answer uses in place of deriving instances,
+    /// relations and calls from every segment again - but only when it names the very generation the answer leases.
+    /// </summary>
+    public MetricDerivations? Derivations { get; init; }
 }
+
+/// <summary>
+/// One generation's derivation as a caller already holds it: its process instances, and on demand its transport relations
+/// and RPC calls, each derived against those instances. A finished session's checkpoint holds the first two, so an answer
+/// given this reads no segment to identify its processes (§12.1 S1). It is the generation's own or it is not used: an
+/// answer takes it only when its session, generation and manifest digest are those the answer leases.
+/// </summary>
+public sealed record MetricDerivations(
+    Guid SessionId,
+    long Generation,
+    string ManifestDigest,
+    ProcessInstanceIndex Processes,
+    Func<CancellationToken, TransportRelationIndex> Relations,
+    Func<CancellationToken, RpcCallIndex> Calls);
 
 /// <summary>Why a request the matrix permits still cannot be answered from this session.</summary>
 public enum MetricUnavailableReason
@@ -992,7 +1012,14 @@ public static partial class SessionMetrics
 
         // Whatever reads a process binding derives instances from the start keys the side segments hold, so an instance
         // has one identity in every answer and in the process list (I12).
-        var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit);
+        var context = new Context(materialized, manifest.Generation, segments, clock, bounds.EvidenceLimit)
+        {
+            Derived = bounds.Derivations is { } given && given.SessionId == manifest.SessionId
+                && given.Generation == manifest.Generation
+                && string.Equals(given.ManifestDigest, manifest.Digest, StringComparison.Ordinal)
+                    ? given
+                    : null,
+        };
         if (AnalysisSpecification.ReadsProcesses(materialized))
         {
             context = context with
@@ -1018,8 +1045,7 @@ public static partial class SessionMetrics
                     "A process filter needs a capture clock to identify process instances within its host and boot.");
             }
 
-            ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(
-                [.. segments.Select(segment => segment.Reader)], clock.Value, context.FieldSegments, cancellationToken);
+            ProcessInstanceIndex processes = ProcessesOf(context, cancellationToken);
             ProcessInstanceId[] named =
             [
                 .. materialized.Focus is { } focused ? [focused.Instance] : Array.Empty<ProcessInstanceId>(),
@@ -1184,8 +1210,21 @@ public static partial class SessionMetrics
         bool withRelations,
         CancellationToken cancellationToken) =>
         new(processes, withRelations
-            ? TransportRelationIndex.Derive([.. context.Segments.Select(segment => segment.Reader)], processes, cancellationToken)
+            ? context.Derived is { } derived && ReferenceEquals(processes, derived.Processes)
+                ? derived.Relations(cancellationToken)
+                : TransportRelationIndex.Derive([.. context.Segments.Select(segment => segment.Reader)], processes, cancellationToken)
             : null);
+
+    /// <summary>
+    /// This generation's process instances: the caller's derivation of it when it holds one, else derived here from the
+    /// start keys the side segments hold, so an instance has one identity in every answer and in the process list (I12).
+    /// </summary>
+    private static ProcessInstanceIndex ProcessesOf(Context context, CancellationToken cancellationToken) =>
+        context.Derived?.Processes ?? ProcessInstanceIndex.Derive(
+            [.. context.Segments.Select(segment => segment.Reader)],
+            context.Clock!.Value,
+            context.FieldSegments,
+            cancellationToken);
 
     /// <summary>
     /// The records in scope a focus could be the unresolved other end of, by reason, counted inside the interval and
@@ -1735,6 +1774,9 @@ public static partial class SessionMetrics
     {
         /// <summary>The generation's `source-fields-v1` segments, opened only for process grouping or filtering.</summary>
         public IReadOnlyList<SegmentReaderV1> FieldSegments { get; init; } = [];
+
+        /// <summary>The caller's derivation of this very generation, when it gave one.</summary>
+        public MetricDerivations? Derived { get; init; }
 
         /// <summary>Which rows of each segment the process filter keeps; empty without a filter.</summary>
         public Dictionary<SegmentReaderV1, bool[]> ProcessMasks { get; init; } = [];
