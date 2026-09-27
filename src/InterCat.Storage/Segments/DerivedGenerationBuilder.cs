@@ -761,7 +761,10 @@ public sealed class DerivedGenerationBuilder : IDisposable
 /// </summary>
 public static class SessionSegments
 {
-    /// <summary>The `observation-v1` segments a generation names, in the order the manifest records them.</summary>
+    /// <summary>
+    /// The observation segments a generation names, in the order the manifest records them: `observation-v1`, or
+    /// `observation-v2` for a segment one of whose rows has an IPv6 address.
+    /// </summary>
     public static IReadOnlyList<string> Names(SessionManifestV1 manifest) => NamesOf(manifest, SegmentTableId.ObservationV1);
 
     /// <summary>
@@ -781,13 +784,24 @@ public static class SessionSegments
         ];
     }
 
-    /// <summary>The table a published segment name holds, read from its prefix; null for a name of no segment table.</summary>
+    /// <summary>
+    /// The table family a published segment name holds, read from its prefix and named by its first table: `seg-` names
+    /// observations and `fld-` source fields. Null for a name of no segment table.
+    /// </summary>
     private static SegmentTableId? TableOf(string name) =>
         name.StartsWith("seg-", StringComparison.Ordinal)
             ? SegmentTableId.ObservationV1
             : name.StartsWith("fld-", StringComparison.Ordinal)
                 ? SegmentTableId.SourceFieldsV1
                 : null;
+
+    /// <summary>Whether a segment of <paramref name="table"/> is what <paramref name="name"/> says it holds.</summary>
+    private static bool Holds(string name, SegmentTableId table) => TableOf(name) switch
+    {
+        SegmentTableId.ObservationV1 => table is SegmentTableId.ObservationV1 or SegmentTableId.ObservationV2,
+        { } named => table == named,
+        null => false,
+    };
 
     /// <summary>
     /// Opens one published segment together with the dictionaries its columns reference. A dictionary the
@@ -865,7 +879,7 @@ public static class SessionSegments
 
         SegmentReaderV1 reader = SegmentReaderV1.Open(source, prefix, dictionaries);
         reader.Published = segmentDependency;
-        if (reader.Table != TableOf(segmentDependency.Name))
+        if (!Holds(segmentDependency.Name, reader.Table))
         {
             throw new InvalidDataException(
                 $"'{segmentName}' is named as a {TableOf(segmentDependency.Name)} segment and holds {reader.Table}.");

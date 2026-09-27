@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Net;
 using System.Text;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
@@ -30,6 +32,8 @@ public sealed class RedactedSessionPackageTests
     private const string SecretPipe = @"\Device\NamedPipe\Contoso-Secret-Pipe";
     private const string SecretBody = "SECRET BODY BYTES FROM THE SOURCE";
     private const long SecretFileTime = 133_444_555_666_777_888;
+    private const string SecretGlobalHost = "2a01:5ec0:1234::7";
+    private const string SecretLinkLocalHost = "fe80::1234:5678:9abc:def0";
     private static readonly int[] SourceProcessIds = [1200, 1300, 1400, 1500];
 
     private static readonly SourceClockDescriptor SourceClock = new(
@@ -186,6 +190,11 @@ public sealed class RedactedSessionPackageTests
             }
 
             Assert.False(bytes.AsSpan().IndexOf(BitConverter.GetBytes(SecretFileTime)) >= 0, Path.GetFileName(path));
+            foreach (string host in new[] { SecretGlobalHost, SecretLinkLocalHost })
+            {
+                Assert.False(bytes.AsSpan().IndexOf(IPAddress.Parse(host).GetAddressBytes()) >= 0, $"{Path.GetFileName(path)}: {host}");
+                Assert.False(bytes.AsSpan().IndexOf(Encoding.UTF8.GetBytes(host)) >= 0, $"{Path.GetFileName(path)}: {host}");
+            }
             Assert.False(bytes.AsSpan().IndexOf(Encoding.UTF8.GetBytes(original.Digest[7..])) >= 0, Path.GetFileName(path));
         }
 
@@ -211,6 +220,22 @@ public sealed class RedactedSessionPackageTests
         Assert.DoesNotContain(rows, row => row.SourceEndpointPort is 50000 or 51000 or 52000 or 8443 or 9000
             || row.DestinationEndpointPort is 443 or 8443 or 50000 or 9000 or 52000);
         Assert.All(rows.Where(row => row.SourceEndpointPort is > 0), row => Assert.True(row.SourceEndpointPort >= 1024));
+
+        // IPv6 loopback and a mapped fixed point keep their meaning. Every other IPv6 address is a pseudonym in the
+        // documentation prefix, and an IPv4-mapped address takes its IPv4 part's pseudonym, so it names the same host.
+        UInt128 mappedLoopback = Address6("::ffff:127.0.0.1");
+        Assert.Contains(rows, row => row.SourceEndpointAddressV6 == UInt128.One && row.DestinationEndpointAddressV6 == UInt128.One);
+        Assert.Contains(rows, row => row.DestinationEndpointAddressV6 == mappedLoopback);
+        UInt128[] pseudonyms6 = [.. rows
+            .SelectMany(row => new[] { row.SourceEndpointAddressV6, row.DestinationEndpointAddressV6 })
+            .OfType<UInt128>()
+            .Where(address => address > UInt128.One && address >> 32 != 0xFFFF)];
+        Assert.Equal(2, pseudonyms6.Distinct().Count());
+        Assert.All(pseudonyms6, address => Assert.Equal(0x2001_0DB8u, (uint)(address >> 96)));
+        Assert.DoesNotContain(Address6(SecretGlobalHost), pseudonyms6);
+        Assert.DoesNotContain(Address6(SecretLinkLocalHost), pseudonyms6);
+        uint remoteHost = rows.Single(row => row.SessionRelativeTicks == 2_700).SourceEndpointAddress!.Value;
+        Assert.Equal(((UInt128)0xFFFF << 32) | remoteHost, rows.Single(row => row.SessionRelativeTicks == 4_700).SourceEndpointAddressV6);
         Assert.Contains(rows, row => row.ProviderId == NetworkProvider);
         Assert.DoesNotContain(rows, row => row.ProviderId == PrivateProvider);
         Assert.All(rows, row => Assert.StartsWith("redacted-schema-", row.SchemaFingerprint));
@@ -534,6 +559,14 @@ public sealed class RedactedSessionPackageTests
         ObservationRowV1 quarantined = At(Transfer(0, ObservationKind.Send, AccountingSide.SendSide, 9, 1200, 27)
             .Between("127.0.0.1:50002", "127.0.0.1:8443"), 55) with { SessionRelativeTicks = null };
 
+        // IPv6: a global and a link-local host, loopback, and an IPv4-mapped pair naming a host the IPv4 rows name too.
+        ObservationRowV1 globalSend = At(Transfer(0, ObservationKind.Send, AccountingSide.SendSide, 300, 1200, 40)
+            .Between($"[{SecretGlobalHost}]:50010", $"[{SecretLinkLocalHost}]:443"), 29);
+        ObservationRowV1 loopbackSend = At(Transfer(0, ObservationKind.Send, AccountingSide.SendSide, 200, 1300, 41)
+            .Between("[::1]:50011", "[::1]:8443"), 32);
+        ObservationRowV1 mappedSend = At(Transfer(0, ObservationKind.Send, AccountingSide.SendSide, 100, 1500, 42)
+            .Between("[::ffff:10.1.2.3]:50012", "[::ffff:127.0.0.1]:9000"), 47);
+
         ObservationRowV1 pipe = At(Transfer(0, ObservationKind.Send, AccountingSide.SendSide, 64, 1200, 30) with
         {
             ProviderId = PrivateProvider,
@@ -564,7 +597,7 @@ public sealed class RedactedSessionPackageTests
         }, 24);
 
         ObservationRowV1[] rows = [system, agent, child, childExit, exitOnly, worker, workerExit, reused, send, receive,
-            remote, incomplete, lanSend, lanReceive, early, quarantined, pipe, rpc];
+            remote, incomplete, lanSend, lanReceive, early, quarantined, globalSend, loopbackSend, mappedSend, pipe, rpc];
         SourceFieldRowV1[] fields =
         [
             Field(system, SourceField.ProcessStartSequence, 1),
@@ -642,7 +675,7 @@ public sealed class RedactedSessionPackageTests
                 ],
                 Deliveries =
                 [
-                    new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 9, Admitted = 9, Omitted = 0 },
+                    new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 12, Admitted = 12, Omitted = 0 },
                     new CoverageDeliveryV1 { ProviderId = ProcessProvider, EventId = 1, Version = 4, Delivered = 4, Admitted = 4, Omitted = 0 },
                     new CoverageDeliveryV1 { ProviderId = PrivateProvider, EventId = 5, Version = 0, Delivered = 1, Admitted = 1, Omitted = 0 },
                     new CoverageDeliveryV1
@@ -667,6 +700,10 @@ public sealed class RedactedSessionPackageTests
 
     private static IEnumerable<ObservationRowV1> Rows(SegmentReaderV1 segment) =>
         Enumerable.Range(0, segment.RowCount).Select(segment.Row);
+
+    /// <summary>An IPv6 address as the row holds it: a number whose bytes in network order are the address.</summary>
+    private static UInt128 Address6(string address) =>
+        BinaryPrimitives.ReadUInt128BigEndian(IPAddress.Parse(address).GetAddressBytes());
 
     private static IEnumerable<SourceFieldRowV1> FieldRows(SegmentReaderV1 segment) =>
         Enumerable.Range(0, segment.RowCount).Select(segment.FieldRow);

@@ -108,8 +108,10 @@ public static class RedactedShareExport
             tokens.For("record", record.ObservationId.RawRecordId.ToString()),
             bound ? tokens.For("process", record.Owner!.Instance!.Value.ToString()) : null,
             bound ? tokens.ForNullable("executable", record.Owner!.ImageName) : null,
-            tokens.Endpoint(row.EndpointAddressFamily, row.SourceEndpointAddress, row.SourceEndpointPort),
-            tokens.Endpoint(row.EndpointAddressFamily, row.DestinationEndpointAddress, row.DestinationEndpointPort),
+            tokens.Endpoint(row.EndpointAddressFamily, row.SourceEndpointAddress, row.SourceEndpointAddressV6,
+                row.SourceEndpointPort),
+            tokens.Endpoint(row.EndpointAddressFamily, row.DestinationEndpointAddress, row.DestinationEndpointAddressV6,
+                row.DestinationEndpointPort),
             tokens.ForNullable("resource", row.ResourceName),
             row.SourceIdentifier is { } sourceId ? tokens.For("identifier", sourceId.ToString("N")) : null,
             row.ActivityId is { } activity ? tokens.For("activity", activity.ToString("N")) : null,
@@ -155,9 +157,10 @@ public static class RedactedShareExport
         public string? ForNullable(string kind, string? value) =>
             string.IsNullOrEmpty(value) ? null : For(kind, value);
 
-        public string? Endpoint(byte? family, uint? address, ushort? port) =>
-            address is null && port is null ? null : For("endpoint",
-                string.Create(CultureInfo.InvariantCulture, $"{family}:{address}:{port}"));
+        /// <summary>One token per endpoint the row names, whichever family's column holds its address.</summary>
+        public string? Endpoint(byte? family, uint? address, UInt128? address6, ushort? port) =>
+            address is null && address6 is null && port is null ? null : For("endpoint",
+                string.Create(CultureInfo.InvariantCulture, $"{family}:{address}:{address6}:{port}"));
     }
 
     private static string RankingCsv(Guid reportId, ExportContext context, IReadOnlyList<Ranked> rows)

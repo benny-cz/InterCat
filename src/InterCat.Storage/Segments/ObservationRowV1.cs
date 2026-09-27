@@ -3,9 +3,9 @@ using InterCat.Domain;
 namespace InterCat.Storage;
 
 /// <summary>
-/// One row of the `observation-v1` table: an immutable normalized fact, derived from exactly one admitted
-/// record and carrying the source's own attribution. Every optional value here is a real option — a null
-/// means the source exposed nothing and is paired with the availability reason that says so (R2, R3).
+/// One row of an observation table, `observation-v1` or `observation-v2`: an immutable normalized fact, derived from
+/// exactly one admitted record and carrying the source's own attribution. Every optional value here is a real option —
+/// a null means the source exposed nothing and is paired with the availability reason that says so (R2, R3).
 /// </summary>
 /// <remarks>
 /// A row is a transient shape. The writer encodes it into column buffers as it arrives and does not retain
@@ -95,6 +95,15 @@ public sealed record ObservationRowV1
     public uint? DestinationEndpointAddress { get; init; }
 
     public ushort? DestinationEndpointPort { get; init; }
+
+    /// <summary>
+    /// The source endpoint's IPv6 address, as a number whose bytes in network order are the address (family 6). An IPv4
+    /// address stays in the 32-bit column; a row holds its addresses in one pair of columns or the other.
+    /// </summary>
+    public UInt128? SourceEndpointAddressV6 { get; init; }
+
+    /// <summary>The destination endpoint's IPv6 address (family 6).</summary>
+    public UInt128? DestinationEndpointAddressV6 { get; init; }
 
     /// <summary>The byte measurement, or null when the descriptor exposes no size (R3).</summary>
     public long? ByteValue { get; init; }
@@ -259,9 +268,18 @@ public sealed record ObservationRowV1
             return $"An endpoint address family is 4 or 6; this row declares {family}.";
         }
 
-        return (SourceEndpointAddress is not null || DestinationEndpointAddress is not null)
-            && EndpointAddressFamily is null
+        // A family names the columns its addresses are in: 32 bits for IPv4, 128 for IPv6, and never both.
+        bool narrow = SourceEndpointAddress is not null || DestinationEndpointAddress is not null;
+        bool wide = SourceEndpointAddressV6 is not null || DestinationEndpointAddressV6 is not null;
+        if (narrow && EndpointAddressFamily is not 4)
+        {
+            return EndpointAddressFamily is null
                 ? "A row carrying an endpoint address states the family those 32 bits are in."
-                : null;
+                : "A 32-bit endpoint address is an IPv4 one; this row declares family 6, whose addresses are 128 bits.";
+        }
+
+        return wide && EndpointAddressFamily is not 6
+            ? "A 128-bit endpoint address is an IPv6 one, so its row declares family 6."
+            : null;
     }
 }

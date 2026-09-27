@@ -1,8 +1,8 @@
 # InterCat derived segment v1
 
-Status: **frozen and implemented**, at minor 1 (§11). `observation-v1` and the additive `source-fields-v1` table are
-defined here. Entity binding revisions, relation revisions and aggregate tiles reuse the container and are not defined
-here.
+Status: **frozen and implemented**, at minor 1 (§11). `observation-v1`, the additive `source-fields-v1` table and
+`observation-v2`, which adds IPv6 endpoint addresses (revision 172), are defined here. Entity binding revisions,
+relation revisions and aggregate tiles reuse the container and are not defined here.
 
 This contract freezes what §20.1 calls the minimum store: immutable fixed-width little-endian columns, null
 bitmaps, variable-data chunks, dictionaries, a raw-record locator and time-block metadata. It owns nothing
@@ -24,7 +24,7 @@ Files are named by the generation that publishes them:
 
 | Name | What it is |
 |---|---|
-| `seg-<generation:D10>-<ordinal:D4>.icats` | One `observation-v1` segment. |
+| `seg-<generation:D10>-<ordinal:D4>.icats` | One observation segment: `observation-v1`, or `observation-v2` when one of its rows has an IPv6 address. |
 | `fld-<generation:D10>-<ordinal:D4>.icats` | One `source-fields-v1` segment. |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | One dictionary, named by the id its segments reference. |
 | `journal-<generation:D10>.icatj` | The admitted `journal-v1` evidence the generation derives from. |
@@ -90,12 +90,12 @@ identifier is printed.
 | 104 | 4 | variable chunk offset |
 | 108 | 4 | variable chunk length |
 | 112 | 4 | file length |
-| 116 | 4 | table id: 1 `observation-v1`, 2 `source-fields-v1` |
+| 116 | 4 | table id: 1 `observation-v1`, 2 `source-fields-v1`, 3 `observation-v2` |
 | 120 | 4 | CRC-32C over bytes `[0, 120)` |
 | 124 | 4 | CRC-32C over the column and time-block directories, bytes `[128, time-block directory offset + 32*timeBlocks)`; zero at minor 0 |
 
 The segment id is derived, not minted: it is a UUIDv8 over the capture, the clock, the derivation, the
-segment's ordinal, its row count and its native interval. For table 2 the table id is also in the segment-id
+segment's ordinal, its row count and its native interval. For tables 2 and 3 the table id is also in the segment-id
 preimage; table 1 keeps its original preimage for byte compatibility. Rebuilding a generation from the same
 evidence therefore names the same segment.
 
@@ -127,7 +127,7 @@ later generation adds, uses the published file instead: its name and the content
 | 44 | 4 | a chunk-encoded column: CRC-32C over the variable chunk; any other column, or minor 0: reserved, zero |
 
 Logical types: 1 `Unsigned8`, 2 `Unsigned16`, 3 `Unsigned32`, 4 `Unsigned64`, 5 `Signed32`, 6 `Signed64`,
-7 `Guid16`, 8 `Text`.
+7 `Guid16`, 8 `Text`, 9 `Address128` (16 bytes: an address in network byte order, as it is written on the wire).
 
 Physical encodings: 1 `Plain` — the values themselves, fixed width, directly mappable; 2 `Dictionary` — a
 `uint32` code per row into the dictionary this column names; 3 `VariableReference` — a `uint32` offset and a
@@ -196,10 +196,10 @@ refuses the segment.
 | 20 | `OwnerProcessId` | i32 | yes | The owner the record's own payload names. |
 | 21 | `ResourceName` | text | yes | The bounded resource name as delivered. |
 | 22 | `SourceIdentifier` | guid | yes | A 16-byte identifier the descriptor carried. |
-| 23 | `EndpointAddressFamily` | u8 | yes | 4 or 6; what the address columns' bits mean. |
-| 24 | `SourceEndpointAddress` | u32 | yes | The endpoint the source names as the origin. Which end that is depends on the descriptor: a TCP record names its owner's own endpoint, a UDP receive the datagram's sender (ADR-019). |
-| 25 | `SourceEndpointPort` | u16 | yes | Its port. |
-| 26 | `DestinationEndpointAddress` | u32 | yes | The endpoint the source names as the destination. |
+| 23 | `EndpointAddressFamily` | u8 | yes | 4 or 6; which address columns hold the row's addresses: 24 and 26 for IPv4, `observation-v2`'s 44 and 45 for IPv6. |
+| 24 | `SourceEndpointAddress` | u32 | yes | The IPv4 endpoint the source names as the origin, its bytes in network order read as a big-endian number. Which end that is depends on the descriptor: a TCP record names its owner's own endpoint, a UDP receive the datagram's sender (ADR-019). |
+| 25 | `SourceEndpointPort` | u16 | yes | Its port, for either family. |
+| 26 | `DestinationEndpointAddress` | u32 | yes | The IPv4 endpoint the source names as the destination. |
 | 27 | `DestinationEndpointPort` | u16 | yes | Its port. |
 | 28 | `ByteValue` | i64 | yes | The byte measurement; null when the record carried none (R3). |
 | 29 | `ByteDomain` | u8 | yes | `EN-ByteDomain`. Exactly one (I6). |
@@ -241,6 +241,24 @@ whose record supplied no value creates a row with a null and an availability rea
 Its fields, like the observations, are immutable source facts. A process binding may join them by locator
 and fact key but never write its resolved instance into either table. The table uses the same checksums,
 bitmaps, dictionary budget and variable-chunk fallback as table 1.
+
+### `observation-v2` (table 3)
+
+An IPv6 address is 128 bits, and `observation-v1`'s address columns hold 32. Revision 172 adds a table rather than
+widening them, because a minor version only fills reserved words (§11) and a reader requires a table's exact columns:
+`observation-v2` is `observation-v1`'s 39 columns, in the same order, then two more.
+
+| Code | Column | Type | Null | Meaning |
+|---|---|---|---|---|
+| 44 | `SourceEndpointAddressV6` | address128 | yes | The IPv6 endpoint the source names as the origin, its 16 bytes in network order. |
+| 45 | `DestinationEndpointAddressV6` | address128 | yes | The IPv6 endpoint the source names as the destination. |
+
+A row with family 4 keeps its addresses in columns 24 and 26, a row with family 6 in columns 44 and 45, and no row
+fills both pairs; the ports stay in columns 25 and 27 for either family. A writer publishes a segment as
+`observation-v2` only when one of its rows has an IPv6 address. Every other segment is `observation-v1`, byte for byte
+as before this table existed, and stages the same bytes while it is written, so a derivation flushes it where it always
+did. Both tables are published under `seg-` names and read as observations. A reader that predates table 3 refuses such
+a segment as a table it does not implement (§9), rather than reading an IPv6 row without its addresses.
 
 ## 6. The measurement slot and the measurement
 
@@ -326,6 +344,8 @@ a dictionary that resolves nothing.
 At open, before a row is served:
 
 - the header's magic, major version and required feature bits;
+- the table id, and the column directory against that table's exact columns: a table this reader does not implement,
+  or a column set that is not its table's, refuses the file;
 - the header's own CRC-32C;
 - from minor 1, the directories' CRC-32C, before an entry is interpreted;
 - the SHA-256 trailer over the whole file, when the reader holds the whole file (below);

@@ -101,6 +101,33 @@ public sealed partial class RedactedShareExportTests
         }
     }
 
+    [Fact]
+    public void Ipv6EndpointsAreTokensOfTheirOwnAddressNotOnlyTheirPort()
+    {
+        ProcessInstanceId ownerId = new(Guid.Parse("87654321-4321-4321-8321-abcdefabcdef"));
+        SessionEvidenceRecord[] records =
+        [
+            Record(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 98765, 7)
+                .Between("[2a01:5ec0::7]:50000", "[fe80::1234:5678:9abc:def0]:443"), ownerId),
+            Record(Transfer(11, ObservationKind.Send, AccountingSide.SendSide, 64, 98765, 8)
+                .Between("[2a01:5ec0::8]:50000", "[fe80::1234:5678:9abc:def0]:443"), ownerId),
+        ];
+
+        string report = RedactedShareExport.Evidence(ExportFormat.Json, Context() with { Rung = DetailLevel.Evidence }, records);
+
+        AssertSafe(report);
+        foreach (string secret in new[] { "2a01", "5ec0", "fe80", "9abc:def0" })
+            Assert.DoesNotContain(secret, RandomValues().Replace(report, "#"), StringComparison.OrdinalIgnoreCase);
+
+        // Two hosts that share a port are two endpoints; the peer they share is one.
+        using JsonDocument json = JsonDocument.Parse(report);
+        JsonElement first = json.RootElement.GetProperty("records")[0];
+        JsonElement second = json.RootElement.GetProperty("records")[1];
+        Assert.NotEqual(first.GetProperty("sourceEndpointToken").GetString(), second.GetProperty("sourceEndpointToken").GetString());
+        Assert.Equal(first.GetProperty("destinationEndpointToken").GetString(),
+            second.GetProperty("destinationEndpointToken").GetString());
+    }
+
     [Theory]
     [InlineData(ExportFormat.Json)]
     [InlineData(ExportFormat.Csv)]

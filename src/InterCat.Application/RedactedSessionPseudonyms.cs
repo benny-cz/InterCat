@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using InterCat.Domain;
 
@@ -51,9 +52,14 @@ internal sealed class RedactedSessionPseudonyms
 
     private static readonly char[] Separators = ['\\', '/'];
 
+    private static readonly UInt128 MappedIpv4Prefix = (UInt128)0xFFFF << 32;
+
+    private static readonly UInt128 DocumentationPrefix = (UInt128)0x2001_0DB8 << 96;
+
     // Source values, collected by the inspection pass so no pseudonym is ever one of them.
     private readonly HashSet<int> sourceNumbers = [];
     private readonly HashSet<uint> sourceAddresses = [];
+    private readonly HashSet<UInt128> sourceAddresses6 = [];
     private readonly HashSet<ushort> sourcePorts = [];
     private readonly HashSet<Guid> sourceIdentifiers = [];
     private readonly HashSet<ulong> sourceSequences = [];
@@ -64,6 +70,7 @@ internal sealed class RedactedSessionPseudonyms
 
     private readonly Dictionary<int, int> numbers = [];
     private readonly Dictionary<uint, uint> addresses = [];
+    private readonly Dictionary<UInt128, UInt128> addresses6 = [];
     private readonly Dictionary<ushort, ushort> ports = [];
     private readonly Dictionary<Guid, Guid> identifiers = [];
     private readonly Dictionary<ulong, ulong> sequences = [];
@@ -74,6 +81,7 @@ internal sealed class RedactedSessionPseudonyms
 
     private readonly HashSet<int> issuedNumbers = [];
     private readonly HashSet<uint> issuedAddresses = [];
+    private readonly HashSet<UInt128> issuedAddresses6 = [];
     private readonly HashSet<ushort> issuedPorts = [];
     private readonly HashSet<Guid> issuedIdentifiers = [];
     private readonly HashSet<ulong> issuedSequences = [];
@@ -94,7 +102,7 @@ internal sealed class RedactedSessionPseudonyms
 
     public int NameCount => names.Count;
     public int NumberCount => numbers.Count;
-    public int AddressCount => addresses.Count;
+    public int AddressCount => addresses.Count + addresses6.Count;
     public int PortCount => ports.Count;
     public int IdentifierCount => identifiers.Count;
     public int ProviderCount => providers.Count(entry => entry.Key != entry.Value);
@@ -117,6 +125,14 @@ internal sealed class RedactedSessionPseudonyms
     public void SeeAddress(uint? value)
     {
         if (value is { } address) sourceAddresses.Add(address);
+    }
+
+    /// <summary>An IPv6 address the source holds. An IPv4-mapped one also holds its IPv4 part, which maps as IPv4.</summary>
+    public void SeeAddress6(UInt128? value)
+    {
+        if (value is not { } address) return;
+        sourceAddresses6.Add(address);
+        if (IsMappedIpv4(address)) sourceAddresses.Add((uint)address);
     }
 
     public void SeePort(ushort? value)
@@ -192,6 +208,36 @@ internal sealed class RedactedSessionPseudonyms
     public static bool IsFixedAddress(uint address) => address is 0 or uint.MaxValue || address >> 24 == 127;
 
     public bool IsIssuedOrFixedAddress(uint address) => IsFixedAddress(address) || issuedAddresses.Contains(address);
+
+    /// <summary>
+    /// An IPv6 address. The unspecified address (::) and loopback (::1) keep their meaning. An IPv4-mapped address keeps
+    /// its ::ffff:0:0/96 prefix and takes its IPv4 part's pseudonym, so it still names the host that IPv4 address names.
+    /// Every other address becomes one in 2001:db8::/32, the documentation prefix, which is never routed.
+    /// </summary>
+    public UInt128? Address6(UInt128? value)
+    {
+        if (value is not { } address) return null;
+        if (address <= UInt128.One) return address;
+        if (IsMappedIpv4(address)) return MappedIpv4Prefix | Address((uint)address)!.Value;
+        if (addresses6.TryGetValue(address, out UInt128 mapped)) return mapped;
+        do
+        {
+            mapped = DocumentationPrefix | (BinaryPrimitives.ReadUInt128LittleEndian(RandomNumberGenerator.GetBytes(16))
+                & ((UInt128.One << 96) - 1));
+        }
+        while (sourceAddresses6.Contains(mapped) || !issuedAddresses6.Add(mapped));
+        addresses6[address] = mapped;
+        return mapped;
+    }
+
+    public static bool IsFixedAddress6(UInt128 address) =>
+        address <= UInt128.One || (IsMappedIpv4(address) && IsFixedAddress((uint)address));
+
+    public bool IsIssuedOrFixedAddress6(UInt128 address) => address <= UInt128.One
+        || (IsMappedIpv4(address) ? IsIssuedOrFixedAddress((uint)address) : issuedAddresses6.Contains(address));
+
+    /// <summary>Whether an IPv6 address is an IPv4 address in ::ffff:0:0/96 (RFC 4291 §2.5.5.2).</summary>
+    public static bool IsMappedIpv4(UInt128 address) => address >> 32 == 0xFFFF;
 
     /// <summary>
     /// A port. Port 0 stays 0, because a relation treats it as an incomplete endpoint. Every other port becomes one of

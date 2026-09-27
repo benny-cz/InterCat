@@ -101,6 +101,48 @@ public sealed class SegmentCompactionTests
         }
     }
 
+    [Fact(DisplayName = "I15: compaction keeps every IPv6 address, and a run with none stays observation-v1")]
+    public void CompactionKeepsIpv6Addresses()
+    {
+        using var session = new TemporarySession();
+        var options = new CompactionOptions { TargetRows = 20, SmallUnitsBeforeCompaction = 4 };
+        UInt128 host = ((UInt128)0x2001_0DB8 << 96) | 0x05EC;
+        PublishChunk(session.Store, 1, 10);
+        PublishChunk(session.Store, 11, 10, row => row.RawRecordOrdinal % 3 == 0
+            ? row with
+            {
+                EndpointAddressFamily = 6,
+                SourceEndpointAddressV6 = host + row.RawRecordOrdinal,
+                SourceEndpointPort = 50_000,
+                DestinationEndpointAddressV6 = UInt128.One,
+                DestinationEndpointPort = 443,
+            }
+            : row);
+        PublishChunk(session.Store, 21, 25);
+        PublishChunk(session.Store, 46, 10);
+        PublishChunk(session.Store, 56, 10);
+        (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) recorded = RowsOf(session.Store, session.Store.Current!);
+        Assert.Equal(3, recorded.Rows.Count(row => row.SourceEndpointAddressV6 is not null));
+
+        CompactionResult result = SegmentCompaction.Compact(session.Store, Committed, options)!;
+        SessionManifestV1 after = result.Generation.Manifest;
+
+        // The run that held IPv6 rows became an observation-v2 segment and the run of IPv4 rows stayed observation-v1;
+        // the large unit between them is carried as it was.
+        Dictionary<string, SegmentTableId> tables = SessionSegments.Names(after)
+            .ToDictionary(name => name, name => SessionSegments.Open(session.Store.Root, after, name).Table);
+        Assert.Equal(
+            new Dictionary<string, SegmentTableId>
+            {
+                ["seg-0000000003-0000.icats"] = SegmentTableId.ObservationV1,
+                ["seg-0000000006-0000.icats"] = SegmentTableId.ObservationV2,
+                ["seg-0000000006-0001.icats"] = SegmentTableId.ObservationV1,
+            },
+            tables);
+        Assert.Equal(recorded.Rows, RowsOf(session.Store, after).Rows);
+        Assert.Equal(recorded.Fields, RowsOf(session.Store, after).Fields);
+    }
+
     [Fact(DisplayName = "I15: a compaction replaces derived files only, never the evidence or what describes it")]
     public void CompactionReplacesDerivedFilesOnly()
     {
@@ -217,8 +259,15 @@ public sealed class SegmentCompactionTests
         return dependency;
     }
 
-    /// <summary>Publishes one live-recording chunk: its journal, one row and one source field per record.</summary>
-    private static void PublishChunk(SessionStore store, ulong firstOrdinal, int records)
+    /// <summary>
+    /// Publishes one live-recording chunk: its journal, one row and one source field per record, each row shaped by
+    /// <paramref name="shape"/> when one is given.
+    /// </summary>
+    private static void PublishChunk(
+        SessionStore store,
+        ulong firstOrdinal,
+        int records,
+        Func<ObservationRowV1, ObservationRowV1>? shape = null)
     {
         using DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(store, Identity, TestClock, Committed);
         var schemas = new JournalV1SchemaTable();
@@ -229,7 +278,7 @@ public sealed class SegmentCompactionTests
         {
             ulong ordinal = firstOrdinal + (ulong)index;
             long ticks = 100L * (long)ordinal;
-            ObservationRowV1 row = Row(ticks, ordinal);
+            ObservationRowV1 row = shape is null ? Row(ticks, ordinal) : shape(Row(ticks, ordinal));
             builder.AddRow(row);
             builder.AddFieldRow(new SourceFieldRowV1
             {

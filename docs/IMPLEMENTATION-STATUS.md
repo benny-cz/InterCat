@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 171 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 172 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -58,7 +58,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table | Canonical transfer owner, operations/topology, IPv6/non-TCP relations, full coverage epoch publication. |
-| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget | Compression and derived scale structures are later work. |
+| IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget; since revision 172 `observation-v2` holds IPv6 endpoint addresses, written only for a segment that has one | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes | Rolling retention policy and cross-process pin quota. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open | L4 operation lanes and byte composition once IC-015 derives operations. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
@@ -67,6 +67,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 172 — an IPv6 endpoint has a place in a row:**
+  - **A table, not a wider column:** `observation-v2` is `observation-v1`'s 39 columns, then two 16-byte address
+    columns (`segment-v1` §5, table 3, codes 44 and 45, type `Address128`). A row keeps its addresses in the columns
+    its family names, never both pairs; ports stay where they were.
+  - **Nothing for IPv4:** a segment is `observation-v2` only when one of its rows has an IPv6 address. Any other is
+    `observation-v1` byte for byte: a digest measured with revision 171's build pins it. It also stages the same bytes,
+    so a derivation flushes where it always did, and a null address writes nothing. A reader before this revision
+    refuses table 3 rather than reading an IPv6 row without its addresses.
+  - **Every reader of an address:** a redacted package maps an IPv6 address into 2001:db8::/32, keeps `::` and `::1`,
+    and gives an IPv4-mapped address its IPv4 part's pseudonym. Its tally counts both families as one namespace of
+    hosts, so a mapping that parted a host from its mapped twin is refused. The share report tokenizes an IPv6
+    endpoint by its address, so two hosts sharing a port stay two. The evidence text and `icat session --rows` write RFC
+    5952's form, bracketed before the port (`EndpointText`).
+  - **Tested:** round trips with nulls, a mixed generation, compaction and its reopen, row validation, the pinned
+    IPv4 digest, 13 canonical-text cases, and a redacted package holding global, link-local, loopback and mapped IPv6
+    rows. A mutation that passed IPv6 addresses through the package unchanged was refused by its own verification.
+  - **Not yet:** no capture produces an IPv6 row, and an IPv6 record has no relation end (open work item 3).
 
 - **Revision 171 — the inspector ordered by use, from revision 165's live test:**
   - **Actions before reference:** the selection and its summary come first, then what can be done with it, then the
@@ -1389,13 +1407,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
    mechanism facts. Then resume the remaining milestone and retail-build gates from the plan.
-   - **IPv6.** The capture admits the kernel network provider's IPv4 descriptors only (TCPv4 10–15, UDPv4 42), and
-     `observation-v1`'s address columns are 32 bits. A service listening on `::1`, which is where many `localhost`
-     servers listen on Windows, is invisible, though §13.1's first scenario and M2's "known loopback client/server" both
-     name IPv6 loopback. A segment's column set is frozen per table, so the addresses need a table version
-     (`observation-v2`, with 16-byte address columns) or a dictionary-coded form; decide which by what it costs a row
-     that has none. Then admit the TCPv6 and UDPv6 descriptors, relate 128-bit ends, pseudonymize and display them, and
-     qualify an IPv6 loopback fixture on real ETW.
+   - **IPv6.** The capture admits the kernel network provider's IPv4 descriptors only (TCPv4 10–15, UDPv4 42). A
+     service listening on `::1`, which is where many `localhost` servers listen on Windows, is invisible, though §13.1's
+     first scenario and M2's "known loopback client/server" both name IPv6 loopback. Revision 172 stores an IPv6
+     endpoint (`observation-v2`) and redacts, shares and shows it. Next, relate 128-bit ends: a transport end is keyed
+     by 32-bit addresses, so an IPv6 record has no end, no peer and no channel. Keep the 10M-row gates while doing it.
+     Then admit the TCPv6 and UDPv6 descriptors with the normalizer's 16-byte address slots, and qualify an IPv6
+     loopback fixture on real ETW.
    - **IC-016a** waits on a retention that releases observation segments: today only a journal prefix is released, and
      every derived segment, with every identity, stays.
 4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
@@ -1425,6 +1443,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 172 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,184 tests: 1,181
+  passed, 3 skipped**, zero failures. The IPv4 segment digests `SegmentGoldenTests` pins were measured with revision
+  171's build in a worktree.
 - Revision 171 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154
   passed, 3 skipped**, zero failures. The inspector was checked in headless renders at 1080×700 and 1456×939.
 - Revision 170 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,157 tests: 1,154

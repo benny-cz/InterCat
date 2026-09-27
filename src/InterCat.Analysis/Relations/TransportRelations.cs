@@ -805,7 +805,7 @@ public sealed partial class TransportRelationIndex
     private readonly record struct EndKey(byte Protocol, byte Family, uint LocalAddress, ushort LocalPort, uint RemoteAddress, ushort RemotePort)
         : IComparable<EndKey>
     {
-        public string LocalEndpoint => Format(LocalAddress, LocalPort);
+        public string LocalEndpoint => EndpointText.Endpoint(LocalAddress, LocalPort);
 
         public EndKey Mirror() => new(Protocol, Family, RemoteAddress, RemotePort, LocalAddress, LocalPort);
 
@@ -818,10 +818,6 @@ public sealed partial class TransportRelationIndex
             compared = compared != 0 ? compared : RemoteAddress.CompareTo(other.RemoteAddress);
             return compared != 0 ? compared : RemotePort.CompareTo(other.RemotePort);
         }
-
-        private static string Format(uint address, ushort port) => string.Create(
-            CultureInfo.InvariantCulture,
-            $"{address >> 24}.{(address >> 16) & 0xFF}.{(address >> 8) & 0xFF}.{address & 0xFF}:{port}");
     }
 
     /// <summary>One end's incarnations, divided by the lifecycle records the capture holds for it.</summary>

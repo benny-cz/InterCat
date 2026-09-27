@@ -69,10 +69,27 @@ internal static class TestSessions
 
     /// <summary>
     /// The same record with the endpoint pair its source names: the record's own endpoint first, then the remote one,
-    /// as every admitted TCP descriptor names them. Each endpoint is written "a.b.c.d:port".
+    /// as every admitted TCP descriptor names them. Each endpoint is written "a.b.c.d:port", or "[IPv6 address]:port"
+    /// for a pair in the IPv6 columns.
     /// </summary>
     public static ObservationRowV1 Between(this ObservationRowV1 row, string local, string remote)
     {
+        if (local.StartsWith('['))
+        {
+            (UInt128 localAddress6, ushort localPort6) = Endpoint6(local);
+            (UInt128 remoteAddress6, ushort remotePort6) = Endpoint6(remote);
+            return row with
+            {
+                EndpointAddressFamily = 6,
+                SourceEndpointAddress = null,
+                SourceEndpointAddressV6 = localAddress6,
+                SourceEndpointPort = localPort6,
+                DestinationEndpointAddress = null,
+                DestinationEndpointAddressV6 = remoteAddress6,
+                DestinationEndpointPort = remotePort6,
+            };
+        }
+
         (uint localAddress, ushort localPort) = Endpoint(local);
         (uint remoteAddress, ushort remotePort) = Endpoint(remote);
         return row with
@@ -83,6 +100,15 @@ internal static class TestSessions
             DestinationEndpointAddress = remoteAddress,
             DestinationEndpointPort = remotePort,
         };
+
+        static (UInt128 Address, ushort Port) Endpoint6(string text)
+        {
+            int close = text.IndexOf(']', StringComparison.Ordinal);
+            byte[] bytes = System.Net.IPAddress.Parse(text[1..close]).GetAddressBytes();
+            return (
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt128BigEndian(bytes),
+                ushort.Parse(text[(close + 2)..], System.Globalization.CultureInfo.InvariantCulture));
+        }
 
         static (uint Address, ushort Port) Endpoint(string text)
         {

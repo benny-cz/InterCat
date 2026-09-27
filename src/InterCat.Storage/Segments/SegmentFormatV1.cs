@@ -24,6 +24,12 @@ public enum SegmentColumnType : byte
     /// values fit the dictionary budget, and a variable-chunk reference when they do not (§10.2).
     /// </summary>
     Text = 8,
+
+    /// <summary>
+    /// A 128-bit address: its 16 bytes in network order, as an IPv6 address is written on the wire (`observation-v2`,
+    /// revision 172).
+    /// </summary>
+    Address128 = 9,
 }
 
 /// <summary>
@@ -172,6 +178,12 @@ public enum SegmentColumnId : ushort
 
     /// <summary>`source-fields-v1`: why the value is absent when it is.</summary>
     FieldAvailability = 43,
+
+    /// <summary>`observation-v2`: the source endpoint's IPv6 address, when the address family is 6.</summary>
+    SourceEndpointAddressV6 = 44,
+
+    /// <summary>`observation-v2`: the destination endpoint's IPv6 address, when the address family is 6.</summary>
+    DestinationEndpointAddressV6 = 45,
 }
 
 /// <summary>
@@ -323,6 +335,19 @@ public static class SegmentFormatV1
     ];
 
     /// <summary>
+    /// Every column of `observation-v2`: `observation-v1`'s, then the two IPv6 endpoint addresses, whose 128 bits the
+    /// 32-bit address columns cannot hold (revision 172). A segment is written as `observation-v2` only when one of its
+    /// rows has an IPv6 address, so a segment of IPv4 and other records keeps `observation-v1`'s bytes and costs nothing
+    /// more.
+    /// </summary>
+    public static IReadOnlyList<SegmentColumnSpec> ObservationV2Columns { get; } =
+    [
+        .. ObservationColumns,
+        new(SegmentColumnId.SourceEndpointAddressV6, SegmentColumnType.Address128, Nullable: true),
+        new(SegmentColumnId.DestinationEndpointAddressV6, SegmentColumnType.Address128, Nullable: true),
+    ];
+
+    /// <summary>
     /// Every column of `source-fields-v1`, in directory order: one row per (observation, source field) for the fields
     /// §7.3 names as source correlation and object fields that `observation-v1` has no column for.
     /// </summary>
@@ -344,6 +369,7 @@ public static class SegmentFormatV1
     public static IReadOnlyList<SegmentColumnSpec> ColumnsOf(SegmentTableId table) => table switch
     {
         SegmentTableId.ObservationV1 => ObservationColumns,
+        SegmentTableId.ObservationV2 => ObservationV2Columns,
         SegmentTableId.SourceFieldsV1 => SourceFieldColumns,
         _ => throw new ArgumentOutOfRangeException(nameof(table), table, "This reader implements no such table."),
     };
@@ -355,7 +381,7 @@ public static class SegmentFormatV1
         SegmentColumnType.Unsigned16 => 2,
         SegmentColumnType.Unsigned32 or SegmentColumnType.Signed32 => 4,
         SegmentColumnType.Unsigned64 or SegmentColumnType.Signed64 => 8,
-        SegmentColumnType.Guid16 => 16,
+        SegmentColumnType.Guid16 or SegmentColumnType.Address128 => 16,
 
         // Text has no plain width: it is a code or an (offset, length) pair, and which one is a per-segment
         // decision recorded in the column directory.

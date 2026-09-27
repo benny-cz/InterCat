@@ -792,18 +792,23 @@ internal static class SessionCommand
             ]);
     }
 
-    private static string Endpoint(ObservationRowV1 row) =>
-        row.SourceEndpointAddress is { } source
+    private static string Endpoint(ObservationRowV1 row)
+    {
+        (string? source, string? peer) = row.EndpointAddressFamily == 6
+            ? (Address(row.SourceEndpointAddressV6), Address(row.DestinationEndpointAddressV6))
+            : (Address(row.SourceEndpointAddress), Address(row.DestinationEndpointAddress));
+        return source is not null
             ? string.Create(
                 CultureInfo.InvariantCulture,
-                $"{Address(source)}:{row.SourceEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"} -> "
-                + $"{(row.DestinationEndpointAddress is { } peer ? Address(peer) : "?")}:"
-                + $"{row.DestinationEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"}")
+                $"{source}:{row.SourceEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"} -> "
+                + $"{peer ?? "?"}:{row.DestinationEndpointPort?.ToString(CultureInfo.InvariantCulture) ?? "?"}")
             : row.ResourceName ?? "none named";
+    }
 
-    private static string Address(uint value) => string.Create(
-        CultureInfo.InvariantCulture,
-        $"{(value >> 24) & 0xFF}.{(value >> 16) & 0xFF}.{(value >> 8) & 0xFF}.{value & 0xFF}");
+    private static string? Address(uint? value) => value is { } address ? EndpointText.Ipv4(address) : null;
+
+    /// <summary>An IPv6 address bracketed, so the port that follows cannot read as one of its groups.</summary>
+    private static string? Address(UInt128? value) => value is { } address ? "[" + EndpointText.Ipv6(address) + "]" : null;
 
     private static void RenderRecovery(SessionDocument document)
     {

@@ -55,6 +55,11 @@ public readonly ref struct SegmentColumnSlice
         };
     }
 
+    /// <summary>A row's 128-bit address, its bytes in network order, or null when the row has none.</summary>
+    public UInt128? AddressAt(int row) => width != 16
+        ? throw new InvalidOperationException($"Column {Descriptor.Id} is {width} bytes wide and holds no 128-bit address.")
+        : HasValue(row) ? BinaryPrimitives.ReadUInt128BigEndian(values.Slice(row * 16, 16)) : null;
+
     /// <summary>The signed value of a row, or null when the row has none.</summary>
     public long? SignedAt(int row)
     {
@@ -77,7 +82,7 @@ public readonly ref struct SegmentColumnSlice
 }
 
 /// <summary>
-/// Reads one immutable `observation-v1` segment. Everything a reader would otherwise have to trust is
+/// Reads one immutable segment of any table this format defines. Everything a reader would otherwise have to trust is
 /// checked before a row is served: the header's own checksum and, from minor 1, the directories', the trailing
 /// digest over the whole file, every declared extent against the file's real length, each column's checksum on
 /// first use, and the ordering and time-block metadata against the time column itself.
@@ -747,10 +752,13 @@ public sealed class SegmentReaderV1
             : result;
     }
 
-    /// <summary>Materializes one `observation-v1` row. It is the inspection path, not the aggregation path.</summary>
+    /// <summary>
+    /// Materializes one observation row, of `observation-v1` or `observation-v2`; a v1 segment has no IPv6 addresses. It is
+    /// the inspection path, not the aggregation path.
+    /// </summary>
     public ObservationRowV1 Row(int row)
     {
-        RequireTable(SegmentTableId.ObservationV1);
+        RequireObservations();
         RequireRow(row);
         (Guid ProviderId, ushort EventId, byte Version, string Fingerprint) schema = SchemaOf(row);
         return new()
@@ -795,6 +803,12 @@ public sealed class SegmentReaderV1
                 : null,
             DestinationEndpointPort = UnsignedValue(SegmentColumnId.DestinationEndpointPort, row) is { } peerPort
                 ? (ushort)peerPort
+                : null,
+            SourceEndpointAddressV6 = HasColumn(SegmentColumnId.SourceEndpointAddressV6)
+                ? AddressValue(SegmentColumnId.SourceEndpointAddressV6, row)
+                : null,
+            DestinationEndpointAddressV6 = HasColumn(SegmentColumnId.DestinationEndpointAddressV6)
+                ? AddressValue(SegmentColumnId.DestinationEndpointAddressV6, row)
                 : null,
             ByteValue = SignedValue(SegmentColumnId.ByteValue, row),
             ByteDomain = OptionalCode<ByteDomain>(SegmentColumnId.ByteDomain, row),
@@ -1058,6 +1072,36 @@ public sealed class SegmentReaderV1
             ? column
             : throw new InvalidOperationException(
                 $"This {Table} segment has no column {id}; that column belongs to another table.");
+
+    /// <summary>Whether this segment holds observations, of either table version.</summary>
+    public bool HoldsObservations => Table is SegmentTableId.ObservationV1 or SegmentTableId.ObservationV2;
+
+    /// <summary>
+    /// Whether this segment's table has a column: an `observation-v1` segment has no IPv6 address columns, which only
+    /// `observation-v2` adds.
+    /// </summary>
+    public bool HasColumn(SegmentColumnId id) => columns.ContainsKey(id);
+
+    /// <summary>A row's 128-bit address, its bytes in network order; null when the row has none.</summary>
+    public UInt128? AddressValue(SegmentColumnId id, int row)
+    {
+        SegmentColumnDescriptor column = Require(id);
+        if (column.Type != SegmentColumnType.Address128)
+        {
+            throw new InvalidOperationException($"Column {column.Id} is not a 128-bit address.");
+        }
+
+        return HasValue(id, row) ? BinaryPrimitives.ReadUInt128BigEndian(ValueBytes(id).Slice(row * 16, 16)) : null;
+    }
+
+    private void RequireObservations()
+    {
+        if (!HoldsObservations)
+        {
+            throw new InvalidOperationException(
+                $"This segment holds {Table}, not observations. A row is read with the shape of its own table.");
+        }
+    }
 
     private void RequireTable(SegmentTableId expected)
     {

@@ -10,7 +10,7 @@ namespace InterCat.Storage.Tests;
 /// trips: a derived store that reads a damaged or dishonest segment is worse than one that refuses it,
 /// because every count above it inherits the damage silently.
 /// </summary>
-public sealed class SegmentV1Tests
+public sealed partial class SegmentV1Tests
 {
     private static readonly CaptureId Capture = new(Guid.Parse("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"));
     private static readonly ClockId Clock = new(Guid.Parse("11112222-3333-4444-8555-666677778888"));

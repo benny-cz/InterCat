@@ -34,7 +34,7 @@ A package publishes exactly one generation, generation 1, with:
 | Name | Kind | What it holds |
 |---|---|---|
 | `journal-0000000001.icatj` | `Journal` | One synthetic record per row (§5) |
-| `seg-0000000001-NNNN.icats`, `dict-…` | `Segment`, `Dictionary` | The projected `observation-v1` rows (§3) |
+| `seg-0000000001-NNNN.icats`, `dict-…` | `Segment`, `Dictionary` | The projected observation rows (§3): `observation-v1`, or `observation-v2` for a segment with an IPv6 address |
 | `fld-0000000001-NNNN.icats` | `Segment` | The projected `source-fields-v1` rows (§4), when the source had any |
 | `coverage-0000000001.json` | `CoverageLedger` | The source's `coverage-v1` ledger under package pseudonyms (§6), when it had one |
 | `redaction-policy-0000000001.json` | `RedactionPolicy` (code 8) | The policy and counts (§7) |
@@ -57,6 +57,9 @@ Every member of a row is set by name, so a column a later version adds is left o
 
 The resource-name truncation marker is kept: a pseudonym of a truncated name is still a prefix's pseudonym. The
 extended-data and body markers are cleared, because they describe evidence the package does not hold.
+
+The IPv6 address columns `observation-v2` adds (`segment-v1` §5, revision 172) are admitted, under §3.2's IPv6
+pseudonyms. A package of a session with no IPv6 address holds only `observation-v1` segments, as it always did.
 
 ### 3.1 Names
 
@@ -85,13 +88,17 @@ them would change a conclusion:
 |---|---|---|
 | Process and thread ids, including parent and issuing-thread fields | 0, 4 (System), -1 | Multiples of 4 in [1,000, 100,000,000) |
 | IPv4 addresses | 0.0.0.0, 127.0.0.0/8, 255.255.255.255 | 240.0.0.0/4, reserved and never routed |
+| IPv6 addresses | ::, ::1, and an IPv4-mapped address whose IPv4 part is a fixed point | 2001:db8::/32, the documentation prefix, never routed; an IPv4-mapped address (::ffff:0:0/96) keeps its prefix and takes its IPv4 part's pseudonym |
 | Ports | 0 | 1024-65535, never a well-known port |
 | Activity, related-activity and source identifiers | the empty identifier | random version-4 identifiers |
 | Start sequences, connection ids, request packets, file objects and keys | 0 | random, 16-byte aligned for kernel objects |
 
 Address 0 and port 0 are fixed points because a relation treats them as an incomplete endpoint: a pseudonym would turn
-an unpaired record into a complete endpoint and change its peer reason. Loopback stays loopback. A package refuses a
-session whose distinct ports leave no room for distinct pseudonyms outside the ports it uses.
+an unpaired record into a complete endpoint and change its peer reason. Loopback stays loopback, in either family. An
+IPv4-mapped address names the host its IPv4 part names, so it takes that part's pseudonym and the two still name one
+host; the package's tally counts an IPv4 address and its mapped form as one host, so a mapping that parted them is
+caught (§8). A package refuses a session whose distinct ports leave no room for distinct pseudonyms outside the ports
+it uses.
 
 ### 3.3 Providers and schemas
 
@@ -164,7 +171,8 @@ the source untouched.
    package providers; the policy's counts are the package's.
 4. **Reproduction**: the package reproduces the source's tallies - rows by classification, sums of every kept number,
    presence of every pseudonymized value, the exact fixed points per row, and how many distinct values each namespace
-   holds. A mapping that merged or split values, or moved a fixed point, is caught here.
+   holds, with IPv4 and IPv6 addresses counted as one namespace of hosts. A mapping that merged or split values, or moved
+   a fixed point, is caught here.
 5. **Bytes**: every file except the policy (step 3 compares it byte for byte) is searched for the source's session,
    capture, clock, host and provider identities in binary and text forms, its manifest and file digests, its schema
    fingerprints and its source-identity text. Journal, segment and dictionary files are also searched for source names and
@@ -179,7 +187,8 @@ the source untouched.
   session is refused with the bound named, before anything is written.
 - One capture on one clock. A session whose segments name more than one is refused.
 - A package is not built from a package: the second would read as evidence of an unknown source.
-- IPv6 addresses are not retained by `observation-v1` at all, so there is nothing to pseudonymize.
+- An IPv6 address loses its scope: a link-local, unique-local or global address all become documentation-prefix
+  pseudonyms, as every IPv4 address but a fixed point becomes a reserved one. Equality, and so every relation, survives.
 - A pseudonym is consistent only inside one package. Two packages of one session share none.
 
 ## 10. Where it is made

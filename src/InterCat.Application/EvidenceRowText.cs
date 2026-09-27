@@ -47,9 +47,11 @@ public static class EvidenceRowText
     {
         ArgumentNullException.ThrowIfNull(row);
         if (row.EndpointAddressFamily is not { } family) return null;
-        if (family != 4) return "IPv" + family.ToString(CultureInfo.InvariantCulture) + " endpoints (address not retained)";
-        string? source = Endpoint(row.SourceEndpointAddress, row.SourceEndpointPort);
-        string? destination = Endpoint(row.DestinationEndpointAddress, row.DestinationEndpointPort);
+        (string? source, string? destination) = family == 6
+            ? (Endpoint(row.SourceEndpointAddressV6, row.SourceEndpointPort),
+                Endpoint(row.DestinationEndpointAddressV6, row.DestinationEndpointPort))
+            : (Endpoint(row.SourceEndpointAddress, row.SourceEndpointPort),
+                Endpoint(row.DestinationEndpointAddress, row.DestinationEndpointPort));
         if (source is null || destination is null) return source ?? destination;
         (string own, string remote) = TransportEndpoints.OrientationOf(row.Mechanism, row.Kind) == EndpointOrientation.OwnerFirst
             ? (source, destination)
@@ -161,7 +163,10 @@ public static class EvidenceRowText
     };
 
     private static string? Endpoint(uint? address, ushort? port) => address is { } value && port is { } number
-        ? string.Create(CultureInfo.InvariantCulture,
-            $"{value >> 24}.{(value >> 16) & 0xFF}.{(value >> 8) & 0xFF}.{value & 0xFF}:{number}")
+        ? EndpointText.Endpoint(value, number)
+        : null;
+
+    private static string? Endpoint(UInt128? address, ushort? port) => address is { } value && port is { } number
+        ? EndpointText.Endpoint(value, number)
         : null;
 }

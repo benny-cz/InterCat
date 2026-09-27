@@ -14,6 +14,12 @@ public enum SegmentTableId : uint
 
     /// <summary>§7.3's source correlation and object fields that `observation-v1` has no column for.</summary>
     SourceFieldsV1 = 2,
+
+    /// <summary>
+    /// `observation-v1` with two IPv6 endpoint address columns, for a segment one of whose rows has an IPv6 address
+    /// (revision 172). Its rows are observations as `observation-v1`'s are.
+    /// </summary>
+    ObservationV2 = 3,
 }
 
 /// <summary>What a segment is a segment of: the capture, the clock its readings are on, and the derivation.</summary>
@@ -61,9 +67,10 @@ public sealed record SegmentBuildResult(
     IReadOnlyList<SegmentColumnDescriptor> Columns);
 
 /// <summary>
-/// Builds one immutable `observation-v1` segment. Rows are encoded into their columns as they arrive and
-/// are not retained, so a derivation's memory is the size of its columns rather than the size of its rows
-/// (R8); the sort that makes the segment ordered is a permutation of those columns at the end.
+/// Builds one immutable observation segment: `observation-v1`, or `observation-v2` when a row has an IPv6 address.
+/// Rows are encoded into their columns as they arrive and are not retained, so a derivation's memory is the size of
+/// its columns rather than the size of its rows (R8); the sort that makes the segment ordered is a permutation of those
+/// columns at the end.
 /// </summary>
 public sealed class SegmentWriterV1
 {
@@ -76,10 +83,11 @@ public sealed class SegmentWriterV1
         builder = new(
             identity,
             ordinal,
-            SegmentTableId.ObservationV1,
-            SegmentFormatV1.ObservationColumns,
+            SegmentTableId.ObservationV2,
+            SegmentFormatV1.ObservationV2Columns,
             textColumn: SegmentColumnId.ResourceName,
-            schemaColumn: SegmentColumnId.SchemaCode);
+            schemaColumn: SegmentColumnId.SchemaCode,
+            narrower: (SegmentTableId.ObservationV1, SegmentFormatV1.ObservationColumns.Count));
     }
 
     public int RowCount => builder.RowCount;
@@ -140,6 +148,8 @@ public sealed class SegmentWriterV1
         builder.SetUInt8(SegmentColumnId.MeasurementQuality, at, checked((byte)row.MeasurementQuality));
         builder.SetUInt8(SegmentColumnId.TimingQuality, at, checked((byte)row.TimingQuality));
         builder.SetUInt16(SegmentColumnId.Markers, at, (ushort)row.Markers);
+        builder.SetNullableAddress128(SegmentColumnId.SourceEndpointAddressV6, at, row.SourceEndpointAddressV6);
+        builder.SetNullableAddress128(SegmentColumnId.DestinationEndpointAddressV6, at, row.DestinationEndpointAddressV6);
         builder.EndRow(new(row.NativeTicks, row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey, 0));
     }
 
@@ -215,8 +225,14 @@ internal sealed class SegmentTableBuilder
 {
     private readonly SegmentIdentityV1 identity;
     private readonly int ordinal;
-    private readonly SegmentTableId table;
-    private readonly IReadOnlyList<SegmentColumnSpec> columns;
+    private SegmentTableId table;
+    private IReadOnlyList<SegmentColumnSpec> columns;
+
+    /// <summary>
+    /// The table this one extends and how many of its leading columns are that table's: a segment none of whose rows
+    /// used a column past them is written as that table, byte for byte (`observation-v2` over `observation-v1`).
+    /// </summary>
+    private readonly (SegmentTableId Table, int Columns)? narrower;
     private readonly SegmentColumnId? textColumn;
     private readonly SegmentColumnId? schemaColumn;
     private readonly Dictionary<SegmentColumnId, int> positions;
@@ -226,11 +242,13 @@ internal sealed class SegmentTableBuilder
     private readonly List<SortKey> keys = [];
     private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), (string Entry, uint Local)> schemas = [];
     private readonly List<string> schemaEntries = [];
-    private readonly long fixedBytes;
-    private readonly int fixedWidthPerRow;
+    private readonly StagedLayout wideLayout;
+    private readonly StagedLayout? narrowLayout;
     private long stagedTextBytes;
-    private readonly int nullableColumns;
     private int rowCount;
+
+    /// <summary>Whether a row has a value in a column the narrower table lacks, so the segment is this table's.</summary>
+    private bool widened;
 
     public SegmentTableBuilder(
         SegmentIdentityV1 identity,
@@ -238,7 +256,8 @@ internal sealed class SegmentTableBuilder
         SegmentTableId table,
         IReadOnlyList<SegmentColumnSpec> columns,
         SegmentColumnId? textColumn,
-        SegmentColumnId? schemaColumn)
+        SegmentColumnId? schemaColumn,
+        (SegmentTableId Table, int Columns)? narrower = null)
     {
         this.identity = identity;
         this.ordinal = ordinal;
@@ -246,6 +265,7 @@ internal sealed class SegmentTableBuilder
         this.columns = columns;
         this.textColumn = textColumn;
         this.schemaColumn = schemaColumn;
+        this.narrower = narrower;
         positions = [];
         for (int index = 0; index < columns.Count; index++)
         {
@@ -260,18 +280,25 @@ internal sealed class SegmentTableBuilder
             presence[index] = [];
         }
 
-        fixedBytes = SegmentFormatV1.HeaderLength
-            + (columns.Count * (long)SegmentFormatV1.ColumnEntryLength)
-            + SegmentFormatV1.TrailerLength;
-        fixedWidthPerRow = columns.Sum(column => SegmentFormatV1.WidthOf(column.Type));
-        nullableColumns = columns.Count(column => column.Nullable);
+        wideLayout = StagedLayout.Of(columns);
+        narrowLayout = narrower is { } narrow ? StagedLayout.Of([.. columns.Take(narrow.Columns)]) : null;
     }
 
     public int RowCount => rowCount;
 
-    public long StagedBytes =>
-        fixedBytes + ((long)rowCount * fixedWidthPerRow) + ((long)nullableColumns * ((rowCount + 7) / 8))
-        + stagedTextBytes;
+    /// <summary>
+    /// The bytes the segment would take if it were built now. Until a row uses a column the narrower table lacks, that is
+    /// the narrower table's layout, so a segment of IPv4 records flushes where it always did.
+    /// </summary>
+    public long StagedBytes
+    {
+        get
+        {
+            StagedLayout layout = widened || narrowLayout is not { } narrow ? wideLayout : narrow;
+            return layout.FixedBytes + ((long)rowCount * layout.WidthPerRow)
+                + ((long)layout.NullableColumns * ((rowCount + 7) / 8)) + stagedTextBytes;
+        }
+    }
 
     private int TimeBlockCount => Math.Max(1, (rowCount + SegmentFormatV1.RowsPerTimeBlock - 1) / SegmentFormatV1.RowsPerTimeBlock);
 
@@ -323,6 +350,12 @@ internal sealed class SegmentTableBuilder
                 + "states; a zero-row segment would let absence be read as data (R21, P1).");
         }
 
+        // A table whose own columns no row used is written as the table it extends: its layout, its identity, its bytes.
+        if (narrower is { } narrow && !widened)
+        {
+            (table, columns) = (narrow.Table, [.. columns.Take(narrow.Columns)]);
+        }
+
         int[] order = new int[rowCount];
         for (int index = 0; index < rowCount; index++)
         {
@@ -335,7 +368,7 @@ internal sealed class SegmentTableBuilder
             if (SortKey.Compare(keys[order[index - 1]], keys[order[index]]) == 0)
             {
                 throw new InvalidOperationException(
-                    table == SegmentTableId.ObservationV1
+                    table is SegmentTableId.ObservationV1 or SegmentTableId.ObservationV2
                         ? "Two rows of this segment share one observation identity. A segment is refused rather "
                             + "than published with a fact that would be counted twice (I2, I5)."
                         : "Two rows of this segment carry the same field of one observation. A segment is refused "
@@ -501,6 +534,17 @@ internal sealed class SegmentTableBuilder
     {
         BinaryPrimitives.WriteInt64LittleEndian(Slot(id, row, 8), value ?? 0);
         MarkPresent(id, row, value is not null);
+    }
+
+    /// <summary>
+    /// A 128-bit address, its bytes in network order. An absent one writes nothing: a slot no row wrote is zero and absent
+    /// when the column is built, so a segment of IPv4 records stages no IPv6 bytes.
+    /// </summary>
+    public void SetNullableAddress128(SegmentColumnId id, int row, UInt128? value)
+    {
+        if (value is not { } address) return;
+        BinaryPrimitives.WriteUInt128BigEndian(Slot(id, row, 16), address);
+        MarkPresent(id, row, true);
     }
 
     public void SetNullableGuid(SegmentColumnId id, int row, Guid? value)
@@ -792,6 +836,17 @@ internal sealed class SegmentTableBuilder
         }
 
         presence[position][row] = present;
+        widened |= present && narrower is { } narrow && position >= narrow.Columns;
+    }
+
+    /// <summary>What a table layout costs: its fixed header, directory and trailer, its bytes per row, its null bitmaps.</summary>
+    private readonly record struct StagedLayout(long FixedBytes, int WidthPerRow, int NullableColumns)
+    {
+        public static StagedLayout Of(IReadOnlyList<SegmentColumnSpec> columns) => new(
+            SegmentFormatV1.HeaderLength + (columns.Count * (long)SegmentFormatV1.ColumnEntryLength)
+                + SegmentFormatV1.TrailerLength,
+            columns.Sum(column => SegmentFormatV1.WidthOf(column.Type)),
+            columns.Count(column => column.Nullable));
     }
 }
 

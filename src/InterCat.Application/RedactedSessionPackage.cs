@@ -317,6 +317,8 @@ public static class RedactedSessionPackage
                 pseudonyms.SeeIdentifier(row.SourceIdentifier);
                 pseudonyms.SeeAddress(row.SourceEndpointAddress);
                 pseudonyms.SeeAddress(row.DestinationEndpointAddress);
+                pseudonyms.SeeAddress6(row.SourceEndpointAddressV6);
+                pseudonyms.SeeAddress6(row.DestinationEndpointAddressV6);
                 pseudonyms.SeePort(row.SourceEndpointPort);
                 pseudonyms.SeePort(row.DestinationEndpointPort);
                 if (row.ResourceName is { } resource)
@@ -678,6 +680,8 @@ public static class RedactedSessionPackage
         SourceEndpointPort = pseudonyms.Port(row.SourceEndpointPort),
         DestinationEndpointAddress = pseudonyms.Address(row.DestinationEndpointAddress),
         DestinationEndpointPort = pseudonyms.Port(row.DestinationEndpointPort),
+        SourceEndpointAddressV6 = pseudonyms.Address6(row.SourceEndpointAddressV6),
+        DestinationEndpointAddressV6 = pseudonyms.Address6(row.DestinationEndpointAddressV6),
         ByteValue = row.ByteValue,
         ByteDomain = row.ByteDomain,
         AccountingSide = row.AccountingSide,
@@ -818,7 +822,7 @@ public static class RedactedSessionPackage
         [
             "Executable, folder, pipe and resource names, a path component at a time",
             "Process and thread ids, including parent and issuing-thread fields",
-            "IPv4 addresses and ports",
+            "IPv4 and IPv6 addresses, an IPv4-mapped address by its IPv4 part's pseudonym, and ports",
             "Activity, related-activity and source identifiers",
             "Provider identities other than the public Microsoft providers InterCat admits, and every schema fingerprint",
             "Process start sequence numbers and kernel object values (connection, request packet, file object, file key)",
@@ -838,7 +842,7 @@ public static class RedactedSessionPackage
         FixedPoints =
         [
             "Process and thread ids 0, 4 and -1",
-            "Addresses 0.0.0.0, 127.0.0.0/8 and 255.255.255.255, and port 0",
+            "Addresses 0.0.0.0, 127.0.0.0/8 and 255.255.255.255, also in IPv4-mapped form, :: and ::1, and port 0",
             "The empty identifier and zero-valued start sequences and kernel object values",
         ],
         Counts = counts,
@@ -972,6 +976,8 @@ public static class RedactedSessionPackage
                     && (row.ResourceName is not { } resource || pseudonyms.IsIssuedName(resource))
                     && (row.SourceEndpointAddress is not { } sourceAddress || pseudonyms.IsIssuedOrFixedAddress(sourceAddress))
                     && (row.DestinationEndpointAddress is not { } remoteAddress || pseudonyms.IsIssuedOrFixedAddress(remoteAddress))
+                    && (row.SourceEndpointAddressV6 is not { } sourceAddress6 || pseudonyms.IsIssuedOrFixedAddress6(sourceAddress6))
+                    && (row.DestinationEndpointAddressV6 is not { } remoteAddress6 || pseudonyms.IsIssuedOrFixedAddress6(remoteAddress6))
                     && (row.SourceEndpointPort is not { } sourcePort || pseudonyms.IsIssuedOrFixedPort(sourcePort))
                     && (row.DestinationEndpointPort is not { } remotePort || pseudonyms.IsIssuedOrFixedPort(remotePort))
                     && (row.Markers & ~SegmentRowMarkers.ResourceNameTruncated) == 0,
@@ -1130,7 +1136,7 @@ public static class RedactedSessionPackage
     {
         private readonly SortedDictionary<string, Int128> values = new(StringComparer.Ordinal);
         private readonly HashSet<int> numbers = [];
-        private readonly HashSet<uint> addresses = [];
+        private readonly HashSet<UInt128> addresses = [];
         private readonly HashSet<ushort> ports = [];
         private readonly HashSet<Guid> identifiers = [];
         private readonly HashSet<(SourceField Field, long Value)> fieldValues = [];
@@ -1151,18 +1157,27 @@ public static class RedactedSessionPackage
             Count($"present|{row.OwnerProcessId is not null}|{row.ResourceName is not null}|{row.EndpointAddressFamily}"
                 + $"|{row.ActivityId is not null}|{row.RelatedActivityId is not null}|{row.SourceIdentifier is not null}"
                 + $"|{row.SourceEndpointAddress is not null}|{row.SourceEndpointPort is not null}"
-                + $"|{row.DestinationEndpointAddress is not null}|{row.DestinationEndpointPort is not null}");
+                + $"|{row.DestinationEndpointAddress is not null}|{row.DestinationEndpointPort is not null}"
+                + $"|{row.SourceEndpointAddressV6 is not null}|{row.DestinationEndpointAddressV6 is not null}");
             Count($"marker|{(row.Markers & SegmentRowMarkers.ResourceNameTruncated) != 0}");
 
             // Fixed points are kept exactly, so their values - not only their presence - must match per row.
             Count($"fixed|{Fixed(row.HeaderProcessId)}|{Fixed(row.HeaderThreadId)}|{Fixed(row.OwnerProcessId)}"
                 + $"|{Fixed(row.SourceEndpointAddress)}|{Fixed(row.SourceEndpointPort)}"
                 + $"|{Fixed(row.DestinationEndpointAddress)}|{Fixed(row.DestinationEndpointPort)}"
+                + $"|{Fixed(row.SourceEndpointAddressV6)}|{Fixed(row.DestinationEndpointAddressV6)}"
                 + $"|{Fixed(row.ActivityId)}|{Fixed(row.RelatedActivityId)}|{Fixed(row.SourceIdentifier)}");
             numbers.Add(row.HeaderProcessId);
             numbers.Add(row.HeaderThreadId);
             if (row.OwnerProcessId is { } owner) numbers.Add(owner);
+            // One namespace of hosts: an IPv4 address counts in its IPv4-mapped form, so a mapping that kept each family a
+            // bijection but parted an IPv4 address from its mapped twin would change the count.
             foreach (uint? address in new[] { row.SourceEndpointAddress, row.DestinationEndpointAddress })
+            {
+                if (address is { } value) addresses.Add(((UInt128)0xFFFF << 32) | value);
+            }
+
+            foreach (UInt128? address in new[] { row.SourceEndpointAddressV6, row.DestinationEndpointAddressV6 })
             {
                 if (address is { } value) addresses.Add(value);
             }
@@ -1230,6 +1245,9 @@ public static class RedactedSessionPackage
 
         private static string Fixed(uint? address) => address is not { } value ? "none"
             : RedactedSessionPseudonyms.IsFixedAddress(value) ? value.ToString(CultureInfo.InvariantCulture) : "mapped";
+
+        private static string Fixed(UInt128? address) => address is not { } value ? "none"
+            : RedactedSessionPseudonyms.IsFixedAddress6(value) ? value.ToString(CultureInfo.InvariantCulture) : "mapped";
 
         private static string Fixed(ushort? port) => port is not { } value ? "none" : value == 0 ? "0" : "mapped";
 

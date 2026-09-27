@@ -41,6 +41,26 @@ public sealed class EvidenceRowTextTests
     }
 
     [Fact]
+    public void AnIpv6RowNamesItsEndpointsBracketedInCanonicalText()
+    {
+        ObservationRowV1 send = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 64, 100)
+            .Between("[2001:db8:0:0:0:0:0:1]:50000", "[::1]:443");
+        ObservationRowV1 udpReceive = Transfer(2, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200)
+            .Between("[fe80::1:2]:5353", "[::ffff:192.0.2.1]:5353") with { Mechanism = Mechanism.Udp };
+
+        Assert.Equal("[2001:db8::1]:50000 → [::1]:443", EvidenceRowText.Endpoints(send));
+        Assert.Equal("[::ffff:192.0.2.1]:5353 ← [fe80::1:2]:5353", EvidenceRowText.Endpoints(udpReceive));
+
+        // A record that names one endpoint shows that one; its IPv4 columns are empty and never read for it.
+        Assert.Equal("[2001:db8::1]:50000", EvidenceRowText.Endpoints(send with { DestinationEndpointAddressV6 = null }));
+        Assert.Null(EvidenceRowText.Endpoints(send with
+        {
+            SourceEndpointAddressV6 = null,
+            DestinationEndpointAddressV6 = null,
+        }));
+    }
+
+    [Fact]
     public void LifecycleRowsReadAsProcessEvents()
     {
         Assert.Equal("Process start", EvidenceRowText.Title(Lifecycle(1, ObservationKind.Create, 100, 1)));
