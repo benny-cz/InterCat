@@ -2390,7 +2390,25 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture,
                 $"{channel.ObservationCount:N0} observed records at this channel's two ends · bytes unknown · no operation rung; E shows the records")
-            : LadderRowBuilder.DescribeTotal(view) + RealScopeNote(brief: false);
+            : RungTotal(brief: false) + RealScopeNote(brief: false);
+
+    /// <summary>
+    /// The rung's total. A process rung that lists only RPC channels totals their call records, which are all its own; with
+    /// paired channels beside them the rows overlap, as paired channels' always do, and no single total is stated.
+    /// </summary>
+    private string RungTotal(bool brief)
+    {
+        if (rpcChannelRows.Count == 0 || view.Rows.Count > 0)
+        {
+            return brief ? LadderRowBuilder.DescribeTotalShort(view) : LadderRowBuilder.DescribeTotal(view);
+        }
+
+        long records = rpcChannelRows.Sum(row => row.Source.ObservationCount);
+        return brief
+            ? string.Create(CultureInfo.CurrentCulture, $"{records:N0} call records")
+            : string.Create(CultureInfo.CurrentCulture,
+                $"{records:N0} call records in {rpcChannelRows.Count:N0} RPC {(rpcChannelRows.Count == 1 ? "channel" : "channels")} · RPC carries no size");
+    }
 
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
     public string LevelSummaryShort => IsEvidenceRung
@@ -2399,7 +2417,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
             ? RpcCallSummary(brief: true)
         : FocusedRealChannel is { } channel
             ? string.Create(CultureInfo.CurrentCulture, $"{channel.ObservationCount:N0} records on this channel · no operation rung")
-            : LadderRowBuilder.DescribeTotalShort(view) + RealScopeNote(brief: true);
+            : RungTotal(brief: true) + RealScopeNote(brief: true);
 
     /// <summary>
     /// What a published session's rung total counts, said after it. The machine and group rungs count each process's

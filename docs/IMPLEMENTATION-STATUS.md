@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 181 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 182 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 182 — the RPC rungs tried in the real window, and what that found:**
+  - **Opening a session by name:** `InterCat.Desktop.exe <session folder>` opens it once the window is shown, as
+    "Open saved session" does, so a session can be opened from a shortcut, a script or a dropped folder; one that
+    cannot be opened says why. It is what let a person-free run open the recorded session.
+  - **The run:** the Release app opened revision 180's real Explore recording maximized on a 3856×2128 display, and UI
+    Automation walked the ranked table from the machine to svchost.exe, PID 3632, its busiest RPC channel (266 calls)
+    and one call's two records. Only the InterCat window was captured, through `PrintWindow`.
+  - **Found and fixed:** a process whose rung lists only RPC channels stated "0 observations" in the rail and the
+    inspector, because the total counted paired channels alone; it now states its call records ("798 call records in
+    2 RPC channels · RPC carries no size"). On the tall window the call bars were capped at 12 px and read as specks;
+    they now grow with the lane to 28 px. The saved-session note no longer says the graph is the only place calls are.
+  - **A lesson for the next run:** the driver first sent Enter with `SendKeys`, which goes to whatever window has the
+    foreground; one keystroke may have reached another application. Keys are now posted to the InterCat window alone.
 
 - **Revision 181 — an RPC channel's calls are drawn in the timeline, each from its start to its stop:**
   - **The lane:** at an RPC channel's rung the timeline draws the machine's records as grey context and, under them, one
@@ -1601,6 +1615,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 182 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,229 tests: 1,226
+  passed, 3 skipped**, zero failures. The Release Desktop was run on real data, driven through UI Automation with keys
+  posted to its window, and only its window was captured; the session and the captures stay in scratch.
 - Revision 181 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,229 tests: 1,226
   passed, 3 skipped**, zero failures. The call lane was checked in headless renders at 1080×700 and on the real
   session revision 180 recorded, whole and zoomed.

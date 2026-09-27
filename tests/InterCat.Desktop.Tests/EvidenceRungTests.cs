@@ -560,6 +560,13 @@ public sealed class EvidenceRungTests
 
         DescendTo(workspace, host.GroupKey);
         DescendTo(workspace, host.Id.ToString());
+
+        // Its rung lists only its own calls, so their records are its rung's total, not the zero of no paired channel.
+        await workspace.RpcReady;
+        Assert.False(workspace.IsEmptyRung);
+        Assert.StartsWith("6 call records in 1 RPC channel · RPC carries no size", workspace.LevelSummary, StringComparison.Ordinal);
+        Assert.StartsWith("6 call records", workspace.LevelSummaryShort, StringComparison.Ordinal);
+
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.StartsWith("Records owned by", workspace.EvidenceScopeText, StringComparison.Ordinal);

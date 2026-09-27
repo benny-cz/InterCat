@@ -1088,7 +1088,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         double pitch = laneHeight / rowEnds.Count;
-        double height = Math.Max(2, Math.Min(12, pitch - 1));
+        // A bar grows with the lane up to 28 px, so a tall window's calls are not specks in an empty band.
+        double height = Math.Max(2, Math.Min(28, (pitch * 0.6) - 1));
         foreach ((RpcCallSpanView span, double x1, double x2, int index) in placed)
         {
             callLayout.Add((span, new Rect(x1, laneTop + (index * pitch) + ((pitch - height) / 2), x2 - x1, height)));

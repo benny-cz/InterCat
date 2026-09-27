@@ -650,8 +650,8 @@ public sealed partial class MainWindow : Window, IDisposable
             (string headline, string detail) = overview.Redaction is { } redaction
                 ? ("Redacted session package open", SessionRedaction.Summary + " " + redaction.Warning)
                 : status ?? ("Saved session open",
-                    "This is a published generation. The graph contains admitted paired TCP only; "
-                    + "other observed activity remains in the timeline.");
+                    "This is a published generation. The graph contains admitted paired TCP; a process's RPC calls are on "
+                    + "its rung, and all other observed activity remains in the timeline.");
 
             // Opening on the last complete generation is stated, never passed off as the newest (S7).
             if (store.RollbackReason is { } fallback)

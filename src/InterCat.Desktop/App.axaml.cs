@@ -55,6 +55,14 @@ public sealed partial class App : Avalonia.Application
             window.UseSettings(store, loaded);
             desktop.MainWindow = window;
 
+            // A session folder named on the command line, or dropped on the program, opens once the window is shown, as
+            // "Open saved session" would open it; one that cannot be opened says why and leaves the start page.
+            if (desktop.Args is [string named] && Directory.Exists(named))
+            {
+                string path = Path.GetFullPath(named);
+                window.Opened += async (_, _) => _ = await window.OpenSessionAsync(path);
+            }
+
             // A viewer that crashed while recording loses no evidence; this launch offers to finish its session (§3.1
             // step 6), and lists the sessions saved before.
             try
