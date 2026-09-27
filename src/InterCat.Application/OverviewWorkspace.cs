@@ -125,6 +125,11 @@ public static class OverviewWorkspace
             Processes = [.. snapshot.Processes.Select(process => process with
             {
                 Calls = measures.ByProcess.GetValueOrDefault(process.Id) ?? ProcessCalls.None,
+                CallTimes = measures.TimesByProcess.GetValueOrDefault(process.Id) ?? CallTimes.None,
+            })],
+            Groups = [.. snapshot.Groups.Select(group => group with
+            {
+                CallTimes = measures.TimesByGroup.GetValueOrDefault(group.Key) ?? CallTimes.None,
             })],
         };
     }

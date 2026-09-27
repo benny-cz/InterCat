@@ -14,7 +14,14 @@ public sealed record ProcessGroup(
     string Key,
     string Name,
     LaneGrouping Kind,
-    string? Detail = null);
+    string? Detail = null)
+{
+    /// <summary>
+    /// How long the group's completed RPC calls took over the ranked scope, its members' calls together, when an RPC call
+    /// ranking read them (<see cref="SessionCallRanking"/>); null until one has.
+    /// </summary>
+    public CallTimes? CallTimes { get; init; }
+}
 
 public sealed record ProcessNode(
     ProcessInstanceId Id,
@@ -58,6 +65,9 @@ public sealed record ProcessNode(
     /// (<see cref="SessionCallRanking"/>); null until one has.
     /// </summary>
     public ProcessCalls? Calls { get; init; }
+
+    /// <summary>How long the process's completed RPC calls took over the ranked scope, read with <see cref="Calls"/>.</summary>
+    public CallTimes? CallTimes { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

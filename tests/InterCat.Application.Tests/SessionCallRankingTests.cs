@@ -107,6 +107,78 @@ public sealed class SessionCallRankingTests
         }
     }
 
+    [Fact(DisplayName = "R18: each process's RPC call and serve times are what the duration metric grouped by process answers, whole or in an interval")]
+    public void TimesAreTheDurationMetrics()
+    {
+        for (int seed = 0; seed < 30; seed++)
+        {
+            var random = new Random(seed);
+            (List<ObservationRowV1> rows, _) = RandomCalls(random);
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long from = random.Next(0, (int)end);
+            var presentation = new TimeRange(from, from + random.Next(1, (int)end + 1));
+
+            foreach (TimeRange? scope in new TimeRange?[] { null, presentation })
+            {
+                SessionCallMeasures measured = SessionCallRanking.Measure(session.Store, scope);
+                string context = $"seed {seed}, interval {scope}";
+                foreach ((DurationInterval interval, RankingMetric metric) in new[]
+                {
+                    (DurationInterval.ClientCall, RankingMetric.RpcCallTime),
+                    (DurationInterval.ServerExecution, RankingMetric.RpcServeTime),
+                })
+                {
+                    MetricResult grouped = SessionMetrics.Evaluate(session.Store, Duration(interval, LaneGrouping.InstanceOnly, scope));
+                    foreach (MetricGroup group in grouped.Groups.Where(group => group.Process is not null))
+                    {
+                        ProcessInstanceId id = group.Process!.Id;
+                        RankedValue value = (measured.TimesByProcess.GetValueOrDefault(id) ?? CallTimes.None)
+                            .Of(metric, measured.ByProcess.GetValueOrDefault(id) ?? ProcessCalls.None);
+                        Assert.True(
+                            (group.Value, group.KnownContributions, group.UnknownContributions) == (value.Value, value.Measured, value.Unmeasured),
+                            $"{context}, {interval}: {id} metric ({group.Value}, {group.KnownContributions}, {group.UnknownContributions}) "
+                                + $"and ranking ({value.Value}, {value.Measured}, {value.Unmeasured})");
+                    }
+                }
+            }
+        }
+    }
+
+    [Fact(DisplayName = "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable answers")]
+    public void AGroupsTimeIsItsMembersCallsTogether()
+    {
+        // Two instances of caller.exe: one's calls took 1, 1 and 9 ticks, the other's 5 and 7. Their medians are 1 and 5,
+        // and together the five calls' median is 5 - neither medians' sum nor their mean.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, Client, 1) with { ResourceName = @"C:\Tools\caller.exe" },
+            Lifecycle(2, ObservationKind.Create, 101, 2) with { ResourceName = @"C:\Tools\caller.exe" },
+            .. Call(Client, 10, 11, 1), .. Call(Client, 20, 21, 2), .. Call(Client, 30, 39, 3),
+            .. Call(101, 40, 45, 4), .. Call(101, 50, 57, 5),
+        ]);
+        SessionCallMeasures measured = SessionCallRanking.Measure(session.Store, null);
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, Duration(DurationInterval.ClientCall, LaneGrouping.Executable, null));
+        MetricGroup caller = Assert.Single(grouped.Groups, group => group.Executable is not null);
+        CallTimes together = measured.TimesByGroup[@"executable:C:\TOOLS\CALLER.EXE"];
+        Assert.Equal((caller.Value, caller.KnownContributions), (together.MadeMedian, together.MadeTimed));
+        Assert.Equal((5L, 500L), (together.MadeTimed, together.MadeMedian!.Value));
+
+        // The ladder's group row reads that median, not one made from its members'.
+        WorkspaceSnapshot counted = OverviewWorkspace.WithCalls(
+            OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store)), measured);
+        LadderRow row = Assert.Single(LadderProjection.Project(counted, SyntheticWorkspace.Root(counted), RankingMetric.RpcCallTime).Rows);
+        Assert.Equal((500L, 5L, 0L), (row.Ranked!.Value, row.Ranked.Measured, row.Ranked.Unmeasured));
+
+        static ObservationRowV1[] Call(int pid, long start, long stop, int number) =>
+        [
+            RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, pid, (ulong)(100 + (2 * number)), Activity(number), ServiceControl),
+            RpcCall(stop, ObservationKind.RequestEnd, Direction.Outbound, pid, (ulong)(101 + (2 * number)), Activity(number), status: 0),
+        ];
+    }
+
     [Fact(DisplayName = "§8a: calls made and served rank their own sides, and a process with only unpaired stops follows those with calls")]
     public void CallsRankByTheirSide()
     {
@@ -290,4 +362,16 @@ public sealed class SessionCallRankingTests
     }
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 2);
+
+    /// <summary>`icat metric --basis logical-operations --metric duration` for one named interval, by the median.</summary>
+    private static MetricRequest Duration(DurationInterval interval, LaneGrouping grouping, TimeRange? scope) => new()
+    {
+        Basis = AnalysisBasis.LogicalOperations,
+        Metric = Metric.Duration,
+        DurationInterval = interval,
+        Cohort = OperationCohort.CompletedInRange,
+        Statistic = DurationStatistic.Median,
+        Grouping = grouping,
+        Interval = scope,
+    };
 }

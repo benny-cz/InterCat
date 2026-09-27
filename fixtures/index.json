@@ -1328,11 +1328,13 @@
         "R9: writing a batch returns every buffer the records held"
       ],
       "R18": [
+        "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable answers",
         "R18: a headless export descends by row key and names its rung, interval and scope",
         "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: an export ranked by bytes names its ranking, and each row carries the value it was ranked by",
         "R18: an export ranked by calls served names its ranking, and each row its calls, failures and unpaired stops",
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
+        "R18: each process's RPC call and serve times are what the duration metric grouped by process answers, whole or in an interval",
         "R18: each process's RPC errors are what the errors metric grouped by process answers, unknown status apart",
         "R18: each process's bytes sent and received are what endpoint activity grouped by process answers",
         "R18: each process's calls made and served add up to what the operations metric counts for it, whole or in an interval",

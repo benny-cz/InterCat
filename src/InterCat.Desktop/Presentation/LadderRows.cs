@@ -51,9 +51,13 @@ public sealed record RungRow(
     {
         get
         {
+            // A median says little without how many calls stand behind it, so a time ranking names them for the records.
+            string behind = Source.Ranked is { } ranked && RankingMetrics.IsDuration(ranked.Metric)
+                ? string.Create(CultureInfo.CurrentCulture, $"{ranked.Measured:N0} {(ranked.Measured == 1 ? "call" : "calls")} timed")
+                : $"{Observations} records";
             string holds = RankedFigure is null ? Detail
-                : Detail.Length == 0 ? $"{Observations} records"
-                : $"{Detail} · {Observations} records";
+                : Detail.Length == 0 ? behind
+                : $"{Detail} · {behind}";
             return Coverage.Length == 0 ? holds
                 : holds.Length == 0 ? Coverage
                 : $"{holds} · {Coverage}";
@@ -156,6 +160,13 @@ public static class LadderRowBuilder
     public static string RankedFigure(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (RankingMetrics.IsDuration(ranked.Metric))
+        {
+            // A row whose only calls began before the capture was never timed, which is not a fast row.
+            return ranked.Value is { } median ? OperationText.Duration(median, CultureInfo.CurrentCulture)
+                : ranked.Holds ? "untimed" : "no calls";
+        }
+
         if (ranked.Metric is RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed)
         {
             return ranked.Value is { } calls
@@ -187,6 +198,19 @@ public static class LadderRowBuilder
     public static string RankedSpoken(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (RankingMetrics.IsDuration(ranked.Metric))
+        {
+            string side = ranked.Metric == RankingMetric.RpcCallTime ? "made" : "served";
+            string unpaired = ranked.Unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $", {ranked.Unmeasured:N0} {(ranked.Unmeasured == 1 ? "stop" : "stops")} paired with no start, not timed")
+                : string.Empty;
+            return ranked.Value is { } median
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"median {OperationText.Duration(median, CultureInfo.CurrentCulture)} over {ranked.Measured:N0} timed {(ranked.Measured == 1 ? "call" : "calls")} {side}{unpaired}")
+                : ranked.Holds ? $"no calls {side} timed{unpaired}" : $"no RPC calls {side}";
+        }
+
         if (ranked.Metric == RankingMetric.RpcErrors)
         {
             string unknown = ranked.Unmeasured > 0

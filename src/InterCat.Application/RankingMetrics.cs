@@ -36,6 +36,18 @@ public enum RankingMetric
     /// completed call whose stop carried no status is unmeasured, never a success.
     /// </summary>
     RpcErrors = 7,
+
+    /// <summary>
+    /// The median time each process's completed RPC client calls took, from a call's start to its stop in the calling
+    /// process (`metrics-v1` §8a, the `ClientCall` interval), slowest first. A stop paired with no start is never timed.
+    /// </summary>
+    RpcCallTime = 8,
+
+    /// <summary>
+    /// The median time each process took to serve its completed RPC server calls, from a served call's start to its stop
+    /// (`ServerExecution`), slowest first.
+    /// </summary>
+    RpcServeTime = 9,
 }
 
 /// <summary>Which kind of measure a ranking reads, and so which read answers it.</summary>
@@ -59,16 +71,25 @@ public static class RankingMetrics
     {
         RankingMetric.Records => RankingFamily.Records,
         RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes => RankingFamily.Bytes,
-        RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed or RankingMetric.RpcErrors => RankingFamily.Calls,
+        RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed or RankingMetric.RpcErrors
+            or RankingMetric.RpcCallTime or RankingMetric.RpcServeTime => RankingFamily.Calls,
         _ => throw new ArgumentOutOfRangeException(nameof(metric)),
     };
+
+    /// <summary>
+    /// Whether <paramref name="metric"/> ranks by a duration statistic, which does not add: a group's value is its members'
+    /// calls taken together, never a sum of their values.
+    /// </summary>
+    public static bool IsDuration(RankingMetric metric) => metric is RankingMetric.RpcCallTime or RankingMetric.RpcServeTime;
 }
 
 /// <summary>
 /// A row's value under a ranking other than records: null when nothing it holds measured the metric, whether its records
 /// declared a measurement that carried no value (<see cref="Unmeasured"/>) or it made no record the metric takes at all.
 /// Under an RPC call ranking the value is the calls completed, <see cref="Unmeasured"/> the stops paired with no start,
-/// which are stated and never counted, and <see cref="Failed"/> the completed calls whose stop reported a failure.
+/// which are stated and never counted, and <see cref="Failed"/> the completed calls whose stop reported a failure. Under
+/// an RPC time ranking the value is the median call's duration in session nanoseconds, <see cref="Measured"/> the calls
+/// timed and <see cref="Unmeasured"/> the stops paired with no start, which are never timed.
 /// </summary>
 public sealed record RankedValue(RankingMetric Metric, long? Value, long Measured, long Unmeasured)
 {

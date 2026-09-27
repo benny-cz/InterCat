@@ -259,6 +259,42 @@ public sealed class RankingSelectorTests
         Assert.Equal("1 failed of 5 calls", rpc.RankingNote);
     });
 
+    [Fact(DisplayName = "§5.2: RPC call and serve time rank the rail by each side's median call, slowest first, untimed rows after")]
+    public void CallAndServeTimeRankTheRail() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        using WorkspaceViewModel workspace = Open(session);
+        string Took(long nanoseconds) => OperationText.Duration(nanoseconds, CultureInfo.CurrentCulture);
+
+        // The caller's three calls each took 1 µs; the orphan's only stop began before the capture and was never timed.
+        workspace.SelectedRanking = workspace.RankingOptions.Single(option => option.Metric == RankingMetric.RpcCallTime);
+        Assert.Equal("Reading RPC call times…", workspace.RankingNote);
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.RpcCallTime, workspace.AppliedRanking);
+        Assert.Equal(["caller.exe", "orphan.exe"], workspace.RungRows.Take(2).Select(row => row.Label));
+        Assert.Equal([Took(1_000), "untimed", "no calls", "no calls"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Contains($"median {Took(1_000)} over 3 timed calls made", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("1 process instance · 3 calls timed · unknown coverage", workspace.RungRows[0].DetailLine);
+        Assert.Contains("no calls made timed, 1 stop paired with no start, not timed", workspace.RungRows[1].AccessibleName,
+            StringComparison.Ordinal);
+        Assert.Equal($"Median {Took(1_000)} over 3 calls · 1 unpaired", workspace.RankingNote);
+        Assert.StartsWith("RPC call time is how long each process's completed client calls took", workspace.RankingNoteDetail,
+            StringComparison.Ordinal);
+
+        // One read answers both sides: the service took 700 ns to serve each of its two calls.
+        workspace.RankBy = RankingMetric.RpcServeTime;
+        Assert.Equal(("service.exe", Took(700)), (workspace.RungRows[0].Label, workspace.RungRows[0].Figure));
+        Assert.Contains($"median {Took(700)} over 2 timed calls served", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal($"Median {Took(700)} over 2 calls", workspace.RankingNote);
+
+        // The export is icat export --rank-by rpc-serve-time-median's (R18).
+        SessionExportResult desktop = await workspace.ExportAsync(ExportFormat.Csv, Exported);
+        Assert.Equal(desktop.Content, SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.RpcServeTime), Exported).Content);
+        Assert.Contains(",rpc-serve-time-median,700,2,0,", desktop.Content, StringComparison.Ordinal);
+    });
+
     [Fact(DisplayName = "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why")]
     public void UncollectedRpcKeepsTheRecordsRanking() => SingleThreadedContext.Run(async () =>
     {

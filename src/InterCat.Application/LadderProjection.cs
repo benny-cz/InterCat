@@ -231,7 +231,7 @@ public static class LadderProjection
                 DetailLevel.Group,
                 AccountingSide.CanonicalOwner)
             {
-                Ranked = RankedOf(members, ranking),
+                Ranked = RankedOf(members, ranking, group.CallTimes),
             });
         }
 
@@ -240,13 +240,19 @@ public static class LadderProjection
 
     /// <summary>
     /// A row's value under a byte or call ranking: the sum of its processes' bytes or calls, which partition it, as a
-    /// group sums its members' records. Null when ranking by records, or when a member's measures have not been read.
+    /// group sums its members' records. A time ranking's median does not add, so it reads the row's own call times,
+    /// <paramref name="times"/>, its members' calls together. Null when ranking by records, or when a member's measures
+    /// have not been read.
     /// </summary>
-    private static RankedValue? RankedOf(IReadOnlyCollection<ProcessNode> members, RankingMetric ranking) =>
+    private static RankedValue? RankedOf(IReadOnlyCollection<ProcessNode> members, RankingMetric ranking, CallTimes? times) =>
         RankingMetrics.FamilyOf(ranking) switch
         {
             RankingFamily.Bytes when members.All(member => member.Bytes is not null) =>
                 members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking),
+            RankingFamily.Calls when RankingMetrics.IsDuration(ranking) =>
+                times is not null && members.All(member => member.Calls is not null)
+                    ? times.Of(ranking, members.Aggregate(ProcessCalls.None, (sum, member) => sum.Plus(member.Calls!)))
+                    : null,
             RankingFamily.Calls when members.All(member => member.Calls is not null) =>
                 members.Aggregate(ProcessCalls.None, (sum, member) => sum.Plus(member.Calls!)).Of(ranking),
             _ => null,
@@ -274,7 +280,7 @@ public static class LadderProjection
                 DetailLevel.ProcessInstance,
                 AccountingSide.CanonicalOwner)
             {
-                Ranked = RankedOf([process], ranking),
+                Ranked = RankedOf([process], ranking, process.CallTimes),
             });
         }
 

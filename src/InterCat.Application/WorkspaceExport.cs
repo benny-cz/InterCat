@@ -121,8 +121,18 @@ public static class WorkspaceExport
         RankingMetric.RpcCallsServed => "Rows are ranked by RPC calls served: the server calls each process completed, counted "
             + "by their stop (metrics-v1 §8a). A failed call is one whose stop reported a status other than 0; a stop paired "
             + "with no start is stated, never counted, and a row with only such stops ranks after every row that completed a call.",
+        RankingMetric.RpcCallTime => "Rows are ranked by RPC call time, slowest first: the median time the client calls each "
+            + "process completed took, from a call's start to its stop in the calling process (metrics-v1 §8a, ClientCall), in "
+            + "session nanoseconds. " + TimeCaveat,
+        RankingMetric.RpcServeTime => "Rows are ranked by RPC serve time, slowest first: the median time each process took to "
+            + "serve the server calls it completed, from a served call's start to its stop (metrics-v1 §8a, ServerExecution), in "
+            + "session nanoseconds. " + TimeCaveat,
         _ => throw new ArgumentOutOfRangeException(nameof(rankedBy), rankedBy, "Records need no caveat."),
     };
+
+    private const string TimeCaveat = "A median does not add: a group's is its members' calls taken together, and the rows "
+        + "do not partition a total. A stop paired with no start is never timed, and a row with only such stops ranks after "
+        + "every row that timed a call.";
 
     /// <summary>A ranking's name as the command line and an export spell it.</summary>
     public static string RankingName(RankingMetric ranking) => ranking switch
@@ -134,6 +144,8 @@ public static class WorkspaceExport
         RankingMetric.RpcCallsServed => "rpc-calls-served",
         RankingMetric.EndpointBytes => "bytes-sent-and-received",
         RankingMetric.RpcErrors => "rpc-errors",
+        RankingMetric.RpcCallTime => "rpc-call-time-median",
+        RankingMetric.RpcServeTime => "rpc-serve-time-median",
         _ => throw new ArgumentOutOfRangeException(nameof(ranking)),
     };
 

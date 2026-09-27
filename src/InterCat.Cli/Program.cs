@@ -164,8 +164,8 @@ static void PrintHelp()
     ConsoleUi.Line("              [--share-redacted] [--overwrite]");
     ConsoleUi.Line("      Detailed export of one ladder rung; --evidence writes source-record metadata.");
     ConsoleUi.Line("      --rank-by ranks the machine and group rungs by records, bytes-sent, bytes-received,");
-    ConsoleUi.Line("      bytes-sent-and-received, rpc-calls-made, rpc-calls-served or rpc-errors, as the Desktop's");
-    ConsoleUi.Line("      Rank by selector does.");
+    ConsoleUi.Line("      bytes-sent-and-received, rpc-calls-made, rpc-calls-served, rpc-errors, rpc-call-time-median");
+    ConsoleUi.Line("      or rpc-serve-time-median, as the Desktop's Rank by selector does.");
     ConsoleUi.Line("      --share-redacted writes a separate pseudonymized report, not a reopenable session.");
     ConsoleUi.Line("      Both formats are staged, never left partly written.");
     ConsoleUi.Line();

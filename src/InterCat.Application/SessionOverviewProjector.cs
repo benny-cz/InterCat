@@ -381,7 +381,7 @@ public static class SessionOverviewProjector
         ProcessInstanceId first, ProcessInstanceId second) =>
         string.CompareOrdinal(first.ToString(), second.ToString()) <= 0 ? (first, second) : (second, first);
 
-    private static string GroupKey(ProcessInstance instance) =>
+    internal static string GroupKey(ProcessInstance instance) =>
         string.IsNullOrWhiteSpace(instance.ImagePath) ? "executable:unknown" : "executable:" + instance.ImagePath.ToUpperInvariant();
 
     /// <summary>The witnessed image path a group's short name stands for; null when none was witnessed.</summary>

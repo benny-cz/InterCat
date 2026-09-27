@@ -21,6 +21,8 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.EndpointBytes =>
             "Bytes sent and received: rank by the transport-observed bytes of all of each process's own records, counting a local transfer at both ends",
         RankingMetric.RpcErrors => "RPC errors: rank by the completed RPC calls each process made or served that failed",
+        RankingMetric.RpcCallTime => "RPC call time: rank by the median time each process's completed client calls took, slowest first",
+        RankingMetric.RpcServeTime => "RPC serve time: rank by the median time each process took to serve its completed calls, slowest first",
         _ => "Records: rank by each process's own records",
     };
 }
@@ -43,6 +45,8 @@ public sealed partial class WorkspaceViewModel
         new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made"),
         new RankingOption(RankingMetric.RpcCallsServed, "RPC calls served"),
         new RankingOption(RankingMetric.RpcErrors, "RPC errors"),
+        new RankingOption(RankingMetric.RpcCallTime, "RPC call time (median)"),
+        new RankingOption(RankingMetric.RpcServeTime, "RPC serve time (median)"),
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
@@ -130,7 +134,15 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string note;
-            if (rankBy == RankingMetric.RpcErrors)
+            if (RankingMetrics.IsDuration(rankBy))
+            {
+                note = ShownMedian() is { } median
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"Median {OperationText.Duration(median, CultureInfo.CurrentCulture)} over {measured:N0} {(measured == 1 ? "call" : "calls")}")
+                    : unmeasured > 0 ? "No call timed" : "No calls in scope";
+                if (unmeasured > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unpaired");
+            }
+            else if (rankBy == RankingMetric.RpcErrors)
             {
                 note = string.Create(CultureInfo.CurrentCulture, $"{value:N0} failed of {measured:N0} {(measured == 1 ? "call" : "calls")}");
                 if (unmeasured > 0) note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} without status");
@@ -183,8 +195,8 @@ public sealed partial class WorkspaceViewModel
             if (!ShowsRankingNote) return string.Empty;
             if (!RanksThisRung)
             {
-                return "RPC calls made and served rank groups and processes. At a process's rung its RPC channels list their "
-                    + "calls, no TCP channel carries one, and the channels rank by records.";
+                return "RPC call rankings rank groups and processes. At a process's rung its RPC channels list their calls, "
+                    + "with each channel's median time, no TCP channel carries one, and the channels rank by records.";
             }
 
             string definition = ladder.Current.Level == DetailLevel.ProcessInstance
@@ -204,7 +216,31 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string detail;
-            if (shown is SessionCallMeasures errors && rankBy == RankingMetric.RpcErrors)
+            if (shown is SessionCallMeasures timed && RankingMetrics.IsDuration(rankBy))
+            {
+                detail = ShownMedian() is { } median
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"{definition} The rows shown timed {measured:N0} {(measured == 1 ? "call" : "calls")}, each with its start and its stop observed; the median of them all took {OperationText.Duration(median, CultureInfo.CurrentCulture)}.")
+                    : $"{definition} The rows shown timed no call.";
+                if (unmeasured > 0)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unmeasured:N0} stops paired with no start are stated and never timed; a row with only such stops ranks after every row that timed a call.");
+                }
+
+                RankingMetric counted = rankBy == RankingMetric.RpcCallTime ? RankingMetric.RpcCallsMade : RankingMetric.RpcCallsServed;
+                if (ladder.Current.Level == DetailLevel.Machine && timed.Unattributed.Of(counted) is { Holds: true } unheld)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unheld.Measured:N0} more completed calls belong to no process the evidence policy admits.");
+                }
+
+                if (timed.Coverage.State != CoverageState.Covered)
+                {
+                    detail += $" RPC's capture coverage over this scope is {timed.Coverage.State}: {timed.Coverage.Reason}.";
+                }
+            }
+            else if (shown is SessionCallMeasures errors && rankBy == RankingMetric.RpcErrors)
             {
                 detail = string.Create(CultureInfo.CurrentCulture,
                     $"{definition} The rows shown completed {measured:N0} calls whose stop carried a status; {value:N0} of them failed.");
@@ -273,7 +309,8 @@ public sealed partial class WorkspaceViewModel
         + "send or receive records, sender- or receiver-accounted as icat metric answers them; a row whose records recorded "
         + "no size is unmeasured and ranks after every measured row, never as zero. RPC calls made and served: the client "
         + "or server calls each process completed, counted by their stop; a local call is made by one process and served by "
-        + "another.";
+        + "another. RPC call and serve time: the median time those calls took, slowest first; a stop paired with no start is "
+        + "never timed, and a group's median is its members' calls together.";
 
     private RankingFamily Family => RankingMetrics.FamilyOf(rankBy);
 
@@ -345,8 +382,23 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.RpcCallsServed => "RPC calls served",
         RankingMetric.EndpointBytes => "bytes sent and received",
         RankingMetric.RpcErrors => "RPC errors",
+        RankingMetric.RpcCallTime => "RPC call times",
+        RankingMetric.RpcServeTime => "RPC serve times",
         _ => "records",
     };
+
+    /// <summary>
+    /// The median over the rows shown, their calls taken together: every process's at the machine rung, the group's at its
+    /// rung. A median does not add, so it is never made from the rows' own medians.
+    /// </summary>
+    private long? ShownMedian()
+    {
+        if (ShownMeasures is not SessionCallMeasures calls) return null;
+        CallTimes times = ladder.Current.Level == DetailLevel.Group && ladder.Current.Focus is { } group
+            ? calls.TimesByGroup.GetValueOrDefault(group.Key) ?? CallTimes.None
+            : calls.TimesAttributed;
+        return rankBy == RankingMetric.RpcCallTime ? times.MadeMedian : times.ServedMedian;
+    }
 
     private static string Capitalized(string phrase) => char.ToUpperInvariant(phrase[0]) + phrase[1..];
 
@@ -374,6 +426,12 @@ public sealed partial class WorkspaceViewModel
             + "the rows' sum is not a transfer total (metrics-v1 §5.1).",
         RankingMetric.RpcErrors => "RPC errors are the completed calls each process made or served whose stop reported a "
             + "status other than 0; a call whose stop carried no status is unmeasured, never a success.",
+        RankingMetric.RpcCallTime => "RPC call time is how long each process's completed client calls took, from a call's "
+            + "start to its stop in the calling process (metrics-v1 §8a, ClientCall); a row ranks by the median of its calls, "
+            + "slowest first, and a group's median is its members' calls together, never a sum of medians.",
+        RankingMetric.RpcServeTime => "RPC serve time is how long each process took to serve its completed server calls, from "
+            + "a served call's start to its stop (metrics-v1 §8a, ServerExecution); a row ranks by the median of its calls, "
+            + "slowest first, and a group's median is its members' calls together, never a sum of medians.",
         _ => "Records are each process's own records.",
     };
 
