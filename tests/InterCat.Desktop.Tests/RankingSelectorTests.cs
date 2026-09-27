@@ -295,6 +295,63 @@ public sealed class RankingSelectorTests
         Assert.Contains(",rpc-serve-time-median,700,2,0,", desktop.Content, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.1: peers rank the rail by the processes at each row's other end, and a row that resolved none follows")]
+    public void PeersRankTheRail() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Hub());
+        using WorkspaceViewModel workspace = Open(session);
+
+        workspace.SelectedRanking = workspace.RankingOptions.Single(option => option.Metric == RankingMetric.ActivePeers);
+        Assert.Equal("Reading peers…", workspace.RankingNote);
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.ActivePeers, workspace.AppliedRanking);
+
+        // client.exe's two instances share one peer; lone.exe's send reached no process this capture can name.
+        Assert.Equal(["hub.exe", "client.exe", "other.exe", "lone.exe"], workspace.RungRows.Select(row => row.Label));
+        Assert.Equal(["3 peers", "1 peer", "1 peer", "unresolved"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Contains("3 peers on 6 records", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("no peer resolved, 1 record whose other end is unresolved", workspace.RungRows[3].AccessibleName,
+            StringComparison.Ordinal);
+        Assert.Equal("4 processes have a peer · 1 record unresolved", workspace.RankingNote);
+        Assert.StartsWith("Peers are the distinct process instances at the other end", workspace.RankingNoteDetail,
+            StringComparison.Ordinal);
+
+        // The export is icat export --rank-by active-peers's (R18).
+        SessionExportResult desktop = await workspace.ExportAsync(ExportFormat.Json, Exported);
+        Assert.Equal(desktop.Content, SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Json, RankBy: RankingMetric.ActivePeers), Exported).Content);
+        Assert.Contains("\"rankedBy\": \"active-peers\"", desktop.Content, StringComparison.Ordinal);
+    });
+
+    /// <summary>
+    /// hub.exe talks to three clients over paired TCP: two instances of client.exe and one of other.exe; lone.exe's one
+    /// send reached no process the capture can name.
+    /// </summary>
+    private static ObservationRowV1[] Hub()
+    {
+        static ObservationRowV1[] Exchange(int client, int port, long ticks, ulong ordinal) =>
+        [
+            Timed(Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 64, client, ordinal)
+                .Between($"127.0.0.1:{port}", "127.0.0.1:8080")),
+            Timed(Transfer(ticks + 1, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 100, ordinal + 1)
+                .Between("127.0.0.1:8080", $"127.0.0.1:{port}")),
+        ];
+
+        return
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\hub.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(3, ObservationKind.Create, 201, 3) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(4, ObservationKind.Create, 300, 4) with { ResourceName = @"C:\Tools\other.exe" }),
+            Timed(Lifecycle(5, ObservationKind.Create, 400, 5) with { ResourceName = @"C:\Tools\lone.exe" }),
+            .. Exchange(200, 50_000, 10, 10),
+            .. Exchange(201, 50_001, 20, 20),
+            .. Exchange(300, 50_002, 30, 30),
+            Timed(Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 8, 400, 40).Between("127.0.0.1:50003", "127.0.0.1:7070")),
+        ];
+    }
+
     [Fact(DisplayName = "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why")]
     public void UncollectedRpcKeepsTheRecordsRanking() => SingleThreadedContext.Run(async () =>
     {

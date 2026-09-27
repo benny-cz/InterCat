@@ -23,6 +23,7 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.RpcErrors => "RPC errors: rank by the completed RPC calls each process made or served that failed",
         RankingMetric.RpcCallTime => "RPC call time: rank by the median time each process's completed client calls took, slowest first",
         RankingMetric.RpcServeTime => "RPC serve time: rank by the median time each process took to serve its completed calls, slowest first",
+        RankingMetric.ActivePeers => "Peers: rank by the distinct processes at the other end of each process's records",
         _ => "Records: rank by each process's own records",
     };
 }
@@ -47,6 +48,7 @@ public sealed partial class WorkspaceViewModel
         new RankingOption(RankingMetric.RpcErrors, "RPC errors"),
         new RankingOption(RankingMetric.RpcCallTime, "RPC call time (median)"),
         new RankingOption(RankingMetric.RpcServeTime, "RPC serve time (median)"),
+        new RankingOption(RankingMetric.ActivePeers, "Peers"),
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
@@ -54,6 +56,8 @@ public sealed partial class WorkspaceViewModel
         source.ByteMeasuresAsync(scope, cancellation));
     private readonly RankingReads<SessionCallMeasures> callReads = new((source, scope, cancellation) =>
         source.CallMeasuresAsync(scope, cancellation));
+    private readonly RankingReads<SessionPeerMeasures> peerReads = new((source, scope, cancellation) =>
+        source.PeerMeasuresAsync(scope, cancellation));
 
     /// <summary>What the machine and group rungs can rank by: records alone without a session to read measures from.</summary>
     public IReadOnlyList<RankingOption> RankingOptions => evidenceSource is null ? [RankingChoices[0]] : RankingChoices;
@@ -82,6 +86,7 @@ public sealed partial class WorkspaceViewModel
             rankBy = value;
             if (Family != RankingFamily.Bytes) byteReads.Cancel();
             if (Family != RankingFamily.Calls) callReads.Cancel();
+            if (Family != RankingFamily.Peers) peerReads.Cancel();
             Rerank();
             RankingReady = FollowRankedMeasuresAsync();
         }
@@ -134,7 +139,17 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string note;
-            if (RankingMetrics.IsDuration(rankBy))
+            if (rankBy == RankingMetric.ActivePeers)
+            {
+                note = ShownPeers() is { } peers
+                    ? string.Create(CultureInfo.CurrentCulture, $"{peers:N0} {(peers == 1 ? "process has" : "processes have")} a peer")
+                    : "No peer resolved";
+                if (unmeasured > 0)
+                {
+                    note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} {(unmeasured == 1 ? "record" : "records")} unresolved");
+                }
+            }
+            else if (RankingMetrics.IsDuration(rankBy))
             {
                 note = ShownMedian() is { } median
                     ? string.Create(CultureInfo.CurrentCulture,
@@ -216,7 +231,26 @@ public sealed partial class WorkspaceViewModel
 
             (long value, long measured, long unmeasured, long failed) = RankedTotals();
             string detail;
-            if (shown is SessionCallMeasures timed && RankingMetrics.IsDuration(rankBy))
+            if (shown is SessionPeerMeasures peerMeasures)
+            {
+                // A record between two rows names a peer for each, so the rows' records are never added up here.
+                detail = ShownPeers() is { } peers
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"{definition} {peers:N0} {(peers == 1 ? "process has" : "processes have")} a peer among the rows shown.")
+                    : $"{definition} No record of the rows shown resolved a peer.";
+                if (unmeasured > 0)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {unmeasured:N0} {(unmeasured == 1 ? "record's" : "records'")} other end is unresolved, or bound more weakly than the evidence policy admits, so each count is a lower bound; a row none of whose records resolved a peer ranks after every row with one.");
+                }
+
+                if (ladder.Current.Level == DetailLevel.Machine && peerMeasures.Unattributed > 0)
+                {
+                    detail += string.Create(CultureInfo.CurrentCulture,
+                        $" {peerMeasures.Unattributed:N0} records belong to no process the evidence policy admits at either end.");
+                }
+            }
+            else if (shown is SessionCallMeasures timed && RankingMetrics.IsDuration(rankBy))
             {
                 detail = ShownMedian() is { } median
                     ? string.Create(CultureInfo.CurrentCulture,
@@ -310,7 +344,8 @@ public sealed partial class WorkspaceViewModel
         + "no size is unmeasured and ranks after every measured row, never as zero. RPC calls made and served: the client "
         + "or server calls each process completed, counted by their stop; a local call is made by one process and served by "
         + "another. RPC call and serve time: the median time those calls took, slowest first; a stop paired with no start is "
-        + "never timed, and a group's median is its members' calls together.";
+        + "never timed, and a group's median is its members' calls together. Peers: the distinct processes at the other end "
+        + "of each process's records; two processes are each other's peer, so the rows overlap.";
 
     private RankingFamily Family => RankingMetrics.FamilyOf(rankBy);
 
@@ -322,6 +357,7 @@ public sealed partial class WorkspaceViewModel
     {
         RankingFamily.Bytes => byteReads.For(CountedScope),
         RankingFamily.Calls => callReads.For(CountedScope),
+        RankingFamily.Peers => peerReads.For(CountedScope),
         _ => null,
     };
 
@@ -333,6 +369,7 @@ public sealed partial class WorkspaceViewModel
     {
         SessionByteMeasures bytes => byteReads.IsCarried(bytes),
         SessionCallMeasures calls => callReads.IsCarried(calls),
+        SessionPeerMeasures peers => peerReads.IsCarried(peers),
         _ => false,
     };
 
@@ -341,6 +378,7 @@ public sealed partial class WorkspaceViewModel
     {
         RankingFamily.Bytes => byteReads.Problem,
         RankingFamily.Calls => callReads.Problem,
+        RankingFamily.Peers => peerReads.Problem,
         _ => null,
     };
 
@@ -349,6 +387,7 @@ public sealed partial class WorkspaceViewModel
     {
         SessionByteMeasures bytes => LadderProjection.Project(OverviewWorkspace.WithBytes(Snapshot, bytes), ladder.Current, rankBy),
         SessionCallMeasures calls => LadderProjection.Project(OverviewWorkspace.WithCalls(Snapshot, calls), ladder.Current, rankBy),
+        SessionPeerMeasures peers => LadderProjection.Project(OverviewWorkspace.WithPeers(Snapshot, peers), ladder.Current, rankBy),
         _ => LadderProjection.Project(Snapshot, ladder.Current),
     };
 
@@ -384,8 +423,22 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.RpcErrors => "RPC errors",
         RankingMetric.RpcCallTime => "RPC call times",
         RankingMetric.RpcServeTime => "RPC serve times",
+        RankingMetric.ActivePeers => "peers",
         _ => "records",
     };
+
+    /// <summary>
+    /// How many processes have a peer among the rows shown: every process with one at the machine rung, and at a group's
+    /// rung the group's own count, its members' peers together. Peers overlap, so this is never the rows' sum.
+    /// </summary>
+    private long? ShownPeers()
+    {
+        if (ShownMeasures is not SessionPeerMeasures peers) return null;
+        long? shown = ladder.Current.Level == DetailLevel.Group && ladder.Current.Focus is { } group
+            ? peers.ByGroup.GetValueOrDefault(group.Key)?.Peers
+            : peers.WithPeers;
+        return shown is > 0 ? shown : null;
+    }
 
     /// <summary>
     /// The median over the rows shown, their calls taken together: every process's at the machine rung, the group's at its
@@ -429,6 +482,9 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.RpcCallTime => "RPC call time is how long each process's completed client calls took, from a call's "
             + "start to its stop in the calling process (metrics-v1 §8a, ClientCall); a row ranks by the median of its calls, "
             + "slowest first, and a group's median is its members' calls together, never a sum of medians.",
+        RankingMetric.ActivePeers => "Peers are the distinct process instances at the other end of each process's records, "
+            + "under relations-v1 (metrics-v1 §6.1); a process connected to itself is its own peer, and a group's peers are its "
+            + "members' together. A record whose other end is unresolved names no peer, so each count is a lower bound.",
         RankingMetric.RpcServeTime => "RPC serve time is how long each process took to serve its completed server calls, from "
             + "a served call's start to its stop (metrics-v1 §8a, ServerExecution); a row ranks by the median of its calls, "
             + "slowest first, and a group's median is its members' calls together, never a sum of medians.",
@@ -469,6 +525,7 @@ public sealed partial class WorkspaceViewModel
     {
         RankingFamily.Bytes => FollowAsync(byteReads),
         RankingFamily.Calls => FollowAsync(callReads),
+        RankingFamily.Peers => FollowAsync(peerReads),
         _ => Task.CompletedTask,
     };
 
@@ -565,6 +622,7 @@ public sealed partial class WorkspaceViewModel
         {
             RankingFamily.Bytes => await BesideCountsAsync(byteReads, source, interval),
             RankingFamily.Calls => await BesideCountsAsync(callReads, source, interval),
+            RankingFamily.Peers => await BesideCountsAsync(peerReads, source, interval),
             _ => null,
         };
 
@@ -603,6 +661,9 @@ public sealed partial class WorkspaceViewModel
                 break;
             case RankingFamily.Calls:
                 callReads.KeepInterval(measured as SessionCallMeasures);
+                break;
+            case RankingFamily.Peers:
+                peerReads.KeepInterval(measured as SessionPeerMeasures);
                 break;
         }
     }

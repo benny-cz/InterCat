@@ -21,6 +21,9 @@ public sealed record ProcessGroup(
     /// ranking read them (<see cref="SessionCallRanking"/>); null until one has.
     /// </summary>
     public CallTimes? CallTimes { get; init; }
+
+    /// <summary>The group's distinct peers over the ranked scope, its members' together, when a peer ranking read them.</summary>
+    public PeerCount? Peers { get; init; }
 }
 
 public sealed record ProcessNode(
@@ -68,6 +71,12 @@ public sealed record ProcessNode(
 
     /// <summary>How long the process's completed RPC calls took over the ranked scope, read with <see cref="Calls"/>.</summary>
     public CallTimes? CallTimes { get; init; }
+
+    /// <summary>
+    /// The process's distinct peers over the ranked scope, when a peer ranking read them (<see cref="SessionPeerRanking"/>);
+    /// null until one has.
+    /// </summary>
+    public PeerCount? Peers { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

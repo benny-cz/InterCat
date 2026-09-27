@@ -124,6 +124,11 @@ public static class WorkspaceExport
         RankingMetric.RpcCallTime => "Rows are ranked by RPC call time, slowest first: the median time the client calls each "
             + "process completed took, from a call's start to its stop in the calling process (metrics-v1 §8a, ClientCall), in "
             + "session nanoseconds. " + TimeCaveat,
+        RankingMetric.ActivePeers => "Rows are ranked by peers: the distinct process instances at the other end of each "
+            + "process's records, under relations-v1 (metrics-v1 §6.1), a process connected to itself its own peer. A record "
+            + "whose other end is unresolved names no peer, and the count is a lower bound beside it; a row none of whose "
+            + "records resolved a peer is unmeasured and ranks after every row with one. Two processes are each other's peer, "
+            + "so the rows overlap and do not add up to a total.",
         RankingMetric.RpcServeTime => "Rows are ranked by RPC serve time, slowest first: the median time each process took to "
             + "serve the server calls it completed, from a served call's start to its stop (metrics-v1 §8a, ServerExecution), in "
             + "session nanoseconds. " + TimeCaveat,
@@ -146,6 +151,7 @@ public static class WorkspaceExport
         RankingMetric.RpcErrors => "rpc-errors",
         RankingMetric.RpcCallTime => "rpc-call-time-median",
         RankingMetric.RpcServeTime => "rpc-serve-time-median",
+        RankingMetric.ActivePeers => "active-peers",
         _ => throw new ArgumentOutOfRangeException(nameof(ranking)),
     };
 

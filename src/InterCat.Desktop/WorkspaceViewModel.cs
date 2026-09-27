@@ -90,7 +90,9 @@ public sealed record ScopeCarry(
     SessionByteMeasures? WholeBytes = null,
     SessionByteMeasures? IntervalBytes = null,
     SessionCallMeasures? WholeCalls = null,
-    SessionCallMeasures? IntervalCalls = null);
+    SessionCallMeasures? IntervalCalls = null,
+    SessionPeerMeasures? WholePeers = null,
+    SessionPeerMeasures? IntervalPeers = null);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
@@ -866,7 +868,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>What this workspace's ranking counted, for the next publication of the same session to show until its own arrive.</summary>
     public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts,
         byteReads.Whole ?? byteReads.CarriedWhole, byteReads.Interval ?? byteReads.CarriedInterval,
-        callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval);
+        callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval,
+        peerReads.Whole ?? peerReads.CarriedWhole, peerReads.Interval ?? peerReads.CarriedInterval);
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
@@ -880,6 +883,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             byteReads.Adopt(carry.WholeBytes, carry.IntervalBytes, current.SessionId);
             callReads.Adopt(carry.WholeCalls, carry.IntervalCalls, current.SessionId);
+            peerReads.Adopt(carry.WholePeers, carry.IntervalPeers, current.SessionId);
         }
 
         ShowVisibleRange(carry.VisibleRange);
@@ -2326,6 +2330,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         intervalQuery = null;
         byteReads.Cancel();
         callReads.Cancel();
+        peerReads.Cancel();
         selectionBytes.Cancel();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();

@@ -1336,6 +1336,7 @@
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
         "R18: each process's RPC call and serve times are what the duration metric grouped by process answers, whole or in an interval",
         "R18: each process's RPC errors are what the errors metric grouped by process answers, unknown status apart",
+        "R18: each process's and executable's peers are what active-peers grouped by process and by executable answers",
         "R18: each process's bytes sent and received are what endpoint activity grouped by process answers",
         "R18: each process's calls made and served add up to what the operations metric counts for it, whole or in an interval",
         "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval",

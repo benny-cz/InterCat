@@ -231,7 +231,7 @@ public static class LadderProjection
                 DetailLevel.Group,
                 AccountingSide.CanonicalOwner)
             {
-                Ranked = RankedOf(members, ranking, group.CallTimes),
+                Ranked = RankedOf(members, ranking, group.CallTimes, group.Peers),
             });
         }
 
@@ -241,12 +241,14 @@ public static class LadderProjection
     /// <summary>
     /// A row's value under a byte or call ranking: the sum of its processes' bytes or calls, which partition it, as a
     /// group sums its members' records. A time ranking's median does not add, so it reads the row's own call times,
-    /// <paramref name="times"/>, its members' calls together. Null when ranking by records, or when a member's measures
-    /// have not been read.
+    /// <paramref name="times"/>, its members' calls together, and a distinct peer count overlaps, so it reads the row's own
+    /// <paramref name="peers"/>. Null when ranking by records, or when the measures have not been read.
     /// </summary>
-    private static RankedValue? RankedOf(IReadOnlyCollection<ProcessNode> members, RankingMetric ranking, CallTimes? times) =>
+    private static RankedValue? RankedOf(
+        IReadOnlyCollection<ProcessNode> members, RankingMetric ranking, CallTimes? times, PeerCount? peers) =>
         RankingMetrics.FamilyOf(ranking) switch
         {
+            RankingFamily.Peers => peers?.Of(ranking),
             RankingFamily.Bytes when members.All(member => member.Bytes is not null) =>
                 members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking),
             RankingFamily.Calls when RankingMetrics.IsDuration(ranking) =>
@@ -280,7 +282,7 @@ public static class LadderProjection
                 DetailLevel.ProcessInstance,
                 AccountingSide.CanonicalOwner)
             {
-                Ranked = RankedOf([process], ranking, process.CallTimes),
+                Ranked = RankedOf([process], ranking, process.CallTimes, process.Peers),
             });
         }
 

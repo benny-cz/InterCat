@@ -47,6 +47,16 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// Each process's and group's distinct peers over the whole session, or over <paramref name="interval"/>, for the
+    /// ranked table's peer ranking (<see cref="SessionPeerRanking"/>).
+    /// </summary>
+    public Task<SessionPeerMeasures> PeerMeasuresAsync(TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionPeerRanking.Measure(
+            Store(),
+            interval,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

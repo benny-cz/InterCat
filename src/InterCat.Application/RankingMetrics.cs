@@ -48,6 +48,12 @@ public enum RankingMetric
     /// (`ServerExecution`), slowest first.
     /// </summary>
     RpcServeTime = 9,
+
+    /// <summary>
+    /// The distinct process instances at the other end of each process's records, under `relations-v1` (`metrics-v1`
+    /// §6.1): a lower bound beside the records whose other end is unresolved, and unmeasured, never zero, when none resolved.
+    /// </summary>
+    ActivePeers = 10,
 }
 
 /// <summary>Which kind of measure a ranking reads, and so which read answers it.</summary>
@@ -61,6 +67,9 @@ public enum RankingFamily
 
     /// <summary>RPC calls, read by <see cref="SessionCallRanking"/>.</summary>
     Calls = 3,
+
+    /// <summary>Distinct peers, read by <see cref="SessionPeerRanking"/>.</summary>
+    Peers = 4,
 }
 
 /// <summary>A ranking's family and names.</summary>
@@ -73,6 +82,7 @@ public static class RankingMetrics
         RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes => RankingFamily.Bytes,
         RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed or RankingMetric.RpcErrors
             or RankingMetric.RpcCallTime or RankingMetric.RpcServeTime => RankingFamily.Calls,
+        RankingMetric.ActivePeers => RankingFamily.Peers,
         _ => throw new ArgumentOutOfRangeException(nameof(metric)),
     };
 

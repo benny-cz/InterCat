@@ -116,6 +116,27 @@ public static class OverviewWorkspace
     /// (<see cref="SessionCallRanking"/>); a process with no RPC stop in scope holds none. Measures that could not count
     /// a call, because the capture did not collect RPC, give no process a value.
     /// </summary>
+    /// <summary>
+    /// The same workspace with each process's and group's distinct peers over the measured scope, for a ranking by peers
+    /// (<see cref="SessionPeerRanking"/>); one with no record that has another end holds none.
+    /// </summary>
+    public static WorkspaceSnapshot WithPeers(WorkspaceSnapshot snapshot, SessionPeerMeasures measures)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(measures);
+        return snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process => process with
+            {
+                Peers = measures.ByProcess.GetValueOrDefault(process.Id) ?? PeerCount.None,
+            })],
+            Groups = [.. snapshot.Groups.Select(group => group with
+            {
+                Peers = measures.ByGroup.GetValueOrDefault(group.Key) ?? PeerCount.None,
+            })],
+        };
+    }
+
     public static WorkspaceSnapshot WithCalls(WorkspaceSnapshot snapshot, SessionCallMeasures measures)
     {
         ArgumentNullException.ThrowIfNull(snapshot);

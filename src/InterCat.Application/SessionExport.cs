@@ -101,6 +101,11 @@ public static class SessionExport
                 snapshot = OverviewWorkspace.WithCalls(snapshot, calls);
                 rankingCaveat = CallCaveat(calls);
                 break;
+            case RankingFamily.Peers:
+                SessionPeerMeasures peers = SessionPeerRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+                SameSession(peers, overview);
+                snapshot = OverviewWorkspace.WithPeers(snapshot, peers);
+                break;
         }
 
         var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));

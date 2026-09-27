@@ -160,6 +160,14 @@ public static class LadderRowBuilder
     public static string RankedFigure(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (ranked.Metric == RankingMetric.ActivePeers)
+        {
+            // A row whose records resolved no peer is not a row with none: its other ends are unknown.
+            return ranked.Value is { } peers
+                ? string.Create(CultureInfo.CurrentCulture, $"{peers:N0} {(peers == 1 ? "peer" : "peers")}")
+                : ranked.Holds ? "unresolved" : "no peers";
+        }
+
         if (RankingMetrics.IsDuration(ranked.Metric))
         {
             // A row whose only calls began before the capture was never timed, which is not a fast row.
@@ -198,6 +206,18 @@ public static class LadderRowBuilder
     public static string RankedSpoken(RankedValue ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
+        if (ranked.Metric == RankingMetric.ActivePeers)
+        {
+            string unresolved = ranked.Unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $", {ranked.Unmeasured:N0} {(ranked.Unmeasured == 1 ? "record" : "records")} whose other end is unresolved")
+                : string.Empty;
+            return ranked.Value is { } peers
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{peers:N0} {(peers == 1 ? "peer" : "peers")} on {ranked.Measured:N0} {(ranked.Measured == 1 ? "record" : "records")}{unresolved}")
+                : ranked.Holds ? $"no peer resolved{unresolved}" : "no record with another end";
+        }
+
         if (RankingMetrics.IsDuration(ranked.Metric))
         {
             string side = ranked.Metric == RankingMetric.RpcCallTime ? "made" : "served";

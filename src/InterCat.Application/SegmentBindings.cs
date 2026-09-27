@@ -20,6 +20,7 @@ internal static class SegmentBindings
 {
     private const string OwnerKind = "process-owner-bindings";
     private const string ChannelKind = "transport-channel-bindings";
+    private const string PeerKind = "transport-peer-bindings";
     private const uint InstanceMask = (1u << 24) - 1;
     private const uint ChannelMask = (1u << 27) - 1;
 
@@ -37,6 +38,17 @@ internal static class SegmentBindings
         ArgumentNullException.ThrowIfNull(segment);
         ArgumentNullException.ThrowIfNull(relations);
         return new(segment.DerivedRows(ChannelKind, relations, reader => Pack(relations.ChannelsOf(reader))));
+    }
+
+    /// <summary>
+    /// Each row's other end under <paramref name="relations"/>: the instance holding the paired incarnation with the
+    /// relation's strength, or why there is none, as a peer count reads it (`metrics-v1` §6.1).
+    /// </summary>
+    public static PackedOwners PeersOf(SegmentReaderV1 segment, TransportRelationIndex relations)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentNullException.ThrowIfNull(relations);
+        return new(segment.DerivedRows(PeerKind, relations, reader => Pack(relations.PeersOf(reader))));
     }
 
     internal static uint Pack(ProcessBinding binding)
