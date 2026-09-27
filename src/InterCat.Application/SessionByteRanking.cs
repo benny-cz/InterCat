@@ -5,11 +5,12 @@ using InterCat.Storage;
 namespace InterCat.Application;
 
 /// <summary>
-/// One process instance's transport-observed bytes on its own records: those its send records measured, taken under
-/// sender accounting, and those its receive records measured, under receiver accounting (`metrics-v1` §4, §6). A declared
-/// measurement with no value is unmeasured, counted apart and never summed as zero (R3).
+/// The transport-observed bytes of a set of records - a process instance's own, one end of a channel's, or one interval's:
+/// those its send records measured, taken under sender accounting, and those its receive records measured, under
+/// receiver accounting (`metrics-v1` §4, §6). A declared measurement with no value is unmeasured, counted apart and never
+/// summed as zero (R3).
 /// </summary>
-public sealed record ProcessBytes(
+public sealed record TransportBytes(
     long SentBytes,
     long SentMeasured,
     long SentUnmeasured,
@@ -17,11 +18,11 @@ public sealed record ProcessBytes(
     long ReceivedMeasured,
     long ReceivedUnmeasured)
 {
-    /// <summary>A process with no send or receive record in scope.</summary>
-    public static ProcessBytes None { get; } = new(0, 0, 0, 0, 0, 0);
+    /// <summary>Records with no send or receive record among them.</summary>
+    public static TransportBytes None { get; } = new(0, 0, 0, 0, 0, 0);
 
     /// <summary>
-    /// Bytes on the process's own records that state neither side, which only endpoint activity takes: every contribution
+    /// Bytes on these records that state neither side, which only endpoint activity takes: every contribution
     /// at the endpoint that recorded it (`metrics-v1` §4).
     /// </summary>
     public long OtherBytes { get; init; }
@@ -48,8 +49,8 @@ public sealed record ProcessBytes(
         }
     }
 
-    /// <summary>Two processes' bytes together: a group's, which its members partition.</summary>
-    public ProcessBytes Plus(ProcessBytes other)
+    /// <summary>Two sets of records' bytes together: a group's, which its members partition, or several columns'.</summary>
+    public TransportBytes Plus(TransportBytes other)
     {
         ArgumentNullException.ThrowIfNull(other);
         return new(
@@ -78,14 +79,14 @@ public sealed record SessionByteMeasures(
     Guid SessionId,
     long Generation,
     TimeRange? Interval,
-    IReadOnlyDictionary<ProcessInstanceId, ProcessBytes> ByProcess,
-    ProcessBytes Unattributed) : IRankingMeasures
+    IReadOnlyDictionary<ProcessInstanceId, TransportBytes> ByProcess,
+    TransportBytes Unattributed) : IRankingMeasures
 {
     /// <summary>
     /// The bytes each end's own records measured on each drawn channel; an end with no send or receive record in scope is
     /// absent. A record belongs to the end its owner holds, under the evidence policy, as it belongs to that process.
     /// </summary>
-    public IReadOnlyDictionary<ChannelEnd, ProcessBytes> ByChannelEnd { get; init; } = new Dictionary<ChannelEnd, ProcessBytes>();
+    public IReadOnlyDictionary<ChannelEnd, TransportBytes> ByChannelEnd { get; init; } = new Dictionary<ChannelEnd, TransportBytes>();
 }
 
 /// <summary>
@@ -154,24 +155,24 @@ public static class SessionByteRanking
                 cancellationToken);
         }
 
-        var byProcess = new Dictionary<ProcessInstanceId, ProcessBytes>();
+        var byProcess = new Dictionary<ProcessInstanceId, TransportBytes>();
         for (int instance = 0; instance < instances; instance++)
         {
-            ProcessBytes measured = total.Processes.Of(instance);
-            if (measured != ProcessBytes.None)
+            TransportBytes measured = total.Processes.Of(instance);
+            if (measured != TransportBytes.None)
             {
                 byProcess[processes.Instances[instance].Id] = measured;
             }
         }
 
-        var byChannelEnd = new Dictionary<ChannelEnd, ProcessBytes>();
+        var byChannelEnd = new Dictionary<ChannelEnd, TransportBytes>();
         for (int slot = 0; slot < drawn.Count; slot++)
         {
             (string key, int first, int second) = drawn[slot];
             foreach ((int end, int instance) in new[] { (0, first), (1, second) })
             {
-                ProcessBytes measured = total.Ends.Of((slot * 2) + end);
-                if (measured != ProcessBytes.None)
+                TransportBytes measured = total.Ends.Of((slot * 2) + end);
+                if (measured != TransportBytes.None)
                 {
                     byChannelEnd[new(key, processes.Instances[instance].Id)] = measured;
                 }
@@ -217,30 +218,19 @@ public static class SessionByteRanking
         }
 
         var domain = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved, Interval = native };
-        Add(tally.Processes, SegmentMeasurement.MeasureDomainByGroup(segment, domain, groups, instances + 1));
+        tally.Processes.Add(SegmentMeasurement.MeasureDomainByGroup(segment, domain, groups, instances + 1));
         if (drawn.Count > 0)
         {
-            Add(tally.Ends, SegmentMeasurement.MeasureDomainByGroup(segment, domain, ends, noEnd + 1));
-        }
-    }
-
-    private static void Add(ByteTally tally, GroupedDomainMeasurement measured)
-    {
-        for (int group = 0; group < measured.Groups.Count; group++)
-        {
-            foreach (SideMeasurement side in measured.Groups[group])
-            {
-                tally.Add(group, side);
-            }
+            tally.Ends.Add(SegmentMeasurement.MeasureDomainByGroup(segment, domain, ends, noEnd + 1));
         }
     }
 
     /// <summary>One worker's sums by process and by channel end, merged once it has no segment left.</summary>
     private sealed class Tallies(int processSlots, int endSlots)
     {
-        public ByteTally Processes { get; } = new(processSlots);
+        public TransportByteTally Processes { get; } = new(processSlots);
 
-        public ByteTally Ends { get; } = new(endSlots);
+        public TransportByteTally Ends { get; } = new(endSlots);
 
         public void Add(Tallies other)
         {
@@ -248,64 +238,82 @@ public static class SessionByteRanking
             Ends.Add(other.Ends);
         }
     }
+}
 
-    /// <summary>One worker's sums per slot and side, merged once it has no segment left (<see cref="SegmentPasses"/>).</summary>
-    private sealed class ByteTally(int slots)
+/// <summary>
+/// One worker's transport bytes per slot and side - a slot being whatever a grouping of rows gives it: a process, a channel
+/// end, a column - merged once it has no segment left (<see cref="SegmentPasses"/>).
+/// </summary>
+internal sealed class TransportByteTally(int slots)
+{
+    private readonly long[] sent = new long[slots];
+    private readonly long[] sentMeasured = new long[slots];
+    private readonly long[] sentUnmeasured = new long[slots];
+    private readonly long[] received = new long[slots];
+    private readonly long[] receivedMeasured = new long[slots];
+    private readonly long[] receivedUnmeasured = new long[slots];
+    private readonly long[] other = new long[slots];
+    private readonly long[] otherMeasured = new long[slots];
+    private readonly long[] otherUnmeasured = new long[slots];
+
+    /// <summary>Adds one segment's grouped measurement, whose groups are these slots.</summary>
+    public void Add(GroupedDomainMeasurement measured)
     {
-        private readonly long[] sent = new long[slots];
-        private readonly long[] sentMeasured = new long[slots];
-        private readonly long[] sentUnmeasured = new long[slots];
-        private readonly long[] received = new long[slots];
-        private readonly long[] receivedMeasured = new long[slots];
-        private readonly long[] receivedUnmeasured = new long[slots];
-        private readonly long[] other = new long[slots];
-        private readonly long[] otherMeasured = new long[slots];
-        private readonly long[] otherUnmeasured = new long[slots];
-
-        public void Add(int slot, SideMeasurement side)
+        ArgumentNullException.ThrowIfNull(measured);
+        for (int group = 0; group < measured.Groups.Count; group++)
         {
-            switch (side.Side)
+            foreach (SideMeasurement side in measured.Groups[group])
             {
-                case AccountingSide.SendSide:
-                    sent[slot] = checked(sent[slot] + side.TotalBytes);
-                    sentMeasured[slot] += side.KnownContributions;
-                    sentUnmeasured[slot] += side.UnknownContributions;
-                    break;
-                case AccountingSide.ReceiveSide:
-                    received[slot] = checked(received[slot] + side.TotalBytes);
-                    receivedMeasured[slot] += side.KnownContributions;
-                    receivedUnmeasured[slot] += side.UnknownContributions;
-                    break;
-                default:
-                    other[slot] = checked(other[slot] + side.TotalBytes);
-                    otherMeasured[slot] += side.KnownContributions;
-                    otherUnmeasured[slot] += side.UnknownContributions;
-                    break;
+                Add(group, side);
             }
         }
-
-        public void Add(ByteTally other)
-        {
-            for (int slot = 0; slot < sent.Length; slot++)
-            {
-                sent[slot] = checked(sent[slot] + other.sent[slot]);
-                sentMeasured[slot] += other.sentMeasured[slot];
-                sentUnmeasured[slot] += other.sentUnmeasured[slot];
-                received[slot] = checked(received[slot] + other.received[slot]);
-                receivedMeasured[slot] += other.receivedMeasured[slot];
-                receivedUnmeasured[slot] += other.receivedUnmeasured[slot];
-                this.other[slot] = checked(this.other[slot] + other.other[slot]);
-                otherMeasured[slot] += other.otherMeasured[slot];
-                otherUnmeasured[slot] += other.otherUnmeasured[slot];
-            }
-        }
-
-        public ProcessBytes Of(int slot) => new(
-            sent[slot], sentMeasured[slot], sentUnmeasured[slot], received[slot], receivedMeasured[slot], receivedUnmeasured[slot])
-        {
-            OtherBytes = other[slot],
-            OtherMeasured = otherMeasured[slot],
-            OtherUnmeasured = otherUnmeasured[slot],
-        };
     }
+
+    public void Add(int slot, SideMeasurement side)
+    {
+        ArgumentNullException.ThrowIfNull(side);
+        switch (side.Side)
+        {
+            case AccountingSide.SendSide:
+                sent[slot] = checked(sent[slot] + side.TotalBytes);
+                sentMeasured[slot] += side.KnownContributions;
+                sentUnmeasured[slot] += side.UnknownContributions;
+                break;
+            case AccountingSide.ReceiveSide:
+                received[slot] = checked(received[slot] + side.TotalBytes);
+                receivedMeasured[slot] += side.KnownContributions;
+                receivedUnmeasured[slot] += side.UnknownContributions;
+                break;
+            default:
+                other[slot] = checked(other[slot] + side.TotalBytes);
+                otherMeasured[slot] += side.KnownContributions;
+                otherUnmeasured[slot] += side.UnknownContributions;
+                break;
+        }
+    }
+
+    public void Add(TransportByteTally other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        for (int slot = 0; slot < sent.Length; slot++)
+        {
+            sent[slot] = checked(sent[slot] + other.sent[slot]);
+            sentMeasured[slot] += other.sentMeasured[slot];
+            sentUnmeasured[slot] += other.sentUnmeasured[slot];
+            received[slot] = checked(received[slot] + other.received[slot]);
+            receivedMeasured[slot] += other.receivedMeasured[slot];
+            receivedUnmeasured[slot] += other.receivedUnmeasured[slot];
+            this.other[slot] = checked(this.other[slot] + other.other[slot]);
+            otherMeasured[slot] += other.otherMeasured[slot];
+            otherUnmeasured[slot] += other.otherUnmeasured[slot];
+        }
+    }
+
+    public TransportBytes Of(int slot) => new(
+        sent[slot], sentMeasured[slot], sentUnmeasured[slot], received[slot], receivedMeasured[slot], receivedUnmeasured[slot])
+    {
+        OtherBytes = other[slot],
+        OtherMeasured = otherMeasured[slot],
+        OtherUnmeasured = otherUnmeasured[slot],
+    };
 }

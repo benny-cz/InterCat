@@ -250,7 +250,7 @@ public static class LadderProjection
         {
             RankingFamily.Peers => peers?.Of(ranking),
             RankingFamily.Bytes when members.All(member => member.Bytes is not null) =>
-                members.Aggregate(ProcessBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking),
+                members.Aggregate(TransportBytes.None, (sum, member) => sum.Plus(member.Bytes!)).Of(ranking),
             RankingFamily.Calls when RankingMetrics.IsDuration(ranking) =>
                 times is not null && members.All(member => member.Calls is not null)
                     ? times.Of(ranking, members.Aggregate(ProcessCalls.None, (sum, member) => sum.Plus(member.Calls!)))

@@ -61,7 +61,7 @@ public sealed record ProcessNode(
     /// The process's transport bytes on its own records over the ranked scope, when a byte ranking read them
     /// (<see cref="SessionByteRanking"/>); null until one has.
     /// </summary>
-    public ProcessBytes? Bytes { get; init; }
+    public TransportBytes? Bytes { get; init; }
 
     /// <summary>
     /// The process's RPC calls over the ranked scope, made and served, when an RPC call ranking read them
@@ -109,7 +109,7 @@ public sealed record Channel(
     /// The transport bytes each end's own records measured over the ranked scope, by the process holding that end, when a
     /// byte ranking read them (<see cref="SessionByteRanking"/>); null until one has.
     /// </summary>
-    public IReadOnlyDictionary<ProcessInstanceId, ProcessBytes>? EndBytes { get; init; }
+    public IReadOnlyDictionary<ProcessInstanceId, TransportBytes>? EndBytes { get; init; }
 
     /// <summary>
     /// The process holding the first endpoint of <see cref="Name"/>, when known. A paired channel names its ends in its

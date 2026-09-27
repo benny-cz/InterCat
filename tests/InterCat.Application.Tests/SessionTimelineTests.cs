@@ -311,14 +311,24 @@ public sealed class SessionTimelineTests
             .Where(bucket => bucket.ObservationCount == 0),
             bucket => Assert.Equal(CoverageState.Covered, bucket.Coverage));
 
+        // The process's own lane lists the focus's records, judged the same way: what `icat timeline --process` lists.
+        Assert.Equal(result.Focus.Select(bucket => (bucket.Interval, bucket.ObservationCount, bucket.DominantMechanism)),
+            result.OwnerLane.Select(bucket => (bucket.Interval, bucket.ObservationCount, bucket.DominantMechanism)));
+        Assert.Equal(result.DirectionLanes[0].Buckets.Select(bucket => bucket.Coverage),
+            result.OwnerLane.Select(bucket => bucket.Coverage));
+
         // Observed-empty where the capture covered what it collects, a gap where it lost records, and unknown past the
         // readings it delivered.
-        IReadOnlyList<TimelineBucket> inbound = SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 12_000), 12,
-                new TimelineFocus(null, [owner])).DirectionLanes.Single(lane => lane.Direction == Direction.Inbound).Buckets;
+        SessionFocusedTimeline wider = SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 12_000), 12,
+            new TimelineFocus(null, [owner]));
+        IReadOnlyList<TimelineBucket> inbound = wider.DirectionLanes.Single(lane => lane.Direction == Direction.Inbound).Buckets;
         Assert.Equal((1, CoverageState.Covered), (inbound[2].ObservationCount, inbound[2].Coverage));
         Assert.Equal((0, CoverageState.Covered), (inbound[3].ObservationCount, inbound[3].Coverage));
         Assert.Equal((0, CoverageState.PartialGap), (inbound[6].ObservationCount, inbound[6].Coverage));
         Assert.Equal((0, CoverageState.UnknownCoverage), (inbound[11].ObservationCount, inbound[11].Coverage));
+        Assert.Equal((0, CoverageState.PartialGap), (wider.OwnerLane[6].ObservationCount, wider.OwnerLane[6].Coverage));
+        Assert.Empty(SessionTimelineQuery.Focused(session.Store, extent, 5, new TimelineFocus(null,
+            [owner, overview.Nodes.Single(node => node.ProcessId == 200).Id])).OwnerLane);
     }
 
     [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]

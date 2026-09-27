@@ -323,6 +323,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ]);
         selectedDirectionLane = directionLaneOptions[0];
         intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeResources.CurrentMode, IntervalTableShowsBytes);
+        if (ReadsBytes)
+        {
+            // Until the table is shown and reads them, a real session's rows say their bytes are not read yet.
+            RefreshIntervalRows();
+        }
+
         selection.SelectionChanged += OnSelectionChanged;
         selectedProcess = !realOverview && Snapshot.Processes.Count > 0 ? Snapshot.Processes[0] : null;
         if (selectedProcess is not null)
@@ -620,9 +626,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? timelineDetail!.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets
                 : wholeSnapshot.MechanismLanes.First(lane => lane.Mechanism == mechanism).Buckets)
             : timelineDetail?.Buckets ?? wholeSnapshot.Timeline;
-        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode,
-            selected is null && processLane is null && directionLane is null && endLane is null ? focus : null,
-            IntervalTableShowsBytes);
+        bool listsWhole = selected is null && processLane is null && directionLane is null && endLane is null;
+
+        // A real session's rows state the bytes their own records sent and received, read for exactly what is listed.
+        IntervalBytesRequest? listed = ReadsBytes && buckets.Count > 0
+            ? new(new TimeRange(buckets[0].Interval.StartTicks, buckets[^1].Interval.EndTicks), buckets.Count,
+                ScopeOfLane(selected, processLane?.ProcessId, directionLane?.Direction, endLane))
+            : null;
+        intervalRowsBesideFocus = listsWhole && focus is not null;
+        FollowIntervalBytes(listed);
+        intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode, listsWhole ? focus : null,
+            IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -2332,6 +2346,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         callReads.Cancel();
         peerReads.Cancel();
         selectionBytes.Cancel();
+        CancelIntervalBytes();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -2385,20 +2400,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Whether the interval table has bytes to state. A real session's timeline counts records per interval and sums no
-    /// bytes (`overview-index-v1`), so its table leaves the column out and says how to read an interval's bytes, rather
-    /// than calling every interval's bytes unknown.
+    /// bytes (`overview-index-v1`), so its rows' bytes are read once the table is shown; a real session with no directory
+    /// to read them from leaves the column out rather than calling every interval's bytes unknown.
     /// </summary>
-    public bool IntervalTableShowsBytes => !realOverview;
+    public bool IntervalTableShowsBytes => !realOverview || ReadsBytes;
 
     /// <summary>
-    /// What the interval table lists, so a zoomed table is never read as the whole session. A real session's table says
-    /// its bytes are not summed, and how the rung it is on counts an interval's: a ranking by bytes, or a channel's own.
+    /// What the interval table lists, so a zoomed table is never read as the whole session, and on a real session what its
+    /// bytes are: each interval's records' own once read, or that they are being read, or why not.
     /// </summary>
-    public string IntervalTableScope => IntervalTableShowsBytes ? IntervalTableHolds
-        : IntervalTableHolds + " · bytes not summed per interval"
-            + (ShowsRankingChoice ? "; select one, then rank by bytes"
-                : FocusedRealChannel is not null ? "; select one and the channel's bytes are counted in it"
-                : string.Empty);
+    public string IntervalTableScope => !realOverview ? IntervalTableHolds
+        : IntervalTableHolds + " · " + IntervalBytesCaption;
 
     private string IntervalTableHolds
     {
@@ -2707,6 +2719,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             OnPropertyChanged();
             OnPropertyChanged(nameof(TableToggleLabel));
             FollowDescribedBytes();
+            if (ReadsBytes)
+            {
+                // A shown table reads its rows' bytes, trying again one whose read failed; a hidden one reads nothing.
+                intervalBytesFailure = null;
+                RefreshIntervalRows(timelineFocusBuckets);
+            }
         }
     }
 
@@ -3129,7 +3147,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : lane is null
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
             : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
-        return FinishTimelineHover(bucket, zoomed, lines);
+        return FinishTimelineHover(bucket, zoomed, lines,
+            ScopeOfLane(lane, ownerLane?.Id, directionLane, end: null));
     }
 
     /// <summary>
@@ -3167,15 +3186,20 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         lines.Add($"Rate: {TimelineView.RateText((double)outbound * WorkspaceTime.TicksPerSecond / span)} outbound, "
             + $"{TimelineView.RateText((double)inbound * WorkspaceTime.TicksPerSecond / span)} inbound · each band's height "
             + $"against the busiest visible band including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)");
-        return FinishTimelineHover(bucket, timelineDetail is not null && end.Buckets.Contains(bucket), lines);
+        return FinishTimelineHover(bucket, timelineDetail is not null && end.Buckets.Contains(bucket), lines,
+            ScopeOfLane(null, null, null, end));
     }
 
-    /// <summary>What every timeline card closes with: the unmeasured part, bytes, coverage, resolution and the click.</summary>
-    private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines)
+    /// <summary>
+    /// What every timeline card closes with: the unmeasured part, bytes, coverage, resolution and the click. A real
+    /// session's bucket states its bytes where the interval table has read them for the same records and interval.
+    /// </summary>
+    private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope)
     {
         lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
-        lines.Add(bucket.KnownBytes is { } bytes
-            ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
+        lines.Add(bucket.KnownBytes is { } bytes ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
+            : ReadBytesOf(scope, bucket.Interval) is { } read ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(read)
+            : ReadsBytes ? "Bytes: not summed by the timeline · the interval table (T) reads those of what it lists"
             : "Bytes: unknown · this timeline counts records");
         lines.Add("Coverage: " + DescribeCoverage(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));

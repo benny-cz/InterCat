@@ -1,4 +1,3 @@
-using System.Globalization;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Theme;
@@ -192,10 +191,10 @@ public sealed partial class WorkspaceViewModel
             return selectionBytes.Problem is not null || byteReads.Problem is not null ? "bytes could not be read" : "reading bytes…";
         }
 
-        ProcessBytes sum = members.Aggregate(ProcessBytes.None,
-            (total, member) => total.Plus(bytes.ByProcess.GetValueOrDefault(member.Id) ?? ProcessBytes.None));
-        return Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "sends") + " · "
-            + Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receives");
+        TransportBytes sum = members.Aggregate(TransportBytes.None,
+            (total, member) => total.Plus(bytes.ByProcess.GetValueOrDefault(member.Id) ?? TransportBytes.None));
+        return WorkspaceRowBuilder.Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "sends") + " · "
+            + WorkspaceRowBuilder.Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receives");
     }
 
     /// <summary>
@@ -230,12 +229,4 @@ public sealed partial class WorkspaceViewModel
         return drawn;
     }
 
-    /// <summary>One direction's bytes in words: a measured sum, sizes not recorded, or nothing in that direction (R21).</summary>
-    private static string Directional(long value, long measured, long unmeasured, string verb, string records) =>
-        measured > 0
-            ? WorkspaceRowBuilder.DescribeSize(value) + " " + verb
-                + (unmeasured > 0 ? string.Create(CultureInfo.CurrentCulture, $" ({unmeasured:N0} {records} unmeasured)") : string.Empty)
-            : unmeasured > 0
-                ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records} unmeasured")
-                : "nothing " + verb;
 }

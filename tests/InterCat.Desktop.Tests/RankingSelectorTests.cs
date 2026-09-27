@@ -511,7 +511,7 @@ public sealed class RankingSelectorTests
         Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
-    [Fact(DisplayName = "R21: a channel rung states the bytes sent across it, and the tables say what a real session's timeline does not sum")]
+    [Fact(DisplayName = "R21: a channel rung states the bytes sent across it, and the tables read what a real session's timeline does not sum")]
     public void AChannelRungAndTheTablesStateBytesTruthfully() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -520,21 +520,27 @@ public sealed class RankingSelectorTests
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
 
         // The relationship table names each end with its PID, so one executable's instances read as different rows. The
-        // interval table, whose timeline sums no bytes, leaves them out and says how an interval's are read.
+        // interval table's timeline sums no bytes: until the table is shown and reads them, each row says they are not
+        // read, never that they are unknown or none.
         RelationshipRow relationship = Assert.Single(workspace.Relationships);
         Assert.Equal(["client.exe · PID 100", "server.exe · PID 200"],
             new[] { relationship.Source, relationship.Target }.Order(StringComparer.Ordinal));
-        Assert.False(workspace.IntervalTableShowsBytes);
-        Assert.All(workspace.Intervals, row => Assert.False(row.ShowsBytes));
-        Assert.All(workspace.Intervals, row => Assert.DoesNotContain("bytes", row.AccessibleName, StringComparison.Ordinal));
-        Assert.EndsWith(" · bytes not summed per interval; select one, then rank by bytes", workspace.IntervalTableScope,
-            StringComparison.Ordinal);
+        Assert.True(workspace.IntervalTableShowsBytes);
+        Assert.All(workspace.Intervals, row => Assert.Equal("bytes not read", row.KnownBytes));
+        Assert.EndsWith(" · bytes not read", workspace.IntervalTableScope, StringComparison.Ordinal);
 
-        // Showing the tables reads the bytes: the relationship says so meanwhile, then states them.
+        // Showing the tables reads the bytes: the relationship and each interval say so meanwhile, then state them.
         workspace.ShowTables = true;
         Assert.Equal("reading bytes…", Assert.Single(workspace.Relationships).KnownBytes);
+        Assert.All(workspace.Intervals, row => Assert.Equal("reading bytes…", row.KnownBytes));
+        Assert.EndsWith(" · reading each interval's bytes…", workspace.IntervalTableScope, StringComparison.Ordinal);
         await workspace.SelectionBytesReady;
+        await workspace.IntervalBytesReady;
         Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent across", Assert.Single(workspace.Relationships).KnownBytes);
+        IntervalRow large = workspace.Intervals.Single(row => row.Interval.StartTicks == 30);
+        Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_000)} sent · no receive recorded", large.KnownBytes);
+        Assert.Contains($", {WorkspaceRowBuilder.DescribeSize(5_000)} sent · no receive recorded, ", large.AccessibleName,
+            StringComparison.Ordinal);
         workspace.ShowTables = false;
 
         // Down to the channel of the one 5,000-byte message, whose rung states what was sent across it.
@@ -552,16 +558,91 @@ public sealed class RankingSelectorTests
             $"2 observed records at this channel's two ends · {WorkspaceRowBuilder.DescribeSize(5_000)} sent across · no operation rung; E shows the records",
             workspace.LevelSummary);
 
-        // No ranking is chosen at a channel's rung: its interval table says the channel's own bytes count a chosen interval.
-        Assert.EndsWith(" · bytes not summed per interval; select one and the channel's bytes are counted in it",
-            workspace.IntervalTableScope, StringComparison.Ordinal);
+        // The interval table still states what each interval's records sent and received, read once, while it is hidden.
+        Assert.EndsWith(" · bytes each interval's records sent and received", workspace.IntervalTableScope,
+            StringComparison.Ordinal);
 
-        // They do, and an interval the channel sent nothing in says so rather than showing a zero-byte total.
+        // A chosen interval counts the channel's own bytes, and one it sent nothing in says so rather than a zero total.
         workspace.SelectInterval(new TimeRange(10, 20));
         await workspace.IntervalReady;
         await workspace.SelectionBytesReady;
         Assert.StartsWith("0 observed records at this channel's two ends · nothing sent across · ", workspace.LevelSummary,
             StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "R21: a real session's interval table reads each interval's bytes over exactly the records it lists")]
+    public void TheIntervalTableReadsTheBytesOfWhatItLists() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        string BytesAt(long tick) => workspace.Intervals.Single(row => row.Interval.StartTicks == tick).KnownBytes;
+        string Sent(long bytes) => $"{WorkspaceRowBuilder.DescribeSize(bytes)} sent · no receive recorded";
+        string Received(long bytes) => $"no send recorded · {WorkspaceRowBuilder.DescribeSize(bytes)} received";
+        const string None = "no transfer recorded";
+
+        // Every record, one tick per interval here: the client's sends, the server's receives, and RPC calls with no size.
+        workspace.ShowTables = true;
+        await workspace.IntervalBytesReady;
+        Assert.Equal([Sent(100), Received(100), Sent(5_000), Received(5_000), None],
+            new long[] { 10, 11, 30, 31, 40 }.Select(BytesAt));
+
+        // A bucket's hover card states what the table read for the same interval and records.
+        TimelineBucket bucket = workspace.WholeSnapshot.Timeline.Single(candidate => candidate.Interval.StartTicks == 30);
+        Assert.Contains("Bytes: " + Sent(5_000), workspace.DescribeTimelineHover(bucket, 1).Lines);
+        Assert.Contains("Bytes: not summed by the timeline · the interval table (T) reads those of what it lists",
+            workspace.DescribeTimelineHover(bucket, 1, lane: Mechanism.Tcp).Lines);
+
+        // A mechanism's lane lists its own records: the RPC lane's carry no size, TCP's the transfers.
+        workspace.SelectTimelineLane(Mechanism.Rpc);
+        Assert.All(workspace.Intervals, row => Assert.Equal("reading bytes…", row.KnownBytes));
+        await workspace.IntervalBytesReady;
+        Assert.All(workspace.Intervals, row => Assert.Equal(None, row.KnownBytes));
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        await workspace.IntervalBytesReady;
+        Assert.Equal([Sent(100), Received(100), None], new long[] { 10, 11, 40 }.Select(BytesAt));
+        workspace.SelectTimelineLane(null);
+        await workspace.IntervalBytesReady;
+
+        // Down to the client's rung, where a direction row lists the client's records of one source direction only.
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, workspace.WholeSnapshot.Timeline.Count);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        await workspace.TimelineDetailReady;
+        await workspace.IntervalBytesReady;
+        Assert.EndsWith(" · bytes each interval's records sent and received, every record's and not only the focus's",
+            workspace.IntervalTableScope, StringComparison.Ordinal);
+        workspace.SelectDirectionLane(Direction.Outbound);
+        await workspace.IntervalBytesReady;
+        Assert.Equal([Sent(100), None, Sent(5_000), None], new long[] { 10, 11, 30, 31 }.Select(BytesAt));
+        workspace.SelectDirectionLane(Direction.Inbound);
+        await workspace.IntervalBytesReady;
+        Assert.All(workspace.Intervals, row => Assert.Equal(None, row.KnownBytes));
+
+        // Down to the channel of the 5,000-byte message: its first end is the server's port 8080, which received it, and
+        // its second the client's, which sent it.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source is { Mechanism: Mechanism.Tcp, ObservationCount: 2 });
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        workspace.SelectChannelEnd(0);
+        await workspace.IntervalBytesReady;
+        Assert.Equal([None, Received(5_000)], new long[] { 30, 31 }.Select(BytesAt));
+        workspace.SelectChannelEnd(1);
+        await workspace.IntervalBytesReady;
+        Assert.Equal([Sent(5_000), None], new long[] { 30, 31 }.Select(BytesAt));
+        Assert.Contains("Bytes: " + Sent(5_000), workspace.DescribeTimelineHover(
+            bucket, 1, endLane: workspace.TimelineChannelEndLanes!.Single(end => end.End == 1)).Lines);
+
+        // A hidden table reads nothing more: a new listing says its bytes are not read.
+        workspace.ShowTables = false;
+        workspace.SelectChannelEnd(0);
+        Assert.All(workspace.Intervals, row => Assert.Equal("bytes not read", row.KnownBytes));
     });
 
     [Fact(DisplayName = "§3.2: at a process's rung a paired channel reads by its peer, its own port first, and keeps its name")]

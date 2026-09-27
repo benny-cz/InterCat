@@ -1604,7 +1604,7 @@ internal static class MetricCommand
         _ => value,
     };
 
-    private static bool TryParseOptional<T>(string? value, string name, out T? parsed, out string? problem)
+    internal static bool TryParseOptional<T>(string? value, string name, out T? parsed, out string? problem)
         where T : struct, Enum
     {
         parsed = null;

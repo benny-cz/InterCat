@@ -66,8 +66,9 @@ public sealed record IntervalRow(
     public long? FocusCount { get; init; }
 
     /// <summary>
-    /// Whether the row states bytes. A real session's timeline sums none per interval, so its rows leave the column out
-    /// rather than calling every interval's bytes unknown.
+    /// Whether the row states bytes. A real session's timeline sums none per interval, so its rows state what was read for
+    /// them, and a session with no directory to read from leaves the column out rather than calling every interval's
+    /// bytes unknown.
     /// </summary>
     public bool ShowsBytes { get; init; } = true;
 
@@ -175,11 +176,12 @@ public static class WorkspaceRowBuilder
     /// The interval table for the buckets the timeline draws. Each window is stated in the unit its span needs, so a
     /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way). A focused rung's count for the same
     /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2). Where the
-    /// timeline sums no bytes (<paramref name="sumsBytes"/> false), the rows state none.
+    /// timeline sums no bytes (<paramref name="sumsBytes"/> false), the rows state none; where they are read apart from it
+    /// (<paramref name="bytesOf"/>), each row states what was read for its interval.
     /// </summary>
     public static IReadOnlyList<IntervalRow> Intervals(
         IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null,
-        bool sumsBytes = true)
+        bool sumsBytes = true, Func<TimelineBucket, string>? bytesOf = null)
     {
         ArgumentNullException.ThrowIfNull(buckets);
 
@@ -200,7 +202,7 @@ public static class WorkspaceRowBuilder
                 bucket.Interval,
                 WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
                 observations,
-                DescribeBytes(bucket.KnownBytes),
+                bytesOf is null ? DescribeBytes(bucket.KnownBytes) : bytesOf(bucket),
                 tokens.Label,
                 tokens.Glyph,
                 DescribeCoverage(bucket.Coverage))
@@ -221,6 +223,46 @@ public static class WorkspaceRowBuilder
     public static string DescribeBytes(long? value) => value is null
         ? "bytes unknown"
         : string.Create(CultureInfo.CurrentCulture, $"{value.Value / 1_000_000m:N2} MB known");
+
+    /// <summary>
+    /// What a set of records sent and received, as an interval's row states it: each side's measured sum, how many of its
+    /// records recorded no size, or that none was recorded (R3, R21). It speaks of records, never of the machine: beside an
+    /// interval of unknown coverage, "no receive recorded" is true where "nothing received" would claim what was not
+    /// observed (§10.3). Records that state neither side follow, where there are any.
+    /// </summary>
+    public static string DescribeTransfers(TransportBytes bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        bool sides = bytes.SentMeasured + bytes.SentUnmeasured + bytes.ReceivedMeasured + bytes.ReceivedUnmeasured > 0;
+        bool unsided = bytes.OtherMeasured + bytes.OtherUnmeasured > 0;
+        if (!sides && !unsided)
+        {
+            return "no transfer recorded";
+        }
+
+        string text = Directional(bytes.SentBytes, bytes.SentMeasured, bytes.SentUnmeasured, "sent", "sends", "no send recorded")
+            + " · " + Directional(bytes.ReceivedBytes, bytes.ReceivedMeasured, bytes.ReceivedUnmeasured, "received", "receives",
+                "no receive recorded");
+        return !unsided ? text
+            : text + " · " + (bytes.OtherMeasured > 0
+                ? DescribeSize(bytes.OtherBytes) + " with no side stated"
+                    + (bytes.OtherUnmeasured > 0
+                        ? string.Create(CultureInfo.CurrentCulture, $" ({bytes.OtherUnmeasured:N0} unmeasured)")
+                        : string.Empty)
+                : string.Create(CultureInfo.CurrentCulture, $"{bytes.OtherUnmeasured:N0} unmeasured with no side stated"));
+    }
+
+    /// <summary>
+    /// One direction's bytes in words: a measured sum, sizes not recorded, or, with no record in that direction,
+    /// <paramref name="none"/> ("nothing sent" unless another is given) (R21).
+    /// </summary>
+    public static string Directional(long value, long measured, long unmeasured, string verb, string records, string? none = null) =>
+        measured > 0
+            ? DescribeSize(value) + " " + verb
+                + (unmeasured > 0 ? string.Create(CultureInfo.CurrentCulture, $" ({unmeasured:N0} {records} unmeasured)") : string.Empty)
+            : unmeasured > 0
+                ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records} unmeasured")
+                : none ?? "nothing " + verb;
 
     /// <summary>
     /// A measured byte total as the ranked table shows it, in the decimal units of <see cref="DescribeBytes"/> and three

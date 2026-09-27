@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 205 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 206 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 206 — a real session's interval table states each interval's bytes (§6.2, R15, R21):**
+  - Shown, the table reads what each listed interval's records sent and received (`SessionIntervalByteQuery`) over
+    exactly the rows it lists: every record, a mechanism lane, a process's own records or one direction of them, or
+    a channel end.
+  - Rows speak of records ("no transfer recorded", "no receive recorded"), never of the machine; unmeasured sizes apart.
+  - A bucket's hover states the same bytes once read; a hidden table reads nothing.
+  - `icat timeline` gains `--mechanism`, `--process [--direction]`, `--channel [--end]` and `--bytes` (R18); a process's
+    lane there is judged by the capture's coverage, as in the window (`SessionFocusedTimeline.OwnerLane`).
+  - Live: on a 20-second dense capture every listing matched `icat timeline --bytes` row for row.
 
 - **Revision 205 — the multi-selection is marked in the ranked table (§6.7):**
   - A row in the set (a process, or every process of a group) has an accent bar at its edge; a group only partly in it a
@@ -1813,6 +1823,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
+   - Revision 206's interval bytes read the listed rows once, when the table is shown: about 70 ms at 1M rows.
    - Viewer memory is bounded by the reader cache since revision 161 (S2), and a reopen fills it only as views read.
    - **Measured next step:** a warm query re-reads and re-verifies every segment the reader cache cannot hold. In a
      sampled trace at 1M rows under the old 64 MiB budget, opening segments took 13.7% of the samples, 8.7% of them the
@@ -1895,14 +1906,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192), bytes sent and
      received and RPC errors (revision 196), RPC call and serve time (revision 199), and peers (revision 200). Still open:
      a per-second display for rate, which orders rows as its numerator does, and bytes in the persisted overview itself
-     (overview-index-v1 §4 sums none), so that edges and channels carry them without a read and the graph can draw volume.
+     (overview-index-v1 §4 sums none), so that edges, channels and intervals carry them without a read and the graph and
+     timeline can draw volume. Meanwhile revision 206 reads the interval table's bytes when it is shown.
      Each metric is listed under its basis, which stays beside the selector, since revision 201.
-   - Found by revision 197's live pass, left open: a real session's interval table has no bytes per interval until the
-     persisted overview sums them. (The relationship table's scope, the pass's other finding, is revision 198's.)
+   - Done in revision 206: a real session's interval table reads each listed interval's bytes when shown, which revision
+     197's live pass found it had none of. (The relationship table's scope, the pass's other finding, is revision 198's.)
    - Done in revision 203: TCP connection events no longer admit the source's always-zero size field as bytes.
 
 ## Verification and cautions
 
+- Revision 206 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,294 tests: 1,290
+  passed, 4 skipped**, zero failures. A 20-second dense capture was recorded with `icat record` from the elevated shell
+  into scratch and deleted afterwards. In the Release window its interval table matched `icat timeline --bytes` row for
+  row for every record, the TCP lane, a process lane, both direction rows and both ends of a channel. The pass also
+  found `icat timeline --process` calling a quiet interval's coverage unknown where the window judges it by the capture;
+  it now lists the process's own lane.
 - Revision 205 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,289 tests: 1,285
   passed, 4 skipped**, zero failures. `R16: live chunk rollover under a free-disk floor` failed once in revision 204's
   clean-worktree run under heavy load and passed on rerun; its fixture now waits for a publication rather than sleeping

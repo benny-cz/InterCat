@@ -57,6 +57,19 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// What each column of an interval's records sent and received, over the records one listing of the interval table
+    /// counts (<see cref="SessionIntervalByteQuery"/>).
+    /// </summary>
+    public Task<SessionIntervalByteMeasures> IntervalBytesAsync(
+        TimeRange interval, int columns, IntervalByteScope scope, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionIntervalByteQuery.Measure(
+            Store(),
+            interval,
+            columns,
+            scope,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

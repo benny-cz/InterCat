@@ -163,6 +163,13 @@ public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOn
     /// <summary>At a single-owner process focus, exact rows split by each observed source direction.</summary>
     public IReadOnlyList<DirectionTimelineLane> DirectionLanes { get; init; } = [];
 
+    /// <summary>
+    /// At a single-owner process focus, the process's own records on the same columns, each quiet interval judged by the
+    /// capture's coverage, as its lane in its group's timeline and its direction rows are (R21): the rows the focus
+    /// counts, stated as the process's lane.
+    /// </summary>
+    public IReadOnlyList<TimelineBucket> OwnerLane { get; init; } = [];
+
     /// <summary>At a channel focus, its two ends, first end first; together they partition Focus on the same columns.</summary>
     public IReadOnlyList<ChannelEndTimelineLane> ChannelEndLanes { get; init; } = [];
 
@@ -300,6 +307,7 @@ public static class SessionTimelineQuery
                 (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture!))))]),
             ChannelEndLanes = total?.Ends is not { } ends ? []
                 : Array.AsReadOnly([.. ends.Select(end => end.Lane(coverage, clock))]),
+            OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture!)),
             ProcessLaneProblem = laneProblem,
         };
     }
@@ -428,7 +436,7 @@ public static class SessionTimelineQuery
     }
 
     /// <summary>A focused record's `EN-Direction`; a code outside the enumeration is corrupt evidence, never a direction.</summary>
-    private static Direction DirectionAt(SegmentColumnSlice directions, int row)
+    internal static Direction DirectionAt(SegmentColumnSlice directions, int row)
     {
         var direction = (Direction)directions.UnsignedAt(row)!.Value;
         return Enum.IsDefined(direction)

@@ -268,7 +268,7 @@ public sealed class EvidenceRungTests
         Assert.EndsWith("height against the busiest visible bar, " + TimelineView.RateText(1_000), card.Lines[3],
             StringComparison.Ordinal);
         Assert.Equal("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket", card.Lines[4]);
-        Assert.Equal("Bytes: unknown · this timeline counts records", card.Lines[5]);
+        Assert.Equal("Bytes: not summed by the timeline · the interval table (T) reads those of what it lists", card.Lines[5]);
         Assert.StartsWith("Coverage: ", card.Lines[6], StringComparison.Ordinal);
         Assert.Equal($"Resolution: the overview's {workspace.Snapshot.Timeline.Count:N0} buckets over the whole session", card.Lines[7]);
 

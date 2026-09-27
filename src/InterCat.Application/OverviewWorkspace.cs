@@ -98,14 +98,14 @@ public static class OverviewWorkspace
         {
             Processes = [.. snapshot.Processes.Select(process => process with
             {
-                Bytes = measures.ByProcess.GetValueOrDefault(process.Id) ?? ProcessBytes.None,
+                Bytes = measures.ByProcess.GetValueOrDefault(process.Id) ?? TransportBytes.None,
             })],
             Channels = [.. snapshot.Channels.Select(channel => edges.TryGetValue(channel.EdgeKey, out CommunicationEdge? edge)
                 ? channel with
                 {
                     EndBytes = new[] { edge.SourceId, edge.TargetId }.Distinct().ToDictionary(
                         end => end,
-                        end => measures.ByChannelEnd.GetValueOrDefault(new ChannelEnd(channel.Key, end)) ?? ProcessBytes.None),
+                        end => measures.ByChannelEnd.GetValueOrDefault(new ChannelEnd(channel.Key, end)) ?? TransportBytes.None),
                 }
                 : channel)],
         };

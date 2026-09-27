@@ -53,7 +53,7 @@ public sealed class SessionByteRankingTests
                     Dictionary<ProcessInstanceId, MetricGroup> expected = grouped.Groups
                         .Where(group => group.Process is not null)
                         .ToDictionary(group => group.Process!.Id);
-                    foreach ((ProcessInstanceId instance, ProcessBytes bytes) in measured.ByProcess)
+                    foreach ((ProcessInstanceId instance, TransportBytes bytes) in measured.ByProcess)
                     {
                         RankedValue value = bytes.Of(ranking);
                         if (!value.Holds)
@@ -71,7 +71,7 @@ public sealed class SessionByteRankingTests
                     }
 
                     Assert.True(
-                        expected.Keys.All(instance => measured.ByProcess.TryGetValue(instance, out ProcessBytes? bytes) && bytes.Of(ranking).Holds),
+                        expected.Keys.All(instance => measured.ByProcess.TryGetValue(instance, out TransportBytes? bytes) && bytes.Of(ranking).Holds),
                         context);
                 }
             }
@@ -108,7 +108,7 @@ public sealed class SessionByteRankingTests
                 Dictionary<ProcessInstanceId, MetricGroup> expected = grouped.Groups
                     .Where(group => group.Process is not null)
                     .ToDictionary(group => group.Process!.Id);
-                foreach ((ProcessInstanceId instance, ProcessBytes bytes) in measured.ByProcess)
+                foreach ((ProcessInstanceId instance, TransportBytes bytes) in measured.ByProcess)
                 {
                     RankedValue value = bytes.Of(RankingMetric.EndpointBytes);
                     if (!value.Holds)
@@ -124,7 +124,7 @@ public sealed class SessionByteRankingTests
                             + $"and ranking ({value.Value}, {value.Measured}, {value.Unmeasured})");
                 }
 
-                Assert.True(expected.Keys.All(instance => measured.ByProcess.TryGetValue(instance, out ProcessBytes? bytes)
+                Assert.True(expected.Keys.All(instance => measured.ByProcess.TryGetValue(instance, out TransportBytes? bytes)
                     && bytes.Of(RankingMetric.EndpointBytes).Holds), context);
             }
         }
@@ -145,18 +145,18 @@ public sealed class SessionByteRankingTests
         ]);
 
         SessionByteMeasures measured = SessionByteRanking.Measure(session.Store, null);
-        ProcessBytes sender = measured.ByProcess.Single(entry => entry.Value.SentMeasured > 0).Value;
+        TransportBytes sender = measured.ByProcess.Single(entry => entry.Value.SentMeasured > 0).Value;
         Assert.Equal(new RankedValue(RankingMetric.BytesSent, 750, 2, 0), sender.Of(RankingMetric.BytesSent));
         Assert.Equal(new RankedValue(RankingMetric.BytesReceived, null, 0, 0), sender.Of(RankingMetric.BytesReceived));
 
         // The receiver's one receive declared its length and carried none: unmeasured, not a received zero.
-        ProcessBytes receiver = measured.ByProcess.Single(entry => entry.Value.ReceivedUnmeasured > 0).Value;
+        TransportBytes receiver = measured.ByProcess.Single(entry => entry.Value.ReceivedUnmeasured > 0).Value;
         RankedValue received = receiver.Of(RankingMetric.BytesReceived);
         Assert.Equal((null, 0L, 1L, true), (received.Value, received.Measured, received.Unmeasured, received.Holds));
 
         // A send whose owner no instance holds is counted apart, never given to a process.
         Assert.Equal((40L, 1L), (measured.Unattributed.SentBytes, measured.Unattributed.SentMeasured));
-        Assert.Equal(new ProcessBytes(750, 2, 0, 0, 0, 1), sender.Plus(receiver));
+        Assert.Equal(new TransportBytes(750, 2, 0, 0, 0, 1), sender.Plus(receiver));
 
         // An interval no reading falls in holds nothing.
         Assert.Empty(SessionByteRanking.Measure(session.Store, new TimeRange(1_000, 2_000)).ByProcess);
@@ -307,10 +307,10 @@ public sealed class SessionByteRankingTests
         Channel large = whole.Channels.Single(channel => channel.Name.Contains(":50001", StringComparison.Ordinal));
 
         // Each end holds its own records: the client's sends and the server's receives, on each connection.
-        Assert.Equal(new ProcessBytes(300, 3, 0, 0, 0, 0), measured.ByChannelEnd[new(busy.Key, client.Id)]);
-        Assert.Equal(new ProcessBytes(0, 0, 0, 300, 3, 0), measured.ByChannelEnd[new(busy.Key, server.Id)]);
-        Assert.Equal(new ProcessBytes(5_000, 1, 0, 0, 0, 0), measured.ByChannelEnd[new(large.Key, client.Id)]);
-        Assert.Equal(new ProcessBytes(0, 0, 0, 5_000, 1, 0), measured.ByChannelEnd[new(large.Key, server.Id)]);
+        Assert.Equal(new TransportBytes(300, 3, 0, 0, 0, 0), measured.ByChannelEnd[new(busy.Key, client.Id)]);
+        Assert.Equal(new TransportBytes(0, 0, 0, 300, 3, 0), measured.ByChannelEnd[new(busy.Key, server.Id)]);
+        Assert.Equal(new TransportBytes(5_000, 1, 0, 0, 0, 0), measured.ByChannelEnd[new(large.Key, client.Id)]);
+        Assert.Equal(new TransportBytes(0, 0, 0, 5_000, 1, 0), measured.ByChannelEnd[new(large.Key, server.Id)]);
 
         // By records the busy connection leads the client's rung; by the client's bytes sent the large one does.
         WorkspaceSnapshot counted = OverviewWorkspace.WithBytes(whole, measured);

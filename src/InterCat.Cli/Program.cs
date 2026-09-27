@@ -155,9 +155,12 @@ static void PrintHelp()
     ConsoleUi.Line("           [--reveal-bytes] [--json]");
     ConsoleUi.Line("      One original retained journal record, from an icat evidence page's exact row locator.");
     ConsoleUi.Line();
-    ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--json]");
-    ConsoleUi.Line("      The all-observations timeline over any interval, bucketed exactly as the overview's,");
-    ConsoleUi.Line("      as the Desktop draws a zoomed viewport. Empty buckets stay coverage-unknown.");
+    ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--bytes] [--json]");
+    ConsoleUi.Line("              [--mechanism <name> | --process <instance-id> [--direction <name>]");
+    ConsoleUi.Line("               | --channel <key> [--end <0|1>]]");
+    ConsoleUi.Line("      The timeline over any interval, bucketed exactly as the overview's, as the Desktop draws a");
+    ConsoleUi.Line("      zoomed viewport; a scope lists what one lane of its interval table lists, and --bytes adds");
+    ConsoleUi.Line("      what each interval's records sent and received. Empty buckets stay coverage-unknown.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
     ConsoleUi.Line("              [--rank-by <ranking>] [--evidence [--limit <n>]] [--format json|csv]");
