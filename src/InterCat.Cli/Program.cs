@@ -160,8 +160,11 @@ static void PrintHelp()
     ConsoleUi.Line("      as the Desktop draws a zoomed viewport. Empty buckets stay coverage-unknown.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
-    ConsoleUi.Line("              [--evidence [--limit <n>]] [--format json|csv] [--share-redacted] [--overwrite]");
+    ConsoleUi.Line("              [--rank-by <ranking>] [--evidence [--limit <n>]] [--format json|csv]");
+    ConsoleUi.Line("              [--share-redacted] [--overwrite]");
     ConsoleUi.Line("      Detailed export of one ladder rung; --evidence writes source-record metadata.");
+    ConsoleUi.Line("      --rank-by ranks the machine and group rungs by records, bytes-sent, bytes-received,");
+    ConsoleUi.Line("      rpc-calls-made or rpc-calls-served, as the Desktop's Rank by selector does.");
     ConsoleUi.Line("      --share-redacted writes a separate pseudonymized report, not a reopenable session.");
     ConsoleUi.Line("      Both formats are staged, never left partly written.");
     ConsoleUi.Line();

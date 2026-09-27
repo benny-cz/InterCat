@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Desktop;
@@ -147,9 +148,11 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     {
         EventHeaderFieldsV1 header = result.Header!.Value;
         BufferContextFieldsV1 buffer = result.BufferContext!.Value;
+        RawRecordId raw = result.ObservationId.RawRecordId;
         var lines = new List<string>
         {
-            $"Raw identity: {result.ObservationId.RawRecordId}",
+            // The raw identity in words: a record's generated ToString would show its type and field names instead.
+            $"Raw record: capture {raw.CaptureId} · stream {raw.StreamId} · source epoch {raw.SourceEpoch} · ordinal {raw.RecordOrdinal}",
             $"Provider {header.ProviderId:N} · event {header.EventId} · version {header.Version} · opcode {header.Opcode} · task {header.Task}",
             $"Header PID/TID {header.ProcessId}/{header.ThreadId} · activity {header.ActivityId} · related {header.RelatedActivityId}",
             $"Clock {result.ClockId} · encoding {result.TimestampEncoding} · native reading {result.NativeTicks}",

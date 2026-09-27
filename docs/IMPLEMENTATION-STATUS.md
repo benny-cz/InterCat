@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 190 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 191 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 191 — a live test of the command line and the Desktop, and what it found:**
+  - **Run:** a fresh 15-second `icat record` with the TCP, UDP and RPC workloads in it; every `icat` inspection
+    command (session, overview, channels, evidence, raw, timeline, processes, operations, metric, export in all its forms,
+    package, compact, checkpoint, rederive, retain, staging, recover); then the Release app driven through UI Automation:
+    search, group to process to channel, E to its evidence, and Enter on a record for its original journal record.
+  - **Fixed:** the general help now names `export --rank-by` and its five rankings; the original-record window wrote
+    the raw identity as a C# record prints itself (`RawRecordId { CaptureId = … }`) and now reads it in words, held by a
+    headless test.
+  - Everything else behaved as designed, including exit code 1 for an evidence export cut at `--limit` and for a
+    retention that would release nothing.
 
 - **Revision 190 — rank by RPC calls made or served (§6.1's selector, the logical-operations basis):**
   - **The metrics:** a process's calls made are the client calls it completed, and its calls served the server calls,
@@ -1761,6 +1772,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 191 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,264 tests: 1,260
+  passed, 4 skipped**, zero failures. The 15-second recording was made with `icat record` from the elevated shell into
+  scratch and deleted afterwards; keys went to the InterCat window only, and screenshots captured its windows only.
 - Revision 190 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,263 tests: 1,259
   passed, 4 skipped**, zero failures. A 20-second Explore recording was made with `icat record` from the elevated shell
   into scratch while the RPC workload ran, and deleted afterwards; the Release app opened it and received keys posted
