@@ -78,6 +78,13 @@ public sealed record GraphDisplayNode(
     /// </summary>
     public long? Magnitude { get; init; }
 
+    /// <summary>
+    /// Whether the ranking's metric applies and none of its relationships measured a value for it - their sends recorded
+    /// no size - so its magnitude is unknown, never zero (R3). It is drawn with §6.6's unmeasured encoding and adds
+    /// nothing to the scale.
+    /// </summary>
+    public bool Unmeasured { get; init; }
+
     /// <summary>The value the node's size is read from: its magnitude when it has one, else its relationships' records.</summary>
     public long Weight => Magnitude ?? Observations;
 }
@@ -100,6 +107,13 @@ public sealed record GraphDisplayEdge(
     /// across it under a byte ranking. Null when the records are the metric.
     /// </summary>
     public long? Magnitude { get; init; }
+
+    /// <summary>
+    /// Whether the ranking's metric applies and none of the relationships drawn here measured a value for it - their sends
+    /// recorded no size - so its magnitude is unknown, never zero (R3). It is drawn with §6.6's unmeasured encoding, not a
+    /// thickness, and adds nothing to the scale.
+    /// </summary>
+    public bool Unmeasured { get; init; }
 
     /// <summary>The value the edge's thickness is read from: its magnitude when it has one, else its records.</summary>
     public long Weight => Magnitude ?? ObservationCount;
@@ -253,15 +267,20 @@ public sealed class GraphDisplay
 
     /// <summary>
     /// The same graph with each drawn edge and node carrying the magnitude its drawing reads in place of its records - the
-    /// ranking's metric, so the ranked table and the graph never disagree about magnitude (§6.3). Structure, membership
-    /// and every count stay as they are.
+    /// ranking's metric, so the ranked table and the graph never disagree about magnitude (§6.3). A null value is one the
+    /// metric could not measure: that mark is <see cref="GraphDisplayEdge.Unmeasured"/>, never drawn as zero (R3).
+    /// Structure, membership and every count stay as they are.
     /// </summary>
     public GraphDisplay WithMagnitudes(Func<GraphDisplayEdge, long?> edge, Func<GraphDisplayNode, long?> node)
     {
         ArgumentNullException.ThrowIfNull(edge);
         ArgumentNullException.ThrowIfNull(node);
-        GraphDisplayNode[] nodes = [.. Nodes.Select(drawn => drawn with { Magnitude = node(drawn) })];
-        GraphDisplayEdge[] edges = [.. Edges.Select(drawn => drawn with { Magnitude = edge(drawn) })];
+        GraphDisplayNode[] nodes = [.. Nodes.Select(drawn => node(drawn) is { } value
+            ? drawn with { Magnitude = value, Unmeasured = false }
+            : drawn with { Magnitude = 0, Unmeasured = true })];
+        GraphDisplayEdge[] edges = [.. Edges.Select(drawn => edge(drawn) is { } value
+            ? drawn with { Magnitude = value, Unmeasured = false }
+            : drawn with { Magnitude = 0, Unmeasured = true })];
         return new GraphDisplay(nodes, edges, TotalProcesses, ExpandedGroup, Kept, TotalRelationships, RelationshipKeys,
             nodesByRelationship.ToDictionary(pair => pair.Key, pair => pair.Value.Key, StringComparer.Ordinal));
     }

@@ -162,6 +162,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         /// <summary>The evidence key's stroke: body ink, in each strength's pattern.</summary>
         public Pen SamplePen => samplePen ??= new(TextBrush, 2);
 
+        /// <summary>The unmeasured key's band: body ink, as thin as the band's own sides.</summary>
+        public Pen SampleHatchPen => sampleHatchPen ??= new(TextBrush, 1);
+
+        private Pen? sampleHatchPen;
+
         private Pen? samplePen;
 
         public Pen SampleRingPen { get; }
@@ -234,6 +239,90 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// A stroke from <paramref name="source"/> to <paramref name="target"/>: solid, or in <paramref name="pattern"/>'s
     /// dashes from a strip cached under <paramref name="key"/> and rebuilt only when its length or pattern changes.
     /// </summary>
+    /// <summary>
+    /// An edge as its magnitude says: a stroke of its thickness in the evidence pattern, or, when what it carried was not
+    /// measured, §6.6's unmeasured band in the same hue and pattern.
+    /// </summary>
+    private static void DrawEdgeMark(DrawingContext context, GraphDisplayEdge edge, Pen pen, Point source, Point target,
+        (double On, double Off)? pattern)
+    {
+        if (edge.Unmeasured)
+        {
+            DrawUnmeasuredBand(context, EdgePen(edge.Mechanism, 1), source, target, pattern, edge.Key);
+        }
+        else
+        {
+            DrawStroke(context, pen, source, target, pattern, edge.Key);
+        }
+    }
+
+    /// <summary>
+    /// §6.6's unmeasured value on an edge: an open band as wide as the widest edge, its two sides in the mechanism's hue and
+    /// the evidence pattern, cross-hatched inside and never filled. The relationship is there; what it carried is unknown,
+    /// not zero, so it is neither a hairline nor a thickness (R3).
+    /// </summary>
+    internal static void DrawUnmeasuredBand(DrawingContext context, Pen pen, Point source, Point target,
+        (double On, double Off)? pattern, string key)
+    {
+        double length = Math.Sqrt(Math.Pow(target.X - source.X, 2) + Math.Pow(target.Y - source.Y, 2));
+        if (length < 1)
+        {
+            return;
+        }
+
+        const double Half = GraphEncoding.UnmeasuredBand / 2;
+        Matrix placement = Matrix.CreateRotation(Math.Atan2(target.Y - source.Y, target.X - source.X))
+            * Matrix.CreateTranslation(source.X, source.Y);
+        using (context.PushTransform(placement))
+        {
+            // Both sides are as long as the edge, so they share its cached dash strip.
+            DrawStroke(context, pen, new Point(0, -Half), new Point(length, -Half), pattern, key);
+            DrawStroke(context, pen, new Point(0, Half), new Point(length, Half), pattern, key);
+            CrossHatch(context, pen, new Rect(0, -Half, length, 2 * Half));
+        }
+    }
+
+    /// <summary>§6.6's cross-hatch: both diagonals across a rectangle, clipped to it - the pattern of a value not measured.</summary>
+    private static void CrossHatch(DrawingContext context, Pen pen, Rect area)
+    {
+        const double Spacing = 5;
+        using (context.PushClip(area))
+        {
+            for (double offset = -area.Height; offset < area.Width; offset += Spacing)
+            {
+                context.DrawLine(pen, new Point(area.X + offset, area.Bottom), new Point(area.X + offset + area.Height, area.Top));
+                context.DrawLine(pen, new Point(area.X + offset, area.Top), new Point(area.X + offset + area.Height, area.Bottom));
+            }
+        }
+    }
+
+    /// <summary>
+    /// §6.6's cross-hatch inside a disc, drawn as chords of both diagonals, so a node needs no clip geometry of its own and
+    /// a frame allocates nothing (R11).
+    /// </summary>
+    private static void CrossHatchCircle(DrawingContext context, Pen pen, Point center, double radius)
+    {
+        const double Spacing = 4;
+        const double Diagonal = 0.70710678118654757;
+        for (double offset = -radius + (Spacing / 2); offset < radius; offset += Spacing)
+        {
+            double half = Math.Sqrt((radius * radius) - (offset * offset)) * Diagonal;
+            double across = offset * Diagonal;
+            context.DrawLine(pen, new Point(center.X + across - half, center.Y - across - half),
+                new Point(center.X + across + half, center.Y - across + half));
+            context.DrawLine(pen, new Point(center.X + across - half, center.Y + across + half),
+                new Point(center.X + across + half, center.Y + across - half));
+        }
+    }
+
+    /// <summary>The legend's key of an unmeasured value: a short band drawn by the graph's own routine, in body ink.</summary>
+    internal static void DrawUnmeasuredSample(DrawingContext context, Rect area)
+    {
+        double middle = area.Y + (area.Height / 2);
+        DrawUnmeasuredBand(context, Current.SampleHatchPen, new Point(area.X + 1, middle), new Point(area.Right - 1, middle),
+            null, "legend-unmeasured");
+    }
+
     private static void DrawStroke(DrawingContext context, Pen pen, Point source, Point target, (double On, double Off)? pattern,
         string key)
     {
@@ -434,12 +523,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 using (context.PushOpacity(opacity))
                 {
-                    DrawStroke(context, pen, source, target, pattern, edge.Key);
+                    DrawEdgeMark(context, edge, pen, source, target, pattern);
                 }
             }
             else
             {
-                DrawStroke(context, pen, source, target, pattern, edge.Key);
+                DrawEdgeMark(context, edge, pen, source, target, pattern);
             }
 
             if (RingsMiddle(edge.Strength))
@@ -483,9 +572,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 context.DrawEllipse(Brushes.Transparent, HoverPen, point, radius + 3, radius + 3);
             }
 
+            // A node whose relationships' sends recorded no size has no size to draw: its face is open and cross-hatched,
+            // §6.6's unmeasured value, at the smallest size rather than read as zero (R3). A context node reads no metric.
+            IBrush face = node.Unmeasured && node.Kind != GraphNodeKind.Context ? PlotBrush : NodeBrush;
             if (node.Kind == GraphNodeKind.Process)
             {
-                context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen : NodePen, point, radius, radius);
+                context.DrawEllipse(face, node.Key == focused ? FocusPen : NodePen, point, radius, radius);
+                if (node.Unmeasured)
+                {
+                    CrossHatchCircle(context, StackPen, point, radius);
+                }
             }
             else if (node.Kind == GraphNodeKind.Context)
             {
@@ -512,13 +608,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
                 if (node.Key == focused || node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers)
                 {
-                    context.DrawEllipse(NodeBrush, node.Key == focused ? FocusPen
+                    context.DrawEllipse(face, node.Key == focused ? FocusPen
                         : node.Kind == GraphNodeKind.Group ? NodePen : MutedPen, point, radius, radius);
                 }
                 else
                 {
-                    DrawDashedCircle(context, NodeBrush, node.Kind == GraphNodeKind.Remainder ? RemainderDashes : QuietDashes,
+                    DrawDashedCircle(context, face, node.Kind == GraphNodeKind.Remainder ? RemainderDashes : QuietDashes,
                         point, radius);
+                }
+
+                if (node.Unmeasured)
+                {
+                    CrossHatchCircle(context, StackPen, point, radius);
                 }
             }
 

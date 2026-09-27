@@ -755,6 +755,78 @@ public sealed class RankingSelectorTests
         Assert.Null(Assert.Single(workspace.GraphDisplay.Edges).Magnitude);
     });
 
+    [Fact(DisplayName = "R3: under a byte ranking a relationship whose sends recorded no size is drawn unmeasured, never as zero")]
+    public void AnUnmeasuredRelationshipIsDrawnUnmeasured() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, MeasuredBlindAndQuiet());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayNode Node(int pid) => workspace.GraphDisplay.Nodes.Single(node => node.ProcessId == pid);
+        GraphDisplayEdge EdgeOf(int pid) => workspace.GraphDisplay.Edges.Single(edge =>
+            edge.SourceKey == Node(pid).Key || edge.TargetKey == Node(pid).Key);
+
+        // By records every mark has a size, and the legend keys no unmeasured value.
+        Assert.False(workspace.GraphDrawsUnmeasured);
+        var raised = new List<string?>();
+        workspace.PropertyChanged += (_, changed) => raised.Add(changed.PropertyName);
+
+        // By bytes sent: the client sent 500 bytes to the server; blind.exe's send recorded no size, so what it sent is
+        // unknown, drawn as an open cross-hatched band rather than a hairline; quiet.exe's connection sent nothing, zero.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        Assert.Contains(nameof(WorkspaceViewModel.GraphDrawsUnmeasured), raised);
+        Assert.True(workspace.GraphDrawsUnmeasured);
+        Assert.Equal((500L, false), (EdgeOf(100).Weight, EdgeOf(100).Unmeasured));
+        Assert.Equal((0L, true), (EdgeOf(300).Weight, EdgeOf(300).Unmeasured));
+        Assert.Equal((0L, false), (EdgeOf(400).Weight, EdgeOf(400).Unmeasured));
+        Assert.Equal(GraphEncoding.UnmeasuredBand, GraphEncoding.EdgeThickness(EdgeOf(300), GraphEncoding.EdgeScale(workspace.GraphDisplay)));
+        Assert.Equal(500, GraphEncoding.EdgeScale(workspace.GraphDisplay));
+
+        // A node is unknown only when none of its relationships measured a size: the server's 500 bytes are a lower bound.
+        Assert.Equal((500L, false), (Node(200).Weight, Node(200).Unmeasured));
+        Assert.Equal((0L, true), (Node(300).Weight, Node(300).Unmeasured));
+        Assert.Equal((0L, false), (Node(400).Weight, Node(400).Unmeasured));
+
+        // Each mark's card says which it is, as the relationship table's rows do.
+        IReadOnlyList<string> blind = workspace.DescribeGraphHover(EdgeOf(300).Key)!.Lines;
+        Assert.Contains("Bytes: unknown · 1 send recorded no size", blind);
+        Assert.Contains("Thickness: none · its sends recorded no size, so it is drawn as an open cross-hatched band, unknown rather than zero",
+            blind);
+        Assert.Contains("Bytes: nothing sent across", workspace.DescribeGraphHover(EdgeOf(400).Key)!.Lines);
+        Assert.Contains("Size: unknown · its relationships' sends recorded no size, so it is drawn open and cross-hatched at the "
+            + "smallest size, not as zero", workspace.DescribeGraphHover(Node(300).Key)!.Lines);
+        workspace.ShowTables = true;
+        await workspace.SelectionBytesReady;
+        string RowBytes(int pid) => workspace.Relationships.Single(row => row.Source.Contains($"PID {pid}", StringComparison.Ordinal)
+            || row.Target.Contains($"PID {pid}", StringComparison.Ordinal)).KnownBytes;
+        Assert.Equal(["500 B sent across", "no size measured", "nothing sent across"], [RowBytes(100), RowBytes(300), RowBytes(400)]);
+
+        // Back to records, nothing is unmeasured.
+        workspace.RankBy = RankingMetric.Records;
+        await workspace.RankingReady;
+        Assert.False(workspace.GraphDrawsUnmeasured);
+        Assert.All(workspace.GraphDisplay.Edges, edge => Assert.False(edge.Unmeasured));
+    });
+
+    /// <summary>
+    /// client.exe sends the server 500 bytes; blind.exe sends it once without recording a size; quiet.exe's connection to it
+    /// carries no send at either end, only receives. Each relationship is its own graph edge.
+    /// </summary>
+    private static ObservationRowV1[] MeasuredBlindAndQuiet() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+        Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+        Timed(Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\blind.exe" }),
+        Timed(Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\quiet.exe" }),
+        Timed(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 500, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        Timed(Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 500, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000")),
+        Timed(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, null, 300, 12).Between("127.0.0.1:51000", "127.0.0.1:8080")),
+        Timed(Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:51000")),
+        Timed(Transfer(14, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 400, 14).Between("127.0.0.1:52000", "127.0.0.1:8080")),
+        Timed(Transfer(15, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 15).Between("127.0.0.1:8080", "127.0.0.1:52000")),
+    ];
+
     /// <summary>
     /// A client, PID 100, and a server, PID 200, on two connections - three 100-byte messages on the first, one of 5,000
     /// bytes on the second - and two RPC calls the client makes to the service control manager.

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 206 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 207 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 207 — §6.6's unmeasured value is drawn where the graph plots bytes (R3):**
+  - Under a byte ranking, a relationship whose sends recorded no size is an open cross-hatched band, never the
+    hairline of nothing sent; a node none of whose relationships measured a size is an open cross-hatched disc.
+  - The legend keys "Size not measured" only while the graph draws one (`WorkspaceViewModel.GraphDrawsUnmeasured`).
+  - Cards tell unknown ("1 send recorded no size") from none ("nothing sent across"), which both read unknown before.
 
 - **Revision 206 — a real session's interval table states each interval's bytes (§6.2, R15, R21):**
   - Shown, the table reads what each listed interval's records sent and received (`SessionIntervalByteQuery`) over
@@ -1899,9 +1905,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Revision 147 restated menus, tool tips, scroll bars and list selection in high contrast.
      - On Windows, check each of the system's high-contrast themes, and whether Avalonia reports light or dark for
        each as expected.
-   - §6.6's unmeasured encoding (an open cross-hatch outline) is drawn nowhere, because no pane plots a value that can
-     be unknown yet. Draw it, with its legend entry, when the first one does (bytes, or §6.2's heat cells). Since
-     revision 189 the ranked table states an unmeasured byte value in words, which is not a plotted one.
+   - §6.6's unmeasured encoding is drawn since revision 207 where the graph plots bytes: a relationship or node none of
+     whose sends measured a size is an open cross-hatched band or disc, keyed in the legend while drawn. §6.2's heat
+     cells take it when they plot a value that can be unknown. The ranked and interval tables state it in words.
    - §6.1's metric selector ranks the machine and group rungs by records, bytes sent or received (revision 189), or RPC
      calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192), bytes sent and
      received and RPC errors (revision 196), RPC call and serve time (revision 199), and peers (revision 200). Still open:
@@ -1915,6 +1921,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 207 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,296 tests: 1,292
+  passed, 4 skipped**, zero failures. The headless render `unmeasured-graph.png` shows the band beside a measured edge
+  and a relationship with no sends.
 - Revision 206 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,294 tests: 1,290
   passed, 4 skipped**, zero failures. A 20-second dense capture was recorded with `icat record` from the elevated shell
   into scratch and deleted afterwards. In the Release window its interval table matched `icat timeline --bytes` row for

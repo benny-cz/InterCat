@@ -62,10 +62,19 @@ public static class GraphEncoding
         return scale;
     }
 
-    /// <summary>An edge's thickness in logical pixels: 1.25 + 4.75 × intensity of its metric.</summary>
+    /// <summary>
+    /// The width of an unmeasured edge's band: the widest thickness, so the open outline and its cross-hatch read at a
+    /// glance and the band is never mistaken for a quiet edge's hairline (§6.6).
+    /// </summary>
+    public const double UnmeasuredBand = 6;
+
+    /// <summary>
+    /// An edge's thickness in logical pixels: 1.25 + 4.75 × intensity of its metric; an unmeasured edge's band is
+    /// <see cref="UnmeasuredBand"/> wide, which is where it is hit, whatever its scale.
+    /// </summary>
     public static double EdgeThickness(GraphDisplayEdge edge, long scale)
     {
         ArgumentNullException.ThrowIfNull(edge);
-        return 1.25 + (4.75 * Intensity(edge.Weight, scale));
+        return edge.Unmeasured ? UnmeasuredBand : 1.25 + (4.75 * Intensity(edge.Weight, scale));
     }
 }

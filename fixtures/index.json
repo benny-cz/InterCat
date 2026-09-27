@@ -1271,8 +1271,10 @@
         "R3: impact summaries use the median without hiding signed observations",
         "R3: paired impact preserves observed noise but never classifies a negative cost",
         "R3: paired throughput regression refuses no baseline and clamps only improvement",
+        "R3: the graph draws an unmeasured relationship with the unmeasured key only while a byte ranking sizes it",
         "R3: the impact workload is paced and long enough to measure separately",
         "R3: total-machine CPU subtracts idle from kernel time exactly once",
+        "R3: under a byte ranking a relationship whose sends recorded no size is drawn unmeasured, never as zero",
         "R3: unknown and observed zero remain distinct"
       ],
       "R5": [

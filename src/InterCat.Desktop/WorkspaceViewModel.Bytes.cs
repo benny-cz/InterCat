@@ -132,18 +132,18 @@ public sealed partial class WorkspaceViewModel
             return [.. edges];
         }
 
-        Dictionary<string, long?> sent = SentAcrossEdges(bytes);
-        return [.. edges.Select(edge => edge with { KnownBytes = sent.GetValueOrDefault(edge.Key) })];
+        Dictionary<string, SentAcrossTally> sent = SentAcrossEdges(bytes);
+        return [.. edges.Select(edge => edge with { KnownBytes = sent.GetValueOrDefault(edge.Key).Known })];
     }
 
     /// <summary>
-    /// The bytes sent across each relationship's channels by either end, each transfer counted once at its sender; null for
-    /// a relationship none of whose sends measured a size.
+    /// What was sent across each relationship's channels by either end, each transfer counted once at its sender: the
+    /// measured bytes, and how many sends measured a size or recorded none.
     /// </summary>
-    private Dictionary<string, long?> SentAcrossEdges(SessionByteMeasures bytes)
+    private Dictionary<string, SentAcrossTally> SentAcrossEdges(SessionByteMeasures bytes)
     {
         ILookup<string, Channel> channels = Snapshot.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
-        return Snapshot.Edges.ToDictionary(edge => edge.Key, edge => SentAcross(edge, channels[edge.Key], bytes).Known,
+        return Snapshot.Edges.ToDictionary(edge => edge.Key, edge => SentAcross(edge, channels[edge.Key], bytes),
             StringComparer.Ordinal);
     }
 
@@ -174,6 +174,16 @@ public sealed partial class WorkspaceViewModel
     private readonly record struct SentAcrossTally(long Sent, long Measured, long Unmeasured)
     {
         public long? Known => Measured > 0 ? Sent : null;
+
+        /// <summary>Several relationships' sends together, as one drawn mark carries them.</summary>
+        public SentAcrossTally Plus(SentAcrossTally other) =>
+            new(checked(Sent + other.Sent), Measured + other.Measured, Unmeasured + other.Unmeasured);
+
+        /// <summary>
+        /// What a drawing sized by these sends reads: their measured bytes; unknown (null) when none measured a size and some
+        /// recorded none; zero when nothing was sent. A partly measured total is its measured part, a lower bound.
+        /// </summary>
+        public long? Magnitude => Measured > 0 ? Sent : Unmeasured > 0 ? null : 0;
 
         public string Phrase => Measured > 0 ? WorkspaceRowBuilder.DescribeSize(Sent) + " sent across"
             : Unmeasured > 0 ? "no size measured"
@@ -214,16 +224,19 @@ public sealed partial class WorkspaceViewModel
             return cached.Drawn;
         }
 
-        // The bytes shown size the graph, an earlier publication's standing in included, as they rank the rows.
-        Dictionary<string, long?> sent = SentAcrossEdges(bytes);
+        // The bytes shown size the graph, an earlier publication's standing in included, as they rank the rows. A mark none
+        // of whose sends measured a size, though some recorded none, is unmeasured and drawn so (§6.6), never as zero.
+        Dictionary<string, SentAcrossTally> sent = SentAcrossEdges(bytes);
         GraphDisplay drawn = display.WithMagnitudes(
-            edge => edge.Relationships.Sum(key => sent.GetValueOrDefault(key) ?? 0),
+            edge => edge.Relationships.Aggregate(default(SentAcrossTally), (sum, key) => sum.Plus(sent.GetValueOrDefault(key)))
+                .Magnitude,
             node =>
             {
                 HashSet<ProcessInstanceId> members = [.. node.Members];
                 return Snapshot.Edges
                     .Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId))
-                    .Sum(edge => sent.GetValueOrDefault(edge.Key) ?? 0);
+                    .Aggregate(default(SentAcrossTally), (sum, edge) => sum.Plus(sent.GetValueOrDefault(edge.Key)))
+                    .Magnitude;
             });
         weightedGraph = (display, bytes, drawn);
         return drawn;

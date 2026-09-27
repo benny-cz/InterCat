@@ -1550,6 +1550,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public GraphDisplay GraphDisplay => Weighted(graphDisplay);
 
     /// <summary>
+    /// Whether the graph draws a mark whose magnitude was not measured - under a byte ranking, a relationship whose sends
+    /// recorded no size - so the legend keys §6.6's unmeasured encoding beside it. A key shows only what a pane draws.
+    /// </summary>
+    public bool GraphDrawsUnmeasured => GraphDisplay is { } drawn
+        && (drawn.Edges.Any(edge => edge.Unmeasured) || drawn.Nodes.Any(node => node.Unmeasured && node.Kind != GraphNodeKind.Context));
+
+    /// <summary>
     /// The graph's scope in one short line for the pane header: how many processes, how many relationships and among how
     /// many of them, and how many nodes they are drawn as when groups are collapsed. Compaction is never called omission.
     /// </summary>
@@ -2964,6 +2971,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 "Coverage: " + DescribeCoverage(coverage),
                 node.Kind == GraphNodeKind.Context
                     ? "Size: fixed; the rest of the machine is not read on this focus's scale"
+                    : node.Unmeasured
+                    ? "Size: unknown · its relationships' sends recorded no size, so it is drawn open and cross-hatched at the "
+                        + "smallest size, not as zero"
                     : magnitude == "records"
                         ? string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}")
                         : $"Size: {magnitude}, log scale against the busiest drawn node, {WorkspaceRowBuilder.DescribeSize(scale)}",
@@ -2976,7 +2986,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return new(title, nodeLines);
         }
 
-        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == key) is not { } drawn)
+        if (drawnDisplay.Edges.FirstOrDefault(edge => edge.Key == key) is not { } drawn)
         {
             return null;
         }
@@ -3004,7 +3014,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         lines.Add("Coverage: " + DescribeCoverage(channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
-        lines.Add(magnitude == "records"
+        lines.Add(drawn.Unmeasured
+            ? "Thickness: none · its sends recorded no size, so it is drawn as an open cross-hatched band, unknown rather than zero"
+            : magnitude == "records"
             ? string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}")
             : $"Thickness: bytes sent across, log scale against the busiest drawn edge, {WorkspaceRowBuilder.DescribeSize(edgeScale)}");
         if (drawn.Relationships.Count == 1)
@@ -3042,10 +3054,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return "Bytes: not read yet · selecting reads them for this scope";
         }
 
-        if (ReadsBytes && known.Length > 0)
+        if (ReadsBytes && DescribedBytes is { } read)
         {
-            return "Bytes: " + WorkspaceRowBuilder.DescribeSize(known.Sum(edge => edge.KnownBytes!.Value))
-                + " sent across, each transfer counted once at its sender";
+            // What was sent across the relationships, each transfer once at its sender: a measured sum, sends that recorded
+            // no size, or none at all. Unknown is not zero, and none sent is not unknown (R21).
+            Dictionary<string, SentAcrossTally> sent = SentAcrossEdges(read);
+            SentAcrossTally across = all.Aggregate(default(SentAcrossTally), (sum, edge) => sum.Plus(sent.GetValueOrDefault(edge.Key)));
+            string unmeasured = across.Unmeasured == 1 ? "1 send recorded no size"
+                : string.Create(CultureInfo.CurrentCulture, $"{across.Unmeasured:N0} sends recorded no size");
+            return across.Measured > 0
+                ? "Bytes: " + WorkspaceRowBuilder.DescribeSize(across.Sent) + " sent across, each transfer counted once at its sender"
+                    + (across.Unmeasured > 0 ? " · " + unmeasured : string.Empty)
+                : across.Unmeasured > 0 ? "Bytes: unknown · " + unmeasured
+                : "Bytes: nothing sent across";
         }
 
         if (known.Length == 0)
@@ -4995,6 +5016,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseGraphSelectionChanged();
     }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
         PropertyChanged?.Invoke(this, new(propertyName));
+        if (propertyName == nameof(GraphDisplay))
+        {
+            // The legend keys the unmeasured value only while the graph draws one (§6.6).
+            PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
+        }
+    }
 }

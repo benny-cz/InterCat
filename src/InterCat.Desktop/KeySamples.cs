@@ -29,6 +29,17 @@ public sealed class EvidenceKeySample : ThemedSample
     public override void Render(DrawingContext context) => GraphView.DrawEdgeSample(context, Strength, new Rect(Bounds.Size));
 }
 
+/// <summary>
+/// The legend's key of §6.6's unmeasured value, drawn by the graph's own routine: an open band, cross-hatched, never
+/// filled. It is shown only while the graph draws such a mark.
+/// </summary>
+public sealed class UnmeasuredKeySample : ThemedSample
+{
+    protected override Size MeasureOverride(Size availableSize) => new(26, 11);
+
+    public override void Render(DrawingContext context) => GraphView.DrawUnmeasuredSample(context, new Rect(Bounds.Size));
+}
+
 /// <summary>The legend's swatch of the coverage hatch, drawn by the timeline's own routine in the caution ink (§6.6).</summary>
 public sealed class CoverageKeySample : ThemedSample
 {
