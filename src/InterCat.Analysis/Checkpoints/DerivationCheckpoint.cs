@@ -20,8 +20,11 @@ public sealed class DerivationCheckpoint
     private const string FileSuffix = ".bin";
     private const ushort Major = 1;
 
-    /// <summary>Minor 1 adds each instance's activity (revision 166); a minor-0 checkpoint is read without it.</summary>
-    private const ushort Minor = 1;
+    /// <summary>
+    /// Minor 1 adds each instance's activity (revision 166); a minor-0 checkpoint is read without it. Minor 2 lets an end
+    /// be IPv6, its addresses in 16 bytes (revision 173); an earlier checkpoint holds only IPv4 ends.
+    /// </summary>
+    private const ushort Minor = 2;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "derivation checkpoint";
@@ -262,7 +265,11 @@ public sealed class DerivationCheckpoint
 
         string binding = reader.Str8();
         string relation = reader.Str8();
-        if (binding != ProcessInstanceIndex.BindingRule || relation != TransportRelationIndex.RelationRule)
+
+        // Relations of the rule before this one are this rule's when no related record went without an end, which the
+        // relations section says (§4); only a format before 1.2 was written under it.
+        bool earlierRule = relation == TransportRelationIndex.EarlierRelationRule && minor < 2;
+        if (binding != ProcessInstanceIndex.BindingRule || (relation != TransportRelationIndex.RelationRule && !earlierRule))
         {
             throw reader.Invalid(
                 $"it was derived under {binding} and {relation}, and this build derives under "
@@ -323,7 +330,8 @@ public sealed class DerivationCheckpoint
         }
 
         ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);
-        TransportRelationIndex relations = TransportRelationIndex.ReadState(reader, processes, [.. segments]);
+        TransportRelationIndex relations = TransportRelationIndex.ReadState(
+            reader, processes, [.. segments], ipv6Ends: minor >= 2, earlierRule: earlierRule);
         ProcessActivityIndex? activity = minor >= 1 ? ProcessActivityIndex.ReadState(reader, processes, [.. segments]) : null;
         reader.RequireEnd();
         return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), processes, relations, activity);

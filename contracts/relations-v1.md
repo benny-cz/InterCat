@@ -1,15 +1,16 @@
 # InterCat relations v1
 
-Status: **implemented** as `transport-endpoint-relation-v3`, for TCP and UDP over IPv4. `tcp-endpoint-relation-v1`
-scoped each TCP end to the whole capture; v2 divided an end into the connection incarnations its lifecycle records
-witness (§3, ADR-016); v3 reads UDP datagrams through their measured orientation and keys every end by its protocol
-(ADR-020). Every other mechanism is outside every relation rule at this version and says so (§9).
+Status: **implemented** as `transport-endpoint-relation-v4`, for TCP and UDP over IPv4 and IPv6.
+`tcp-endpoint-relation-v1` scoped each TCP end to the whole capture; v2 divided an end into the connection incarnations
+its lifecycle records witness (§3, ADR-016); v3 reads UDP datagrams through their measured orientation and keys every
+end by its protocol (ADR-020); v4 relates IPv6 ends as it relates IPv4 ones (revision 173). Every other mechanism is
+outside every relation rule at this version and says so (§9).
 
 This contract fixes how the other end of a record is found: §7.4's network correlator, with the join key, lifecycle
 scope, cardinality and ambiguity policy §7.4 requires every correlator to state before it is implemented. It owns no
-bytes: a derivation is computed from the `observation-v1` segments a generation names and from the process instances
-`contracts/entities-v1.md` derives over them, and it changes neither (R1, R20). How a filter or a grouping uses it is
-`contracts/metrics-v1.md` §5 and §6. ADR-014, ADR-016, ADR-019 and ADR-020 record the decisions.
+bytes: a derivation is computed from the observation segments a generation names (`segment-v1` §5) and from the
+process instances `contracts/entities-v1.md` derives over them, and it changes neither (R1, R20). How a filter or a
+grouping uses it is `contracts/metrics-v1.md` §5 and §6. ADR-014, ADR-016, ADR-019 and ADR-020 record the decisions.
 
 ## 1. Scope
 
@@ -20,7 +21,8 @@ in. The process instances are `process-binding-v2`'s over the same segments.
 ## 2. The join key
 
 Every admitted TCP and UDP descriptor names two endpoints: `SourceEndpointAddress`/`SourceEndpointPort` and
-`DestinationEndpointAddress`/`DestinationEndpointPort` (`segment-v1`), stored as the source names them. Which of the
+`DestinationEndpointAddress`/`DestinationEndpointPort` (`segment-v1`), or for an IPv6 record `SourceEndpointAddressV6`
+and `DestinationEndpointAddressV6` with the same ports, stored as the source names them. Which of the
 two is the record's own is the descriptor's **orientation**, measured rather than assumed. On every TCP descriptor - a
 send and a receive, a connect, an accept and a disconnect - and on a UDP send, the source is the record's own endpoint
 and the destination the remote one. On a UDP receive the source is the **datagram's sender** and the destination the
@@ -39,6 +41,11 @@ missing or zero address or port names no end. The **other end** of an end is its
 `(protocol, family, remote address, remote port, own address, own port)`: the record holding it is the other end of
 the same connection or datagram flow. Whether an address is a loopback address is not used: a mirrored end observed with a local holder is a
 local connection whatever its address.
+
+The family is part of the end, so an IPv4 end and an IPv6 end are never one. An IPv4-mapped IPv6 address
+(`::ffff:a.b.c.d`) is kept as the source named it and meets only an IPv6 end. Pairing it with an IPv4 end would rest on
+an address equivalence no capture has shown the source to need (R22). A zero address, `0.0.0.0` or `::`, names no
+endpoint.
 
 ## 3. Incarnations and holders
 
@@ -139,7 +146,9 @@ identity: another relation rule can number channels differently.
 
 The orientations of §2 hold for the six admitted TCPv4 descriptors and the two admitted UDPv4 descriptors on the
 measured build. A descriptor whose orientation is not measured is not one this rule reads correctly, and admitting one
-is a catalog change that requires measuring it (P27). A UDP datagram sent to a broadcast or multicast address, or to a
+is a catalog change that requires measuring it (P27). No IPv6 descriptor is admitted yet. v4 reads an IPv6 record
+through the orientation its mechanism and kind state, so admitting the TCPv6 and UDPv6 descriptors requires measuring
+that they name their endpoints as their IPv4 counterparts do. A UDP datagram sent to a broadcast or multicast address, or to a
 port no local process held, has no mirrored end and is `PeerNotObserved`; a UDP flow's lifetime is only the span of
 its records, because nothing marks when a socket was bound or closed. Imported sessions publish an aggregate coverage ledger, but it cannot locate a lost
 record at one end, and live captures do not yet publish one. An other end that is `PeerNotObserved` may therefore be
@@ -150,15 +159,16 @@ but never splits one connection in two.
 
 ## 8. Identity of a derivation
 
-A derivation is identified by `transport-endpoint-relation-v3`, the `process-binding-v2` derivation it rests on, and
+A derivation is identified by `transport-endpoint-relation-v4`, the `process-binding-v2` derivation it rests on, and
 the generation it was derived from. A change to what an end or an incarnation is, what holds it, how incarnations pair, how
 strongly, or when an end is left unresolved is a new rule identity (§24 `correlationRevision`); a result names the rule
 it used. v1 differed from v2 only in scoping every end to the whole capture, and v2 from v3 only in reading UDP, which
-it left `NoRelationRule`; every TCP answer is the same under both.
+it left `NoRelationRule`; every TCP answer is the same under both. v3 differed from v4 only in leaving an IPv6 record
+without an end; every IPv4 answer is the same under both.
 
 ## 9. Not defined at this version
 
-- Relations for IPv6, named pipes, RPC, ALPC and shared sections, and UDP endpoint reuse, multicast and broadcast
+- Relations for named pipes, RPC, ALPC and shared sections, and UDP endpoint reuse, multicast and broadcast
   beyond reporting them unobserved.
 - Per-transfer associations and the canonical owner they enable.
 - Persisting relations as a published table of their own. Revision 162 publishes their derivation state instead, in a

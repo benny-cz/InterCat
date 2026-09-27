@@ -40,6 +40,9 @@ public sealed class IndexFileWriter(Stream destination, long maximumBytes, strin
 
     public void U64(ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(Reserve(8), value);
 
+    /// <summary>A 128-bit address, its 16 bytes in network order as a segment holds it (`segment-v1` §5).</summary>
+    public void Address128(UInt128 value) => BinaryPrimitives.WriteUInt128BigEndian(Reserve(16), value);
+
     public void Identity(Guid value)
     {
         if (!value.TryWriteBytes(Reserve(16)))
@@ -141,6 +144,8 @@ public sealed class IndexFileReader(ReadOnlyMemory<byte> bytes, string what)
     public long I64() => BinaryPrimitives.ReadInt64LittleEndian(Take(8));
 
     public ulong U64() => BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
+
+    public UInt128 Address128() => BinaryPrimitives.ReadUInt128BigEndian(Take(16));
 
     public Guid Identity() => new(Take(16));
 

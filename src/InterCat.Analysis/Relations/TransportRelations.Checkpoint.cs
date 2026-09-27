@@ -37,22 +37,43 @@ public sealed partial class TransportRelationIndex
         {
             writer.U8(key.Protocol);
             writer.U8(key.Family);
-            writer.U32(key.LocalAddress);
+            WriteAddress(writer, key.Family, key.LocalAddress);
             writer.U16(key.LocalPort);
-            writer.U32(key.RemoteAddress);
+            WriteAddress(writer, key.Family, key.RemoteAddress);
             writer.U16(key.RemotePort);
             timeline.Write(writer);
         }
     }
 
     /// <summary>
+    /// An end's address in its family's width: four bytes for IPv4, as every format has written them, and from format 1.2
+    /// sixteen bytes in network order for IPv6.
+    /// </summary>
+    private static void WriteAddress(IndexFileWriter writer, byte family, UInt128 address)
+    {
+        if (family == 6)
+        {
+            writer.Address128(address);
+        }
+        else
+        {
+            writer.U32((uint)address);
+        }
+    }
+
+    /// <summary>
     /// Rebuilds the relations a checkpoint holds over <paramref name="processes"/>, the instances rebuilt from the same
-    /// checkpoint, whose positions its holders name.
+    /// checkpoint, whose positions its holders name. <paramref name="ipv6Ends"/> says whether the checkpoint's format can
+    /// hold an IPv6 end, which format 1.2 added; an earlier one that claims one is refused. <paramref name="earlierRule"/>
+    /// says the relations were derived under <see cref="EarlierRelationRule"/>, which are this rule's only when no related
+    /// record was left without an end: that rule left every IPv6 record without one.
     /// </summary>
     internal static TransportRelationIndex ReadState(
         IndexFileReader reader,
         ProcessInstanceIndex processes,
-        HashSet<StoreDependency> read)
+        HashSet<StoreDependency> read,
+        bool ipv6Ends,
+        bool earlierRule)
     {
         int count = reader.Count(2 + 8);
         var withoutEnd = new Dictionary<Mechanism, long>(count);
@@ -70,15 +91,37 @@ public sealed partial class TransportRelationIndex
             previous = mechanism;
         }
 
+        if (earlierRule && withoutEnd.Count > 0)
+        {
+            long unended = withoutEnd.Values.Sum();
+            throw reader.Invalid(
+                $"it was derived under {EarlierRelationRule}, which left {unended:N0} related "
+                + $"{(unended == 1 ? "record" : "records")} without an end, and {RelationRule} gives an IPv6 record the "
+                + "end that rule did not.");
+        }
+
         // An end holds its key, a cut count, whether it has a latest record and at least one incarnation's flags.
         count = reader.Count(KeyBytes + 4 + 1 + 1);
         var ends = new Dictionary<EndKey, EndTimeline>(count);
         EndKey? last = null;
         for (int index = 0; index < count; index++)
         {
-            var key = new EndKey(reader.U8(), reader.U8(), reader.U32(), reader.U16(), reader.U32(), reader.U16());
+            byte protocol = reader.U8();
+            byte family = reader.U8();
+            if (family is not (4 or 6) || (family == 6 && !ipv6Ends))
+            {
+                throw reader.Invalid("an end's address family is not IPv4, or IPv6 in a format that holds one.");
+            }
+
+            var key = new EndKey(
+                protocol,
+                family,
+                ReadAddress(reader, family),
+                reader.U16(),
+                ReadAddress(reader, family),
+                reader.U16());
             if (!Relates((Mechanism)key.Protocol)
-                || key.LocalAddress == 0 || key.LocalPort == 0 || key.RemoteAddress == 0 || key.RemotePort == 0)
+                || key.LocalAddress == UInt128.Zero || key.LocalPort == 0 || key.RemoteAddress == UInt128.Zero || key.RemotePort == 0)
             {
                 throw reader.Invalid("an end is not a TCP or UDP end with both endpoints.");
             }
@@ -94,6 +137,9 @@ public sealed partial class TransportRelationIndex
 
         return new(processes, ends, withoutEnd, read);
     }
+
+    private static UInt128 ReadAddress(IndexFileReader reader, byte family) =>
+        family == 6 ? reader.Address128() : reader.U32();
 
     private static void WritePosition(IndexFileWriter writer, Position position)
     {

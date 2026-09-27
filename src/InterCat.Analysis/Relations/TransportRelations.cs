@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -88,8 +89,17 @@ public readonly record struct ChannelBinding(int Channel, ProcessBindingReason R
 /// </remarks>
 public sealed partial class TransportRelationIndex
 {
-    /// <summary>The rule identity a result names when it used these relations (§24 `correlationRevision`).</summary>
-    public const string RelationRule = "transport-endpoint-relation-v3";
+    /// <summary>
+    /// The rule identity a result names when it used these relations (§24 `correlationRevision`). v4 relates IPv6 ends
+    /// (revision 173); every IPv4 answer is v3's.
+    /// </summary>
+    public const string RelationRule = "transport-endpoint-relation-v4";
+
+    /// <summary>
+    /// The rule before this one. It left every IPv6 record without an end, so its derivation is this rule's wherever no
+    /// related record went without one (`contracts/derivation-checkpoint-v1.md` §4).
+    /// </summary>
+    internal const string EarlierRelationRule = "transport-endpoint-relation-v3";
 
     private readonly Dictionary<EndKey, EndTimeline> ends;
 
@@ -623,6 +633,11 @@ public sealed partial class TransportRelationIndex
         private readonly SegmentColumnSlice localPorts;
         private readonly SegmentColumnSlice remoteAddresses;
         private readonly SegmentColumnSlice remotePorts;
+
+        /// <summary>Whether the segment is `observation-v2`, whose IPv6 address columns an IPv6 end is read from.</summary>
+        private readonly bool wide;
+        private readonly SegmentColumnSlice localAddresses6;
+        private readonly SegmentColumnSlice remoteAddresses6;
         private SegmentColumnSlice ticks;
         private SegmentColumnSlice streams;
         private SegmentColumnSlice epochs;
@@ -641,6 +656,12 @@ public sealed partial class TransportRelationIndex
             localPorts = segment.Slice(SegmentColumnId.SourceEndpointPort);
             remoteAddresses = segment.Slice(SegmentColumnId.DestinationEndpointAddress);
             remotePorts = segment.Slice(SegmentColumnId.DestinationEndpointPort);
+            wide = segment.HasColumn(SegmentColumnId.SourceEndpointAddressV6);
+            if (wide)
+            {
+                localAddresses6 = segment.Slice(SegmentColumnId.SourceEndpointAddressV6);
+                remoteAddresses6 = segment.Slice(SegmentColumnId.DestinationEndpointAddressV6);
+            }
         }
 
         public readonly Mechanism MechanismAt(int row) => (Mechanism)mechanisms.UnsignedAt(row)!.Value;
@@ -655,19 +676,43 @@ public sealed partial class TransportRelationIndex
         /// </summary>
         public readonly EndKey? KeyAt(int row)
         {
-            // An unavailable address is not zero, and a zero one names no endpoint: neither can find the other end.
+            // An unavailable address is not zero, and a zero one - 0.0.0.0 or :: - names no endpoint: neither can find
+            // the other end. A family names the columns its addresses are in.
             Mechanism mechanism = MechanismAt(row);
             if (!Relates(mechanism)
                 || families.UnsignedAt(row) is not { } family
-                || localAddresses.UnsignedAt(row) is not ({ } firstAddress and not 0UL)
                 || localPorts.UnsignedAt(row) is not ({ } firstPort and not 0UL)
-                || remoteAddresses.UnsignedAt(row) is not ({ } secondAddress and not 0UL)
                 || remotePorts.UnsignedAt(row) is not ({ } secondPort and not 0UL))
             {
                 return null;
             }
 
-            var named = new EndKey((byte)mechanism, (byte)family, (uint)firstAddress, (ushort)firstPort, (uint)secondAddress, (ushort)secondPort);
+            UInt128 firstAddress;
+            UInt128 secondAddress;
+            if (family == 6)
+            {
+                if (!wide
+                    || localAddresses6.AddressAt(row) is not { } first
+                    || remoteAddresses6.AddressAt(row) is not { } second
+                    || first == UInt128.Zero
+                    || second == UInt128.Zero)
+                {
+                    return null;
+                }
+
+                (firstAddress, secondAddress) = (first, second);
+            }
+            else if (localAddresses.UnsignedAt(row) is ({ } first and not 0UL)
+                && remoteAddresses.UnsignedAt(row) is ({ } second and not 0UL))
+            {
+                (firstAddress, secondAddress) = (first, second);
+            }
+            else
+            {
+                return null;
+            }
+
+            var named = new EndKey((byte)mechanism, (byte)family, firstAddress, (ushort)firstPort, secondAddress, (ushort)secondPort);
             return TransportEndpoints.OrientationOf(mechanism, KindAt(row)) == EndpointOrientation.OwnerFirst
                 ? named
                 : named.Mirror();
@@ -800,12 +845,24 @@ public sealed partial class TransportRelationIndex
 
     /// <summary>
     /// One connection or datagram-flow end: its protocol, an address family, the end's own endpoint and the remote endpoint
-    /// it names. TCP port 5000 and UDP port 5000 are different ends, so the protocol is part of the key.
+    /// it names. TCP port 5000 and UDP port 5000 are different ends, so the protocol is part of the key, and so is the
+    /// family: an IPv4 end and an IPv6 end are never one end. An IPv4-mapped IPv6 address is kept as the source named it,
+    /// so it meets only an IPv6 end (R22). An IPv4 address is held as its 32-bit value, so IPv4 ends order as they always
+    /// did.
     /// </summary>
-    private readonly record struct EndKey(byte Protocol, byte Family, uint LocalAddress, ushort LocalPort, uint RemoteAddress, ushort RemotePort)
+    [StructLayout(LayoutKind.Auto)]
+    private readonly record struct EndKey(
+        byte Protocol,
+        byte Family,
+        UInt128 LocalAddress,
+        ushort LocalPort,
+        UInt128 RemoteAddress,
+        ushort RemotePort)
         : IComparable<EndKey>
     {
-        public string LocalEndpoint => EndpointText.Endpoint(LocalAddress, LocalPort);
+        public string LocalEndpoint => Family == 6
+            ? EndpointText.Endpoint(LocalAddress, LocalPort)
+            : EndpointText.Endpoint((uint)LocalAddress, LocalPort);
 
         public EndKey Mirror() => new(Protocol, Family, RemoteAddress, RemotePort, LocalAddress, LocalPort);
 

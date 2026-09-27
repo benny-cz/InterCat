@@ -507,6 +507,7 @@
         "I14: a cancelled import leaves no spilled run behind",
         "I14: a canonical key changes with every field the envelope carries",
         "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread",
+        "I14: a checkpoint of an earlier format, which holds IPv4 ends only, is read as it was written",
         "I14: a checkpoint that cannot be read is derived around, the overview says why, and publishing replaces it",
         "I14: a checkpoint without an overview gives the derivations, and the timeline is counted from the segments",
         "I14: a checkpoint written before process counts gives its derivations, the counts come from the segments, and publishing replaces it",
@@ -529,7 +530,8 @@
         "I14: nothing is published for a session with no generation or no records, and a stale writer is refused",
         "I14: one admitted record cannot satisfy two truth operations",
         "I14: only instances and the relations derived with them are written, and a generation names one checkpoint",
-        "I14: relations and peers do not depend on how records were split into segments or delivered"
+        "I14: relations and peers do not depend on how records were split into segments or delivered",
+        "I14: relations of the rule before this one are read as this rule's only when no related record went without an end"
       ],
       "I15": [
         "I15: a chunk release gives up only the oldest chunks and never all of the evidence",
@@ -1075,6 +1077,7 @@
         "R22: a record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
+        "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",

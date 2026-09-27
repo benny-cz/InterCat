@@ -104,18 +104,35 @@ public sealed class DerivationCheckpointTests
         Assert.True(activityExtended > 0, "No trial extended a read-back checkpoint's counts.");
     }
 
-    [Fact(DisplayName = "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread")]
-    public void DamagedOrForeignCheckpointsAreRefused()
+    [Fact(DisplayName = "I14: a checkpoint of an earlier format, which holds IPv4 ends only, is read as it was written")]
+    public void EarlierFormatsAreReadAsWritten()
     {
         List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> chunks = RandomChunks(new Random(7));
         using var session = new TemporarySession();
-        Publish(session.Store, [.. chunks.SelectMany(chunk => chunk.Rows)], fields: [.. chunks.SelectMany(chunk => chunk.Fields)]);
+        ObservationRowV1[] related =
+        [
+            Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 10_001).Between("127.0.0.1:50100", "127.0.0.1:8100"),
+            Transfer(1_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 800, 10_002).Between("127.0.0.1:8100", "127.0.0.1:50100"),
+        ];
+        Publish(
+            session.Store,
+            [.. chunks.SelectMany(chunk => chunk.Rows).Where(row => row.EndpointAddressFamily != 6), .. related],
+            fields: [.. chunks.SelectMany(chunk => chunk.Fields)]);
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
         TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
         ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
         byte[] bytes = Checkpoint(processes, relations, activity);
-        _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
+        Assert.NotEmpty(relations.Relations);
+
+        // Format 1.1, written by revisions 166 to 172, differs from 1.2 only where an end is IPv6, which it cannot hold.
+        byte[] minorOne = [.. bytes];
+        minorOne[10] = 1;
+        DerivationCheckpoint one = DerivationCheckpoint.Read(minorOne, Session, TestClock);
+        Assert.True(one.Covers(observations, fields));
+        AssertSameProcesses(processes, one.Processes, observations);
+        AssertSameRelations(relations, one.Relations, observations);
+        Assert.Equal(bytes, Checkpoint(one.Processes, one.Relations, one.Activity!));
 
         // A minor-0 checkpoint, written before revision 166, ends before the counts: it is read without them, and the
         // instances and relations it holds answer as before.
@@ -126,6 +143,76 @@ public sealed class DerivationCheckpointTests
         AssertSameProcesses(processes, minorZero.Processes, observations);
         AssertSameRelations(relations, minorZero.Relations, observations);
         _ = Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read((byte[])[.. older[..^1]], Session, TestClock));
+    }
+
+    [Fact(DisplayName = "I14: relations of the rule before this one are read as this rule's only when no related record went without an end")]
+    public void EarlierRelationRuleIsReadWhereItAgrees()
+    {
+        // Every record names both endpoints, so the rule before this one - which left an IPv6 record without an end -
+        // derived exactly what this one does.
+        using var complete = new TemporarySession();
+        Publish(complete.Store,
+        [
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 1).Between("127.0.0.1:50100", "127.0.0.1:8100"),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 800, 2).Between("127.0.0.1:8100", "127.0.0.1:50100"),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 4, 700, 3).Between("127.0.0.1:50101", "127.0.0.1:9100")
+                with { Mechanism = Mechanism.Udp },
+        ]);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(complete.Store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
+        byte[] bytes = Checkpoint(processes, relations, ProcessActivityIndex.Derive(observations, processes));
+        DerivationCheckpoint read = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierRelationRule(bytes), Session, TestClock);
+        AssertSameRelations(relations, read.Relations, observations);
+        Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations, read.Activity!));
+
+        // A record without an end might have been an IPv6 one this rule relates, so such relations are derived again.
+        using var incomplete = new TemporarySession();
+        Publish(incomplete.Store,
+        [
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 1).Between("127.0.0.1:50100", "127.0.0.1:8100"),
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 2),
+        ]);
+        (observations, fields) = SegmentsOf(incomplete.Store);
+        processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        bytes = Checkpoint(processes, TransportRelationIndex.Derive(observations, processes), ProcessActivityIndex.Derive(observations, processes));
+        _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
+        Assert.Contains("1 related record without an end", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(
+            EarlierCheckpoints.UnderEarlierRelationRule(bytes), Session, TestClock)).Message, StringComparison.Ordinal);
+
+        // Format 1.2 was never written under the rule before this one.
+        byte[] impossible = EarlierCheckpoints.UnderEarlierRelationRule(bytes);
+        impossible[10] = 2;
+        Assert.Contains("derived under", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(impossible, Session, TestClock)).Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I14: a checkpoint cut short, changed, of another format, rule, session or clock is refused, never misread")]
+    public void DamagedOrForeignCheckpointsAreRefused()
+    {
+        List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> chunks = RandomChunks(new Random(7));
+        using var session = new TemporarySession();
+
+        // An IPv6 connection held at both ends, by processes the random capture never names, so it is always related.
+        ObservationRowV1[] ipv6 =
+        [
+            Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 10_001).Between("[::1]:50100", "[::1]:8100"),
+            Transfer(1_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 800, 10_002).Between("[::1]:8100", "[::1]:50100"),
+        ];
+        Publish(session.Store, [.. chunks.SelectMany(chunk => chunk.Rows), .. ipv6], fields: [.. chunks.SelectMany(chunk => chunk.Fields)]);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
+        byte[] bytes = Checkpoint(processes, relations, activity);
+        _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
+
+        // Only format 1.2 holds an IPv6 end. An earlier format that claims one is refused, not read as IPv4 bytes.
+        Assert.Contains(relations.Relations, relation => relation.FirstEndpoint.StartsWith('['));
+        byte[] claimed = [.. bytes];
+        claimed[10] = 1;
+        Assert.Contains("address family", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(claimed, Session, TestClock)).Message, StringComparison.Ordinal);
 
         for (int length = 0; length < bytes.Length; length++)
         {
@@ -154,8 +241,8 @@ public sealed class DerivationCheckpointTests
         Assert.InRange(refused, 1, bytes.Length);
 
         byte[] newer = [.. bytes];
-        newer[10] = 2;
-        Assert.Contains("format 1.2", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
+        newer[10] = 3;
+        Assert.Contains("format 1.3", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
             StringComparison.Ordinal);
         byte[] rule = [.. bytes];
         int at = bytes.AsSpan().IndexOf(Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule));

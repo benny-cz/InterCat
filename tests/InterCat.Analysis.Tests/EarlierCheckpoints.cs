@@ -7,6 +7,26 @@ namespace InterCat.Analysis.Tests;
 internal static class EarlierCheckpoints
 {
     /// <summary>
+    /// A checkpoint as revisions 166 to 172 wrote it: format 1.1, under `transport-endpoint-relation-v3`. It differs from
+    /// format 1.2 under v4 only in those two words when no end is IPv6, which 1.1 cannot hold.
+    /// </summary>
+    public static byte[] UnderEarlierRelationRule(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        byte[] rule = System.Text.Encoding.ASCII.GetBytes(TransportRelationIndex.RelationRule);
+        int at = bytes.AsSpan().IndexOf(rule);
+        if (at < 0 || !TransportRelationIndex.RelationRule.EndsWith("-v4", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The checkpoint does not name the relation rule this helper rewrites.");
+        }
+
+        byte[] earlier = [.. bytes];
+        earlier[10] = 1;
+        earlier[at + rule.Length - 1] = (byte)'3';
+        return earlier;
+    }
+
+    /// <summary>
     /// A checkpoint as revisions 162 to 165 wrote it: format 1.0, ending before the counts section, which is the last one
     /// (`contracts/derivation-checkpoint-v1.md` §3). <paramref name="activity"/> is what <paramref name="bytes"/> holds.
     /// </summary>

@@ -121,11 +121,69 @@ public sealed class RelationTests
             [(Mechanism.Tcp, 300, 400, 2L), (Mechanism.Udp, 100, 200, 4L)],
             relations.Relations.Select(relation => (relation.Mechanism, relation.First.ProcessId, relation.Second.ProcessId, relation.Records)));
         Assert.Equal(3, relations.Channels);
-        Assert.Equal("transport-endpoint-relation-v3", TransportRelationIndex.RelationRule);
+        Assert.Equal("transport-endpoint-relation-v4", TransportRelationIndex.RelationRule);
 
         MetricResult serverChannels = SessionMetrics.Evaluate(session.Store,
             Request(Metric.ActiveChannels) with { Participant = Instance(200) });
         Assert.Equal(2, serverChannels.Value);
+    }
+
+    [Fact(DisplayName = "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family")]
+    public void Ipv6EndsRelateWithinTheirFamily()
+    {
+        const string client6 = "[::1]:50000";
+        const string server6 = "[::1]:8080";
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(client6, server6),
+            Transfer(21, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between(server6, client6),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 3).Between(client6, server6),
+            Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 4).Between(server6, client6),
+
+            // The same ports over IPv4, and over IPv6 whose address is IPv4's in another form - mapped, or with the very
+            // number 127.0.0.1 is: each is another end, whose other end no record holds.
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 7, 300, 5).Between(ClientEnd, ServerEnd),
+            Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 7, 400, 6)
+                .Between("[::ffff:127.0.0.1]:8080", "[::ffff:127.0.0.1]:50000"),
+            Transfer(42, ObservationKind.Receive, AccountingSide.ReceiveSide, 7, 400, 10).Between("[::7f00:1]:8080", "[::7f00:1]:50000"),
+
+            // A datagram flow over IPv6, read through the UDP descriptors' orientation as over IPv4 (ADR-019).
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 300, 7).Between("[fe80::1:2]:5353", "[fe80::3:4]:5353")
+                with { Mechanism = Mechanism.Udp },
+            Transfer(51, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 400, 8).Between("[fe80::1:2]:5353", "[fe80::3:4]:5353")
+                with { Mechanism = Mechanism.Udp },
+
+            // The unspecified address names no endpoint, as 0.0.0.0 does not.
+            Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 3, 100, 9).Between("[::]:50001", server6),
+        ]);
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = Derive(session.Store);
+        ProcessInstanceId Instance(int processId) => processes.Instances.Single(instance => instance.ProcessId == processId).Id;
+
+        // The end whose endpoint sorts first is listed first, and the IPv6 ends are written as an IPv6 endpoint is.
+        TransportRelation[] related = [.. relations.Relations.OrderBy(relation => relation.FirstNativeTicks)];
+        Assert.Equal(2, related.Length);
+        Assert.Equal((Instance(200), server6, Instance(100), client6),
+            (related[0].First.Id, related[0].FirstEndpoint, related[0].Second.Id, related[0].SecondEndpoint));
+        Assert.Equal((Mechanism.Tcp, 4L, true), (related[0].Mechanism, related[0].Records, related[0].OpenWitnessed));
+        Assert.Equal((Mechanism.Udp, "[fe80::1:2]:5353", "[fe80::3:4]:5353"),
+            (related[1].Mechanism, related[1].FirstEndpoint, related[1].SecondEndpoint));
+
+        SegmentReaderV1 segment = Assert.Single(Segments(session.Store));
+        Assert.Equal(SegmentTableId.ObservationV2, segment.Table);
+        Dictionary<long, ProcessBinding> peers = PeersByReading(segment, relations);
+        Assert.Equal(Instance(200), processes.Instances[peers[30].Instance].Id);
+        Assert.Equal(Instance(100), processes.Instances[peers[31].Instance].Id);
+        Assert.Equal(Instance(400), processes.Instances[peers[50].Instance].Id);
+        Assert.Equal(ProcessBindingReason.PeerNotObserved, peers[40].Reason);
+        Assert.Equal(ProcessBindingReason.PeerNotObserved, peers[41].Reason);
+        Assert.Equal(ProcessBindingReason.PeerNotObserved, peers[42].Reason);
+        Assert.Equal(ProcessBindingReason.PeerEndpointIncomplete, peers[60].Reason);
+
+        // A channel is the IPv6 connection's, counted once at both ends; the other family's end is a channel of its own.
+        ChannelBinding[] channels = relations.ChannelsOf(segment);
+        Assert.Equal(4, channels.Count(channel => channel.Channel == related[0].Channel));
+        Assert.Equal(5, relations.Channels);
     }
 
     [Fact(DisplayName = "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved")]

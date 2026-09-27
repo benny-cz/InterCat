@@ -12,11 +12,15 @@ internal static class RandomCaptures
     /// arrive in time order, but some are delivered a chunk or two late, as ETW delivers a busy processor's buffer late,
     /// so a chunk can hold records older than the chunk before it. Processes are created, exit, are reused and are
     /// confirmed by rundowns, some with the start key a source field carries, and a field can arrive after its record.
+    /// About one connection in four is IPv6, on the same ports as IPv4 ones, so a chunk's segment is `observation-v2`
+    /// when it holds one and an end of one family must never meet an end of the other.
     /// </summary>
     internal static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> Chunks(Random random)
     {
         string[] clients = ["127.0.0.1:50000", "127.0.0.1:50001", "10.0.0.5:50002"];
         string[] servers = ["127.0.0.1:8080", "127.0.0.1:9090"];
+        string[] clients6 = ["[::1]:50000", "[2001:db8::5]:50002"];
+        string[] servers6 = ["[::1]:8080", "[::ffff:127.0.0.1]:9090"];
         int[] pids = [100, 200, 300, 400];
         ObservationKind[] kinds =
         [
@@ -59,8 +63,9 @@ internal static class RandomCaptures
                     : kind is ObservationKind.Receive ? AccountingSide.ReceiveSide : AccountingSide.EndpointActivity,
                     kind is ObservationKind.Send or ObservationKind.Receive ? 16 : 0,
                     random.Next(15) == 0 ? null : pid, ++ordinal);
-                string client = clients[random.Next(clients.Length)];
-                string server = servers[random.Next(servers.Length)];
+                bool ipv6 = random.Next(4) == 0;
+                string client = ipv6 ? clients6[random.Next(clients6.Length)] : clients[random.Next(clients.Length)];
+                string server = ipv6 ? servers6[random.Next(servers6.Length)] : servers[random.Next(servers.Length)];
                 row = random.Next(20) == 0 ? row : random.Next(2) == 0 ? row.Between(client, server) : row.Between(server, client);
                 if (random.Next(5) == 0)
                 {

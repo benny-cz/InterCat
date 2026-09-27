@@ -13,6 +13,27 @@ public sealed class SessionOverviewTests
     private const string ServerEnd = "127.0.0.1:8080";
 
     [Fact]
+    public void AnIpv6ConnectionIsAnEdgeAndAChannelNamedByItsBracketedEndpoints()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 1, 100, 1)
+                .Between("[::1]:50000", "[::1]:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 200, 2)
+                .Between("[::1]:8080", "[::1]:50000") with { SessionRelativeTicks = 1_100 },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 3)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_200 },
+        ]);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        Assert.Single(overview.Edges);
+        Assert.Equal("[::1]:8080 ↔ [::1]:50000", Assert.Single(overview.Channels).Name);
+        Assert.Equal(2, overview.Channels[0].ObservationCount);
+        Assert.Equal(1, overview.UnresolvedTcpRows);
+    }
+
+    [Fact]
     public void ChannelBoundKeepsGraphAndTimelineAvailableWithoutOmittingSilently()
     {
         using var session = new TemporarySession();

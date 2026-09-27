@@ -262,7 +262,7 @@ distinct processes with at least one resolved peer, and a remainder is the disti
 groups it merges.
 
 `ActiveChannels` counts **connection incarnations** under `relations-v1` §5a and its
-`transport-endpoint-relation-v3` rule: the two ends of one connection are one
+`transport-endpoint-relation-v4` rule: the two ends of one connection are one
 channel, a port reused by a later connection is another, and a connection whose other end no record holds is a
 one-sided channel. A UDP datagram flow between two ends, which has no connection lifecycle, is one channel for the
 capture. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the

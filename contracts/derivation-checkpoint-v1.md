@@ -1,7 +1,7 @@
 # InterCat derivation checkpoint v1
 
 Status: **implemented** in plan revision 162. A generation can name one checkpoint: the state of its
-`process-binding-v2` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v3` relations
+`process-binding-v2` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
 (`contracts/relations-v1.md`), as derived from named segments. A reader that finds a checkpoint builds both
 derivations from it, reads only the segments it does not cover, and gets exactly what a derivation from every segment
 gives. Without one, opening a session reads every record's owner, endpoints and canonical position before the first
@@ -9,7 +9,9 @@ view, so reopening takes longer as the session grows. That breaks §12.1 S1. Thi
 covers, when a reader may use it, and who publishes it.
 
 Format 1.1 (plan revision 166) adds each instance's own records under `process-activity-v1`, which rank the ranked
-table's groups and processes. A checkpoint of format 1.0 is still read, without them (§4).
+table's groups and processes. A checkpoint of format 1.0 is still read, without them (§4). Format 1.2 (plan revision
+173) lets an end be IPv6, its addresses in 16 bytes; a checkpoint of format 1.0 or 1.1 holds IPv4 ends only and is
+still read (§4).
 
 A checkpoint is a derived index. It holds no evidence and changes no observation (R1). It can always be rebuilt from
 the segments it covers (R20). A missing, stale or unreadable checkpoint costs time and never changes an answer.
@@ -103,13 +105,13 @@ most 512 MiB.
 
 ```text
 checkpoint  = header covered instances relations activity   ; activity from minor 1: a minor-0 one ends at relations
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 2,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
               capture guid, normalizer u32          ; both zero when no segment is covered
 covered     = count u32, file*                      ; strictly ascending by name, ordinal
-file        = role u8 (1 observation-v1, 2 source-fields-v1), name str8, length i64 (>= 0), digest str8
+file        = role u8 (1 observations, v1 or v2; 2 source-fields-v1), name str8, length i64 (>= 0), digest str8
 instances   = withoutOwner i64,
               count u32, lifecycle*,                ; ascending by (pid, record)
               count u32, fields*,                   ; strictly ascending by address
@@ -126,10 +128,12 @@ seen        = address, field u16 (1..6, EN-SourceField)
 first       = pid i32, record
 relations   = count u32, (mechanism u16 (3 TCP, 4 UDP), records i64 (> 0))*   ; strictly ascending by mechanism
               count u32, end*                                               ; strictly ascending by key
-end         = protocol u8 (3, 4), family u8, localAddress u32, localPort u16, remoteAddress u32, remotePort u16,
+end         = protocol u8 (3, 4), family u8 (4; 6 from minor 2), localAddress ip, localPort u16, remoteAddress ip,
+              remotePort u16,
               count u32, cut*,                      ; ascending by position
               hasLast u8 (0, 1), [record]           ; the latest record's position
               incarnation * (cut count + 1)
+ip          = u32 for family 4, as every minor writes it; 16 bytes in network order for family 6
 cut         = record, afterClose u8 (0, 1)
 incarnation = flags u8 (1 has records, 2 names one PID, 4 names two PIDs, 8 binds to two instances)
               when it has records: [pid i32 when 2], holder i32 (-1 when unbound or 8), weakest u8 (EN-RelationStrength),
@@ -155,12 +159,17 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 1: a checkpoint is rebuildable, so there is no
+- the magic is wrong, the major version is not 1, or the minor is above 2: a checkpoint is rebuildable, so there is no
   partial read of a newer one. A minor-0 checkpoint, as revisions 162 to 165 wrote, is read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
   reopen would otherwise read every segment;
 - a rule identity is not this build's: a checkpoint derived under another rule describes other instances, relations or
-  counts (§24);
+  counts (§24). One exception is exact. A checkpoint of format 1.0 or 1.1 derived under
+  `transport-endpoint-relation-v3` is read as `v4`'s when it counts no related record without an end. `v4` differs
+  from `v3` only in giving an IPv6 record the end `v3` left it without, so where no record went without one the two
+  derivations are one state. One that counts any is refused and derived again. No checkpoint of format 1.2 was written
+  under `v3`;
+- a checkpoint before format 1.2 claims an IPv6 end, which it cannot hold;
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order
   above is broken, or bytes remain after the last end;
