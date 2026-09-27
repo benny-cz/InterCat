@@ -114,6 +114,20 @@ Per-generation figures exist only for a run that generates its sessions. `rpc-pa
 `-rev184` are the same measurement with revision 183's build and revision 184's, each over sessions it generated.
 Only `report.json` is committed. Without the variable the test is skipped, never passed.
 
+## ALPC feasibility
+
+Elevated only. IC-006's spike: runs FX-RPC-001's workload while a private system logger of the probe's own - uniquely
+named, owned and stopped by it, never the NT Kernel Logger - collects the kernel's ALPC flag group, process names and the
+RPC provider's call events, then links each client call to the server call it began through its ALPC send and the
+thread that received it, checking that both calls carry one interface and one procedure (ADR-034).
+
+```powershell
+dotnet run --project tools/InterCat.AlpcProbe -c Release -- --output <new scratch directory> --calls 600
+```
+
+The records stay in memory; only `report.json`'s counters are written. `alpc-feasibility-20260927T165107Z` holds four runs:
+200 truth calls and three of 600.
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a

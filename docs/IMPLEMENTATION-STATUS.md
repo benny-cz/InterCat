@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-27 · Plan revision: 186 · Branch: `main`
+Updated: 2026-09-27 · Plan revision: 187 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -52,7 +52,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | Item | Current state | Remaining acceptance gap |
 |---|---|---|
 | IC-001–004, 007–010a (M0) | Complete for measured M0 scope | Qualify other supported retail builds and mechanisms as their gates require. |
-| IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence` | Sections/ALPC and wider mechanisms are unqualified; no inferred peer or RPC byte claims. |
+| IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence`; since revision 187, ALPC measured in the lab through a private system logger, linking RPC client calls to the calls that served them (ADR-034) | ALPC capture in the product, and sections and wider mechanisms, are unqualified; no inferred peer or RPC byte claims. |
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
@@ -67,6 +67,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 187 — ALPC measured: it links an RPC client call to the call that served it (ADR-034):**
+  - **The spike (IC-006):** `tools/InterCat.AlpcProbe` owns a private system logger for one run - uniquely named, never
+    the NT Kernel Logger, stopped with the run - collecting the kernel's ALPC flag group, process names and RPC call
+    events while FX-RPC-001 calls the service control manager. Four runs, no event lost, no session left behind.
+  - **Message ids are not identities:** 40 to 125 distinct ids per run for up to 33,000 sends, most sent by several
+    processes.
+  - **The chain works:** the client call's one ALPC send on its own thread, the one receive of that id in another process
+    before the call stops, and the server call that begins on the receiving thread within 5 ms. 10,003 links, every one
+    with the same interface and procedure on both calls, no server call claimed twice, every reply back to the client;
+    a message received twice within a call was left unlinked.
+  - **Admitted nowhere:** product capture creates no system logger (ADR-002). Only counters are committed
+    (`bench/results/alpc-feasibility-20260927T165107Z`).
 
 - **Revision 186 — RPC call durations, by named interval, cohort and statistic (ADR-033):**
   - **The request:** `icat metric --metric duration --duration client-call|server-execution` with `--cohort
@@ -1654,10 +1667,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         milliseconds at this workstation's real rate), and a reopen's first RPC rung pairs them all (1.8 s there, 0.33 s
         at 200,000 calls). Exactness needs every key a late record touches re-paired, and the grouping still reads every
         call.
-     3. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
+     3. Resolve an RPC call's other end through ALPC (ADR-034), in order: an ADR amending ADR-002 for a private,
+        uniquely named, owned system logger in the broker's capture, with ALPC's capture cost measured (1,600 to 2,500
+        events a second on this workstation) and its class declared; the relation rule implementing ADR-034's chain,
+        with its contract; then RPC peers in the graph, ALPC as transport evidence beneath a call and never a second
+        count (§5.1, M3's exit gate).
+     4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
-     4. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
+     5. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
         §6.2 density regime remains (item 5).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -1692,6 +1710,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 187 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
+  passed, 4 skipped**, zero failures, with the ALPC probe in the solution. The probe ran four times from the elevated
+  shell; `logman query -ets` showed no probe session left after each run.
 - Revision 186 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,246 tests: 1,242
   passed, 4 skipped**, zero failures. `icat metric --metric duration` was run over a 30-second Explore recording made
   with `icat record` while the RPC truth workload ran; the recording stays in scratch.

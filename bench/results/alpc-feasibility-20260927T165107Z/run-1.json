@@ -1,0 +1,67 @@
+{
+  "volume": {
+    "alpcSeconds": 12.9,
+    "alpcEventsByKind": {
+      "Send": 10946,
+      "WaitForReply": 5054,
+      "Receive": 10954,
+      "Unwait": 5354,
+      "WaitForNewMessage": 254
+    },
+    "alpcEventsPerSecond": 2518,
+    "rpcCallRecords": 17406,
+    "processesNamed": 462
+  },
+  "messageIds": {
+    "sends": 10946,
+    "distinctIds": 40,
+    "idsNamingSeveralSends": 22,
+    "idsSentBySeveralProcesses": 22,
+    "clientSendsWhoseIdAnotherProcessSentWithinOneSecond": 1001
+  },
+  "linkage": {
+    "clientProcessFound": true,
+    "clientCallsPaired": 1002,
+    "clientCallsToServiceControl": 1000,
+    "truthCallsPerClientCall": 0.2,
+    "alpcSendsPerClientCall": {
+      "1": 1001,
+      "2\u002B": 1
+    },
+    "sendsWithOneReceiverInAnotherProcess": 1001,
+    "sendsWithNoReceiver": 0,
+    "sendsWithSeveralReceivers": 0,
+    "linkedToAServerCall": 1001,
+    "linkedWithTheSameInterfaceAndProcedure": 1001,
+    "linkedWithAnotherInterfaceOrProcedure": 0,
+    "serverCallsLinkedTwice": 0,
+    "repliesObservedBackToTheClient": 1001,
+    "unlinkedByReason": {
+      "several ALPC sends on the call\u0027s thread": 1
+    }
+  },
+  "notes": [
+    "A client call\u0027s ALPC send is the one send on the call\u0027s own thread between its start and stop records; its receive is the one receive of the same message id in another process before the call stops; the server call it began is the first to start on the receiving thread within 5 ms. A link is checked, never assumed: the linked calls must carry one interface and one procedure.",
+    "Records stay in memory and are never written; only these counters are."
+  ],
+  "schema": "intercat.alpc-feasibility.v1",
+  "measuredUtc": "2026-09-27T16:48:48.4026385+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "session": {
+    "mode": "private system logger, uniquely named, owned and stopped by the probe",
+    "kernelFlags": [
+      "AdvancedLocalProcedureCalls",
+      "Process"
+    ],
+    "userProviders": [
+      "Microsoft-Windows-RPC events 5, 6, 7 and 8"
+    ],
+    "eventsLost": 0
+  },
+  "workload": {
+    "scenario": "FX-RPC-001",
+    "callsRequested": 200,
+    "truthCalls": 200,
+    "seconds": 9.6
+  }
+}
