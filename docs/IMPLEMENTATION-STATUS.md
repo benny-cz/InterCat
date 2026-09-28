@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 236 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 237 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 237 — M3's content-capable source, measured (ADR-037, §11.2):**
+  - WinINet's own capture provider records each request and response head and body of an HTTP exchange. A lab probe
+    measured it against FX-HTTP-001, whose loopback server logs every part it received and sent by length and SHA-256.
+  - Four runs of 16 and 64 requests: every part matched the wire; session id, sequence number and flags state the
+    exchange, buffer order and boundaries; the client raised every record; a process filter kept a decoy out.
+  - Admitted to no profile yet; the admission - scope required, owner binding, overhead - is the next slice.
 
 - **Revision 236 — a person inspects kept content (§3.7, §11.2, ADR-036, `content-v1` §4):**
   - C, or "Inspect its content", opens a record's content: its facts first - what it is, its source and declared
@@ -2075,10 +2082,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         §6.2 density regime remains (item 5).
    - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could; revision 234 keeps
      content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
-     the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7). Next: one validated
-     content-capable source or import path. Later: a follower that mirrors content, so a broker capture could keep it;
-     releasing content alone; a fixture decoder (§11.2's `DecodedFields`); and measuring whether application providers'
-     headers name their owners (ADR-030).
+     the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7); revision 237
+     measures M3's content-capable source, WinINet's capture provider (ADR-037). Next: its admission - a content source
+     naming its four events, a Content profile that refuses a request without a process scope, its records bound to the
+     client that raised them (a `process-binding-v3` revision), its overhead, and FX-HTTP-001 and FX-CONTENT-001 in the
+     fixture index. Later: HTTPS and HTTP/2 through it; a follower that mirrors content, so a broker capture could keep
+     it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2131,6 +2140,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 237 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,377 tests: 1,373
+  passed, 4 skipped**, zero failures. The probe ran four times, elevated, into scratch: 16 and 64 requests, bodies to
+  96 and 256 KiB; every part of every exchange matched, nothing was lost, and a concurrent decoy's 64 exchanges left no
+  record. No ETW session was left; scratch was deleted. `bench/results/wininet-capture-feasibility-20260928T102426Z`
+  holds counters only.
 - Revision 236 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,377 tests: 1,373
   passed, 4 skipped**, zero failures. Live on the Release build, on a fixture capture recorded into scratch: C opened
   the viewer on the reveal button; the reveal moved the keyboard to the first hex line; a range and a refused range

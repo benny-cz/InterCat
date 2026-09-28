@@ -42,6 +42,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 20,
     };
 
+    var httpOptions = new HttpWinInetOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_260_929,
+        Requests = Integer(args, "--requests") ?? 16,
+        MaximumBodyBytes = Integer(args, "--bytes") ?? 96 * 1024,
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
+    };
+
     var pipeOptions = new PipeLoopbackOptions
     {
         TruthDirectory = truth,
@@ -100,6 +109,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await RpcLocalScenario.RunClientAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
             "rpc-local" or "rpc-local-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "content-fixture" => await ContentFixtureScenario.RunAsync(contentOptions, cancellationToken).ConfigureAwait(false),
+            "http-wininet" when OperatingSystem.IsWindows() =>
+                await HttpWinInetScenario.RunAsync(httpOptions, cancellationToken).ConfigureAwait(false),
+            "http-wininet" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             _ => await UnknownAsync(args[0]).ConfigureAwait(false),
         };
     }
@@ -113,7 +125,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
 
 static async Task<int> UnsupportedPlatformAsync()
 {
-    await Console.Error.WriteLineAsync("Named-pipe message mode is a Windows feature; this scenario runs on Windows only.")
+    await Console.Error.WriteLineAsync("This scenario uses a Windows feature and runs on Windows only.")
         .ConfigureAwait(false);
     return 3;
 }
@@ -176,6 +188,12 @@ static void PrintHelp()
     Console.WriteLine("      FX-CONTENT-001: raises InterCat's own content fixture provider with seeded messages, some");
     Console.WriteLine("      longer than the content-fixture profile keeps, once a capture enables it (ADR-036). The");
     Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
+    Console.WriteLine();
+    Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start]");
+    Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
+    Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
+    Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
+    Console.WriteLine("      line on standard input first, so a capture scoped to this process is in place.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

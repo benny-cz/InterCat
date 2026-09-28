@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- For the provider's registered schema, read as the product's inventory reads it. -->
+    <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A lab probe, not a product adapter: its own session, scoped to the workload's process, reads WinINet's capture
+         provider to measure what it records before any profile admits it. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
+  </ItemGroup>
+</Project>

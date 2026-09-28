@@ -20,6 +20,7 @@
     <Project Path="tools/InterCat.CaptureComparison/InterCat.CaptureComparison.csproj" />
     <Project Path="tools/InterCat.JournalProbe/InterCat.JournalProbe.csproj" />
     <Project Path="tools/InterCat.ThemeReport/InterCat.ThemeReport.csproj" />
+    <Project Path="tools/InterCat.WinInetProbe/InterCat.WinInetProbe.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/InterCat.Domain.Tests/InterCat.Domain.Tests.csproj" />

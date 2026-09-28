@@ -137,8 +137,9 @@ journal or segment file.
 
 ## 6. What is not defined at this version
 
-- Content of a real application's source: no such source is validated, so the Content profile's bounded request still
-  compiles no admission policy (`contracts/capture-profile-preview-v1.md`).
+- Content of a real application's source. ADR-037 measured WinINet's capture provider in the lab (revision 237): it
+  states an HTTP exchange's parts exactly, scoped to named processes. Until its admission, the Content profile's bounded
+  request still compiles no admission policy (`contracts/capture-profile-preview-v1.md`).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.
