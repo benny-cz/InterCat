@@ -1169,12 +1169,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             return;
         }
 
-        // Opening a group draws its members one by one (§6.3's explicit expansion): the double click is Enter on its row.
-        // A double click on an edge opens that relationship's channel view (§6.7).
+        // Opening a group draws its members one by one (§6.3's explicit expansion), and opening a process shows its
+        // channels: the double click is Enter on its row. A double click on an edge opens that relationship's channel
+        // view (§6.7).
         Point pointer = e.GetPosition(this);
         if (HitTest(viewModel, pointer) is { } key)
         {
-            e.Handled = viewModel.OpenGraphGroup(key);
+            e.Handled = viewModel.OpenGraphNode(key);
         }
         else if (EdgeHitTest(viewModel, pointer) is { } edge)
         {
@@ -1226,7 +1227,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         if (e.Key == Key.Enter)
         {
-            e.Handled = viewModel.OpenGraphGroup(order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key);
+            e.Handled = viewModel.OpenGraphNode(order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key);
         }
     }
 

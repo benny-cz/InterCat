@@ -20,7 +20,7 @@ public sealed record SearchRow(SearchHit Hit) : IAccessibleRow
 
     public string Detail => Hit.Detail;
 
-    public string Observations => string.Create(CultureInfo.CurrentCulture, $"{Hit.ObservationCount:N0} records");
+    public string Observations => Spoken.Count(Hit.ObservationCount, "record");
 
     /// <summary>
     /// The hit as it reads aloud: its kind as a word rather than the eyebrow's capitals, which some voices spell out,

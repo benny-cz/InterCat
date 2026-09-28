@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -87,7 +88,13 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         rows.DoubleTapped += (_, _) => ChooseSelected();
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
-
+        // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
+        KeyDown += (_, key) =>
+        {
+            if (key.Key != Key.Escape) return;
+            Close();
+            key.Handled = true;
+        };
         var footer = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -169,7 +176,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             next.IsEnabled = nextCursor is not null;
             status.Text = page.TotalChannels == 0
                 ? "No admitted paired TCP channel is in this scope. This is not proof of inactivity."
-                : $"Generation {page.Generation:N0} · {page.TotalChannels:N0} channels in scope "
+                : $"Generation {page.Generation:N0} · {Spoken.Count(page.TotalChannels, "channel")} in scope "
                     + $"· {currentChannels.Count:N0} on this page"
                     + (nextCursor is null ? " · end of result" : " · more pages available");
         }
@@ -210,7 +217,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         string first = channel.FirstHolder is { } firstHolder ? processName(firstHolder) ?? "an unlisted process" : "an unknown process";
         string second = channel.SecondHolder is { } secondHolder ? processName(secondHolder) ?? "an unlisted process" : "an unknown process";
         return string.Create(CultureInfo.CurrentCulture,
-            $"{first} ↔ {second} · {ChannelNames.Compact(channel.Name)} · {channel.ObservationCount:N0} records");
+            $"{first} ↔ {second} · {ChannelNames.Compact(channel.Name)} · {Spoken.Count(channel.ObservationCount, "record")}");
     }
 
     /// <summary>The channel the user chose, which the workspace opens at its evidence rung.</summary>

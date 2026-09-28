@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -117,6 +119,43 @@ public sealed class MultiSelectionTests
         Click(window, graph, serverNode.Key, RawInputModifiers.None);
         Assert.False(workspace.HasMultiSelection);
         Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection")]
+    public void TheRowMenuOpensFromTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. Third(20)]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Control row = list.ContainerFromIndex(Row(workspace, "client"))!;
+        ContextMenu menu = row.GetVisualDescendants().OfType<Control>().Select(control => control.ContextMenu).OfType<ContextMenu>().First();
+        Assert.True(row.Focus());
+
+        // The key raises its request as it comes up, on the focused row, above the element the menu is attached to; the menu
+        // opens anyway.
+        window.KeyPressQwerty(PhysicalKey.ContextMenu, RawInputModifiers.None);
+        window.KeyReleaseQwerty(PhysicalKey.ContextMenu, RawInputModifiers.None);
+        Dispatch();
+        Assert.True(menu.IsOpen);
+        MenuItem toggle = Assert.IsType<MenuItem>(menu.Items[0]);
+        toggle.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        menu.Close();
+        Dispatch();
+        Assert.Equal([100], workspace.ChosenProcesses.Select(process => process.ProcessId));
+
+        // Shift+F10 is the same request on a keyboard without the key.
+        Assert.True(row.Focus());
+        window.KeyPressQwerty(PhysicalKey.F10, RawInputModifiers.Shift);
+        window.KeyReleaseQwerty(PhysicalKey.F10, RawInputModifiers.Shift);
+        Dispatch();
+        Assert.True(menu.IsOpen);
+        menu.Close();
         window.Close();
     }
 

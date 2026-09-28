@@ -111,9 +111,11 @@ public sealed partial class MainWindow : Window, IDisposable
         // Window shortcuts are handled while the key tunnels down, because a focused list would otherwise
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, RequestContextMenuOnShiftF10, RoutingStrategies.Bubble);
 
         // §6.7: Ctrl+click on a ranked row adds it to the multi-selection or removes it, before the list would select it alone.
         RungList.AddHandler(PointerPressedEvent, OnRungListPointerPressed, RoutingStrategies.Tunnel);
+        RungList.AddHandler(ContextRequestedEvent, OpenRowMenu, RoutingStrategies.Bubble);
 
         // The current rung is the last crumb. When a descent or a long channel name widens the trail, it scrolls so
         // that crumb stays in view instead of being clipped behind the level badge (section 3.2, position stated).
@@ -208,8 +210,9 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (e.Key == Key.Escape)
             {
+                // Escape clears the search and leaves the box, even an empty one, for the table the user came from.
                 viewModel.SearchText = string.Empty;
-                RungList.Focus();
+                FocusRail();
                 e.Handled = true;
             }
             else if (e.Key == Key.Enter)
@@ -321,6 +324,17 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
+    /// Gives the ranked table the keyboard, on its selected row or its first, once its rows are laid out. A list takes no
+    /// focus of its own, so focusing the list itself left the keyboard where it was, or on nothing once the control that
+    /// had it was hidden: the search box after Escape, a search hit after Enter.
+    /// </summary>
+    private void FocusRail()
+    {
+        railOwnsKeyboard = true;
+        KeepRailKeyboard();
+    }
+
+    /// <summary>
     /// Gives the keyboard back to the ranked table's selected row, or its first, once rebuilt rows are laid out. A rung
     /// change rebuilds the table, and so do rows arriving for the same rung - a process's RPC channels, the next page of
     /// records - and the row that had the keyboard goes with them; while the table owns the keyboard, the new rows get
@@ -376,7 +390,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool OpenSelectedSearchHit()
     {
         if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSearchResult()) return false;
-        RungList.Focus();
+        FocusRail();
         return true;
     }
 
@@ -425,8 +439,37 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (workspace.ShowChosenRecords())
         {
-            RungList.Focus();
+            FocusRail();
         }
+    }
+
+    /// <summary>
+    /// Opens the focused ranked row's menu for the context-menu key and Shift+F10. They raise their request on the row
+    /// itself, above the element the menu is attached to, so without this the request never reached the menu and only a
+    /// right-click, which starts inside the row, opened it (R15: the menu equivalent of Ctrl+click has a keyboard path).
+    /// </summary>
+    private void OpenRowMenu(object? sender, ContextRequestedEventArgs request)
+    {
+        if (request.Handled || request.Source is not ListBoxItem row) return;
+        if (row.GetVisualDescendants().OfType<Control>().FirstOrDefault(control => control.ContextMenu is not null) is
+            { ContextMenu: { } menu } owner)
+        {
+            menu.Open(owner);
+            request.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Shift+F10 is Windows' context-menu key for keyboards without one. Where the platform raises no context request for
+    /// it, as the headless one does not, the window raises it on the focused control as the key would; where it does, the
+    /// request it raised has handled the key and this does nothing.
+    /// </summary>
+    private void RequestContextMenuOnShiftF10(object? sender, KeyEventArgs key)
+    {
+        if (key.Handled || key.Key != Key.F10 || key.KeyModifiers != KeyModifiers.Shift || key.Source is not Control focused) return;
+        var request = new ContextRequestedEventArgs();
+        focused.RaiseEvent(request);
+        key.Handled = request.Handled;
     }
 
     /// <summary>The menu equivalent of Ctrl+click on a ranked row (§6.7, R15).</summary>
@@ -1301,7 +1344,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 : "This saves an exact copy of this session's evidence in a new folder, which opens in InterCat as the same "
                     + "session. The session you have open is not changed.",
             string.Create(CultureInfo.CurrentCulture,
-                $"It holds generation {preview.Generation:N0}: {preview.Rows:N0} records, {journals:N0} {journalKind} "
+                $"It holds generation {preview.Generation:N0}: {Spoken.Count(preview.Rows, "record")}, {journals:N0} {journalKind} "
                 + $"{(journals == 1 ? "file" : "files")} of {recordKind}, and {preview.Files.Count:N0} files in all "
                 + $"({RecentSessions.Size(preview.Bytes, CultureInfo.CurrentCulture)})."),
             preview.Redacted ? OriginalEvidencePackage.RedactedContents : "Unredacted: " + OriginalEvidencePackage.Contents,
@@ -1402,7 +1445,7 @@ public sealed partial class MainWindow : Window, IDisposable
             if (!closed)
             {
                 CaptureStatus.Text = "Redacted session package saved";
-                CaptureDetail.Text = $"Saved {result.Counts.Rows:N0} records to {result.Directory}. It was reopened and "
+                CaptureDetail.Text = $"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}. It was reopened and "
                     + "checked before it was published. Review it before sharing it.";
             }
 
@@ -1464,8 +1507,8 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 Paragraph("This saves a new session folder that opens in InterCat, for someone else to explore. The "
                     + "session you have open is not changed."),
-                Paragraph($"Kept: all {overview.ObservationRows:N0} records with their times, sizes, status and quality; "
-                    + $"the {overview.Nodes.Count:N0} processes and how they relate; coverage and loss."),
+                Paragraph($"Kept: every record, {overview.ObservationRows:N0} in all, with its time, size, status and quality; "
+                    + $"every process, {overview.Nodes.Count:N0} in all, and how they relate; coverage and loss."),
                 Paragraph("Replaced by random pseudonyms: executable, pipe and resource names; process and thread IDs; "
                     + "addresses and ports; activity and interface identifiers; third-party providers."),
                 Paragraph("Left out: the original journal with any record bodies and extended data, process start and "
@@ -1508,7 +1551,7 @@ public sealed partial class MainWindow : Window, IDisposable
             Margin = new Avalonia.Thickness(20), Spacing = 12,
             Children =
             {
-                Paragraph($"Saved {result.Counts.Rows:N0} records to {result.Directory}."),
+                Paragraph($"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}."),
                 Paragraph($"Before it was saved, the package was reopened as a recipient would open it, every value "
                     + $"was checked against the pseudonyms it issued, and {result.FilesVerified:N0} files were searched "
                     + "for this session's identities and names. None was found."),

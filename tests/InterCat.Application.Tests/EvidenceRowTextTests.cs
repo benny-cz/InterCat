@@ -41,6 +41,21 @@ public sealed class EvidenceRowTextTests
     }
 
     [Fact]
+    public void ARecordsQualityReadsAsWordsNotEnumerationNames()
+    {
+        ObservationRowV1 send = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 64, 100) with
+        {
+            AttributionQuality = QualityLevel.Proven,
+            CorrelationQuality = QualityLevel.UnknownQuality,
+            MeasurementQuality = QualityLevel.Qualified,
+            TimingQuality = QualityLevel.Weak,
+        };
+
+        Assert.Equal("attribution proven, correlation unknown, measurement qualified, timing weak", EvidenceRowText.Quality(send));
+        Assert.Equal("level 9", EvidenceRowText.QualityName((QualityLevel)9));
+    }
+
+    [Fact]
     public void AnIpv6RowNamesItsEndpointsBracketedInCanonicalText()
     {
         ObservationRowV1 send = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 64, 100)

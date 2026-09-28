@@ -13,6 +13,11 @@ internal static class Spoken
         ? $"1 {noun}"
         : string.Create(CultureInfo.CurrentCulture, $"{count:N0} {noun}s");
 
+    /// <summary>A count with a noun whose plural is not the singular and an s: "1 process", "3 processes".</summary>
+    public static string Count(long count, string one, string many) => count == 1
+        ? $"1 {one}"
+        : string.Create(CultureInfo.CurrentCulture, $"{count:N0} {many}");
+
     public static string Coverage(string label) =>
         "coverage: " + (label.EndsWith(" coverage", StringComparison.Ordinal) ? label[..^" coverage".Length] : label);
 }

@@ -242,9 +242,9 @@ public sealed partial class WorkspaceViewModel
             else if (rankBy == RankingMetric.EndpointBytes)
             {
                 note = measured > 0
-                    ? string.Create(CultureInfo.CurrentCulture, $"{WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} records · both ends")
+                    ? $"{WorkspaceRowBuilder.DescribeSize(value)} on {Spoken.Count(measured, "record")} · both ends"
                     : unmeasured > 0
-                        ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} records, none with a size")
+                        ? Spoken.Count(unmeasured, "record") + (unmeasured == 1 ? ", with no size" : ", none with a size")
                         : "No transfers in scope";
                 if (measured > 0 && unmeasured > 0)
                 {
@@ -329,7 +329,7 @@ public sealed partial class WorkspaceViewModel
                 if (ladder.Current.Level == DetailLevel.Machine && peerMeasures.Unattributed > 0)
                 {
                     detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {peerMeasures.Unattributed:N0} records belong to no process the evidence policy admits at either end.");
+                        $" {Spoken.Count(peerMeasures.Unattributed, "record")} {(peerMeasures.Unattributed == 1 ? "belongs" : "belong")} to no process the evidence policy admits at either end.");
                 }
             }
             else if (shown is SessionCallMeasures timed && RankingMetrics.IsDuration(rankBy))
@@ -341,7 +341,7 @@ public sealed partial class WorkspaceViewModel
                 if (unmeasured > 0)
                 {
                     detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {unmeasured:N0} stops paired with no start are stated and never timed; a row with only such stops ranks after every row that timed a call.");
+                        $" {Spoken.Count(unmeasured, "stop")} paired with no start {(unmeasured == 1 ? "is" : "are")} stated and never timed; a row with only such stops ranks after every row that timed a call.");
                 }
 
                 RankingMetric counted = rankBy == RankingMetric.RpcCallTime ? RankingMetric.RpcCallsMade : RankingMetric.RpcCallsServed;
@@ -358,8 +358,10 @@ public sealed partial class WorkspaceViewModel
             }
             else if (shown is SessionCallMeasures errors && rankBy == RankingMetric.RpcErrors)
             {
-                detail = string.Create(CultureInfo.CurrentCulture,
-                    $"{definition} The rows shown completed {measured:N0} calls whose stop carried a status; {value:N0} of them failed.");
+                string failedOf = measured == 1
+                    ? (value == 1 ? "it failed." : "it did not fail.")
+                    : string.Create(CultureInfo.CurrentCulture, $"{value:N0} of them failed.");
+                detail = $"{definition} The rows shown completed {Spoken.Count(measured, "call")} whose stop carried a status; {failedOf}";
                 if (unmeasured > 0)
                 {
                     detail += string.Create(CultureInfo.CurrentCulture,
@@ -378,7 +380,7 @@ public sealed partial class WorkspaceViewModel
                 if (unmeasured > 0)
                 {
                     detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {unmeasured:N0} stops paired with no start are stated and not counted; a row with only such stops ranks after every row that completed a call.");
+                        $" {Spoken.Count(unmeasured, "stop")} paired with no start {(unmeasured == 1 ? "is" : "are")} stated and not counted; a row with only such stops ranks after every row that completed a call.");
                 }
 
                 if (ladder.Current.Level == DetailLevel.Machine && calls.Unattributed.Of(rankBy) is { Holds: true } unheld)

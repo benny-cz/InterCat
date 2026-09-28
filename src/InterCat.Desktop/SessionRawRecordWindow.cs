@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
@@ -57,6 +58,13 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
+        // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
+        KeyDown += (_, key) =>
+        {
+            if (key.Key != Key.Escape) return;
+            Close();
+            key.Handled = true;
+        };
         var footer = new StackPanel
         {
             Orientation = Orientation.Horizontal,

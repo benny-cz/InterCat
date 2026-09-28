@@ -113,12 +113,15 @@ public sealed partial class AccessibilityAuditTests
             }
         }
 
-        // The drawn panes are custom controls with a role, help that names their table, and what they draw now.
+        // The drawn panes are custom controls with a role, help that names their table, and what they draw now; the
+        // timeline and minimap also say the range in view.
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        string inView = TimelineView.ViewportWords(timeline.Viewport, timeline.IsFit, workspace.Snapshot.Extent);
         foreach ((string name, string role, string? status) in new[]
         {
             ("GraphSurface", "graph", (string?)workspace.GraphSummary),
-            ("TimelineSurface", "timeline", workspace.TimelineCaption),
-            ("MinimapSurface", "minimap", null),
+            ("TimelineSurface", "timeline", workspace.TimelineCaption + " · " + inView),
+            ("MinimapSurface", "minimap", inView),
         })
         {
             AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(window.GetControl<Control>(name));

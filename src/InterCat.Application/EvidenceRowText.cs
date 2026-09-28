@@ -150,6 +150,27 @@ public static class EvidenceRowText
                 ? RedactedSessionPseudonyms.PseudonymousProviderName(provider) + " (pseudonym)"
                 : "provider " + provider.ToString("D");
 
+    /// <summary>
+    /// A record's four quality dimensions in words: "attribution proven, correlation unknown, measurement unknown, timing
+    /// proven". Exports keep the enumeration names, which a program reads; a person reads these.
+    /// </summary>
+    public static string Quality(ObservationRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return $"attribution {QualityName(row.AttributionQuality)}, correlation {QualityName(row.CorrelationQuality)}, "
+            + $"measurement {QualityName(row.MeasurementQuality)}, timing {QualityName(row.TimingQuality)}";
+    }
+
+    /// <summary>One quality level as a word; a level this version does not know is named by its number, never guessed.</summary>
+    public static string QualityName(QualityLevel level) => level switch
+    {
+        QualityLevel.Proven => "proven",
+        QualityLevel.Qualified => "qualified",
+        QualityLevel.Weak => "weak",
+        QualityLevel.UnknownQuality => "unknown",
+        _ => string.Create(CultureInfo.InvariantCulture, $"level {(int)level}"),
+    };
+
     public static string MechanismName(Mechanism mechanism) => mechanism switch
     {
         Mechanism.ProcessLifecycle => "Process",

@@ -1168,7 +1168,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + "faint · machine context above · click a call to select its row"
         : timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
-            ? $"Observed records by mechanism · {wholeSnapshot.MechanismLanes.Count:N0} lanes"
+            ? "Observed records by mechanism · " + Counted(wholeSnapshot.MechanismLanes.Count, "lane", "lanes")
                 + (SelectedTimelineMechanism is { } mechanism
                     ? $" · {EvidenceRowText.MechanismName(mechanism)} table/step focus"
                     : " · click a lane name or choose one in tables (T)")
@@ -1179,7 +1179,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
-                ? $"{focus} · {processLaneDisplay.Count:N0} process lanes" + LaneResolutionNote
+                ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + LaneResolutionNote
                     + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction · machine context above"
@@ -1613,7 +1613,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         : string.Empty));
             return graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder)
-                ? text + string.Create(CultureInfo.CurrentCulture, $" · drawn as {graphDisplay.Nodes.Count:N0} nodes")
+                ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count, "node", "nodes")
                 : text;
         }
     }
@@ -1952,6 +1952,25 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         SelectGraphNode(key);
         return Descend();
     }
+
+    /// <summary>
+    /// Opens a drawn node as Enter on its row would (§6.3, §6.7): a group at the machine rung, and a process at any rung,
+    /// through the ladder path a search hit takes - its group, then itself - so the breadcrumb states every rung and Esc
+    /// climbs each. A peer drawn beside the rung's own process opens its own rung this way. A node standing for many
+    /// processes, and the rung's own process, open nothing.
+    /// </summary>
+    public bool OpenGraphNode(string key)
+    {
+        if (OpenGraphGroup(key)) return true;
+        return graphDisplay.Node(key) is { } node && OpensProcess(node)
+            && DescendAlong([node.GroupKey!, node.Process!.Value.ToString()], selectedInterval);
+    }
+
+    /// <summary>Whether Enter on a drawn node opens its process: a process node other than the rung's own process.</summary>
+    private bool OpensProcess(GraphDisplayNode node) =>
+        node is { Kind: GraphNodeKind.Process, Process: { } process, GroupKey: not null }
+        && !(ladder.Current.Level == DetailLevel.ProcessInstance
+            && string.Equals(ladder.Current.Focus?.Key, process.ToString(), StringComparison.Ordinal));
 
     private void RaiseGraphSelectionChanged()
     {
@@ -2567,8 +2586,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : IsRpcChannelRung
             ? RpcCallSummary(brief: false)
         : FocusedRealChannel is { } channel
-            ? string.Create(CultureInfo.CurrentCulture,
-                $"{channel.ObservationCount:N0} observed records at this channel's two ends · {FocusedChannelBytes(channel)} · no operation rung; E shows the records")
+            ? Spoken.Count(channel.ObservationCount, "observed record")
+                + $" at this channel's two ends · {FocusedChannelBytes(channel)} · no operation rung; E shows the records"
             : RungTotal(brief: false) + RealScopeNote(brief: false);
 
     /// <summary>
@@ -2586,7 +2605,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     || (ReadsBytes && view.KnownBytes is null))
                 && view.ObservationCount is { } total)
             {
-                return string.Create(CultureInfo.CurrentCulture, $"{total:N0} observations");
+                return Spoken.Count(total, "observation");
             }
 
             return brief ? LadderRowBuilder.DescribeTotalShort(view) : LadderRowBuilder.DescribeTotal(view);
@@ -2594,9 +2613,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         long records = rpcChannelRows.Sum(row => row.Source.ObservationCount);
         return brief
-            ? string.Create(CultureInfo.CurrentCulture, $"{records:N0} call records")
-            : string.Create(CultureInfo.CurrentCulture,
-                $"{records:N0} call records in {rpcChannelRows.Count:N0} RPC {(rpcChannelRows.Count == 1 ? "channel" : "channels")} · RPC carries no size");
+            ? Spoken.Count(records, "call record")
+            : Spoken.Count(records, "call record") + " in "
+                + Spoken.Count(rpcChannelRows.Count, "RPC channel") + " · RPC carries no size";
     }
 
     /// <summary>The same total in one line, for the narrow ranked-table rail.</summary>
@@ -2605,7 +2624,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : IsRpcChannelRung
             ? RpcCallSummary(brief: true)
         : FocusedRealChannel is { } channel
-            ? string.Create(CultureInfo.CurrentCulture, $"{channel.ObservationCount:N0} records on this channel · no operation rung")
+            ? Spoken.Count(channel.ObservationCount, "record") + " on this channel · no operation rung"
             : RungTotal(brief: true) + RealScopeNote(brief: true);
 
     /// <summary>
@@ -3000,6 +3019,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (graphPins.ContainsKey(node.Key))
             {
                 nodeLines.Add("Pinned where it was placed · P releases it");
+            }
+
+            // What OpenGraphNode will do, so the gesture is discoverable where the node is read, as an edge's is.
+            if (node.Kind == GraphNodeKind.Group && ladder.Current.Level == DetailLevel.Machine)
+            {
+                nodeLines.Add("Double-click or Enter opens the group");
+            }
+            else if (OpensProcess(node))
+            {
+                nodeLines.Add("Double-click or Enter opens this process");
             }
 
             return new(title, nodeLines);
@@ -3977,8 +4006,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 fields.Add(new("Size", size + (row.ByteDomain is { } domain ? $" · {domain}" : string.Empty)));
             fields.Add(new("Source", string.Create(CultureInfo.InvariantCulture,
                 $"{EvidenceRowText.ProviderName(row.ProviderId, wholeSnapshot.Redaction is not null)} · event {row.EventId} v{row.DescriptorVersion}")));
-            fields.Add(new("Quality", $"attribution {row.AttributionQuality}, correlation {row.CorrelationQuality}, "
-                + $"measurement {row.MeasurementQuality}, timing {row.TimingQuality}"));
+            fields.Add(new("Quality", EvidenceRowText.Quality(row)));
             fields.Add(new("Record", string.Create(CultureInfo.InvariantCulture,
                 $"raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} · {record.SegmentName} row {record.SegmentRow}")));
             return fields;

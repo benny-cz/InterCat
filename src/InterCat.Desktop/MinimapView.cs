@@ -21,10 +21,11 @@ public sealed class MinimapView : Control
     /// <summary>The mode the minimap draws in: the tokens' current one, so a change of theme reaches it (§6.1).</summary>
     private static ThemeMode Mode => ThemeResources.CurrentMode;
 
-    /// <summary>The minimap as a screen reader meets it: its role and its keyboard path.</summary>
+    /// <summary>The minimap as a screen reader meets it: its role, its keyboard path, and the timeline's range in view.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "minimap",
         "The whole session: arrows pan the timeline's view, plus and minus zoom, Home and End jump to its edges, and 0 "
-        + "fits the whole session.", () => null);
+        + "fits the analysis interval, or the whole session when none is brushed.",
+        () => timeline is null ? null : TimelineView.ViewportWords(timeline.Viewport, timeline.IsFit, Extent));
 
     // Brushes and pens are built once per theme mode and reused every frame (R11).
     private static readonly Dictionary<ThemeMode, Ink> Inks = [];

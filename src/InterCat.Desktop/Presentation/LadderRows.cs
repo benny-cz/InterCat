@@ -54,7 +54,7 @@ public sealed record RungRow(
             // A median says little without how many calls stand behind it, so a time ranking names them for the records.
             string behind = Source.Ranked is { } ranked && RankingMetrics.IsDuration(ranked.Metric)
                 ? string.Create(CultureInfo.CurrentCulture, $"{ranked.Measured:N0} {(ranked.Measured == 1 ? "call" : "calls")} timed")
-                : $"{Observations} records";
+                : Spoken.Count(Source.ObservationCount, "record");
             string holds = RankedFigure is null ? Detail
                 : Detail.Length == 0 ? behind
                 : $"{Detail} · {behind}";
@@ -290,7 +290,7 @@ public static class LadderRowBuilder
                 : string.Empty;
             return ranked.Value is { } errors
                 ? string.Create(CultureInfo.CurrentCulture,
-                    $"{errors:N0} RPC {(errors == 1 ? "error" : "errors")} of {ranked.Measured:N0} calls with a status{unknown}")
+                    $"{errors:N0} RPC {(errors == 1 ? "error" : "errors")} of {Spoken.Count(ranked.Measured, "call")} with a status{unknown}")
                 : ranked.Holds ? $"RPC errors unknown{unknown}" : "no RPC calls";
         }
 
@@ -301,7 +301,7 @@ public static class LadderRowBuilder
                 : string.Empty;
             return ranked.Value is { } both
                 ? string.Create(CultureInfo.CurrentCulture,
-                    $"{WorkspaceRowBuilder.DescribeSize(both)} sent and received on {ranked.Measured:N0} measured records{unmeasuredRecords}")
+                    $"{WorkspaceRowBuilder.DescribeSize(both)} sent and received on {Spoken.Count(ranked.Measured, "measured record")}{unmeasuredRecords}")
                 : ranked.Holds ? $"bytes unmeasured{unmeasuredRecords}" : "no transfers";
         }
 
@@ -369,9 +369,7 @@ public static class LadderRowBuilder
             return "no single total: " + (view.TotalUnavailableReason ?? "these rows overlap");
         }
 
-        return string.Create(
-            CultureInfo.CurrentCulture,
-            $"{total:N0} observations · {WorkspaceRowBuilder.DescribeBytes(view.KnownBytes)}");
+        return Spoken.Count(total, "observation") + " · " + WorkspaceRowBuilder.DescribeBytes(view.KnownBytes);
     }
 
     /// <summary>
@@ -382,9 +380,7 @@ public static class LadderRowBuilder
     {
         ArgumentNullException.ThrowIfNull(view);
         return view.ObservationCount is { } total
-            ? string.Create(
-                CultureInfo.CurrentCulture,
-                $"{total:N0} observations · {WorkspaceRowBuilder.DescribeBytes(view.KnownBytes)}")
+            ? Spoken.Count(total, "observation") + " · " + WorkspaceRowBuilder.DescribeBytes(view.KnownBytes)
             : "no single total: these rows overlap";
     }
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 213 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 214 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 214 — what a live pass of search, rankings, the row menu, graph and timeline found (§6.7, R15):**
+  - Escape out of the search, Enter on a hit and "Show the selected processes' records" give the keyboard to the ranked
+    table's row; they focused the list itself, which takes no focus, and the keyboard stayed put or fell to nothing.
+  - The context-menu key and Shift+F10 open a ranked row's menu, Ctrl+click's keyboard equivalent; only a right-click
+    did.
+  - Enter and a double click open a process node's rung from the graph at any rung, through its group, as the graph's
+    help promised; they opened only groups. A node's hover card names what the gesture opens.
+  - The timeline and minimap state the range in view, so a zoom, pan or fit is heard as well as drawn.
+  - The original-record window and the channel browser close on Escape, as the prompts did.
+  - Counts read in the right number ("1 process lane", "of 1 call with a status", "1 record" in a search hit), and a
+    record's quality reads "correlation unknown", not "UnknownQuality".
 
 - **Revision 213 — the ranked table keeps the keyboard across rungs (§3.2, R15):**
   - After Enter, E or Esc the new rung's selected row, or its first, has the keyboard, and so does a table whose rows
@@ -1889,7 +1901,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Decided in revision 152: a viewer no longer hashes a session before its first view (store-v1 §6). It hashes
      afterwards, and falls back and says so when a file changed. The command line and writers still hash at open.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
-   headlessly; it cannot hear what a screen reader says. Then add pin/collapse/search for lanes as the observed lane
+   headlessly; it cannot hear what a screen reader says. Revision 214's live pass found that Avalonia's menu items
+   expose no UI Automation Invoke pattern: the keyboard reaches them, but voice control may not, so check it there.
+   A timeline status that changes with the view is read when asked for, not announced; check whether a zoom needs a
+   live announcement. Then add pin/collapse/search for lanes as the observed lane
    count requires. L4's operation lanes, with duration bars and byte projections where a derivation supports them,
    wait on item 3's operations; L5 keeps its marks.
 3. Continue M1's IC-015 operation/topology derivations and IC-016a checkpoint without inventing unsupported
@@ -1926,6 +1941,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
    three presets exist since revision 154.
 5. Interaction follow-ups with no dependents:
+   - Per second over a whole session: revision 209 states rates only over a brushed or zoomed interval, because a
+     session states no interval of its own and the span between its first and last record is not one. A capture's
+     coverage ledger does state the intervals it recorded; dividing by their span would give a whole session rates
+     without a brush, once that span is published with the overview.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -1961,6 +1980,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 214 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,312 tests: 1,308
+  passed, 4 skipped**, zero failures. A live pass of the Release window on a 20-second dense capture (743 processes,
+  6,896 RPC calls) drove search, every ranking, the row menu, graph, timeline, evidence rung and original-record window
+  by keys posted to its window. Each finding was reproduced headlessly first, and each fix was confirmed live, the
+  capture deleted afterwards.
 - Revision 213 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,307 tests: 1,303
   passed, 4 skipped**, zero failures. A keyboard-only walk of the Release window on a 20-second dense capture found the
   lost focus and, fixed, kept a row focused from L0 to L2, into the evidence and back. Alt and Shift posted as window

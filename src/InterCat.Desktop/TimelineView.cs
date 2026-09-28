@@ -186,12 +186,27 @@ public sealed class TimelineView : Control, IHoverCardSource
     private bool moved;
     private TimeRange panOrigin;
 
-    /// <summary>The timeline as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
+    /// <summary>
+    /// The timeline as a screen reader meets it: its role, its keyboard path and table, and what it draws now, with the
+    /// range in view. The axis showed that range only to the eye, so after + or an arrow the timeline read the same
+    /// words wherever the view had moved (R15).
+    /// </summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "timeline",
         "Left and Right pan, with Shift by one bucket; plus and minus zoom; Home and End go to the session's edges; 0 "
-        + "fits; [ and ] step to the previous or next record; Up and Down scroll lanes. T shows the interval table, which "
-        + "lists what the timeline draws.",
-        () => (DataContext as WorkspaceViewModel)?.TimelineCaption);
+        + "fits the analysis interval, or the whole session when none is brushed; [ and ] step to the previous or next "
+        + "record; Up and Down scroll lanes. T shows the interval table, which lists what the timeline draws.",
+        () => DataContext is WorkspaceViewModel viewModel
+            ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent)
+            : null);
+
+    /// <summary>
+    /// The range in view as the timeline and minimap say it: the whole session while it is fitted, else the range
+    /// shown and the session's own, so a zoom and a pan read as the axis draws them.
+    /// </summary>
+    internal static string ViewportWords(TimeRange viewport, bool fit, TimeRange extent) => fit
+        ? "the whole session in view, " + WorkspaceTime.FormatRange(extent, CultureInfo.CurrentCulture)
+        : "in view " + WorkspaceTime.FormatRange(viewport, CultureInfo.CurrentCulture) + " of the session's "
+            + WorkspaceTime.FormatRange(extent, CultureInfo.CurrentCulture);
 
     public TimelineView()
     {

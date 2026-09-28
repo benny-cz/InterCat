@@ -59,6 +59,14 @@ public sealed class ChannelBrowserWindowTests
         Dispatch();
         Channel opened = Assert.IsType<Channel>(await chosen);
         Assert.Equal(Assert.Single(snapshot.Channels).Key, opened.Key);
+
+        // Escape closes the browser with no channel chosen, as it cancels InterCat's prompts.
+        using var again = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
+        Task<Channel?> cancelled = again.ShowDialog<Channel?>(owner);
+        Dispatch();
+        again.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Dispatch();
+        Assert.Null(await cancelled);
         owner.Close();
     }
 

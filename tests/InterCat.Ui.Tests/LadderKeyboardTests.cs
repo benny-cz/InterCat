@@ -1,11 +1,13 @@
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using System.Globalization;
 using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Desktop.Presentation;
@@ -177,6 +179,106 @@ public sealed class LadderKeyboardTests
         Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
         ListBoxItem back = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement());
         Assert.Equal(viewModel.SelectedRung?.Key, Assert.IsType<RungRow>(back.DataContext).Key);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: Enter on a process node opens its rung through its group, as its hover card says, and not again at its own rung")]
+    public async Task EnterOpensAProcessNode()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        await viewModel.LayoutReady;
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        GraphDisplayNode node = viewModel.GraphDisplay.Nodes.First(candidate => candidate.Kind == GraphNodeKind.Process);
+        Assert.Contains("Double-click or Enter opens this process", viewModel.DescribeGraphHover(node.Key)!.Lines);
+        Assert.True(graph.Focus());
+        viewModel.SelectGraphNode(node.Key);
+
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Assert.Equal("L2 · PROCESS", viewModel.LevelBadge);
+        Assert.Equal(3, viewModel.Crumbs.Count);
+
+        // At its own rung the process is drawn again; Enter there opens nothing, and its card offers nothing to open.
+        await viewModel.LayoutReady;
+        GraphDisplayNode own = viewModel.GraphDisplay.Nodes.First(candidate => candidate.Process == node.Process);
+        Assert.DoesNotContain(viewModel.DescribeGraphHover(own.Key)!.Lines, line => line.Contains("opens", StringComparison.Ordinal));
+        Assert.False(viewModel.OpenGraphNode(own.Key));
+
+        // Escape climbs back the way a descent through the group came.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the timeline and minimap say the range in view, so a zoom and a fit are heard as well as drawn")]
+    public void TheTimelineSaysWhatIsInView()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        AutomationPeer timelinePeer = ControlAutomationPeer.CreatePeerForElement(timeline);
+        AutomationPeer minimapPeer = ControlAutomationPeer.CreatePeerForElement(window.GetControl<MinimapView>("MinimapSurface"));
+        string whole = "the whole session in view, " + WorkspaceTime.FormatRange(viewModel.Snapshot.Extent, CultureInfo.CurrentCulture);
+        Assert.EndsWith(" · " + whole, timelinePeer.GetItemStatus(), StringComparison.Ordinal);
+        Assert.True(timeline.Focus());
+
+        window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Settle(window);
+        Assert.False(timeline.IsFit);
+        string zoomed = "in view " + WorkspaceTime.FormatRange(timeline.Viewport, CultureInfo.CurrentCulture) + " of the session's ";
+        Assert.Contains(zoomed, timelinePeer.GetItemStatus(), StringComparison.Ordinal);
+        Assert.StartsWith(zoomed, minimapPeer.GetItemStatus(), StringComparison.Ordinal);
+
+        // 0 fits the whole session again, with nothing brushed, and both say so.
+        window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(whole, minimapPeer.GetItemStatus());
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§3.2: Escape out of the search, or Enter on a hit, gives the keyboard to the ranked table's row")]
+    public void TheSearchHandsTheKeyboardBackToTheTable()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        ListBox list = window.GetControl<ListBox>("RungList");
+        TextBox search = window.GetControl<TextBox>("SearchBox");
+        ListBox hits = window.GetControl<ListBox>("SearchResultsList");
+        viewModel.SelectedRung = viewModel.RungRows[1];
+        Settle(window);
+        Assert.True(list.ContainerFromIndex(1)!.Focus());
+
+        // Escape clears the search and returns the keyboard to the row it left; a second Escape then ascends as usual.
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+        Assert.True(search.IsFocused);
+        search.Text = "cache";
+        Settle(window);
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(string.Empty, viewModel.SearchText);
+        Assert.Equal(viewModel.RungRows[1].Key, TableRowWithKeyboard(list).Key);
+
+        // Escape in an empty search box is the way out of it too, rather than a key that does nothing.
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(viewModel.RungRows[1].Key, TableRowWithKeyboard(list).Key);
+
+        // Enter on a hit in the results opens it through the ladder, and the opened rung's table has the keyboard.
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+        search.Text = "cache";
+        Settle(window);
+        SearchRow process = viewModel.SearchResults.First(row => row.Hit.Kind == SearchHitKind.Process);
+        viewModel.SelectedSearchResult = process;
+        Settle(window);
+        Assert.True(hits.ContainerFromItem(process)!.Focus());
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L2 · PROCESS", viewModel.LevelBadge);
+        Assert.False(hits.IsVisible);
+        Assert.Equal((viewModel.SelectedRung ?? viewModel.RungRows[0]).Key, TableRowWithKeyboard(list).Key);
+
+        // The next Down moves in the opened rung, as it would had the user descended there.
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.NotNull(viewModel.SelectedRung);
         window.Close();
     }
 
@@ -386,6 +488,14 @@ public sealed class LadderKeyboardTests
     {
         ListBox list = window.GetControl<ListBox>("RungList");
         list.Focus();
+    }
+
+    /// <summary>The ranked table's row that has the keyboard; fails when the keyboard is anywhere else.</summary>
+    private static RungRow TableRowWithKeyboard(ListBox list)
+    {
+        ListBoxItem item = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement());
+        Assert.Same(list, item.GetVisualAncestors().OfType<ListBox>().First());
+        return Assert.IsType<RungRow>(item.DataContext);
     }
 
     /// <summary>Runs the bindings and a layout pass, so visibility and bounds are the ones drawn.</summary>

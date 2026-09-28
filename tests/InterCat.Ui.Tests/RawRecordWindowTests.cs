@@ -1,5 +1,7 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -51,6 +53,12 @@ public sealed class RawRecordWindowTests
         Assert.Contains($"Provider Microsoft-Windows-Kernel-Network ({NetworkProvider:N}) · event ", detail, StringComparison.Ordinal);
         string body = detail.Split(Environment.NewLine).Single(line => line.StartsWith("Body: ", StringComparison.Ordinal));
         Assert.Matches("^Body: [a-z ]+, [a-z ]+ · original ", body);
-        window.Close();
+
+        // Escape closes it, as it closes InterCat's prompts.
+        bool closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(closed);
     }
 }
