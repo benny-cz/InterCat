@@ -61,6 +61,9 @@ public sealed record LiveRecordingResult
 
     /// <summary>True when kept content reached the policy's session limit, which stopped the capture (stop-at-limit).</summary>
     public bool ContentLimitReached { get; init; }
+
+    /// <summary>The clock calibration published with the last chunk; null when none was asked for.</summary>
+    public ClockCalibrationV1? Calibration { get; init; }
 }
 
 /// <summary>
@@ -86,6 +89,9 @@ public static class LiveSessionRecorder
     /// <param name="output">
     /// Whether the session gets rows, or only the admitted evidence an unprivileged follower derives them from.
     /// </param>
+    /// <param name="calibration">
+    /// Where to read the capture's clock against the wall clock, and its boot, published with the last chunk; null records none.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -96,6 +102,7 @@ public static class LiveSessionRecorder
         TimeSpan? publishEvery = null,
         CompactionOptions? compaction = null,
         LiveRecordingOutput output = LiveRecordingOutput.Session,
+        ClockCalibrationSource? calibration = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -122,6 +129,7 @@ public static class LiveSessionRecorder
             output == LiveRecordingOutput.Session
                 ? clock => derivation = new RowDerivation(clock, store, bounds, compaction ?? CompactionOptions.Default)
                 : null,
+            calibration: calibration,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return new()
         {
@@ -136,6 +144,7 @@ public static class LiveSessionRecorder
             ContentFragments = captured.ContentFragments,
             ContentKeptBytes = captured.ContentKeptBytes,
             ContentLimitReached = captured.ContentLimitReached,
+            Calibration = captured.Calibration,
         };
     }
 

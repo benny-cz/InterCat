@@ -326,6 +326,13 @@ public sealed class LiveSessionFollower
             {
                 builder.StageCaptureFinalization(Read(evidence, finalization));
             }
+
+            StoreDependency? calibration = source.Dependencies.SingleOrDefault(dependency =>
+                dependency.Kind == StoreDependencyKind.ClockCalibration);
+            if (calibration is not null)
+            {
+                builder.StageClockCalibration(Read(evidence, calibration));
+            }
         }
 
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);

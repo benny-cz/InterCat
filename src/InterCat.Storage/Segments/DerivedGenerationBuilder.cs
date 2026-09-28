@@ -100,6 +100,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool planStaged;
     private bool ledgerStaged;
     private bool finalizationStaged;
+    private bool calibrationStaged;
     private bool redactionPolicyStaged;
     private bool contentStaged;
     private bool disposed;
@@ -264,6 +265,35 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
     /// <summary>The published name of a generation's capture finalization marker.</summary>
     public static string CaptureFinalizationFileName(long generation) => $"capture-finalization-{generation:D10}.json";
+
+    /// <summary>
+    /// Stages the capture's clock calibration (`contracts/clock-calibration-v1.md`): its source clock against the wall clock,
+    /// and the boot it ran in. It must name this generation's capture and clock.
+    /// </summary>
+    public void StageClockCalibration(ClockCalibrationV1 calibration)
+    {
+        ArgumentNullException.ThrowIfNull(calibration);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || calibrationStaged)
+        {
+            throw new InvalidOperationException("A generation stages its clock calibration once, before publication.");
+        }
+
+        if (calibration.CaptureId != identity.CaptureId.Value || calibration.ClockId != identity.ClockId.Value)
+        {
+            throw new ArgumentException(
+                "A clock calibration must name the capture and the clock this generation belongs to.", nameof(calibration));
+        }
+
+        Stage(ClockCalibrationFileName(generation), StoreDependencyKind.ClockCalibration, calibration.Encode());
+        calibrationStaged = true;
+    }
+
+    /// <summary>Retains an already-published clock calibration while mirroring evidence; it is decoded and checked first.</summary>
+    public void StageClockCalibration(ReadOnlySpan<byte> bytes) => StageClockCalibration(ClockCalibrationV1.Decode(bytes));
+
+    /// <summary>The published name of a generation's clock calibration.</summary>
+    public static string ClockCalibrationFileName(long generation) => $"clock-calibration-{generation:D10}.json";
 
     /// <summary>
     /// Stages the content a capture kept of this generation's journal records (`contracts/content-v1.md`, ADR-036):

@@ -28,6 +28,13 @@ internal sealed record SessionDocument
     public required SessionContentSummary? Content { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
     public required SessionLedgerDocument? CoverageLedger { get; init; }
+
+    /// <summary>The capture's clock against the wall clock, and its boot (`clock-calibration-v1`); null when it records none.</summary>
+    public required ClockCalibrationV1? ClockCalibration { get; init; }
+
+    /// <summary>How fast the wall clock ran against the source clock between the first and last sample; null when unknown.</summary>
+    public required WallClockRate? WallClockRate { get; init; }
+
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
@@ -257,6 +264,8 @@ internal static class SessionCommand
         var fieldSegments = new List<SessionFieldSegmentDocument>();
         SessionCoverageDocument? coverage = null;
         SessionLedgerDocument? ledger = null;
+        ClockCalibrationV1? calibration = null;
+        WallClockRate? rate = null;
         SessionRedaction? redaction = manifest is null ? null : SessionRedaction.Read(store.Root, manifest);
 
         // What the session holds that no export carries: its chunks are read and checked, and no message byte is kept.
@@ -348,6 +357,18 @@ internal static class SessionCommand
                 notes.Add(
                     "This generation publishes no coverage ledger, so coverage is unknown: a mechanism with no records "
                     + "may have been quiet or never collected, and nothing says whether the source lost events (R21).");
+            }
+
+            calibration = ClockCalibrationV1.Read(store.Root, manifest);
+            if (calibration is not null && SessionSegments.SourceClock(store.Root, manifest) is { } clock)
+            {
+                rate = ClockCalibrationFacts.Rate(calibration, clock.TicksPerSecond);
+            }
+            else if (calibration is null && manifest.Boundary.IsDeclared)
+            {
+                notes.Add(
+                    "This session records no clock calibration - it was imported, packaged, or captured before revision 255 - "
+                    + "so the wall-clock time of its readings and the boot it ran in are unknown.");
             }
 
             notes.Add(
@@ -450,6 +471,8 @@ internal static class SessionCommand
             FieldSegments = fieldSegments,
             Coverage = coverage,
             CoverageLedger = ledger,
+            ClockCalibration = calibration,
+            WallClockRate = rate,
             Redaction = redaction,
             Content = content,
             Notes = notes,
@@ -610,6 +633,11 @@ internal static class SessionCommand
             RenderCoverage(ledger);
         }
 
+        if (document.ClockCalibration is { } calibration)
+        {
+            RenderCalibration(calibration, document.WallClockRate);
+        }
+
         if (document.FieldSegments.Count > 0)
         {
             ConsoleUi.Heading("Source correlation and object fields");
@@ -711,6 +739,33 @@ internal static class SessionCommand
 
         ConsoleUi.Note("Content is restricted evidence (ADR-036). icat export and a redacted package never carry it; an "
             + "original evidence package discloses it. icat raw states what each record kept.");
+    }
+
+    private static void RenderCalibration(ClockCalibrationV1 calibration, WallClockRate? rate)
+    {
+        ConsoleUi.Heading("Clock calibration");
+        ConsoleUi.Field("Wall clock", calibration.WallClock);
+        ConsoleUi.Field("Boot", calibration.BootToken is { } token
+            ? $"token {token:N}" + (calibration.BootCount is { } count
+                ? string.Create(CultureInfo.CurrentCulture, $", which Windows counts as its boot {count:N0}")
+                : string.Empty)
+            : "unknown: no boot token could be kept, so no other capture can be shown to share this boot");
+        foreach ((ClockCalibrationSampleV1 sample, int index) in calibration.Samples.Select((sample, index) => (sample, index)))
+        {
+            string when = calibration.Samples.Count == 2 ? (index == 0 ? "At start" : "At stop") : $"Sample {index + 1}";
+            ConsoleUi.Field(when, string.Create(CultureInfo.CurrentCulture,
+                $"{sample.Utc.UtcDateTime:yyyy-MM-dd HH:mm:ss.fffffff} UTC at source tick {sample.NativeTicks:N0}, ")
+                + "±" + OperationText.DurationAtLeast(sample.AcquisitionUncertaintyNanoseconds, CultureInfo.CurrentCulture));
+        }
+
+        if (rate is not null)
+        {
+            ConsoleUi.Field("Wall clock rate", string.Create(CultureInfo.CurrentCulture,
+                $"{rate.PartsPerMillion:+0.0;-0.0;0.0} ppm ±{rate.UncertaintyPartsPerMillion:0.0##} against the source clock between the samples"));
+        }
+
+        ConsoleUi.Note("A sample bounds only how far apart its two readings were taken; how right the wall clock was is not known "
+            + "from it.");
     }
 
     private static void RenderCoverage(SessionLedgerDocument ledger)

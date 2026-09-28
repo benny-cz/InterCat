@@ -187,6 +187,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                         plan.Quota.MinimumFreeDiskBytes, () => volumeProbe(captureRoot.Path)),
                     publishFirstAfter: plan.FirstPublication,
                     healthProbe: probe,
+                    calibration: ClockCalibrationSource.Local,
                     cancellationToken: capture.Stop.Token);
                 _ = capture.Run.ContinueWith(
                     _ => health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _),

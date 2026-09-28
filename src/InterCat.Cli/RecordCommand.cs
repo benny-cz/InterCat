@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
 using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -277,6 +278,7 @@ internal static class RecordCommand
             DateTimeOffset.UtcNow,
             publishEvery: publishSeconds > 0 ? TimeSpan.FromSeconds(publishSeconds) : null,
             output: evidenceOnly ? LiveRecordingOutput.EvidenceOnly : LiveRecordingOutput.Session,
+            calibration: ClockCalibrationSource.Local,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Start.Started)
         {

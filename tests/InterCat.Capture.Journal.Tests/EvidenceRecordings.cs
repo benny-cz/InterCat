@@ -15,6 +15,25 @@ internal static class EvidenceRecordings
 {
     public static readonly Guid Provider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
 
+    /// <summary>The boot a test calibration names.</summary>
+    public static readonly Guid BootToken = Guid.Parse("b0071111-2222-4333-8444-555555555555");
+
+    /// <summary>
+    /// A calibration source for a scripted capture: this process's counter, which the scripted records are stamped with,
+    /// against the wall clock, and a fixed boot; it touches no registry.
+    /// </summary>
+    public static ClockCalibrationSource Calibration() => new()
+    {
+        WallClock = "test-wall-clock",
+        Sample = () => new()
+        {
+            NativeTicks = Stopwatch.GetTimestamp(),
+            Utc = DateTimeOffset.UtcNow,
+            AcquisitionUncertaintyNanoseconds = 1_000,
+        },
+        Boot = () => (BootToken, 42),
+    };
+
     /// <summary>
     /// Records two bursts of records as evidence only, publishing every 100 ms, and finalizes it. The second burst waits
     /// for the first to be published, so the recording always has a generation before its last: a fixed pause did not
@@ -23,7 +42,8 @@ internal static class EvidenceRecordings
     public static async Task<LiveRecordingResult> RecordEvidence(
         string directory,
         int[] ordinals,
-        bool failLossRead = false)
+        bool failLossRead = false,
+        ClockCalibrationSource? calibration = null)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
         var host = new ScriptedHost { FailLossRead = failLossRead };
@@ -56,7 +76,8 @@ internal static class EvidenceRecordings
             _ => host.Delivered.Task,
             DateTimeOffset.UtcNow,
             publishEvery: TimeSpan.FromMilliseconds(100),
-            output: LiveRecordingOutput.EvidenceOnly);
+            output: LiveRecordingOutput.EvidenceOnly,
+            calibration: calibration);
     }
 
     /// <summary>

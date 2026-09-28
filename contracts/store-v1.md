@@ -56,11 +56,10 @@ A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` (code 4, `contr
 revision 162), `DerivationPlan` (code 5,
 `contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`),
 `CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`), `RedactionPolicy` (code 8,
-`contracts/redacted-session-v1.md`) or `Content` (code 9, `contracts/content-v1.md`, revision 234). An unknown kind,
-an unreadable
-format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
-duplicate dependency, or a dependency name that is not an owned file name are each refused — the
-manifest is not read at a guessed layout.
+`contracts/redacted-session-v1.md`), `Content` (code 9, `contracts/content-v1.md`, revision 234) or `ClockCalibration`
+(code 10, `contracts/clock-calibration-v1.md`, revision 255). An unknown kind, an unreadable format version, a
+generation outside `1..9,999,999,999`, a previous generation that is not earlier, a duplicate dependency, or a
+dependency name that is not an owned file name are each refused — the manifest is not read at a guessed layout.
 
 A `RedactionPolicy` dependency, `redaction-policy-<generation:D10>.json`, is published only by a redacted session
 package, at most once per generation. It is that package's provenance: it says the journal is synthetic and what was

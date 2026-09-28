@@ -303,7 +303,8 @@ internal static class TestSessions
         Func<ObservationRowV1, BodyV1>? bodyForRow = null,
         int journalBatchRecords = 4_096,
         DateTimeOffset? committedUtc = null,
-        (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null)
+        (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null,
+        ClockCalibrationV1? calibration = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -357,6 +358,11 @@ internal static class TestSessions
         if (content is { } kept)
         {
             builder.StageContent(kept.Header, kept.Fragments);
+        }
+
+        if (calibration is not null)
+        {
+            builder.StageClockCalibration(calibration);
         }
 
         return builder.Complete(committedUtc ?? Committed);

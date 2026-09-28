@@ -132,8 +132,12 @@ public sealed class RedactedSessionPackageTests
         SessionManifestV1 manifest = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path)).Current!;
         StoreDependency[] evidence = [.. original.Dependencies.Where(dependency => dependency.Kind is StoreDependencyKind.Journal
             or StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Index
-            or StoreDependencyKind.DerivationPlan)];
+            or StoreDependencyKind.DerivationPlan or StoreDependencyKind.ClockCalibration)];
         Assert.NotEmpty(evidence);
+
+        // The source's clock calibration - its wall-clock readings and its boot - is not the package's.
+        Assert.Contains(evidence, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
+        Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
 
         // Not one of them is a dependency of the package, and no package file holds one's bytes - a package file may share
         // a conventional name, such as its own synthetic journal's, but never the content: the package is built from
@@ -646,6 +650,20 @@ public sealed class RedactedSessionPackageTests
     /// endpoint, a third-party provider, source fields including wall-clock times and text, retained bodies, row
     /// markers, and a coverage ledger with loss.
     /// </summary>
+    /// <summary>The rich source's clock calibration: its boot is shared by every capture of that boot, so it is a needle.</summary>
+    private static ClockCalibrationV1 Calibration() => new()
+    {
+        Contract = ClockCalibrationV1.ContractName,
+        CaptureId = Capture.Value,
+        ClockId = SourceClock.Id.Value,
+        BootToken = SecretBoot,
+        BootCount = 7,
+        WallClock = "GetSystemTimePreciseAsFileTime",
+        Samples = [new() { NativeTicks = 0, Utc = Committed, AcquisitionUncertaintyNanoseconds = 200 }],
+    };
+
+    private static readonly Guid SecretBoot = Guid.Parse("b0070000-1111-4222-8333-444444444444");
+
     private static void PublishRichSource(SessionStore store)
     {
         ObservationRowV1 system = At(Lifecycle(0, ObservationKind.Inventory, 4, 1) with { ResourceName = "System" }, 0);
@@ -748,7 +766,7 @@ public sealed class RedactedSessionPackageTests
             Field(rpc, SourceField.RpcProcedureNumber, 7),
             Field(rpc, SourceField.RpcProtocolSequence, 1),
         ];
-        Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: Ledger(),
+        Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: Ledger(), calibration: Calibration(),
             bodyForRow: _ => new BodyV1
             {
                 Classification = BodyClassificationV1.ApprovedMetadata,

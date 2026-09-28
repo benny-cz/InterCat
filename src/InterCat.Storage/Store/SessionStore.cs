@@ -692,16 +692,17 @@ public sealed class SessionStore
                 }
 
                 // The admitted evidence - every journal chunk and the content kept beside it - and the plan, optional
-                // coverage ledger, finalization marker and redaction policy that describe the capture are not derivations
-                // of it, so replacement carries them unchanged. Carrying every journal means no chunk's evidence is ever
-                // dropped by replacing the rows derived from it, and carrying a redaction policy means a package never
-                // loses its provenance (I22).
+                // coverage ledger, finalization marker, clock calibration and redaction policy that describe the capture
+                // are not derivations of it, so replacement carries them unchanged. Carrying every journal means no
+                // chunk's evidence is ever dropped by replacing the rows derived from it, and carrying a redaction policy
+                // means a package never loses its provenance (I22).
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
                         dependency.Kind is StoreDependencyKind.DerivationPlan
                             or StoreDependencyKind.CoverageLedger
                             or StoreDependencyKind.CaptureFinalization
+                            or StoreDependencyKind.ClockCalibration
                             or StoreDependencyKind.RedactionPolicy
                             or StoreDependencyKind.Journal
                             or StoreDependencyKind.Content),
@@ -1059,6 +1060,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "A capture finalization marker is durable evidence that the recording reached its last "
                         + "publication. It is not a rebuildable derived index and retention cannot release it.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.ClockCalibration)
+                {
+                    throw new ArgumentException(
+                        "A clock calibration pairs the capture's clock with the wall clock and names its boot. No journal "
+                        + "holds those facts, so it is not a rebuildable index and retention cannot release it.",
                         nameof(names));
                 }
 

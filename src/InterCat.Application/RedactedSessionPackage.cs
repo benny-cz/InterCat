@@ -143,7 +143,7 @@ public static class RedactedSessionPackage
         SessionManifestV1 manifest = lease.Manifest;
         var pseudonyms = new RedactedSessionPseudonyms();
         SourceScan scan = Inspect(source.Root, manifest, pseudonyms, progress, cancellationToken);
-        (RedactedPackageLeakScanner identities, RedactedPackageLeakScanner names) = Needles(manifest, scan, pseudonyms);
+        (RedactedPackageLeakScanner identities, RedactedPackageLeakScanner names) = Needles(source.Root, manifest, scan, pseudonyms);
 
         Directory.CreateDirectory(parent);
         string staging = Path.Combine(parent, $"{Path.GetFileName(target)}.partial-{Guid.NewGuid():N}");
@@ -605,6 +605,7 @@ public static class RedactedSessionPackage
 
     /// <summary>The source values the byte scan looks for, and the scanner for each kind of file.</summary>
     private static (RedactedPackageLeakScanner Identities, RedactedPackageLeakScanner Names) Needles(
+        IOwnedDirectory root,
         SessionManifestV1 manifest,
         SourceScan scan,
         RedactedSessionPseudonyms pseudonyms)
@@ -619,9 +620,16 @@ public static class RedactedSessionPackage
         // The evidence a package never carries. A rewritten companion - a ledger whose epoch and providers did not change -
         // can be byte-identical to its source and so share its digest without disclosing anything, so it is not a needle.
         foreach (StoreDependency dependency in manifest.Dependencies.Where(dependency => dependency.Kind
-            is StoreDependencyKind.Journal or StoreDependencyKind.DerivationPlan or StoreDependencyKind.CaptureFinalization))
+            is StoreDependencyKind.Journal or StoreDependencyKind.DerivationPlan or StoreDependencyKind.CaptureFinalization
+                or StoreDependencyKind.ClockCalibration))
         {
             identities.AddDigest(dependency.Digest, $"the digest of source file {dependency.Name}");
+        }
+
+        // The boot a capture ran in is shared by every capture of that boot, so it would link the package to them.
+        if (ClockCalibrationV1.Read(root, manifest)?.BootToken is { } boot)
+        {
+            identities.AddIdentifier(boot, "the source boot's token");
         }
 
         if (manifest.SourceIdentity.Length > 0) identities.AddText(manifest.SourceIdentity, "the source's identity text");

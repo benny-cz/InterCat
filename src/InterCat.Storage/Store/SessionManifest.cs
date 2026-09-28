@@ -48,6 +48,12 @@ public enum StoreDependencyKind
     /// metadata, and never in a redacted package (I22).
     /// </summary>
     Content = 9,
+
+    /// <summary>
+    /// A live capture's source clock paired with the wall clock, and the boot it ran in (`contracts/clock-calibration-v1.md`):
+    /// evidence about the capture that no journal holds, carried unchanged and never released. Never in a redacted package.
+    /// </summary>
+    ClockCalibration = 10,
 }
 
 /// <summary>

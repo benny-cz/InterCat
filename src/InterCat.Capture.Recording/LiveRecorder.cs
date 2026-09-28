@@ -71,6 +71,9 @@ public sealed record LiveCaptureResult
 
     /// <summary>True when kept content reached the policy's session limit, which stopped the capture (stop-at-limit).</summary>
     public bool ContentLimitReached { get; init; }
+
+    /// <summary>The clock calibration published with the last chunk; null when none was asked for.</summary>
+    public ClockCalibrationV1? Calibration { get; init; }
 }
 
 /// <summary>
@@ -105,6 +108,10 @@ public static class LiveRecorder
     /// Reads the recording's acquisition counters and live preview for a status request while it records; the preview
     /// counts every journaled record by mechanism and time until its chunk publishes.
     /// </param>
+    /// <param name="calibration">
+    /// Where to read the capture's clock against the wall clock, and its boot, when the capture starts and when it stops;
+    /// the calibration is published with the last chunk. Null records none.
+    /// </param>
     public static async Task<LiveCaptureResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -119,6 +126,7 @@ public static class LiveRecorder
         LiveDiskFloor? diskFloor = null,
         TimeSpan? publishFirstAfter = null,
         LiveHealthProbe? healthProbe = null,
+        ClockCalibrationSource? calibration = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -181,6 +189,10 @@ public static class LiveRecorder
                     : []));
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture carries a source clock descriptor.");
+
+        // The clock against the wall clock when the capture starts, and the boot it runs in; again when it stops.
+        ClockCalibrationSampleV1? startSample = calibration?.Sample();
+        (Guid? Token, long? Count) boot = calibration?.Boot() ?? default;
         // A preview is kept only where a status request can read it, and on the capture's own clock.
         LivePreviewTally? preview = healthProbe is null ? null : new LivePreviewTally(clock.Descriptor.TicksPerSecond);
         using var quotaStop = new CancellationTokenSource();
@@ -266,7 +278,19 @@ public static class LiveRecorder
             ]);
         }
 
-        DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained);
+        ClockCalibrationV1? calibrated = calibration is null || startSample is null
+            ? null
+            : new()
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = plan.Identity.CaptureId.Value,
+                ClockId = clock.Descriptor.Id.Value,
+                BootToken = boot.Token,
+                BootCount = boot.Count,
+                WallClock = calibration.WallClock,
+                Samples = [startSample, calibration.Sample()],
+            };
+        DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained, calibrated);
         return new()
         {
             Start = start,
@@ -281,6 +305,7 @@ public static class LiveRecorder
             ContentFragments = chunks.ContentFragments,
             ContentKeptBytes = chunks.ContentKeptBytes,
             ContentLimitReached = chunks.ContentLimitReached,
+            Calibration = calibrated,
         };
     }
 
@@ -419,17 +444,23 @@ public static class LiveRecorder
         }
 
         /// <summary>
-        /// Publishes the last chunk, with the capture's coverage ledger when it could be measured; the derivation then acts
-        /// on it as the capture's last publication.
+        /// Publishes the last chunk, with the capture's coverage ledger when it could be measured and its clock calibration
+        /// when one was taken; the derivation then acts on it as the capture's last publication.
         /// </summary>
         public DerivedGenerationResult PublishLast(
             CoverageLedgerV1? ledger,
             bool providersStopped,
-            bool callbacksDrained)
+            bool callbacksDrained,
+            ClockCalibrationV1? calibration)
         {
             if (ledger is not null)
             {
                 builder.StageCoverageLedger(ledger);
+            }
+
+            if (calibration is not null)
+            {
+                builder.StageClockCalibration(calibration);
             }
 
             StageContent();

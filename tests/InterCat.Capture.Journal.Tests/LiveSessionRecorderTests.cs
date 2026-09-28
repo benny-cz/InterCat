@@ -378,6 +378,65 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal((0, true), (follower.CatchUp().MirroredChunks, follower.CatchUp().Finished));
     }
 
+    [Fact(DisplayName = "R3: a live recording publishes its clock against the wall clock when it starts and stops, and its boot")]
+    public async Task ARecordingPublishesItsClockCalibration()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        host.Admit(new AdmittedEvent
+        {
+            SourceIndex = 0,
+            EventId = 10,
+            Version = 0,
+            TimestampQpc = now,
+            TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+            RecordOrdinal = 1,
+        });
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(), host, store, _ => host.Delivered.Task, DateTimeOffset.UtcNow, calibration: Calibration());
+
+        // One calibration, in the last generation: the capture's own capture and clock, its boot, and two samples - one
+        // when it started and one when it stopped - in the order they were taken.
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+        SessionManifestV1 manifest = reopened.Current!;
+        ClockCalibrationV1 calibration = ClockCalibrationV1.Read(reopened.Root, manifest)!;
+        (CaptureId capture, SourceClockDescriptor clock) = SessionSegments.Source(reopened.Root, manifest)!.Value;
+        Assert.Equal((capture.Value, clock.Id.Value, (Guid?)BootToken, (long?)42, "test-wall-clock"),
+            (calibration.CaptureId, calibration.ClockId, calibration.BootToken, calibration.BootCount, calibration.WallClock));
+        Assert.Equal(2, calibration.Samples.Count);
+        Assert.True(calibration.Samples[0].NativeTicks <= calibration.Samples[1].NativeTicks);
+        Assert.Equal(result.Calibration!.Samples, calibration.Samples);
+
+        // A recording asked for none publishes none.
+        using var plain = new TemporaryDirectory();
+        SessionStore plainStore = SessionStore.Open(LocalOwnedDirectory.Open(plain.Path), Guid.NewGuid(), "live-tests");
+        var quiet = new ScriptedHost();
+        LiveRecordingResult uncalibrated = await LiveSessionRecorder.RecordAsync(
+            Plan(), quiet, plainStore, _ => Task.CompletedTask, DateTimeOffset.UtcNow);
+        Assert.Null(uncalibrated.Calibration);
+        Assert.Null(ClockCalibrationV1.Read(plainStore.Root, plainStore.Current!));
+    }
+
+    [Fact(DisplayName = "R3: a follower mirrors a capture's clock calibration byte for byte")]
+    public async Task AFollowerMirrorsTheClockCalibration()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        _ = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2, 3], calibration: Calibration());
+
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        SessionManifestV1 source = evidence.Current!;
+        SessionStore derived = SessionStore.Open(LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        Assert.True(LiveSessionFollower.Open(evidence, derived).CatchUp().Finished);
+        Assert.Equal(
+            Measured(source.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)),
+            Measured(derived.Current!.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)));
+        Assert.Equal(BootToken, ClockCalibrationV1.Read(derived.Root, derived.Current!)!.BootToken);
+    }
+
     [Fact(DisplayName = "R16: a follower finishes from finalization evidence even when coverage is unknown")]
     public async Task AFollowerFinishesWithoutCoverageLedger()
     {
