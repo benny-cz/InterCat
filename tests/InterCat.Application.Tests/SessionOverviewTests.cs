@@ -242,7 +242,8 @@ public sealed class SessionOverviewTests
             bucket => Assert.Equal(CoverageState.UnknownCoverage, bucket.Coverage));
         Assert.Equal(CoverageState.UnknownCoverage,
             Assert.Single(overview.MechanismCoverage, item => item.Mechanism == Mechanism.Rpc).State);
-        Assert.Contains(overview.Caveats, caveat => caveat.Contains("Empty buckets stay unknown", StringComparison.Ordinal));
+        Assert.Contains(overview.Caveats, caveat => caveat.Contains("An empty bucket takes the capture's own coverage there",
+            StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "I8: negative session ticks map to native coverage without rounding a bucket across zero")]

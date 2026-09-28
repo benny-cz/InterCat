@@ -200,8 +200,9 @@ public static class SessionOverviewProjector
                 ? "The timeline counts observed rows only. This legacy generation publishes no coverage ledger, "
                     + "so its coverage is unknown; an empty interval is not proof of inactivity."
                 : "Timeline coverage describes the captured mechanisms of observed rows within the ledger's "
-                    + "delivered readings. Empty buckets stay unknown, and source loss has no finer location "
-                    + "than its epoch. It does not prove a graph relationship or an empty interval complete.",
+                    + "delivered readings. An empty bucket takes the capture's own coverage there: quiet where a live "
+                    + "capture's sources covered it, unknown where the ledger cannot say, as an import's cannot. Source "
+                    + "loss has no finer location than its epoch, and coverage does not prove a graph relationship complete.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
                 + $"{(withoutTime == 1 ? "is" : "are")} absent from the timeline; "
                 + $"{unresolved:N0} TCP rows have no admitted peer; {notAdmitted:N0} paired relationships "
@@ -347,8 +348,9 @@ public static class SessionOverviewProjector
         {
             ColumnSpan = minimap.Interval,
         };
-        return (extent, main.Buckets(coverage, clock), main.MechanismLanes(coverage, clock), overviewMinimap,
-            counts.Rows, counts.WithoutTime);
+        // A quiet interval of the whole capture is judged by what it collected there, as the minimap's is (R21).
+        return (extent, main.Buckets(coverage, clock, main.CaptureCoverage(coverage, clock, within: extent)),
+            main.MechanismLanes(coverage, clock), overviewMinimap, counts.Rows, counts.WithoutTime);
     }
 
     /// <summary>An instance's own records the policy admits, by mechanism, most first (`process-activity-v1`).</summary>

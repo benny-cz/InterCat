@@ -118,7 +118,8 @@ internal static class TimelineCommand
             measured is null ? ["Interval", "Records", "Mostly", "Coverage"] : ["Interval", "Records", "Mostly", "Coverage", "Sent", "Received"],
             [.. buckets.Select(bucket => Row(bucket, measured))]);
         ConsoleUi.Note("Rows without a usable session time have no place in any interval and are not counted.");
-        ConsoleUi.Note("An empty bucket is not proof of inactivity: its coverage stays unknown.");
+        ConsoleUi.Note("An empty bucket's coverage is the capture's there: covered means nothing it collects happened, a gap "
+            + "that records were lost, unknown that the capture says nothing of it.");
         if (measured is not null)
         {
             ConsoleUi.Note("Sent is what send records measured (sender accounting), received what receive records measured "

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 239 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 240 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 240 — a covered capture's quiet interval reads as quiet (R21, §6.6):**
+  - The machine timeline, a focus's timeline and the overview judged a bucket with nothing observed as unknown, so a
+    scoped capture's evidence rung hatched nearly every interval and its status counted them as coverage-unknown.
+  - An empty bucket now takes the capture's own coverage there, as lanes and direction rows do since revisions 165,
+    197 and 206: quiet where it covered, a gap where it lost records, unknown past its readings or in an import.
 
 - **Revision 239 — a capture keeps HTTP content from the processes it names (ADR-037, `content-v1` §5.1):**
   - WinINet's capture measured Low: a median 0.71 CPU pp and 2.5% of the workload's time over seven pairs. A bounded
@@ -2102,9 +2108,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      `icat record`, scoped to named processes. Next: FX-HTTP-001 and FX-CONTENT-001 in the fixture index, and a part
      reassembled from its buffers for a person (M8). Later: HTTPS and HTTP/2 through it; a follower that mirrors content,
      so a broker capture could keep it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
-   - **A quiet interval of a covered capture reads as unknown.** Revision 239's live pass saw a process's evidence rung
-     hatch every interval without its own records as a coverage gap, though the ledger covered the capture throughout;
-     revisions 165, 197 and 206 fixed the same reading for lanes and direction rows. Next.
+
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2157,6 +2161,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 240 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,381 tests: 1,377
+  passed, 4 skipped**, zero failures; two tests that pinned the old reading now assert the capture's. Live, a 12-second
+  content-fixture capture opened in the Release window: the process's evidence rung drew no gap, and its status read
+  "Coverage reported for 64 intervals" where revision 239's read "58 coverage-unknown intervals". Scratch was deleted.
 - Revision 239 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,381 tests: 1,377
   passed, 4 skipped**, zero failures. Live, elevated, into scratch: `icat record --profile content` scoped to
   FX-HTTP-001's process kept 229 buffers whole; all 128 parts matched the wire; `icat content` and the Release

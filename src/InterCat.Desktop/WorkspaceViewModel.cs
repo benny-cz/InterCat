@@ -3291,7 +3291,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         var lines = new List<string>
         {
             bucket.ObservationCount == 0
-                ? "No record observed · an empty bucket is not proof of inactivity"
+                ? bucket.Coverage == CoverageState.Covered
+                    ? "No record observed · the capture covered this interval, so nothing it collects happened here"
+                    : "No record observed · an empty bucket is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + (ownerLane is { } owner
                         ? $" · {owner.NameWithPid} lane"
@@ -3372,7 +3374,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         var lines = new List<string>
         {
             bucket.ObservationCount == 0
-                ? "No record observed at this end · an empty bucket is not proof of inactivity"
+                ? bucket.Coverage == CoverageState.Covered
+                    ? "No record observed at this end · the capture covered this interval, so nothing it collects happened here"
+                    : "No record observed at this end · an empty bucket is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + $" · the {end.Endpoint} end, held by {holder}",
             $"Basis: source observations · unit: records · domain: records made at {end.Endpoint}, the end of this "

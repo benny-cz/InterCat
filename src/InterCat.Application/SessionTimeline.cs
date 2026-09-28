@@ -292,30 +292,28 @@ public static class SessionTimelineQuery
         }
 
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
+
+        // Every timeline, lane and direction row here shares the columns, and so the capture's coverage over each: it is
+        // judged once. Whatever rows a timeline counts could be any record the capture collects, so its quiet interval is
+        // judged by the capture - observed-empty where it covered, a gap where it lost records - as a lane's is (R21).
+        CoverageState[] capture = counted.CaptureCoverage(coverage, clock);
         var whole = new SessionTimelineDetail(manifest.SessionId, manifest.Generation, interval,
-            Array.AsReadOnly(counted.Buckets(coverage, clock)))
+            Array.AsReadOnly(counted.Buckets(coverage, clock, capture)))
         {
             MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
         };
-
-        // Every process lane and direction row shares the columns, and so the capture's coverage over each: it is judged
-        // once. A direction row splits one process's records, and that process could have made any record the capture
-        // collects in any of them, so its quiet interval is judged by the capture, as a process lane's is (R21).
-        CoverageState[]? capture = laneOwners.Length == 0 && total?.Directions is null
-            ? null
-            : counted.CaptureCoverage(coverage, clock);
         CoverageState[]? laneCapture = total?.Lanes is not { Length: > 0 } counting ? null
             : counting[0].Counts.Count == counted.Counts.Count ? capture : counting[0].CaptureCoverage(coverage, clock);
-        return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock)))
+        return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock, capture)))
         {
             FocusLanes = total is null ? [] : Array.AsReadOnly(total.Focused.MechanismLanes(coverage, clock)),
             ProcessLanes = total?.Lanes is not { } lanes ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
                 new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(laneCapture!))))]),
             DirectionLanes = total?.Directions is not { } directions ? [] : Array.AsReadOnly([.. LaneDirections.Select(
-                (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture!))))]),
+                (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture))))]),
             ChannelEndLanes = total?.Ends is not { } ends ? []
                 : Array.AsReadOnly([.. ends.Select(end => end.Lane(coverage, clock))]),
-            OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture!)),
+            OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture)),
             ProcessLaneProblem = laneProblem,
         };
     }
@@ -898,8 +896,36 @@ internal sealed class TimelineColumns
     }
 
     /// <summary>
+    /// The buckets, each with its dominant mechanism and the coverage of the mechanisms observed in it; a bucket with
+    /// nothing observed takes the capture's own coverage over its interval (<paramref name="capture"/>, from
+    /// <see cref="CaptureCoverage"/> over the same columns). Whatever these rows are - the machine's, or a focus's - they
+    /// could hold any mechanism the capture collects, so a quiet interval the capture covered reads as observed-empty, one
+    /// where it lost records as a gap, and one past the readings it delivered as unknown (R21), as a lane's does.
+    /// </summary>
+    public TimelineBucket[] Buckets(CoverageLedgerV1? coverage, SourceClockDescriptor clock, IReadOnlyList<CoverageState> capture)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        if (capture.Count != counts.Length)
+        {
+            throw new ArgumentException("The capture's coverage was judged over other columns.", nameof(capture));
+        }
+
+        TimelineBucket[] buckets = Buckets(coverage, clock);
+        for (int index = 0; index < buckets.Length; index++)
+        {
+            if (buckets[index].ObservationCount == 0)
+            {
+                buckets[index] = buckets[index] with { Coverage = capture[index] };
+            }
+        }
+
+        return buckets;
+    }
+
+    /// <summary>
     /// The buckets, each with its dominant mechanism and the coverage of the mechanisms observed in it. A bucket with
-    /// nothing observed has no mechanism to judge and stays unknown: an empty interval is not proof of inactivity.
+    /// nothing observed has no mechanism of its own to judge and stays unknown here; a timeline that knows the capture's
+    /// coverage over its columns judges it by that instead.
     /// </summary>
     public TimelineBucket[] Buckets(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
     {

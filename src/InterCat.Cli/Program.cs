@@ -166,7 +166,7 @@ static void PrintHelp()
     ConsoleUi.Line("               | --channel <key> [--end <0|1>]]");
     ConsoleUi.Line("      The timeline over any interval, bucketed exactly as the overview's, as the Desktop draws a");
     ConsoleUi.Line("      zoomed viewport; a scope lists what one lane of its interval table lists, and --bytes adds");
-    ConsoleUi.Line("      what each interval's records sent and received. Empty buckets stay coverage-unknown.");
+    ConsoleUi.Line("      what each interval's records sent and received. An empty bucket's coverage is the capture's.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
     ConsoleUi.Line("              [--rank-by <ranking>] [--evidence [--limit <n>]] [--format json|csv]");

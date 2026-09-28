@@ -246,13 +246,13 @@ public sealed class SessionTimelineTests
                 0, pair.bucket.ObservationCount)));
 
         // An end can only hold the channel's mechanism, so a quiet interval the capture covered is observed-empty there,
-        // where the aggregate focus, which judges only what it observed, still calls the same empty bucket unknown.
+        // and on the aggregate focus too, which judges its quiet interval by what the capture collected (revision 240).
         int quiet = Enumerable.Range(0, clientEnd.Buckets.Count).First(index => clientEnd.Buckets[index].ObservationCount == 0
             && timeline.Focus[index].ObservationCount == 0);
         Assert.Equal((CoverageState.Covered, Mechanism.Tcp),
             (clientEnd.Buckets[quiet].Coverage, clientEnd.Buckets[quiet].DominantMechanism));
         Assert.Equal(CoverageState.Covered, clientEnd.Inbound[quiet].Coverage);
-        Assert.Equal(CoverageState.UnknownCoverage, timeline.Focus[quiet].Coverage);
+        Assert.Equal(CoverageState.Covered, timeline.Focus[quiet].Coverage);
 
         // A process connected to itself still has two ends, told apart by endpoint rather than by holder.
         Channel loop = overview.Channels.Single(candidate => candidate.EdgeKey == selfEdge.Key);
@@ -426,8 +426,12 @@ public sealed class SessionTimelineTests
         Assert.Equal((0, CoverageState.UnknownCoverage), (quiet[11].ObservationCount, quiet[11].Coverage));
         Assert.Equal(CoverageState.Covered, quiet[0].Coverage);
 
-        // The whole timeline keeps its own rule: an interval with nothing observed has no mechanism to judge.
-        Assert.Equal((0, CoverageState.UnknownCoverage), (timeline.Whole.Buckets[3].ObservationCount, timeline.Whole.Buckets[3].Coverage));
+        // The whole timeline judges its quiet intervals the same way, since it could hold any record the capture collects;
+        // left unknown, a quiet capture read as one long gap (revision 240).
+        int[] quietColumns = [3, 6, 11];
+        Assert.Equal(
+            [(0, CoverageState.Covered), (0, CoverageState.PartialGap), (0, CoverageState.UnknownCoverage)],
+            quietColumns.Select(index => (timeline.Whole.Buckets[index].ObservationCount, timeline.Whole.Buckets[index].Coverage)));
     }
 
     [Fact(DisplayName = "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed")]
