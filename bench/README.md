@@ -143,6 +143,14 @@ and whether the session is gone after its stop. `alpc-session-check-20260928T033
 to all of them sees each: the kernel's process and thread rundown and the system's configuration arrive unasked, and
 TraceEvent reports a provider for one only when a parser it has registered knows it (ADR-035's revision 223 addendum).
 
+`--product-impact [--rounds n] [--icat <InterCat.Cli.exe>] [--scratch <dir>]` measures a profile through the product
+itself: the RPC workload in rounds, once with no capture, once under `icat record --profile rpc-peers` and once under
+`icat record --profile explore`, in an order that rotates each round, after one unmeasured warm-up run. Machine processor
+time over the workload is the measure; a capture's start and stop are outside it. Each recorded session is read for its
+counters and deleted. Since the second series it also reads the `icat` process's own processor time over the same
+window, a lower bound that background load cannot move. `rpc-peers-impact-20260928T050333Z` and
+`rpc-peers-impact-20260928T052021Z` hold two series of seven rounds (ADR-035's revision 224 addendum).
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a

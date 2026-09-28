@@ -322,6 +322,11 @@ public sealed class CaptureProfileCompilerTests
         // Network context is optional here: absent from the compilation, it is left out with its reason.
         Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelNetworkSourceId
             && decision.State == ProfileSourceDecisionState.Omitted);
+
+        // The profile states its own cost, measured through the product, beside its sources' (ADR-035's fifth decision).
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.All.Single(candidate => candidate.Kind == CaptureProfileKind.RpcPeers);
+        Assert.Equal(OverheadClass.Moderate, profile.Overhead);
+        Assert.Contains("Explore", profile.OverheadStatement, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]
@@ -341,7 +346,7 @@ public sealed class CaptureProfileCompilerTests
             && decision.Reason.Contains("registers no layout", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "§4.3: every measured source cites evidence the repository holds")]
+    [Fact(DisplayName = "§4.3: every measured source and profile cites evidence the repository holds")]
     public void EveryMeasuredSourceCitesEvidenceThatExists()
     {
         DirectoryInfo? root = new(AppContext.BaseDirectory);
@@ -359,6 +364,17 @@ public sealed class CaptureProfileCompilerTests
                 Assert.True(
                     File.Exists(Path.Combine(root.FullName, definition.OverheadEvidence!)),
                     $"{definition.SourceId} cites {definition.OverheadEvidence}, which the repository does not hold.");
+            });
+
+        // A profile measured as a whole states what was measured beside its evidence (ADR-035's fifth decision).
+        Assert.All(
+            CaptureProfileCatalog.All.Where(profile => profile.Overhead != OverheadClass.Unmeasured),
+            profile =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(profile.OverheadStatement), profile.Id);
+                Assert.True(
+                    File.Exists(Path.Combine(root.FullName, profile.OverheadEvidence ?? "")),
+                    $"{profile.Id} cites {profile.OverheadEvidence}, which the repository does not hold.");
             });
     }
 

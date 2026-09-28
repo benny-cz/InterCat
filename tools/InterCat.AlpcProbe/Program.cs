@@ -33,6 +33,7 @@ internal static class Program
         if (output is null || calls < 1)
         {
             Console.Error.WriteLine("InterCat.AlpcProbe --output <new directory> [--calls n] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  [--impact [--pairs n] | --session-check | --product-impact [--rounds n] [--icat <InterCat.Cli.exe>] [--scratch <dir>]]");
             return 2;
         }
 
@@ -76,6 +77,49 @@ internal static class Program
                 Directory.Delete(checkScratch, recursive: true);
             }
         }
+        if (args.Contains("--product-impact"))
+        {
+            // ADR-035's fifth decision: a profile states its class, measured through the product's own capture.
+            int rounds = int.Parse(Option(args, "--rounds") ?? "7", CultureInfo.InvariantCulture);
+            int productCalls = int.Parse(Option(args, "--calls") ?? "600", CultureInfo.InvariantCulture);
+            string icat = Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.Cli", "bin", "Release", "net10.0",
+                "InterCat.Cli.exe"));
+            if (!File.Exists(icat) || rounds < 1)
+            {
+                Console.Error.WriteLine($"No icat at {icat}, or no round to run; build src/InterCat.Cli in Release or pass --icat.");
+                return 2;
+            }
+
+            // The recorded sessions hold every process on the machine, so they live in a directory of the run's own.
+            string impactScratch = Path.Combine(
+                Path.GetFullPath(Option(args, "--scratch") ?? Path.GetTempPath()), "InterCat-product-impact-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(impactScratch);
+            try
+            {
+                Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat, productCalls, rounds, impactScratch)
+                    .ConfigureAwait(false);
+                impact["schema"] = "intercat.profile-impact.v1";
+                impact["measuredUtc"] = DateTimeOffset.UtcNow;
+                impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+                impact["workload"] = new Dictionary<string, object>
+                {
+                    ["scenario"] = "FX-RPC-001",
+                    ["callsPerTrial"] = productCalls,
+                    ["rounds"] = rounds,
+                };
+                Directory.CreateDirectory(output);
+                await File.WriteAllTextAsync(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(impact, Json))
+                    .ConfigureAwait(false);
+                Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+                return 0;
+            }
+            finally
+            {
+                Directory.Delete(impactScratch, recursive: true);
+            }
+        }
+
         if (args.Contains("--impact"))
         {
             int pairs = int.Parse(Option(args, "--pairs") ?? "5", CultureInfo.InvariantCulture);

@@ -324,6 +324,12 @@ internal static class ProfilesCommand
         ConsoleUi.Field("Adapter", plan.AdapterVersion);
         ConsoleUi.Field("Call stacks", plan.RequestCallStacks ? "requested" : "not requested");
         ConsoleUi.Field("Extended metadata", plan.PreserveExtendedData ? "bounded approved types" : "not retained");
+        if (MeasuredCost(plan) is { } measured)
+        {
+            ConsoleUi.Field("Measured cost", $"{measured.Overhead}: {measured.Statement}");
+            ConsoleUi.Field("Cost evidence", measured.Evidence);
+        }
+
         ConsoleUi.Line();
         ConsoleUi.Note(plan.CollectionStatement);
         if (plan.BodyPolicy is not null)
@@ -471,8 +477,20 @@ internal static class ProfilesCommand
         ConsoleUi.Success($"Profile preview written to {fullPath}");
     }
 
+    /// <summary>The profile's own measured cost, when it has one; otherwise only its sources' costs are known.</summary>
+    private static ProfileCostPreview? MeasuredCost(EffectiveCapturePlan plan) =>
+        CaptureProfileCatalog.Find(plan.EffectiveProfileId ?? plan.RequestedProfileId) is
+        {
+            Overhead: not OverheadClass.Unmeasured,
+            OverheadStatement: { } statement,
+            OverheadEvidence: { } evidence,
+        } profile
+            ? new(profile.Overhead, statement, evidence)
+            : null;
+
     private static ProfilePreviewDocument ToDocument(EffectiveCapturePlan plan) => new()
     {
+        MeasuredCost = MeasuredCost(plan),
         SchemaVersion = "1",
         CompiledAtUtc = plan.CompiledAtUtc,
         Environment = plan.Environment,
@@ -607,9 +625,12 @@ internal static class ProfilesCommand
         bool RequestCaptureState,
         bool RequestCallStacks);
 
+    private sealed record ProfileCostPreview(OverheadClass Overhead, string Statement, string Evidence);
+
     private sealed record ProfilePreviewDocument
     {
         public required string SchemaVersion { get; init; }
+        public ProfileCostPreview? MeasuredCost { get; init; }
         public required DateTimeOffset CompiledAtUtc { get; init; }
         public required ProbeEnvironment Environment { get; init; }
         public required string AdapterVersion { get; init; }

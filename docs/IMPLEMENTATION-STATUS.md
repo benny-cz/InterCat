@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 223 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 224 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 224 — the RPC peers profile's cost through the product (ADR-035):**
+  - `InterCat.AlpcProbe --product-impact` rotates rounds of no capture, `icat record --profile rpc-peers` and
+    `--profile explore` around FX-RPC-001, reading machine processor time and the capture process's own.
+  - Two series of seven rounds: the opt-in added a median 0.12 and 0.21 CPU points to Explore, its process 0.04; no
+    event lost. Against no capture both profiles sat within this workstation's background (1.9 to 3.8% busy).
+  - The profile states Moderate, its sources' class, with the product's figures beside it; `icat profiles rpc-peers`
+    prints them and the evidence.
 
 - **Revision 223 — an opt-in RPC peers profile admits ALPC (ADR-034, ADR-035):**
   - `icat record --profile rpc-peers` takes lifecycle, RPC calls and ALPC's send and receive, as kernel flags, with TCP
@@ -1981,7 +1989,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         220 and 221, admission for ALPC's classic send and receive by opcode, from the class's registered layout; done
         in revision 222, the owned session's kernel flags, first; done in revision 223, the opt-in RPC peers profile
         that admits them and the ALPC record's normalization, with a ledger that names a classic descriptor by opcode;
-        next, its measured class through the product path; the relation
+        done in revision 224, its cost through the product, which states its sources' Moderate; next, the relation
         rule implementing ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence
         beneath a call and never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
@@ -2041,6 +2049,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 224 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,336 tests: 1,332
+  passed, 4 skipped**, zero failures. Two elevated `--product-impact` series of seven rounds recorded 28 real captures
+  into scratch, each deleted once read; none left an InterCat session (`logman`).
 - Revision 223 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,336 tests: 1,332
   passed, 4 skipped**, zero failures. A real elevated `icat record --profile rpc-peers` of 15 s, with 300 RPC calls,
   admitted 9,382 ALPC rows, each with its message id, published its ledger, and left no InterCat session (`logman`);

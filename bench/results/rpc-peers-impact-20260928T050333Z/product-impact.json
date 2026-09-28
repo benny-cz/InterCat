@@ -1,0 +1,315 @@
+{
+  "quietMachineBusyPercent": 6.604,
+  "trials": [
+    {
+      "round": 1,
+      "kind": "none",
+      "busyPercent": 2.26,
+      "workloadSeconds": 28.26,
+      "capture": null
+    },
+    {
+      "round": 1,
+      "kind": "rpc-peers",
+      "busyPercent": 4.345,
+      "workloadSeconds": 28.319,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 48.376,
+        "observedRecords": 70977,
+        "admittedRecords": 43396,
+        "alpcAdmitted": 24506,
+        "lost": 0
+      }
+    },
+    {
+      "round": 1,
+      "kind": "explore",
+      "busyPercent": 3.513,
+      "workloadSeconds": 28.234,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.273,
+        "observedRecords": 22679,
+        "admittedRecords": 22679,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 2,
+      "kind": "rpc-peers",
+      "busyPercent": 3.809,
+      "workloadSeconds": 28.309,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.339,
+        "observedRecords": 73443,
+        "admittedRecords": 44577,
+        "alpcAdmitted": 25350,
+        "lost": 0
+      }
+    },
+    {
+      "round": 2,
+      "kind": "explore",
+      "busyPercent": 2.758,
+      "workloadSeconds": 28.241,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.322,
+        "observedRecords": 20431,
+        "admittedRecords": 20431,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 2,
+      "kind": "none",
+      "busyPercent": 2.242,
+      "workloadSeconds": 28.333,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "explore",
+      "busyPercent": 3.231,
+      "workloadSeconds": 28.331,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.431,
+        "observedRecords": 22604,
+        "admittedRecords": 22604,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 3,
+      "kind": "none",
+      "busyPercent": 3.818,
+      "workloadSeconds": 28.335,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "rpc-peers",
+      "busyPercent": 2.117,
+      "workloadSeconds": 28.336,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.377,
+        "observedRecords": 61645,
+        "admittedRecords": 37818,
+        "alpcAdmitted": 20336,
+        "lost": 0
+      }
+    },
+    {
+      "round": 4,
+      "kind": "none",
+      "busyPercent": 3.24,
+      "workloadSeconds": 28.304,
+      "capture": null
+    },
+    {
+      "round": 4,
+      "kind": "rpc-peers",
+      "busyPercent": 2.543,
+      "workloadSeconds": 28.261,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.25,
+        "observedRecords": 60046,
+        "admittedRecords": 37865,
+        "alpcAdmitted": 19826,
+        "lost": 0
+      }
+    },
+    {
+      "round": 4,
+      "kind": "explore",
+      "busyPercent": 2.33,
+      "workloadSeconds": 28.27,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.15,
+        "observedRecords": 18907,
+        "admittedRecords": 18907,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 5,
+      "kind": "rpc-peers",
+      "busyPercent": 2.243,
+      "workloadSeconds": 28.269,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.473,
+        "observedRecords": 61916,
+        "admittedRecords": 38966,
+        "alpcAdmitted": 20504,
+        "lost": 0
+      }
+    },
+    {
+      "round": 5,
+      "kind": "explore",
+      "busyPercent": 2.466,
+      "workloadSeconds": 28.297,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.417,
+        "observedRecords": 17092,
+        "admittedRecords": 17092,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 5,
+      "kind": "none",
+      "busyPercent": 3.252,
+      "workloadSeconds": 28.325,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "explore",
+      "busyPercent": 2.717,
+      "workloadSeconds": 28.258,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.377,
+        "observedRecords": 17275,
+        "admittedRecords": 17275,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    },
+    {
+      "round": 6,
+      "kind": "none",
+      "busyPercent": 3.601,
+      "workloadSeconds": 28.284,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "rpc-peers",
+      "busyPercent": 3.634,
+      "workloadSeconds": 28.317,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.436,
+        "observedRecords": 55764,
+        "admittedRecords": 34588,
+        "alpcAdmitted": 18110,
+        "lost": 0
+      }
+    },
+    {
+      "round": 7,
+      "kind": "none",
+      "busyPercent": 2.866,
+      "workloadSeconds": 28.301,
+      "capture": null
+    },
+    {
+      "round": 7,
+      "kind": "rpc-peers",
+      "busyPercent": 2.495,
+      "workloadSeconds": 28.289,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.493,
+        "observedRecords": 66823,
+        "admittedRecords": 43218,
+        "alpcAdmitted": 22552,
+        "lost": 0
+      }
+    },
+    {
+      "round": 7,
+      "kind": "explore",
+      "busyPercent": 3.336,
+      "workloadSeconds": 28.279,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.378,
+        "observedRecords": 21553,
+        "admittedRecords": 21553,
+        "alpcAdmitted": 0,
+        "lost": 0
+      }
+    }
+  ],
+  "profiles": {
+    "rpc-peers": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        2.085,
+        1.567,
+        -1.702,
+        -0.697,
+        -1.009,
+        0.033,
+        -0.371
+      ],
+      "medianCpuPercentagePoints": -0.371,
+      "overhead": "Low",
+      "medianObservedPerSecond": 1304,
+      "medianAdmittedPerSecond": 821,
+      "medianAlpcAdmittedPerSecond": 432,
+      "lossFree": true
+    },
+    "explore": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        1.253,
+        0.515,
+        -0.587,
+        -0.91,
+        -0.786,
+        -0.884,
+        0.47
+      ],
+      "medianCpuPercentagePoints": -0.587,
+      "overhead": "Low",
+      "medianObservedPerSecond": 432,
+      "medianAdmittedPerSecond": 432,
+      "medianAlpcAdmittedPerSecond": 0,
+      "lossFree": true
+    }
+  },
+  "rpcPeersOverExplore": {
+    "against": "explore",
+    "busyDifferencesPercentagePoints": [
+      0.832,
+      1.052,
+      -1.114,
+      0.213,
+      -0.223,
+      0.917,
+      -0.841
+    ],
+    "medianCpuPercentagePoints": 0.213
+  },
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone. A capture\u0027s start (profile compilation, session enablement, the kernel\u0027s rundown) and its stop, last publication and checkpoint are outside it; its live publications every 5 s are inside it.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its counters are read.",
+    "A profile\u0027s cost is the median over rounds of its busy share minus the same round\u0027s no-capture share; signed differences are kept, and only the class clamps a negative median at zero.",
+    "rpcPeersOverExplore is the same median between the two captures: what the opt-in adds to Explore on this workload."
+  ],
+  "schema": "intercat.profile-impact.v1",
+  "measuredUtc": "2026-09-28T05:19:03.572251+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "workload": {
+    "scenario": "FX-RPC-001",
+    "callsPerTrial": 600,
+    "rounds": 7
+  }
+}

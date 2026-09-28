@@ -5,9 +5,12 @@
   <ItemGroup>
     <!-- For the whole-machine processor clock the capture-impact harness reads (§12). -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <!-- For the coverage ledger of a session the product recorded (the product-impact mode). -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- A lab probe, not a product adapter: it reads the kernel's ALPC flag group, which no product capture enables. -->
+    <!-- A lab probe, not a product adapter: its own sessions read the kernel's ALPC flag group, which the product's RPC
+         peers profile collects in a session of the product's own. -->
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 </Project>

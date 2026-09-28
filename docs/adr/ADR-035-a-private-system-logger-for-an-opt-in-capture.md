@@ -104,6 +104,28 @@ as well as because its collection alone measured Moderate.
 
 The profile's measured class through the product path is still owed; this capture's cost is not a measurement.
 
+## Addendum: the profile's cost through the product (revision 224)
+
+`InterCat.AlpcProbe --product-impact` ran FX-RPC-001's paced workload of 600 calls in seven rounds, once with no
+capture, once under `icat record --profile rpc-peers` and once under `icat record --profile explore`, in an order that
+rotated each round. It read machine processor time over the workload alone. Two series ran
+(`bench/results/rpc-peers-impact-20260928T050333Z` and `-20260928T052021Z`), with no event lost:
+
+| Series | RPC peers against none | Explore against none | RPC peers against Explore | `icat` process |
+|---|---|---|---|---|
+| First | −0.37 CPU pp | −0.59 | +0.21 | not read |
+| Second | +0.12 | −0.02 | +0.12 | 0.22 (Explore's 0.18) |
+
+The workstation's own trials without a capture ranged from 1.9 to 3.8% busy, so a whole profile's cost against no
+capture is within its background here and does not decide a class. What does hold across both series is small: the
+opt-in added a median 0.1 to 0.2 points to Explore, and its process 0.04. So:
+
+- The RPC peers profile states Moderate, the class its sources measured one by one (Kernel-Process at 1.75 points,
+  ALPC's collection alone at 1.86), with what the product runs showed beside it. `icat profiles rpc-peers` shows both.
+- Its opt-in rests on the system logger it takes, one of a machine's eight, more than on its cost.
+- ALPC's own class stays the collection measurement's. The product runs suggest that measurement's machine was noisy
+  too, and a quiet-machine series would decide whether ALPC alone is Low.
+
 ## Alternatives considered
 
 - **A second session, a system logger beside the capture's.** Rejected. Ownership, recovery and cleanup would track two

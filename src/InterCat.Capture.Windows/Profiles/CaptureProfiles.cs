@@ -23,6 +23,18 @@ public sealed record CaptureProfileDescriptor
     public required bool PreserveExtendedData { get; init; }
     public required bool RequestCallStacks { get; init; }
     public required string CollectionStatement { get; init; }
+
+    /// <summary>
+    /// The profile's own capture cost, measured through the product on a stated workload (ADR-035's fifth decision).
+    /// Unmeasured when only its sources' costs are known, which its source decisions state one by one.
+    /// </summary>
+    public OverheadClass Overhead { get; init; } = OverheadClass.Unmeasured;
+
+    /// <summary>What was measured and on which workload, in words a reader can check against the evidence.</summary>
+    public string? OverheadStatement { get; init; }
+
+    /// <summary>The repository file that holds the measurement.</summary>
+    public string? OverheadEvidence { get; init; }
 }
 
 public static class CaptureProfileCatalog
@@ -78,7 +90,7 @@ public static class CaptureProfileCatalog
             Id = "rpc-peers",
             DisplayName = "RPC peers",
             Summary = "Lifecycle, RPC calls and the kernel's ALPC messages, to find the process that served each local call. "
-                + "Opt-in: collecting ALPC costs more than Explore's sources.",
+                + "Opt-in: its private system logger takes one of the eight a machine can run.",
             Admission = AdmissionMode.MetadataOnly,
             CompilationAvailable = true,
             RequestPreviewAvailable = true,
@@ -94,6 +106,13 @@ public static class CaptureProfileCatalog
             CollectionStatement =
                 "Collects Explore's schema-approved metadata and, in a private system logger of its own, each ALPC message's "
                 + "id and the thread that sent or received it. It retains no payload bytes and requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp, ALPC's collection alone 1.86). Through "
+                + "the product, on FX-RPC-001's paced RPC workload, it added a median 0.12 pp to Explore's cost (0.21 in a "
+                + "first series) and its own process used 0.22 pp, while this workstation's trials without any capture "
+                + "ranged from 1.9 to 3.8% busy: the whole profile keeps its sources' class rather than a finer one.",
+            OverheadEvidence = "bench/results/rpc-peers-impact-20260928T052021Z/product-impact.json",
         },
         Unavailable(
             CaptureProfileKind.Timing,

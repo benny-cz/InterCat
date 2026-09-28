@@ -1,0 +1,332 @@
+{
+  "quietMachineBusyPercent": 3.467,
+  "trials": [
+    {
+      "round": 1,
+      "kind": "none",
+      "busyPercent": 2.164,
+      "workloadSeconds": 28.251,
+      "capture": null
+    },
+    {
+      "round": 1,
+      "kind": "rpc-peers",
+      "busyPercent": 3.264,
+      "workloadSeconds": 28.277,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.446,
+        "observedRecords": 61809,
+        "admittedRecords": 38784,
+        "alpcAdmitted": 20915,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.223
+      }
+    },
+    {
+      "round": 1,
+      "kind": "explore",
+      "busyPercent": 3.248,
+      "workloadSeconds": 28.168,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.397,
+        "observedRecords": 20160,
+        "admittedRecords": 20160,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.178
+      }
+    },
+    {
+      "round": 2,
+      "kind": "rpc-peers",
+      "busyPercent": 2.856,
+      "workloadSeconds": 28.227,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.462,
+        "observedRecords": 58064,
+        "admittedRecords": 36457,
+        "alpcAdmitted": 19113,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.194
+      }
+    },
+    {
+      "round": 2,
+      "kind": "explore",
+      "busyPercent": 2.454,
+      "workloadSeconds": 28.265,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.345,
+        "observedRecords": 20116,
+        "admittedRecords": 20116,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.18
+      }
+    },
+    {
+      "round": 2,
+      "kind": "none",
+      "busyPercent": 1.893,
+      "workloadSeconds": 28.27,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "explore",
+      "busyPercent": 3.355,
+      "workloadSeconds": 28.317,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 46.487,
+        "observedRecords": 17829,
+        "admittedRecords": 17829,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.189
+      }
+    },
+    {
+      "round": 3,
+      "kind": "none",
+      "busyPercent": 3.376,
+      "workloadSeconds": 28.27,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "rpc-peers",
+      "busyPercent": 3.432,
+      "workloadSeconds": 28.293,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.306,
+        "observedRecords": 53528,
+        "admittedRecords": 34120,
+        "alpcAdmitted": 17346,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.184
+      }
+    },
+    {
+      "round": 4,
+      "kind": "none",
+      "busyPercent": 3.541,
+      "workloadSeconds": 28.279,
+      "capture": null
+    },
+    {
+      "round": 4,
+      "kind": "rpc-peers",
+      "busyPercent": 2.186,
+      "workloadSeconds": 28.289,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.319,
+        "observedRecords": 70754,
+        "admittedRecords": 47664,
+        "alpcAdmitted": 24442,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.223
+      }
+    },
+    {
+      "round": 4,
+      "kind": "explore",
+      "busyPercent": 2.029,
+      "workloadSeconds": 28.331,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.472,
+        "observedRecords": 16287,
+        "admittedRecords": 16287,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.175
+      }
+    },
+    {
+      "round": 5,
+      "kind": "rpc-peers",
+      "busyPercent": 2.847,
+      "workloadSeconds": 28.334,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.37,
+        "observedRecords": 52342,
+        "admittedRecords": 33525,
+        "alpcAdmitted": 16992,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.216
+      }
+    },
+    {
+      "round": 5,
+      "kind": "explore",
+      "busyPercent": 3.276,
+      "workloadSeconds": 28.285,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.239,
+        "observedRecords": 16025,
+        "admittedRecords": 16025,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.193
+      }
+    },
+    {
+      "round": 5,
+      "kind": "none",
+      "busyPercent": 3.516,
+      "workloadSeconds": 28.281,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "explore",
+      "busyPercent": 2.15,
+      "workloadSeconds": 28.278,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.401,
+        "observedRecords": 16493,
+        "admittedRecords": 16493,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.191
+      }
+    },
+    {
+      "round": 6,
+      "kind": "none",
+      "busyPercent": 2.727,
+      "workloadSeconds": 28.311,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "rpc-peers",
+      "busyPercent": 2.844,
+      "workloadSeconds": 28.288,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.232,
+        "observedRecords": 51993,
+        "admittedRecords": 33346,
+        "alpcAdmitted": 16706,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.203
+      }
+    },
+    {
+      "round": 7,
+      "kind": "none",
+      "busyPercent": 2.823,
+      "workloadSeconds": 28.265,
+      "capture": null
+    },
+    {
+      "round": 7,
+      "kind": "rpc-peers",
+      "busyPercent": 3.544,
+      "workloadSeconds": 28.335,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.358,
+        "observedRecords": 55853,
+        "admittedRecords": 35154,
+        "alpcAdmitted": 18436,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.221
+      }
+    },
+    {
+      "round": 7,
+      "kind": "explore",
+      "busyPercent": 3.43,
+      "workloadSeconds": 28.336,
+      "capture": {
+        "exitCode": 0,
+        "capturedSeconds": 47.208,
+        "observedRecords": 21502,
+        "admittedRecords": 21502,
+        "alpcAdmitted": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.177
+      }
+    }
+  ],
+  "profiles": {
+    "rpc-peers": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        1.099,
+        0.963,
+        0.056,
+        -1.355,
+        -0.668,
+        0.117,
+        0.722
+      ],
+      "medianCpuPercentagePoints": 0.117,
+      "overhead": "Low",
+      "medianObservedPerSecond": 1179,
+      "medianAdmittedPerSecond": 742,
+      "medianAlpcAdmittedPerSecond": 389,
+      "lossFree": true,
+      "medianCaptureProcessCpuPercentagePoints": 0.216
+    },
+    "explore": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        1.084,
+        0.561,
+        -0.022,
+        -1.512,
+        -0.24,
+        -0.577,
+        0.607
+      ],
+      "medianCpuPercentagePoints": -0.022,
+      "overhead": "Low",
+      "medianObservedPerSecond": 384,
+      "medianAdmittedPerSecond": 384,
+      "medianAlpcAdmittedPerSecond": 0,
+      "lossFree": true,
+      "medianCaptureProcessCpuPercentagePoints": 0.18
+    }
+  },
+  "rpcPeersOverExplore": {
+    "against": "explore",
+    "busyDifferencesPercentagePoints": [
+      0.016,
+      0.402,
+      0.078,
+      0.157,
+      -0.429,
+      0.694,
+      0.115
+    ],
+    "medianCpuPercentagePoints": 0.115
+  },
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone. A capture\u0027s start (profile compilation, session enablement, the kernel\u0027s rundown) and its stop, last publication and checkpoint are outside it; its live publications every 5 s are inside it.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its counters are read.",
+    "A profile\u0027s cost is the median over rounds of its busy share minus the same round\u0027s no-capture share; signed differences are kept, and only the class clamps a negative median at zero.",
+    "rpcPeersOverExplore is the same median between the two captures: what the opt-in adds to Explore on this workload.",
+    "captureProcessCpuPercentagePoints is the icat record process\u0027s own processor time over the same window, as a share of the whole machine. It excludes the kernel\u0027s work of raising events in other processes\u0027 threads, so it is a lower bound on the capture\u0027s cost that background load cannot move, where the machine share is the whole cost and the noisier measure."
+  ],
+  "schema": "intercat.profile-impact.v1",
+  "measuredUtc": "2026-09-28T05:35:50.451916+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "workload": {
+    "scenario": "FX-RPC-001",
+    "callsPerTrial": 600,
+    "rounds": 7
+  }
+}

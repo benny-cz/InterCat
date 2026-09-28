@@ -184,7 +184,7 @@ internal static class SessionCheck
         TraceEventSession.GetActiveSessionNames().Count(name => ((LogFileMode(name) ?? 0) & SystemLoggerMode) != 0);
 
     /// <summary>A running session's log file mode, from EVENT_TRACE_CONTROL_QUERY; null when no such session runs.</summary>
-    private static uint? LogFileMode(string name)
+    internal static uint? LogFileMode(string name)
     {
         const int Properties = 120;
         const int NameBytes = 2048;

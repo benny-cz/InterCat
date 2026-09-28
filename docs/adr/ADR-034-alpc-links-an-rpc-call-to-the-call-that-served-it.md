@@ -64,7 +64,9 @@ The median cost was 1.86 CPU percentage points at about 1,160 ALPC events a seco
 the paced workload's time. That is collection alone, a lower bound on a capture that admits and stores the records, and
 it is already Moderate (§12: above 1 point, at most 5). A second series ran while other work loaded the machine, 40 to
 98% busy with or without the session, and decides nothing. So ALPC cannot join Explore, which admits sources measured
-Low; when a capture admits it, it is an opt-in profile for resolving RPC peers, with its own measured class.
+Low; when a capture admits it, it is an opt-in profile for resolving RPC peers, with its own measured class. (ADR-035's
+revision 223 addendum restates the reason: Explore also lists Kernel-Process, measured Moderate, and ALPC stays out
+because it needs a system logger. Its revision 224 addendum measures the profile through the product.)
 
 ## Alternatives considered
 
