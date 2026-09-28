@@ -275,8 +275,10 @@ internal static class SessionOverviewIndex
         }
 
         var extent = new TimeRange(start, end);
+        // How many columns the extent is divided into is a width, not a count of the fields that follow, so it bounds
+        // nothing about the bytes left: a few records over a long extent fill few of many columns (overview-index-v1 §3).
         var main = new TimelineColumns(extent, SessionOverviewProjector.MaximumTimelineBuckets, tallyMechanisms: true);
-        if (reader.Count(1) != main.Counts.Count)
+        if (reader.U32() != (uint)main.Counts.Count)
         {
             throw reader.Invalid("its overview columns are not the ones this build divides the extent into.");
         }
@@ -302,7 +304,7 @@ internal static class SessionOverviewIndex
         }
 
         (TimeRange span, int columns) = SessionMinimap.ColumnsFor(extent);
-        if (reader.I64() != span.StartTicks || reader.I64() != span.EndTicks || reader.Count(1) != columns)
+        if (reader.I64() != span.StartTicks || reader.I64() != span.EndTicks || reader.U32() != (uint)columns)
         {
             throw reader.Invalid("its minimap columns are not the ones this build derives from the extent.");
         }

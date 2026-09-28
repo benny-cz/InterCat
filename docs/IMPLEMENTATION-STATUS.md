@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 245 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 246 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 246 — a small session's persisted overview is read, not refused (`overview-index-v1` §3):**
+  - A live pass over a fresh content session found `icat overview` calling its persisted overview "not readable: a
+    count of 1,061 is more than the 77 bytes left can hold". The reader checked the minimap's and the timeline's
+    column widths as counts of the fields after them; a few records over a long extent fill few of many columns, so
+    every small session's overview was refused and counted from its segments instead, and a small RPC peers session
+    lost revision 229's persisted links. The widths are now compared as widths.
+  - The same pass found a content session's busiest process "Nothing at this level" on its rung, its HTTP exchanges
+    reachable only as a flat list of buffers: next.
 
 - **Revision 245 — a content capture's scope held to the named processes themselves (ADR-037):**
   - A process filter holds process IDs, so a named ID given to a new process mid-capture would have brought that
@@ -280,7 +289,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Revision 242 reassembles a part from its buffers for a person (M8's first step); revision 243 measures HTTPS
      through it (FX-HTTP-002): kept as its plaintext, which a request says first; revision 244 measures exchanges at once
      and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart; revision 245 holds a
-     request's scope to the named processes themselves. Later: HTTP/2 and compressed responses through it; a part that
+     request's scope to the named processes themselves. Next: a process's HTTP exchanges on its rung, each with its
+     parts, as revision 246's live pass asks. Later: HTTP/2 and compressed responses through it; a part that
      is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
      releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
@@ -336,6 +346,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 246 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,388 tests: 1,384
+  passed, 4 skipped**, zero failures. Live: `icat overview` of the fresh 986-record content session that had refused
+  its persisted overview now reads it; the session's summary, byte metrics (929,043 B sent and 870,465 B received,
+  the 1,799,508 B kept) and the window's machine, process and evidence rungs were read. The capture was deleted.
 - Revision 245 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,387 tests: 1,383
   passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: `icat record` named the workload by
   image and start, stated what it collects, and kept 97 HTTP records of 16 exchanges with nothing lost while holding

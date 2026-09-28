@@ -79,7 +79,9 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
 - the magic or version is not this build's, or the bounds are not this build's `MaximumTimelineBuckets` and minimap
   bound;
 - the session is not the generation's;
-- a count exceeds the bytes left, a name is not an owned file name, a digest is malformed, or an order above is broken;
+- a count exceeds the bytes left, a name is not an owned file name, a digest is malformed, or an order above is broken.
+  `mainColumns` and `minimapColumns` are widths, not counts: a few records over a long extent fill few of many columns,
+  and a width bounds nothing about the bytes that follow (revision 246 stopped refusing such an overview);
 - a column index is outside its columns, a mechanism is not one §23 defines, or bytes remain;
 - the main column count, or the minimap span and column count, are not what this build derives from the extent;
 - the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed;

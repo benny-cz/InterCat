@@ -296,6 +296,29 @@ public sealed class DerivationCheckpointOverviewTests
         _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read((byte[])[.. bytes, 0], manifest.SessionId));
     }
 
+    [Fact(DisplayName = "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows")]
+    public void ASparseSessionsOverviewReadsBack()
+    {
+        // Two records ten seconds apart: the minimap divides the extent into its full width of columns, and a column holds a
+        // count only where a record fell, so the file ends a few bytes after it names how many columns there are. That
+        // number is the width the extent divides into, not a count of fields to follow, and no bound on the bytes left
+        // (a live content capture of 986 records found its 1,061 minimap columns refused against the 77 bytes left).
+        using var session = new TemporarySession();
+        Publish(session.Store, [Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1) with { SessionRelativeTicks = 1_000 },
+            Transfer(100_001_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2) with { SessionRelativeTicks = 100_001_000 }]);
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        OverviewCounts counts = SessionOverviewProjector.Count(segments, CancellationToken.None);
+        Assert.True(counts.Minimap!.Counts.Count > 100);
+
+        using var written = new MemoryStream();
+        _ = SessionOverviewIndex.Write(written, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest), counts);
+        (OverviewCounts read, _) = SessionOverviewIndex.Read(written.ToArray(), manifest.SessionId);
+        Assert.Equal(counts.Main!.Counts, read.Main!.Counts);
+        Assert.Equal(counts.Minimap.Counts, read.Minimap!.Counts);
+        Assert.Equal(2, read.Minimap.Counts.Sum());
+    }
+
     [Fact(DisplayName = "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment")]
     public void AnRpcPeersSessionReopensWithItsLinks()
     {
