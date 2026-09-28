@@ -15,9 +15,17 @@ internal sealed record OperationsDocument
     public required long Generation { get; init; }
     public required string OperationRule { get; init; }
     public required string BindingRule { get; init; }
+
+    /// <summary>The rule that found each client call's other end (`contracts/operations-v1.md` §5c).</summary>
+    public required string PeerRule { get; init; }
+
     public required string EvidencePolicy { get; init; }
     public required long CallRecords { get; init; }
     public required long OtherRpcRecords { get; init; }
+
+    /// <summary>The ALPC sends and receives the other ends were followed through; none when the capture collected none.</summary>
+    public required long AlpcRecords { get; init; }
+
     public required RpcCallCounts Totals { get; init; }
     public required IReadOnlyList<OperationsGroupDocument> Groups { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
@@ -38,8 +46,35 @@ internal sealed record OperationsGroupDocument
     public required RpcCallCounts Counts { get; init; }
     public required RpcCallDurations? DurationsNanoseconds { get; init; }
 
+    /// <summary>
+    /// Who is at the other end of the group's calls: for a client group, the server calls that served it, and why the
+    /// rest are unresolved; for a server group, the client calls it served.
+    /// </summary>
+    public required OperationsOtherEndsDocument OtherEnds { get; init; }
+
     /// <summary>The group's first calls in reading order, when calls were asked for; null otherwise.</summary>
     public IReadOnlyList<OperationsCallDocument>? Calls { get; init; }
+}
+
+internal sealed record OperationsOtherEndsDocument
+{
+    /// <summary>Calls whose other end is resolved: served client calls, or server calls a client call reached.</summary>
+    public required long Linked { get; init; }
+
+    /// <summary>A client group's calls whose other end is unresolved, by reason; empty for a server group.</summary>
+    public required IReadOnlyDictionary<RpcPeerState, long> Unresolved { get; init; }
+
+    /// <summary>The calls at the other end, by process and interface, the most first.</summary>
+    public required IReadOnlyList<OperationsPeerDocument> Peers { get; init; }
+}
+
+internal sealed record OperationsPeerDocument
+{
+    public required int ProcessId { get; init; }
+    public required ProcessInstanceDocument? Process { get; init; }
+    public required string? Unattributed { get; init; }
+    public required Guid? Interface { get; init; }
+    public required long Calls { get; init; }
 }
 
 internal sealed record OperationsCallDocument
@@ -55,6 +90,16 @@ internal sealed record OperationsCallDocument
     public required string? StartSeconds { get; init; }
     public required ObservationId? Stop { get; init; }
     public required string? StopSeconds { get; init; }
+
+    /// <summary>A client call's other end, or why it is unresolved; null for a server call no client call reached.</summary>
+    public required string? OtherEndState { get; init; }
+
+    /// <summary>The call at the other end, when one is linked.</summary>
+    public required ObservationId? OtherEnd { get; init; }
+
+    public required int? OtherEndProcessId { get; init; }
+
+    public required string? OtherEndImage { get; init; }
 }
 
 /// <summary>
@@ -178,10 +223,13 @@ internal static class OperationsCommand
 
             SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
             SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            ConsoleUi.Progress("Deriving process instances and pairing every RPC call record by its activity id.");
+            ConsoleUi.Progress(
+                "Deriving process instances, pairing every RPC call record by its activity id, and following each client "
+                + "call's ALPC message to the call that served it.");
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
             RpcCallIndex index = RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken);
-            document = Describe(full, manifest.Generation, index, segments, clock, policy, pid, rpcInterface, calls);
+            RpcPeerIndex peers = RpcPeerIndex.Derive(index, segments, fields, cancellationToken);
+            document = Describe(full, manifest.Generation, index, peers, segments, clock, policy, pid, rpcInterface, calls);
         }
 
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
@@ -208,6 +256,7 @@ internal static class OperationsCommand
         string path,
         long generation,
         RpcCallIndex index,
+        RpcPeerIndex peers,
         SegmentReaderV1[] segments,
         SourceClockDescriptor clock,
         EvidencePolicy policy,
@@ -224,6 +273,8 @@ internal static class OperationsCommand
             }
 
             bool admitted = group.Process.IsAdmittedUnder(policy);
+            RpcPeerCounts counts = peers.CountsOf(group);
+            IReadOnlyList<RpcPeerTally> tallies = peers.PeersOf(group);
             groups.Add(new()
             {
                 ProcessId = group.ProcessId,
@@ -235,7 +286,16 @@ internal static class OperationsCommand
                 Interface = group.Interface,
                 Counts = group.Counts,
                 DurationsNanoseconds = group.Durations,
-                Calls = calls == 0 ? null : [.. index.CallsOf(group, segments, 0, calls).Select(call => Call(call, clock))],
+                OtherEnds = new()
+                {
+                    Linked = group.Side == RpcCallSide.Client ? counts.Served : tallies.Sum(tally => tally.Calls),
+                    Unresolved = counts.Unresolved,
+                    Peers = [.. tallies.Select(tally => Peer(tally, index, clock, policy))],
+                },
+                Calls = calls == 0
+                    ? null
+                    : [.. index.CallsOf(group, segments, 0, calls).Select((call, position) =>
+                        Call(call, peers.PeerOf(group, position, segments), index, clock, policy))],
             });
         }
 
@@ -246,17 +306,20 @@ internal static class OperationsCommand
             Generation = generation,
             OperationRule = RpcCallIndex.OperationRule,
             BindingRule = ProcessInstanceIndex.BindingRule,
+            PeerRule = RpcPeerIndex.PeerRule,
             EvidencePolicy = policy.ToString(),
             CallRecords = index.CallRecords,
             OtherRpcRecords = index.OtherRpcRecords,
+            AlpcRecords = peers.AlpcSends + peers.AlpcReceives,
             Totals = index.Totals,
             Groups = groups,
             Caveats =
             [
                 "A call is its start and the stop that carries the same activity id, on one side of one process; nothing "
                 + "is paired by time (P8). A start with no stop is open at capture end, which is not a failure.",
-                "A client call and the server call that served it carry different activity ids, so a call's other end is "
-                + "not resolved (P7, ADR-031). A server's calls are grouped by the interface it served, not by who called.",
+                "A client call and the server call that served it carry different activity ids (ADR-031). Its other end is "
+                + "found only through the one ALPC message the call sent, when the capture collected ALPC "
+                + "(rpc-call-peer-v1, ADR-034); otherwise it is stated unresolved, with its reason, never guessed (P7).",
                 "An RPC record names no process; it belongs to the process that raised it (process-binding-v3, ADR-030).",
                 "A duration is the session time between a call's start and stop records on one clock. Percentiles are "
                 + "durations calls took, by nearest rank.",
@@ -264,8 +327,47 @@ internal static class OperationsCommand
         };
     }
 
+    /// <summary>The calls at a group's other end in one process, named as the group's own process is.</summary>
+    private static OperationsPeerDocument Peer(
+        RpcPeerTally tally,
+        RpcCallIndex index,
+        SourceClockDescriptor clock,
+        EvidencePolicy policy)
+    {
+        bool admitted = tally.Process.IsAdmittedUnder(policy);
+        return new()
+        {
+            ProcessId = tally.ProcessId,
+            Process = admitted ? ProcessInstanceDocument.From(index.Processes.Instances[tally.Process.Instance], clock) : null,
+            Unattributed = admitted
+                ? null
+                : tally.Process.IsBound ? ProcessBindingReason.NotAdmittedByPolicy.ToString() : tally.Process.Reason.ToString(),
+            Interface = tally.Interface,
+            Calls = tally.Calls,
+        };
+    }
+
+    private static OperationsCallDocument Call(
+        RpcCall call,
+        (RpcPeerState State, RpcCall? Other) peer,
+        RpcCallIndex index,
+        SourceClockDescriptor clock,
+        EvidencePolicy policy) => Call(call, clock) with
+    {
+        OtherEndState = peer.State == default ? null : peer.State.ToString(),
+        OtherEnd = peer.Other?.Identity,
+        OtherEndProcessId = peer.Other?.ProcessId,
+        OtherEndImage = peer.Other is { Process: var binding } && binding.IsAdmittedUnder(policy)
+            ? index.Processes.Instances[binding.Instance].ImageName
+            : null,
+    };
+
     private static OperationsCallDocument Call(RpcCall call, SourceClockDescriptor clock) => new()
     {
+        OtherEndState = null,
+        OtherEnd = null,
+        OtherEndProcessId = null,
+        OtherEndImage = null,
         Identity = call.Identity,
         State = call.State.ToString(),
         ActivityId = call.ActivityId,
@@ -285,6 +387,14 @@ internal static class OperationsCommand
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
         ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
+        long clientCalls = document.Groups.Where(group => group.Side == "Client").Sum(group => group.Counts.Calls);
+        long served = document.Groups.Where(group => group.Side == "Client").Sum(group => group.OtherEnds.Linked);
+        ConsoleUi.Field(
+            "Other ends",
+            document.AlpcRecords == 0
+                ? $"{document.PeerRule}: none resolved, the capture collected no ALPC (icat record --profile rpc-peers does)"
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {served:N0} of the {clientCalls:N0} client calls listed were served"));
         ConsoleUi.Field(
             "Call records",
             document.OtherRpcRecords == 0
@@ -307,7 +417,7 @@ internal static class OperationsCommand
         {
             IReadOnlyList<OperationsGroupDocument> shown = top == 0 ? document.Groups : [.. document.Groups.Take(top)];
             ConsoleUi.Table(
-                ["Process", "Side", "Interface", "Calls", "Done", "Failed", "Open", "Unpaired", "Median", "p95", "Max"],
+                ["Process", "Side", "Interface", "Calls", "Done", "Failed", "Open", "Unpaired", "Median", "p95", "Max", "Other end"],
                 [.. shown.Select(group => (IReadOnlyList<string>)
                 [
                     ProcessName(group),
@@ -321,6 +431,7 @@ internal static class OperationsCommand
                     Duration(group.DurationsNanoseconds?.Median),
                     Duration(group.DurationsNanoseconds?.Percentile95),
                     Duration(group.DurationsNanoseconds?.Maximum),
+                    OtherEnd(group),
                 ])]);
             if (shown.Count < document.Groups.Count)
             {
@@ -334,7 +445,7 @@ internal static class OperationsCommand
                 ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
                     $"  {ProcessName(group)}, {group.Side.ToLowerInvariant()} calls to {group.Interface?.ToString() ?? "an interface no start named"}: the first {group.Calls!.Count:N0} of {group.Counts.Calls:N0}"));
                 ConsoleUi.Table(
-                    ["Start", "Duration", "Status", "State", "Procedure"],
+                    ["Start", "Duration", "Status", "State", "Procedure", "Other end"],
                     [.. group.Calls.Select(call => (IReadOnlyList<string>)
                     [
                         call.StartSeconds is { } seconds ? LocalSeconds(seconds) : "not observed",
@@ -342,6 +453,7 @@ internal static class OperationsCommand
                         call.Status?.ToString(CultureInfo.CurrentCulture) ?? "none",
                         OperationText.State(Enum.Parse<RpcCallState>(call.State)),
                         call.Procedure?.ToString(CultureInfo.CurrentCulture) ?? "none",
+                        OtherEnd(call),
                     ])]);
             }
         }
@@ -352,6 +464,40 @@ internal static class OperationsCommand
             ConsoleUi.Note(caveat);
         }
     }
+
+    /// <summary>
+    /// A group's other end in a cell: for a client group, its most frequent server and how many of its calls were served;
+    /// for a server group, how many client processes it served.
+    /// </summary>
+    private static string OtherEnd(OperationsGroupDocument group)
+    {
+        OperationsOtherEndsDocument ends = group.OtherEnds;
+        if (group.Side != "Client")
+        {
+            return ends.Peers.Count == 0
+                ? "-"
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"{ends.Linked:N0} for {ends.Peers.Count:N0} client {(ends.Peers.Count == 1 ? "process" : "processes")}");
+        }
+
+        if (ends.Peers.Count == 0)
+        {
+            return ends.Unresolved.Count == 1 && ends.Unresolved.ContainsKey(RpcPeerState.NoAlpcEvidence) ? "no ALPC" : "unresolved";
+        }
+
+        OperationsPeerDocument first = ends.Peers[0];
+        string name = first.Process?.ImageName ?? $"PID {first.ProcessId}";
+        string more = ends.Peers.Count > 1 ? string.Create(CultureInfo.CurrentCulture, $" +{ends.Peers.Count - 1:N0}") : "";
+        return string.Create(CultureInfo.CurrentCulture, $"{name}{more}: {ends.Linked:N0}/{group.Counts.Calls:N0}");
+    }
+
+    /// <summary>One call's other end in a cell: the process that served or called it, or why none is known.</summary>
+    private static string OtherEnd(OperationsCallDocument call) => call switch
+    {
+        { OtherEndProcessId: { } other } => string.Create(CultureInfo.CurrentCulture, $"{call.OtherEndImage ?? "PID"} · {other}"),
+        { OtherEndState: { } state } => OperationText.PeerState(Enum.Parse<RpcPeerState>(state)),
+        _ => "-",
+    };
 
     private static string ProcessName(OperationsGroupDocument group) => group.Process is { } process
         ? string.Create(CultureInfo.CurrentCulture, $"{process.ImageName ?? "executable not witnessed"} · {process.ProcessId}")
@@ -373,7 +519,8 @@ internal static class OperationsCommand
         ConsoleUi.Line("  Lists the session's RPC calls: each start paired with its stop through the activity id, on one");
         ConsoleUi.Line("  side of one process (contracts/operations-v1.md). Calls are grouped by process, side and");
         ConsoleUi.Line("  interface, with completions, failures, open calls and durations, and every call that could");
-        ConsoleUi.Line("  not be paired is counted by its reason.");
+        ConsoleUi.Line("  not be paired is counted by its reason. When the capture collected ALPC (--profile rpc-peers),");
+        ConsoleUi.Line("  each client call's other end is the server call its one ALPC message reached (ADR-034).");
         ConsoleUi.Line();
         ConsoleUi.Line("  --pid <id>             Only the groups of this PID, with their first calls.");
         ConsoleUi.Line("  --interface <uuid>     Only the groups of this RPC interface, with their first calls.");

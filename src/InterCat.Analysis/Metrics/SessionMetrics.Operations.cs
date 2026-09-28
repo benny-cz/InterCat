@@ -43,8 +43,9 @@ public static partial class SessionMetrics
                 + "one side to one interface (operations-v1 §5a) - is another thing, and counting it as a channel is not "
                 + "defined at this version; icat operations lists them.",
             Metric.ActivePeers =>
-                "A peer is the process at an operation's other end, and no rule pairs a client call with the server call "
-                + "that served it (operations-v1 §3, P7), so no call has a resolved other end to count.",
+                "A peer is the process at an operation's other end. A client call's other end is linked only when its "
+                + "capture collected ALPC (operations-v1 §5c), and no metric counts those links at this version; icat "
+                + "operations lists who served each client group.",
             Metric.Errors when request.AccountingSide is not null =>
                 "An RPC call is made at its client and served at its server, and neither is the end a transfer was sent "
                 + "or received at, so no call is accounted to a side. Ask for Errors without one.",
@@ -58,8 +59,8 @@ public static partial class SessionMetrics
             : null;
         missing ??= relative is null
             ? null
-            : $"{relative} needs the process at an operation's other end, and no rule pairs a client call with the "
-                + "server call that served it (operations-v1 §3, P7), so no call's other end is resolved. owner(P), the "
+            : $"{relative} needs the process at an operation's other end, which is linked only when a capture collected "
+                + "ALPC (operations-v1 §5c) and which no metric reads at this version. owner(P), the "
                 + "calls a process made or served, is answered.";
 
         missing ??= request.Mechanism is { } mechanism && mechanism != Mechanism.Rpc

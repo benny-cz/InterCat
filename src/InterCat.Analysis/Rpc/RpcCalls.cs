@@ -397,6 +397,12 @@ public sealed class RpcCallIndex
     private void RequireSegments(RpcCallGroup group, IReadOnlyList<SegmentReaderV1> segments)
     {
         RequireGroup(group);
+        RequireDerivedFrom(segments);
+    }
+
+    /// <summary>Refuses segments other than the ones the calls were paired from, in the same order.</summary>
+    internal void RequireDerivedFrom(IReadOnlyList<SegmentReaderV1> segments)
+    {
         ArgumentNullException.ThrowIfNull(segments);
         if (segments.Count != segmentNames.Length
             || segments.Select(segment => segment.Published?.Name).Where((name, position) => name != segmentNames[position]).Any())
@@ -404,6 +410,62 @@ public sealed class RpcCallIndex
             throw new ArgumentException("These are not the segments the calls were derived from.", nameof(segments));
         }
     }
+
+    /// <summary>The clock the calls were read on.</summary>
+    internal SourceClockDescriptor Clock => clock;
+
+    /// <summary>How many calls the index holds: every group's, each group's together and in its reading order.</summary>
+    internal int Count => entries.Length;
+
+    /// <summary>Where <paramref name="group"/>'s calls are among the index's, as <see cref="FactsOf"/> numbers them.</summary>
+    internal (int First, int Count) RangeOf(RpcCallGroup group)
+    {
+        RequireGroup(group);
+        return (group.First, (int)group.Counts.Calls);
+    }
+
+    /// <summary>What the peer rule reads of one call (`contracts/operations-v1.md` §5c).</summary>
+    internal PeerFacts FactsOf(int call)
+    {
+        Entry entry = entries[call];
+        return new(
+            entry.Side,
+            entry.State,
+            entry.ProcessId,
+            entry.Process,
+            entry.Interface,
+            entry.HasProcedure ? entry.Procedure : null,
+            entry.StartTicks,
+            entry.StartSegment,
+            entry.StartRow,
+            entry.StopTicks);
+    }
+
+    /// <summary>The interface one call's start named; null without a start or where it named none.</summary>
+    internal Guid? InterfaceOf(int call) => entries[call].Interface < 0 ? null : interfaces[entries[call].Interface];
+
+    /// <summary>One call described from the segments it was paired from.</summary>
+    internal RpcCall DescribeAt(int call, IReadOnlyList<SegmentReaderV1> segments)
+    {
+        RequireDerivedFrom(segments);
+        return Describe(entries[call], segments);
+    }
+
+    /// <summary>
+    /// One call as the peer rule reads it: its side, state and process, the interface position and procedure its start
+    /// carried, and where its start is. A call without a start has a start segment below zero.
+    /// </summary>
+    internal readonly record struct PeerFacts(
+        RpcCallSide Side,
+        RpcCallState State,
+        int ProcessId,
+        ProcessBinding Process,
+        int Interface,
+        long? Procedure,
+        long StartTicks,
+        int StartSegment,
+        int StartRow,
+        long StopTicks);
 
     /// <summary>
     /// Pairs the call records of <paramref name="segments"/>, whose process instances are <paramref name="processes"/>,

@@ -1,0 +1,31 @@
+{
+  "schema": "intercat.rpc-peer-links.v1",
+  "measuredUtc": "2026-09-28T05:48:00Z",
+  "rule": "rpc-call-peer-v1 over rpc-call-operation-v1 over process-binding-v3",
+  "capture": {
+    "command": "icat record --profile rpc-peers --duration 25",
+    "journaledRecords": 16963,
+    "alpcSendsAndReceives": 8570,
+    "lost": 0
+  },
+  "workload": {
+    "scenario": "FX-RPC-001",
+    "truthCalls": 300,
+    "clientCallsToServiceControl": 1500,
+    "linked": 1499,
+    "linkedToTheRecordedServiceHost": 1499,
+    "unresolved": { "SeveralSends": 1 }
+  },
+  "session": {
+    "clientCalls": 1911,
+    "linked": 1860,
+    "unresolved": { "SeveralSends": 43, "NotCompleted": 6, "SeveralReceives": 2 },
+    "conflicting": 0,
+    "serverCallsReachedTwice": 0
+  },
+  "notes": [
+    "Counters only: the recorded session held every process on the machine and was deleted once read.",
+    "The unresolved workload call is its first, which made several ALPC sends while it set up its connection.",
+    "Most calls with several sends were COM calls, which ADR-034's chain does not link."
+  ]
+}

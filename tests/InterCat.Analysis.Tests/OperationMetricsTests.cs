@@ -270,7 +270,7 @@ public sealed class OperationMetricsTests
         {
             (DurationRequest(DurationInterval.IoCompletion), "No IoCompletion operation is derived"),
             (Request(Metric.ActiveChannels), "connection incarnations"),
-            (Request(Metric.ActivePeers) with { Owner = client }, "no call has a resolved other end"),
+            (Request(Metric.ActivePeers) with { Owner = client }, "no metric counts those links"),
             (Request(Metric.Errors) with { AccountingSide = AccountingSide.SendSide }, "no call is accounted to a side"),
             (Request(Metric.OperationsStarted) with { Participant = client }, "participant(P) needs the process at an operation's other end"),
             (Request(Metric.OperationsStarted) with { Sender = client }, "sender(P) needs"),

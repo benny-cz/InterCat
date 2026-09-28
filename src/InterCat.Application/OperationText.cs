@@ -42,4 +42,22 @@ public static class OperationText
         RpcCallState.Ambiguous => "ambiguous: its activity id was reused before its stop",
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "No call is in this state."),
     };
+
+    /// <summary>What a client call's other end is, in words (`contracts/operations-v1.md` §5c).</summary>
+    public static string PeerState(RpcPeerState state) => state switch
+    {
+        RpcPeerState.Served => "served",
+        RpcPeerState.NoAlpcEvidence => "the capture collected no ALPC",
+        RpcPeerState.NotCompleted => "not completed, so no window to follow",
+        RpcPeerState.NoSend => "no ALPC send on its thread during the call",
+        RpcPeerState.SeveralSends => "several ALPC sends during the call",
+        RpcPeerState.NoMessageId => "its ALPC send carried no message id",
+        RpcPeerState.NoReceive => "no other process received its message",
+        RpcPeerState.SeveralReceives => "several other processes received its message",
+        RpcPeerState.NoServerCall => "the receiving thread began no server call within 5 ms",
+        RpcPeerState.CannotCheck => "an interface or procedure is missing, so the link cannot be checked",
+        RpcPeerState.Conflicting => "the server call names another interface or procedure",
+        RpcPeerState.ServerCallShared => "another client call reached the same server call",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "No other end is in this state."),
+    };
 }

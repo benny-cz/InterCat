@@ -1,6 +1,7 @@
 # ADR-034: ALPC links an RPC client call to the server call that served it
 
-- Status: accepted for M3 as a measurement; the capture and the relation rule it enables are later slices
+- Status: accepted for M3; the capture (revisions 218 to 224) and the relation rule (revision 225,
+  `contracts/operations-v1.md` §5c) implement it
 - Date: 2026-09-27
 - Decision owners: InterCat maintainers
 - Relates to: §4 (ALPC), §7.4 (RPC and ALPC correlation contracts), IC-006, P7, P8, ADR-002, ADR-004, ADR-031, FX-RPC-001,
@@ -67,6 +68,16 @@ it is already Moderate (§12: above 1 point, at most 5). A second series ran whi
 Low; when a capture admits it, it is an opt-in profile for resolving RPC peers, with its own measured class. (ADR-035's
 revision 223 addendum restates the reason: Explore also lists Kernel-Process, measured Moderate, and ALPC stays out
 because it needs a system logger. Its revision 224 addendum measures the profile through the product.)
+
+## Addendum: the relation rule on a real capture (revision 225)
+
+`rpc-call-peer-v1` follows the first decision's chain over a generation's calls and ALPC records. A 25-second
+`icat record --profile rpc-peers` ran FX-RPC-001's 300 truth calls, which the workload made as 1,500 RPC calls to the
+service control manager. `icat operations` linked 1,499 of them to server calls in the process the workload recorded
+as the service host. The one left was the first call, which made several ALPC sends and is stated so. Over the whole
+session, 1,860 of the machine's 1,911 client calls were linked. Of the rest, 43 made several sends (most of them COM
+calls), 6 were not completed and 2 were received by several processes. No link conflicted in interface or procedure,
+and no server call was reached twice (`bench/results/rpc-peer-links-20260928T054800Z`).
 
 ## Alternatives considered
 

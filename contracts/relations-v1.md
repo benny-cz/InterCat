@@ -168,7 +168,8 @@ without an end; every IPv4 answer is the same under both.
 ## 9. Not defined at this version
 
 - Relations for named pipes, RPC, ALPC and shared sections, and UDP endpoint reuse, multicast and broadcast
-  beyond reporting them unobserved.
+  beyond reporting them unobserved. An RPC call's other end is `contracts/operations-v1.md` §5c's: a link between two
+  calls through ALPC, not a relation between two ends.
 - Per-transfer associations and the canonical owner they enable.
 - Persisting relations as a published table of their own. Revision 162 publishes their derivation state instead, in a
   checkpoint a reader extends (`contracts/derivation-checkpoint-v1.md`); the relations are still built from it.

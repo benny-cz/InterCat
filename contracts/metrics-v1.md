@@ -358,8 +358,9 @@ A projection onto `Rpc` or the application layer keeps every call.
 
 **What no derived operation answers** is `NoLogicalOperations`, with what it needs:
 
-- `participant`, `sender`, `receiver`, `peer`, `between` and grouping by peer, which need an operation's other end: no
-  rule pairs a client call with the server call that served it (`operations-v1` §3, P7);
+- `participant`, `sender`, `receiver`, `peer`, `between` and grouping by peer, which need an operation's other end:
+  `operations-v1` §5c links a client call to its server call only when its capture collected ALPC, and no metric reads
+  those links at this version (P7);
 - `ActivePeers`, for the same reason, and `ActiveChannels`, which counts connection incarnations, not RPC channels;
 - `Duration` of an I/O completion, an ALPC send-to-receive or a wait, which no derived operation measures;
 - `Errors` with an accounting side: a call is made at a client and served at a server, not sent or received;

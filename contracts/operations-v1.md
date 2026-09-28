@@ -1,8 +1,8 @@
 # InterCat operations v1
 
 Status: **implemented** as `rpc-call-operation-v1`, for RPC calls (revision 178), and counted on the logical-operations
-metric basis since revision 183 (`contracts/metrics-v1.md` §8a). No other mechanism derives an operation at this
-version (§8).
+metric basis since revision 183 (`contracts/metrics-v1.md` §8a). A client call's other end is `rpc-call-peer-v1`'s
+since revision 225 (§5c). No other mechanism derives an operation at this version (§8).
 
 This contract fixes how §7.1's `Operation` - a derived logical call with an optional start, end and status and the
 observations it is made of - is derived from a generation's published segments. It is §7.4's RPC correlator, with the
@@ -43,7 +43,8 @@ derivation counts it as such.
   still open when the key's records end is open at capture end.
 - **No timeout:** nothing is paired by time proximity (P8) and nothing expires. A missing stop is not a failure.
 - **Sides never meet:** a client call and the server call that served it carry different activity ids (FX-RPC-001), so
-  no call is paired across sides and a call's other end is unresolved (P7).
+  no call is paired across sides by its activity id. A call's other end is §5c's, found through ALPC or left unresolved
+  with its reason (P7).
 
 ## 4. A call
 
@@ -106,6 +107,46 @@ unpaired stops and durations are those calls', its call records are the ones rea
 lists exactly those calls in the same order. A channel holding no call in the interval is still listed, counting none,
 as a paired channel is. An interval holding every reading answers exactly as the whole capture does.
 
+## 5c. A client call's other end (revision 225)
+
+A client call's other end is the server call that served it. ADR-034 measured the chain that finds it through ALPC,
+and `rpc-call-peer-v1` follows it, over this contract's calls and the generation's ALPC records: a row whose
+mechanism is `Alpc` and whose kind is `Send` or `Receive`, its header process and thread, its reading, and its
+`AlpcMessageId` source field. A client call is **served** by a server call when:
+
+1. the client call is `Completed`. Its thread is its start's header thread;
+2. exactly one ALPC send was read on that thread, in the call's process, after its start and before its stop, and the
+   send carries a message id;
+3. that message id was received exactly once in another process, read after the send and before the call's stop;
+4. a server call's start was read on the receiving thread, in the receiving process, at or after the receive, within
+   5 ms of it and before the client call's stop. The first such start is the server call;
+5. the two calls carry one interface and one procedure.
+
+Every other shape leaves the call's other end unresolved, with its reason:
+
+| Reason | Meaning |
+|---|---|
+| `NoAlpcEvidence` | the generation holds no ALPC record: its capture did not collect ALPC, and nothing is resolved |
+| `NotCompleted` | the call has no start or no stop, so it has no window |
+| `NoSend` | no send in the window on the call's thread: another transport, or a send not delivered |
+| `SeveralSends` | more than one send in the window: which one carried the call cannot be told |
+| `NoMessageId` | its one send carried no message id |
+| `NoReceive` | no other process received the message before the call stopped |
+| `SeveralReceives` | more than one other process's receive of the message before the call stopped |
+| `NoServerCall` | no server call began on the receiving thread within 5 ms and before the call stopped |
+| `CannotCheck` | either call carries no interface or no procedure, so the link cannot be checked |
+| `Conflicting` | the server call carries another interface or procedure: conflicting evidence, never a link |
+| `ServerCallShared` | another client call reached the same server call, so neither is linked |
+
+- **A message id is never a key by itself.** Ids repeat within seconds across processes (ADR-034). One joins only inside
+  one client call's window, from its one send on one thread.
+- **Nothing is linked by time alone** (P8). The 5 ms bound chooses among the server calls one thread began after the
+  message reached it; a server call on another thread, however close in time, is never a candidate.
+- **A link is checked, never assumed.** A disagreement of interface or procedure is stated, not linked.
+- A served call's other end is the server call's process binding; the server call's other end is the client call.
+  A server call reached by no client call is unresolved, and has no reason of its own: its client may be remote, may
+  not use ALPC, or may not be in the capture.
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as
@@ -119,15 +160,18 @@ as a paired channel is. An interval holding every reading answers exactly as the
 
 A derivation is identified by `rpc-call-operation-v1`, the `process-binding-v3` derivation it rests on, and the
 generation it was derived from. A change to what pairs, how, or what a call holds is a new rule identity (§24
-`correlationRevision`).
+`correlationRevision`). The other ends of §5c are identified by `rpc-call-peer-v1`, the `rpc-call-operation-v1`
+derivation they rest on, and the generation; a change to what links, how, or when a link is refused is a new rule.
 
 ## 8. Not defined at this version
 
 - Operations of any other mechanism.
 - Durations of any interval but a client call and a server execution: those two are measured by
   `contracts/metrics-v1.md` §8a since revision 186.
-- Pairing a client call with the server call that served it, and pairing by thread nesting.
-- Persisting calls in a checkpoint, or extending them from one live generation to the next: a derivation reads its
-  generation whole, holding every call record while it pairs and the keys with a call open while it walks them
-  (revision 184).
+- Linking a client call to its server call other than through §5c's ALPC chain: by thread nesting, by time, or across
+  machines.
+- Counting peers from §5c's links: `contracts/metrics-v1.md` still answers a peer as unavailable.
+- Persisting calls or their other ends in a checkpoint, or extending them from one live generation to the next: a
+  derivation reads its generation whole, holding every call record while it pairs and the keys with a call open while
+  it walks them (revision 184).
 - Late evidence revisions (I17): a later generation derives its calls again.
