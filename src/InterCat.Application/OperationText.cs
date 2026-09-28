@@ -58,6 +58,7 @@ public static class OperationText
         RpcPeerState.CannotCheck => "an interface or procedure is missing, so the link cannot be checked",
         RpcPeerState.Conflicting => "the server call names another interface or procedure",
         RpcPeerState.ServerCallShared => "another client call reached the same server call",
+        RpcPeerState.NotReached => "no linked client call reached it",
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "No other end is in this state."),
     };
 }

@@ -241,6 +241,12 @@ internal sealed record MetricContributionsDocument
 
     /// <summary>For a count of peers: the records it took whose other end is unresolved, by reason.</summary>
     public required IReadOnlyDictionary<string, long> UnknownCounterparts { get; init; }
+
+    /// <summary>
+    /// For an answer that read RPC calls' other ends: the calls it disclosed or could not attribute because no link reached
+    /// them, by the reason `rpc-call-peer-v1` gives (`operations-v1` §5c).
+    /// </summary>
+    public required IReadOnlyDictionary<string, long> UnlinkedCalls { get; init; }
 }
 
 /// <summary>
@@ -763,6 +769,9 @@ internal static class MetricCommand
                 UnknownCounterparts = result.UnknownCounterparts
                     .OrderBy(entry => entry.Key)
                     .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+                UnlinkedCalls = result.UnlinkedCalls
+                    .OrderBy(entry => entry.Key)
+                    .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
             },
             Operations = result.Operations is { } operations
                 ? new()
@@ -1063,7 +1072,10 @@ internal static class MetricCommand
         // rules; any other answer names them when a process filter read them.
         if (request.Basis == AnalysisBasis.LogicalOperations)
         {
-            ConsoleUi.Field("Rules", $"{RpcCallIndex.OperationRule} over {result.BindingRule ?? ProcessInstanceIndex.BindingRule}");
+            ConsoleUi.Field(
+                "Rules",
+                $"{RpcCallIndex.OperationRule} over {result.BindingRule ?? ProcessInstanceIndex.BindingRule}"
+                + (result.RelationRule is { } peerRule ? $", other ends by {peerRule}" : string.Empty));
         }
         else if (request.Focus is not null || request.Between is not null)
         {
@@ -1310,6 +1322,20 @@ internal static class MetricCommand
         ConsoleUi.Line();
         ConsoleUi.Line(operations ? "  Calls left out of this answer:" : "  Records left out of this answer:");
         ConsoleUi.Table(["Why", operations ? "Calls" : "Records"], rows);
+        if (result.UnlinkedCalls.Count > 0)
+        {
+            // Why no link reached the calls an answer about other ends disclosed or could not attribute (operations-v1 §5c).
+            ConsoleUi.Line(
+                "  Calls whose other end no ALPC link reached: "
+                + string.Join(
+                    ", ",
+                    result.UnlinkedCalls
+                        .OrderByDescending(entry => entry.Value)
+                        .ThenBy(entry => entry.Key)
+                        .Select(entry => string.Create(CultureInfo.CurrentCulture,
+                            $"{OperationText.PeerState(entry.Key)} ({entry.Value:N0})"))));
+        }
+
         if (document.Contributions.OtherDomains.Count > 0)
         {
             ConsoleUi.Line(
@@ -1806,6 +1832,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      with its start, errors the completed ones whose stop reports a failure status.");
         ConsoleUi.Line("      Every other call in scope is stated by what its records establish, never counted;");
         ConsoleUi.Line("      --owner filters the calls, and --group-by ranks them by process or executable.");
+        ConsoleUi.Line("      When the capture collected ALPC (--profile rpc-peers), a call's other end is the");
+        ConsoleUi.Line("      process of the call it was linked to: --participant, --peer, --between either way,");
+        ConsoleUi.Line("      --group-by peer and active-peers with a focus read it; unlinked calls are disclosed.");
         ConsoleUi.Line("      --metric duration --duration client-call|server-execution measures the calls of one");
         ConsoleUi.Line("      side, never both: --cohort completed (the default) takes the calls whose stop is in");
         ConsoleUi.Line("      scope and started those whose start is; --statistic median (default), p95 or max is");

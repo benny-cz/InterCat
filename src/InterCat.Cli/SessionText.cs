@@ -74,6 +74,7 @@ internal static class SessionText
         ProcessBindingReason.PeerAmbiguous => "more than one process holds the other end",
         ProcessBindingReason.PeerUnbound => "the other end's records bind to no process instance",
         ProcessBindingReason.NoRelationRule => "no relation rule covers this mechanism yet",
+        ProcessBindingReason.CallNotLinked => "an RPC call whose other end was not linked through ALPC",
         _ => reason.ToString(),
     };
 

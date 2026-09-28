@@ -339,7 +339,14 @@ public sealed record MetricDerivations(
     string ManifestDigest,
     ProcessInstanceIndex Processes,
     Func<CancellationToken, TransportRelationIndex> Relations,
-    Func<CancellationToken, RpcCallIndex> Calls);
+    Func<CancellationToken, RpcCallIndex> Calls)
+{
+    /// <summary>
+    /// The calls' other ends, followed on demand over the calls <see cref="Calls"/> gives (`contracts/operations-v1.md`
+    /// §5c); null when the caller holds none, and then an answer that needs them follows them itself.
+    /// </summary>
+    public Func<CancellationToken, RpcPeerIndex>? Peers { get; init; }
+}
 
 /// <summary>Why a request the matrix permits still cannot be answered from this session.</summary>
 public enum MetricUnavailableReason
@@ -700,6 +707,12 @@ public sealed record MetricResult
     /// </summary>
     public IReadOnlyDictionary<ProcessBindingReason, long> UnknownCounterparts { get; init; } =
         new Dictionary<ProcessBindingReason, long>();
+
+    /// <summary>
+    /// For an answer that read RPC calls' other ends: the calls it disclosed or could not attribute because no link reached
+    /// them, by the reason `rpc-call-peer-v1` gives (`contracts/operations-v1.md` §5c). Empty for every other answer.
+    /// </summary>
+    public IReadOnlyDictionary<RpcPeerState, long> UnlinkedCalls { get; init; } = new Dictionary<RpcPeerState, long>();
 
     public long ExcludedOutsideInterval { get; init; }
 
@@ -1238,7 +1251,7 @@ public static partial class SessionMetrics
             return counts;
         }
 
-        const int Reasons = (int)ProcessBindingReason.NoRelationRule + 1;
+        const int Reasons = (int)ProcessBindingReason.CallNotLinked + 1;
         MetricRequest request = context.Request;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {

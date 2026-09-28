@@ -42,9 +42,15 @@ public enum RpcPeerState
 
     /// <summary>Another client call reached the same server call, so neither is linked.</summary>
     ServerCallShared = 12,
+
+    /// <summary>
+    /// A server call no linked client call reached: its client may be remote, may not have used ALPC, or may not be in the
+    /// capture. A served server call is <see cref="Served"/>.
+    /// </summary>
+    NotReached = 13,
 }
 
-/// <summary>One client group's calls by what their other end is.</summary>
+/// <summary>One group's calls by what their other end is: served, or unresolved by reason.</summary>
 public sealed record RpcPeerCounts
 {
     public required long Calls { get; init; }
@@ -150,11 +156,7 @@ public sealed class RpcPeerIndex
         Array.Fill(peers, -1);
         if (sends.Count + receives.Count == 0)
         {
-            for (int call = 0; call < count; call++)
-            {
-                states[call] = calls.FactsOf(call).Side == RpcCallSide.Client ? RpcPeerState.NoAlpcEvidence : default;
-            }
-
+            Array.Fill(states, RpcPeerState.NoAlpcEvidence);
             return new(calls, states, peers, 0, 0);
         }
 
@@ -212,12 +214,27 @@ public sealed class RpcPeerIndex
             }
         }
 
+        // A server call is served when a linked client call reached it, and not reached otherwise.
+        for (int call = 0; call < count; call++)
+        {
+            if (calls.FactsOf(call).Side == RpcCallSide.Server)
+            {
+                states[call] = peers[call] >= 0 ? RpcPeerState.Served : RpcPeerState.NotReached;
+            }
+        }
+
         return new(calls, states, peers, sends.Count, receives.Count);
     }
 
+    /// <summary>What the call at <paramref name="call"/> in the index's call order reached.</summary>
+    internal RpcPeerState StateAt(int call) => states[call];
+
+    /// <summary>The call at the other end of the call at <paramref name="call"/>, or -1 when it is not linked.</summary>
+    internal int OtherAt(int call) => peers[call];
+
     /// <summary>
-    /// The group's client calls by what their other end is, or only those at <paramref name="positions"/> in its reading
-    /// order. A server group's calls have none of their own.
+    /// The group's calls by what their other end is, or only those at <paramref name="positions"/> in its reading order: a
+    /// client call served or unresolved by its reason, a server call served or not reached.
     /// </summary>
     public RpcPeerCounts CountsOf(RpcCallGroup group, IEnumerable<int>? positions = null)
     {
@@ -282,7 +299,8 @@ public sealed class RpcPeerIndex
     {
         for (int call = 0; call < states.Length; call++)
         {
-            if (states[call] != RpcPeerState.Served)
+            // Each link once, from its client call: a served server call is the other end of one of them.
+            if (states[call] != RpcPeerState.Served || calls.FactsOf(call).Side != RpcCallSide.Client)
             {
                 continue;
             }

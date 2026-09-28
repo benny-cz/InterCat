@@ -42,26 +42,32 @@ public static partial class SessionMetrics
                 "ActiveChannels counts connection incarnations (metrics-v1 §6.1). An RPC channel - one process's calls on "
                 + "one side to one interface (operations-v1 §5a) - is another thing, and counting it as a channel is not "
                 + "defined at this version; icat operations lists them.",
-            Metric.ActivePeers =>
-                "A peer is the process at an operation's other end. A client call's other end is linked only when its "
-                + "capture collected ALPC (operations-v1 §5c), and no metric counts those links at this version; icat "
-                + "operations lists who served each client group.",
+            Metric.ActivePeers when request.Focus is null =>
+                "A peer is the process at a call's other end, counted from one process: name it with owner(P) or "
+                + "participant(P) (§6.1).",
+            Metric.ActivePeers when request.Grouping is not null =>
+                "Counting each group's peers of calls is not defined at this version. Count one process's peers with a "
+                + "focus, or group its calls by peer, which lists each peer with its calls (§8a).",
             Metric.Errors when request.AccountingSide is not null =>
                 "An RPC call is made at its client and served at its server, and neither is the end a transfer was sent "
                 + "or received at, so no call is accounted to a side. Ask for Errors without one.",
             _ => null,
         };
 
-        string? relative = request.Focus is { Role: not ProcessRole.Owner } focus ? $"{Role(focus.Role)}(P)"
-            : request.Between is not null ? "between(A,B)"
-            : request.Peer is not null ? "peer(P,Q)"
-            : request.Grouping == LaneGrouping.Peer ? "Grouping by peer"
+        // A call is made at a client and served at a server: it carries no data direction for a role or a direction to
+        // select it by, where its other end, linked through ALPC, answers participant(P), peer(P,Q) and between(A,B).
+        string? directed = request.Focus is { Role: ProcessRole.Sender or ProcessRole.Receiver } focus ? $"{Role(focus.Role)}(P)"
+            : request.Between is { Direction: not BetweenDirection.Either } ? "A directional between(A,B)"
             : null;
-        missing ??= relative is null
+        missing ??= directed is null
             ? null
-            : $"{relative} needs the process at an operation's other end, which is linked only when a capture collected "
-                + "ALPC (operations-v1 §5c) and which no metric reads at this version. owner(P), the "
-                + "calls a process made or served, is answered.";
+            : $"{directed} selects data that flowed one way, and a call is made at a client and served at a server with no "
+                + "data direction, so it is not defined for calls. participant(P) keeps the calls P made and those made to "
+                + "or by it, and between(A,B) either way keeps the calls joining the sets (§8a).";
+        missing ??= request.Grouping == LaneGrouping.Peer && request.Focus is null
+            ? "Grouping calls by peer reads each call's other end from one process: name it with owner(P) or "
+                + "participant(P) (§6)."
+            : null;
 
         missing ??= request.Mechanism is { } mechanism && mechanism != Mechanism.Rpc
             ? $"Only RPC calls are derived as operations at this version (operations-v1). No correlator derives {mechanism} "
@@ -98,16 +104,20 @@ public static partial class SessionMetrics
 
         SegmentReaderV1[] readers = [.. context.Segments.Select(segment => segment.Reader)];
         ProcessInstanceIndex processes = ProcessesOf(context, cancellationToken);
-        int owner = -1;
-        if (request.Owner is { } named)
+        int owner = request.Owner is { } owned ? IndexOf(processes, owned) : -1;
+        ProcessInstanceId[] named =
+        [
+            .. request.Focus is { } focused ? [focused.Instance] : Array.Empty<ProcessInstanceId>(),
+            .. request.Peer is { } narrowed ? [narrowed] : Array.Empty<ProcessInstanceId>(),
+            .. request.Between?.First ?? [],
+            .. request.Between?.Second ?? [],
+        ];
+        int absent = Array.FindIndex(named, instance => IndexOf(processes, instance) < 0);
+        if (absent >= 0)
         {
-            owner = IndexOf(processes, named);
-            if (owner < 0)
-            {
-                return Unavailable(request, context.Generation, MetricUnavailableReason.ProcessInstanceNotFound,
-                    $"Process instance {named} is not present in generation {context.Generation}. Select an instance id "
-                    + "from this generation's process grouping; a PID alone is not an instance identity.");
-            }
+            return Unavailable(request, context.Generation, MetricUnavailableReason.ProcessInstanceNotFound,
+                $"Process instance {named[absent]} is not present in generation {context.Generation}. Select an instance id "
+                + "from this generation's process grouping; a PID alone is not an instance identity.");
         }
 
         if (request.Grouping is not null && WhatGroupingNeeds(request, context.Generation, clock) is { } ungroupable)
@@ -126,16 +136,44 @@ public static partial class SessionMetrics
         RpcCallIndex calls = context.Derived is { } derived && ReferenceEquals(processes, derived.Processes)
             ? derived.Calls(cancellationToken)
             : RpcCallIndex.Derive(readers, context.FieldSegments, processes, clock, cancellationToken);
+
+        // A filter, grouping or count that reads a call's other end rests on rpc-call-peer-v1's links (§8a).
+        CallEnds? ends = null;
+        if (NeedsOtherEnds(request))
+        {
+            RpcPeerIndex peers = context.Derived is { Peers: { } followed } given && ReferenceEquals(processes, given.Processes)
+                ? followed(cancellationToken)
+                : RpcPeerIndex.Derive(calls, readers, context.FieldSegments, cancellationToken);
+            if (!peers.CollectedAlpc)
+            {
+                return Unavailable(request, context.Generation, MetricUnavailableReason.NoLogicalOperations,
+                    $"{OtherEndsAskedFor(request)} needs the process at a call's other end, and this capture collected no "
+                    + "ALPC to link a call to the call that served it (operations-v1 §5c). A capture with the RPC peers "
+                    + "profile collects it: icat record --profile rpc-peers.");
+            }
+
+            ends = CallEnds.Of(calls, peers, request, processes);
+        }
+
         if (request.Metric == Metric.Duration)
         {
-            return Durations(context, calls, processes, clock, owner, cancellationToken);
+            return Durations(context, calls, processes, clock, owner, ends, cancellationToken);
         }
 
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
+        if (effective == Metric.ActivePeers)
+        {
+            return CallPeers(context, calls, ends!, cancellationToken);
+        }
+
         var tally = new OperationTally(effective, processes, request.EvidencePolicy, request.Grouping);
         var evidence = new List<RpcCallMark>();
+        var disclosed = new Dictionary<ProcessBindingReason, long>();
+        var unlinked = new Dictionary<RpcPeerState, long>();
+        int index = -1;
         foreach (RpcCallOutcome call in calls.Outcomes())
         {
+            index++;
             RpcCallMark? mark = tally.CountsByStart ? call.Start : call.Stop;
             if (mark is not { } counted)
             {
@@ -148,13 +186,33 @@ public static partial class SessionMetrics
                 continue;
             }
 
-            if (owner >= 0 && !(call.Process.Instance == owner && call.Process.IsAdmittedUnder(request.EvidencePolicy)))
+            if (ends?.Kept is { } kept)
+            {
+                if (!kept[index])
+                {
+                    tally.OutsideProcess++;
+                    if (ends.Undecided![index])
+                    {
+                        Disclose(ends, index, disclosed, unlinked);
+                    }
+
+                    continue;
+                }
+            }
+            else if (owner >= 0 && !(call.Process.Instance == owner && call.Process.IsAdmittedUnder(request.EvidencePolicy)))
             {
                 tally.OutsideProcess++;
                 continue;
             }
 
-            if (tally.Add(call) && context.EvidenceLimit > 0)
+            // Grouped by peer, a call belongs to the process at its other end from the focus (§6).
+            ProcessBinding? counterpart = request.Grouping == LaneGrouping.Peer ? ends!.Counterpart(index) : null;
+            if (counterpart is { IsBound: false } && ends!.Unlinked(index) is { } state)
+            {
+                unlinked[state] = unlinked.GetValueOrDefault(state) + 1;
+            }
+
+            if (tally.Add(call, counterpart) && context.EvidenceLimit > 0)
             {
                 evidence.Add(counted);
             }
@@ -168,8 +226,11 @@ public static partial class SessionMetrics
             UnknownContributions = tally.Unknown,
             ExcludedByProcessFilter = tally.OutsideProcess,
             ExcludedOutsideInterval = tally.OutsideInterval,
+            UnresolvedCounterparts = disclosed,
+            UnlinkedCalls = unlinked,
             BindingRule = ProcessInstanceIndex.BindingRule,
             OperationRule = RpcCallIndex.OperationRule,
+            RelationRule = ends is null ? null : RpcPeerIndex.PeerRule,
             Operations = new()
             {
                 CountedRecord = tally.CountsByStart ? ObservationKind.RequestStart : ObservationKind.RequestEnd,
@@ -203,12 +264,17 @@ public static partial class SessionMetrics
 
         var caveats = new List<string> { OperationCaveat(request) };
         caveats.AddRange(OperationCountCaveats(effective, tally));
-        if (request.Focus is { } focus)
+        if (request.Focus is { Role: ProcessRole.Owner } focus)
         {
             caveats.Add(
                 $"Only calls bound to owner instance {focus.Instance} under {request.EvidencePolicy} contribute: a call binds "
                 + "by its first record's reading to the process that raised it (ADR-030). A call of another instance, or a "
                 + "binding this policy excludes, is outside this filter.");
+        }
+
+        if (ends is not null)
+        {
+            caveats.Add(OtherEndCaveat(disclosed.Values.Sum()));
         }
 
         if (tally.InScope.Count == 0)
@@ -260,6 +326,7 @@ public static partial class SessionMetrics
         ProcessInstanceIndex processes,
         SourceClockDescriptor clock,
         int owner,
+        CallEnds? ends,
         CancellationToken cancellationToken)
     {
         MetricRequest request = context.Request;
@@ -269,8 +336,12 @@ public static partial class SessionMetrics
         var tally = new OperationTally(Metric.Duration, processes, request.EvidencePolicy, request.Grouping, byStart, statistic);
         long otherInterval = 0;
         var evidence = new List<RpcCallMark>();
+        var disclosed = new Dictionary<ProcessBindingReason, long>();
+        var unlinked = new Dictionary<RpcPeerState, long>();
+        int index = -1;
         foreach (RpcCallOutcome call in calls.Outcomes())
         {
+            index++;
             RpcCallMark? mark = byStart ? call.Start : call.Stop;
             if (mark is not { } counted)
             {
@@ -291,17 +362,36 @@ public static partial class SessionMetrics
                 continue;
             }
 
-            if (owner >= 0 && !(call.Process.Instance == owner && call.Process.IsAdmittedUnder(request.EvidencePolicy)))
+            if (ends?.Kept is { } kept)
+            {
+                if (!kept[index])
+                {
+                    tally.OutsideProcess++;
+                    if (ends.Undecided![index])
+                    {
+                        Disclose(ends, index, disclosed, unlinked);
+                    }
+
+                    continue;
+                }
+            }
+            else if (owner >= 0 && !(call.Process.Instance == owner && call.Process.IsAdmittedUnder(request.EvidencePolicy)))
             {
                 tally.OutsideProcess++;
                 continue;
+            }
+
+            ProcessBinding? counterpart = request.Grouping == LaneGrouping.Peer ? ends!.Counterpart(index) : null;
+            if (counterpart is { IsBound: false } && ends!.Unlinked(index) is { } state)
+            {
+                unlinked[state] = unlinked.GetValueOrDefault(state) + 1;
             }
 
             (long Start, long Stop)? span = call.State == RpcCallState.Completed
                 ? ((long)SourceClockMath.SessionNanoseconds(clock, call.Start!.Value.NativeTicks),
                     (long)SourceClockMath.SessionNanoseconds(clock, call.Stop!.Value.NativeTicks))
                 : null;
-            if (tally.AddTimed(call, span) && context.EvidenceLimit > 0)
+            if (tally.AddTimed(call, span, counterpart) && context.EvidenceLimit > 0)
             {
                 evidence.Add(counted);
             }
@@ -317,8 +407,11 @@ public static partial class SessionMetrics
             ExcludedByProjection = otherInterval,
             ExcludedByProcessFilter = tally.OutsideProcess,
             ExcludedOutsideInterval = tally.OutsideInterval,
+            UnresolvedCounterparts = disclosed,
+            UnlinkedCalls = unlinked,
             BindingRule = ProcessInstanceIndex.BindingRule,
             OperationRule = RpcCallIndex.OperationRule,
+            RelationRule = ends is null ? null : RpcPeerIndex.PeerRule,
             Operations = new()
             {
                 CountedRecord = byStart ? ObservationKind.RequestStart : ObservationKind.RequestEnd,
@@ -337,11 +430,16 @@ public static partial class SessionMetrics
         };
 
         List<string> caveats = [OperationCaveat(request), .. DurationCaveats(request, tally, distribution, otherInterval)];
-        if (request.Focus is { } focus)
+        if (request.Focus is { Role: ProcessRole.Owner } focus)
         {
             caveats.Add(
                 $"Only calls bound to owner instance {focus.Instance} under {request.EvidencePolicy} contribute: a call binds "
                 + "by its first record's reading to the process that raised it (ADR-030).");
+        }
+
+        if (ends is not null)
+        {
+            caveats.Add(OtherEndCaveat(disclosed.Values.Sum()));
         }
 
         if (request.Grouping is not null)
@@ -587,8 +685,11 @@ public static partial class SessionMetrics
 
         public long OutsideProcess { get; set; }
 
-        /// <summary>Adds one call whose counted record is in scope; returns whether the count took it into its value.</summary>
-        public bool Add(RpcCallOutcome call)
+        /// <summary>
+        /// Adds one call whose counted record is in scope; returns whether the count took it into its value. Grouped by peer,
+        /// it belongs to <paramref name="counterpart"/>, the process at its other end from the focus.
+        /// </summary>
+        public bool Add(RpcCallOutcome call, ProcessBinding? counterpart = null)
         {
             inScope[call.State] = inScope.GetValueOrDefault(call.State) + 1;
             bool completed = call.State == RpcCallState.Completed;
@@ -611,7 +712,7 @@ public static partial class SessionMetrics
             Value += counts ? 1 : 0;
             if (grouping is not null)
             {
-                GroupOf(call).Add(call.Process, known, counts);
+                GroupOf(call, counterpart).Add(call.Process, known, counts);
             }
 
             return counts;
@@ -621,7 +722,7 @@ public static partial class SessionMetrics
         /// Adds one call of a duration's cohort, measured when <paramref name="span"/> holds its start and stop in session
         /// nanoseconds; returns whether it was measured.
         /// </summary>
-        public bool AddTimed(RpcCallOutcome call, (long Start, long Stop)? span)
+        public bool AddTimed(RpcCallOutcome call, (long Start, long Stop)? span, ProcessBinding? counterpart = null)
         {
             inScope[call.State] = inScope.GetValueOrDefault(call.State) + 1;
             if (span is { } measured)
@@ -636,7 +737,7 @@ public static partial class SessionMetrics
 
             if (grouping is not null)
             {
-                GroupOf(call).AddTimed(call.Process, span);
+                GroupOf(call, counterpart).AddTimed(call.Process, span);
             }
 
             return span is not null;
@@ -726,9 +827,12 @@ public static partial class SessionMetrics
                 [.. unattributed.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => entry.Group)]);
         }
 
-        private OperationGroup GroupOf(RpcCallOutcome call)
+        private OperationGroup GroupOf(RpcCallOutcome call, ProcessBinding? counterpart)
         {
-            ProcessBinding binding = call.Process;
+            // A peer group is the process at the call's other end from the focus; any other process group is the call's own.
+            ProcessBinding binding = grouping == LaneGrouping.Peer
+                ? counterpart ?? throw new InvalidOperationException("A peer grouping needs each call's counterpart.")
+                : call.Process;
             (string key, Func<OperationGroup> create) = grouping switch
             {
                 LaneGrouping.Mechanism => (

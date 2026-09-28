@@ -309,7 +309,7 @@ with no value:
 | Reason | When |
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
-| `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, a duration of an interval no operation measures, a count of channels or peers, `Errors` with an accounting side, or a filter or grouping that needs an operation's other end (§8a) |
+| `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, a duration of an interval no operation measures, a count of channels, `Errors` with an accounting side, a direction a call does not have, or a filter, grouping or count of peers over a capture that collected no ALPC to link calls (§8a) |
 | `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
@@ -356,12 +356,29 @@ a source total, with a call bound to no instance unattributed by its reason; an 
 carried no status is unmeasured and sorts after the ranked groups. A rate divides a count by the whole interval (§7).
 A projection onto `Rpc` or the application layer keeps every call.
 
+**A call's other end (revision 228).** `operations-v1` §5c links a client call to the server call that served it, when
+its capture collected ALPC. A call's other end is the process of the call it is linked to: a client call's server, and
+a served call's client. The filters and groupings of §5 and §6 read it as they read a record's:
+
+- `participant(P)` keeps the calls P made and those whose other end is P; `peer(P,Q)` narrows a focus to the calls whose
+  other end from P is Q; `between(A,B)` with `Either` keeps a call made in one set whose other end is in the other.
+- Grouping by peer puts each call a focus keeps under the process at its other end from the focus.
+- `ActivePeers` with a focus counts the distinct processes at the other end of the calls the focus keeps, each call in
+  scope by its first record's reading. A call whose other end names no admitted process is an unknown contribution, so
+  the count is a lower bound beside it; none known is `NothingMeasured`. Grouped, it is not defined at this version.
+- A call no link reached has an unresolved other end, `CallNotLinked`. Left out of a filter only for that, it is
+  disclosed with the unresolved counterparts; under a peer grouping it is unattributed. Beside either, the answer
+  counts such calls by the reason `rpc-call-peer-v1` gives (`unlinkedCalls`), and a served call that no client call
+  reached is `NotReached`.
+- An answer that read other ends names `rpc-call-peer-v1` as its relation rule. A capture that collected no ALPC has no
+  link to read, and such a request is `NoLogicalOperations`.
+
 **What no derived operation answers** is `NoLogicalOperations`, with what it needs:
 
-- `participant`, `sender`, `receiver`, `peer`, `between` and grouping by peer, which need an operation's other end:
-  `operations-v1` §5c links a client call to its server call only when its capture collected ALPC, and no metric reads
-  those links at this version (P7);
-- `ActivePeers`, for the same reason, and `ActiveChannels`, which counts connection incarnations, not RPC channels;
+- `sender`, `receiver` and a directional `between`, which select data that flowed one way: a call is made at a client
+  and served at a server, with no data direction;
+- a filter, grouping or count of peers over a capture that collected no ALPC, which links no call (P7);
+- `ActiveChannels`, which counts connection incarnations, not RPC channels;
 - `Duration` of an I/O completion, an ALPC send-to-receive or a wait, which no derived operation measures;
 - `Errors` with an accounting side: a call is made at a client and served at a server, not sent or received;
 - a mechanism other than `Rpc`, or a layer other than the application layer: no correlator derives those operations.

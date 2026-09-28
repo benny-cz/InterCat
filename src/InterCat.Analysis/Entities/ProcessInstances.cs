@@ -94,6 +94,12 @@ public enum ProcessBindingReason
 
     /// <summary>No relation rule covers the record's mechanism, so its other end is unknown rather than guessed.</summary>
     NoRelationRule = 11,
+
+    /// <summary>
+    /// The contribution is an RPC call whose other end `rpc-call-peer-v1` did not link through ALPC
+    /// (`contracts/operations-v1.md` §5c). The call's own state says why; a message id is never a key by itself.
+    /// </summary>
+    CallNotLinked = 12,
 }
 
 /// <summary>

@@ -480,7 +480,7 @@ public static partial class SessionMetrics
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.NoRelationRule + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.CallNotLinked + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;

@@ -40,7 +40,10 @@ public static class SessionMetricDerivations
             manifest.Digest,
             processes,
             cancellation => derivation.Relations(store.Root, Segments(), clock, Fields(), cancellation),
-            cancellation => derivation.RpcCalls(store.Root, Segments(), clock, Fields(), cancellation));
+            cancellation => derivation.RpcCalls(store.Root, Segments(), clock, Fields(), cancellation))
+        {
+            Peers = cancellation => derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellation),
+        };
 
         SegmentReaderV1[] Segments() => opened ??=
             [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
