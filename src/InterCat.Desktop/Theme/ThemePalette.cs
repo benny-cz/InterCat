@@ -35,6 +35,12 @@ public enum MechanismFamily
     /// never wear the unknown grey (§6.6, revision 167).
     /// </summary>
     Lifecycle = 10,
+
+    /// <summary>
+    /// An application's own messages, reported by instrumentation it carries - an SDK or InterCat's content fixture
+    /// (revision 235): an olive no transport or IPC family is near, since the channel beneath them is not named here.
+    /// </summary>
+    Application = 11,
 }
 
 /// <summary>
@@ -74,7 +80,7 @@ public sealed record StatusTokens(Srgb Caution, Srgb ActionFill, Srgb ActionFill
 public static class ThemePalette
 {
     /// <summary>Bumps when tokens, thresholds or measured results change (§24 themeVersion).</summary>
-    public const string ThemeVersion = "1.3.0";
+    public const string ThemeVersion = "1.4.0";
 
     /// <summary>Ink must clear this against every surface token it can land on.</summary>
     public const double MinimumInkContrast = 4.5;
@@ -141,6 +147,7 @@ public static class ThemePalette
         MechanismFamily.SharedSection,
         MechanismFamily.OtherSocket,
         MechanismFamily.LegacyIpc,
+        MechanismFamily.Application,
         MechanismFamily.UnknownMechanism,
     ];
 
@@ -256,6 +263,7 @@ public static class ThemePalette
         Mechanism.UnixDomainSocket or Mechanism.Quic or Mechanism.RemoteFileOrSmb => MechanismFamily.OtherSocket,
         Mechanism.Synchronization or Mechanism.WindowMessage or Mechanism.Clipboard
             or Mechanism.Mailslot or Mechanism.Dde => MechanismFamily.LegacyIpc,
+        Mechanism.ApplicationSdk or Mechanism.Instrumented => MechanismFamily.Application,
         _ => MechanismFamily.UnknownMechanism,
     };
 
@@ -270,6 +278,7 @@ public static class ThemePalette
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#C54599"), Srgb.Parse("#F698D0")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#6F8AE2"), Srgb.Parse("#B5C0FF")),
         new(MechanismFamily.LegacyIpc, "Legacy IPC", "◇", Srgb.Parse("#427389"), Srgb.Parse("#7CACC4")),
+        new(MechanismFamily.Application, "Application", "✚", Srgb.Parse("#81AE00"), Srgb.Parse("#B3D65C")),
         new(MechanismFamily.UnknownMechanism, "Unknown", "?", Srgb.Parse("#868686"), Srgb.Parse("#ABABAB")),
     ];
 
@@ -284,6 +293,7 @@ public static class ThemePalette
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#AA2A81"), Srgb.Parse("#8A1A67")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#5573C9"), Srgb.Parse("#3259AA")),
         new(MechanismFamily.LegacyIpc, "Legacy IPC", "◇", Srgb.Parse("#2A5D72"), Srgb.Parse("#0D485C")),
+        new(MechanismFamily.Application, "Application", "✚", Srgb.Parse("#697509"), Srgb.Parse("#525C00")),
         new(MechanismFamily.UnknownMechanism, "Unknown", "?", Srgb.Parse("#404040"), Srgb.Parse("#393939")),
     ];
 
@@ -302,6 +312,7 @@ public static class ThemePalette
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#FE85E1"), Srgb.Parse("#FE85E1")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#6C86E7"), Srgb.Parse("#91A3FE")),
         new(MechanismFamily.LegacyIpc, "Legacy IPC", "◇", Srgb.Parse("#7EB9D0"), Srgb.Parse("#7EB9D0")),
+        new(MechanismFamily.Application, "Application", "✚", Srgb.Parse("#81A230"), Srgb.Parse("#A3C755")),
         new(MechanismFamily.UnknownMechanism, "Unknown", "?", Srgb.Parse("#D7D7D7"), Srgb.Parse("#D7D7D7")),
     ];
 
@@ -316,6 +327,7 @@ public static class ThemePalette
         new(MechanismFamily.SharedSection, "Shared sections", "★", Srgb.Parse("#C60788"), Srgb.Parse("#900061")),
         new(MechanismFamily.OtherSocket, "Other sockets", "◎", Srgb.Parse("#00419F"), Srgb.Parse("#00419F")),
         new(MechanismFamily.LegacyIpc, "Legacy IPC", "◇", Srgb.Parse("#3D6470"), Srgb.Parse("#274E5A")),
+        new(MechanismFamily.Application, "Application", "✚", Srgb.Parse("#3F5400"), Srgb.Parse("#334500")),
         new(MechanismFamily.UnknownMechanism, "Unknown", "?", Srgb.Parse("#3D3D3D"), Srgb.Parse("#3D3D3D")),
     ];
 }

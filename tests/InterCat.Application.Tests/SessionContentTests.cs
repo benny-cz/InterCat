@@ -34,6 +34,12 @@ public sealed class SessionContentTests
                     + "received was 300 bytes.",
             ],
             page.Records.Select(record => RecordContent.Of(record.Observation, kept: record.Content).Describe()));
+
+        // An empty message is kept whole too, and is said to have held nothing, not to have lost its bytes.
+        SessionContentEntry first = page.Records[0].Content!;
+        SessionContentEntry empty = first with { Entry = first.Entry with { Fragment = first.Fragment with { OriginalLength = 0, Kept = 0 } } };
+        Assert.Equal("Kept whole: an application payload it sent, which held no bytes.",
+            RecordContent.Of(page.Records[0].Observation, kept: empty).Describe());
         Assert.Equal("GET /x"u8.ToArray(), SessionContentIndex.ReadBytes(session.Store.Root, page.Records[0].Content!, 64));
         Assert.Equal("0123"u8.ToArray(), SessionContentIndex.ReadBytes(session.Store.Root, page.Records[1].Content!, 4));
 
@@ -95,6 +101,37 @@ public sealed class SessionContentTests
         Assert.Equal(
             [false, false, false, true, true, true],
             after.Records.Select(record => record.Content is not null));
+    }
+
+    [Fact(DisplayName = "ADR-036: a session states the content it keeps in sum - records, bytes and policies - without a byte of it")]
+    public void ASessionStatesItsContentInSum()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] early = Rows(0);
+        ObservationRowV1[] late = Rows(100);
+        Publish(session.Store, early, content: (ContentHeader(recordLimit: 8), Kept(early)));
+        Publish(session.Store, late, content: (ContentHeader(recordLimit: 8), Kept(late)));
+
+        SessionContentSummary summary = SessionContentIndex.Read(session.Store.Root, session.Store.Current!, CancellationToken.None)
+            .Summarize();
+        Assert.Equal((2, 6, 2, 2, 2, 28L), (summary.Chunks, summary.Records, summary.Whole, summary.Cut, summary.Omitted, summary.KeptBytes));
+        Assert.Equal([new SessionContentPolicy("test-scoped-content-v1", 8, ContentInspectionV1.HexAndText)], summary.Policies);
+        Assert.Null(summary.Problem);
+
+        // A chunk that cannot be read is left out of the sums, which say so, rather than counted as holding nothing.
+        string damaged = session.Store.Current!.Dependencies.First(dependency => dependency.Kind == StoreDependencyKind.Content).Name;
+        using (FileStream stream = session.Store.Root.OpenOwnedFile(damaged, FileMode.Open, FileAccess.ReadWrite, FileShare.None, FileOptions.None))
+        {
+            stream.Position = stream.Length - 1;
+            int last = stream.ReadByte();
+            stream.Position = stream.Length - 1;
+            stream.WriteByte((byte)(last ^ 0xFF));
+        }
+
+        SessionContentSummary partial = SessionContentIndex.Read(session.Store.Root, session.Store.Current!, CancellationToken.None)
+            .Summarize();
+        Assert.Equal((2, 3, 14L), (partial.Chunks, partial.Records, partial.KeptBytes));
+        Assert.Contains(damaged, partial.Problem, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "ADR-036: rewriting one journal's prefix is refused while content is kept beside it")]

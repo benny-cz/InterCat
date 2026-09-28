@@ -23,6 +23,9 @@ internal sealed record SessionDocument
 
     /// <summary>The policy a redacted session package was built under; null for an ordinary session.</summary>
     public required SessionRedaction? Redaction { get; init; }
+
+    /// <summary>The restricted content the generation keeps beside its journal, in sum (ADR-036); null when it keeps none.</summary>
+    public required SessionContentSummary? Content { get; init; }
     public required SessionCoverageDocument? Coverage { get; init; }
     public required SessionLedgerDocument? CoverageLedger { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
@@ -255,6 +258,11 @@ internal static class SessionCommand
         SessionCoverageDocument? coverage = null;
         SessionLedgerDocument? ledger = null;
         SessionRedaction? redaction = manifest is null ? null : SessionRedaction.Read(store.Root, manifest);
+
+        // What the session holds that no export carries: its chunks are read and checked, and no message byte is kept.
+        SessionContentSummary? content = manifest?.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content) == true
+            ? SessionContentIndex.Read(store.Root, manifest, CancellationToken.None).Summarize()
+            : null;
         if (redaction is not null)
         {
             notes.Add(SessionRedaction.Summary + " " + redaction.Warning);
@@ -443,6 +451,7 @@ internal static class SessionCommand
             Coverage = coverage,
             CoverageLedger = ledger,
             Redaction = redaction,
+            Content = content,
             Notes = notes,
         };
     }
@@ -564,6 +573,11 @@ internal static class SessionCommand
             ConsoleUi.Field("Journal", "none declared");
         }
 
+        if (document.Content is { } content)
+        {
+            RenderContent(content);
+        }
+
         ConsoleUi.Heading("Published files");
         ConsoleUi.Table(
             ["File", "Kind", "Bytes"],
@@ -671,6 +685,34 @@ internal static class SessionCommand
     /// What the capture could observe: collected mechanisms by state, the rest named as not collected, and what the
     /// policy chose not to admit, which is not a loss (`coverage-v1` §3, R21).
     /// </summary>
+    /// <summary>
+    /// The restricted content a session keeps, in sum and without a byte of it (ADR-036), so a session is never shared
+    /// without its holder knowing it holds messages.
+    /// </summary>
+    private static void RenderContent(SessionContentSummary content)
+    {
+        ConsoleUi.Heading("Restricted content");
+        ConsoleUi.Field("Kept", string.Create(CultureInfo.CurrentCulture,
+            $"{ConsoleUi.Bytes(content.KeptBytes)} in {ConsoleUi.Count(content.Chunks)} {(content.Chunks == 1 ? "chunk" : "chunks")} beside the journal"));
+        ConsoleUi.Field("Messages", string.Create(CultureInfo.CurrentCulture,
+            $"{ConsoleUi.Count(content.Records)}: {ConsoleUi.Count(content.Whole)} kept whole, {ConsoleUi.Count(content.Cut)} cut to the record limit, {ConsoleUi.Count(content.Omitted)} not kept once the content limit was reached"));
+        foreach (SessionContentPolicy policy in content.Policies)
+        {
+            string inspection = policy.Inspection == ContentInspectionV1.HexAndText
+                ? "its bytes may be shown as hex and text"
+                : "its bytes are never shown";
+            ConsoleUi.Field("Policy", $"{policy.PolicyId}: at most {ConsoleUi.Bytes(policy.RecordLimit)} a record; {inspection}");
+        }
+
+        if (content.Problem is { } problem)
+        {
+            ConsoleUi.Warn($"Some content could not be read, so these sums leave it out: {problem}");
+        }
+
+        ConsoleUi.Note("Content is restricted evidence (ADR-036). icat export and a redacted package never carry it; an "
+            + "original evidence package discloses it. icat raw states what each record kept.");
+    }
+
     private static void RenderCoverage(SessionLedgerDocument ledger)
     {
         ConsoleUi.Heading("What the capture could observe");

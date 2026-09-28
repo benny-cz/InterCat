@@ -1,8 +1,9 @@
 namespace InterCat.Application;
 
 /// <summary>
-/// The public Microsoft providers InterCat's source catalog admits, by the identity every machine gives them. A record
-/// names its provider by that identity; a reader is told the name beside it, which discloses nothing about the machine.
+/// The public providers InterCat's source catalog admits, by the identity every machine gives them: Microsoft's, and
+/// InterCat's own content fixture, whose identity is derived from its name. A record names its provider by that identity;
+/// a reader is told the name beside it, which discloses nothing about the machine.
 /// </summary>
 public static class KnownProviders
 {
@@ -14,6 +15,8 @@ public static class KnownProviders
         [Guid.Parse("2f07e2ee-15db-40f1-90ef-9d7ba282188a")] = "Microsoft-Windows-TCPIP",
         [Guid.Parse("edd08927-9cc4-4e65-b970-c2560fb5c289")] = "Microsoft-Windows-Kernel-File",
         [Guid.Parse("d1d93ef7-e1f2-4f45-9943-03d245fe6c00")] = "Microsoft-Windows-Kernel-Memory",
+        [System.Diagnostics.Tracing.EventSource.GetGuid(typeof(InterCat.Domain.ContentFixtureEventSource))] =
+            InterCat.Domain.ContentFixtureEventSource.ProviderName,
     };
 
     /// <summary>A provider's public name, or null for one the catalog does not name.</summary>

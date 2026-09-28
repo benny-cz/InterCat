@@ -154,6 +154,12 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 continue;
             }
 
+            // A scoped content policy reaches only a source whose validated content contract allows it; every other source
+            // of the same capture keeps metadata only, and its records name that policy (ADR-036).
+            CompiledBodyAdmissionPolicy? sourcePolicy = bodyPolicy is { KeepsContent: true } && definition.ContentContract is null
+                ? CaptureBodyAdmissionPolicies.MetadataOnly
+                : bodyPolicy;
+
             if (definition.Kind == SourceKind.KernelFlagGroup && definition.ClassicEventClass is { } classGuid)
             {
                 // A classic class has no manifest; its layout is its registration, read from TDH (ADR-035).
@@ -171,7 +177,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                     continue;
                 }
 
-                SourceAdmissionPlan classicPlan = AdmissionPlanCompiler.Compile(definition, classic, index++, bodyPolicy: bodyPolicy);
+                SourceAdmissionPlan classicPlan = AdmissionPlanCompiler.Compile(definition, classic, index++, bodyPolicy: sourcePolicy);
                 plans.Add(classicPlan);
                 foreach (string diagnostic in classicPlan.Diagnostics)
                 {
@@ -187,6 +193,22 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                     sourceId,
                     SourcePlanIssueSeverity.Refusal,
                     "The owned manifest-provider session cannot enforce this source kind."));
+                continue;
+            }
+
+            // A provider InterCat defines itself carries its manifest, generated from the type that raises its events: no
+            // registration is asked of the machine, and its content is kept only under the scoped content policy its
+            // validated content contract allows (ADR-036).
+            if (definition.EmbeddedManifest is { } embedded)
+            {
+                SourceAdmissionPlan fixture = AdmissionPlanCompiler.Compile(definition, ManifestParser.Parse(embedded), index++,
+                    bodyPolicy: sourcePolicy);
+                plans.Add(fixture);
+                foreach (string diagnostic in fixture.Diagnostics)
+                {
+                    issues.Add(new(sourceId, SourcePlanIssueSeverity.Warning, diagnostic));
+                }
+
                 continue;
             }
 
@@ -228,7 +250,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 definition,
                 schema,
                 index++,
-                bodyPolicy: bodyPolicy);
+                bodyPolicy: sourcePolicy);
             plans.Add(plan);
             foreach (string diagnostic in plan.Diagnostics)
             {

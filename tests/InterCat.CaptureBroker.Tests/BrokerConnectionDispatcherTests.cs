@@ -283,8 +283,13 @@ public sealed class BrokerConnectionDispatcherTests
         var misfocused = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
             "explore", Mechanism.Tcp, [84], true, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
 
+        // The content fixture is InterCat's own instrument, recorded by icat record and never through the broker (ADR-036).
+        var fixture = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
+            "content-fixture", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
+
         Assert.Equal(BrokerErrorCode.InvalidRequest, unknown.Code);
         Assert.Equal(BrokerErrorCode.InvalidRequest, misfocused.Code);
+        Assert.Equal(BrokerErrorCode.InvalidRequest, fixture.Code);
         Assert.Null(source.LastPreparedDigest);
     }
 

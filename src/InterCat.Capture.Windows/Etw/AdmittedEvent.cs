@@ -110,6 +110,13 @@ public struct AdmittedEvent
     private ushort extendedOmitted;
     private ExtendedDataAvailability extendedAvailability;
 
+    // A content field's kept bytes (ADR-036): a buffer rented from the shared pool, owned by the record until the writer
+    // detaches it, with how many bytes of it are the content and the length the field had.
+    private byte[]? content;
+    private int contentKept;
+    private int contentOriginal;
+    private bool contentPresent;
+
     public int SourceIndex { get; set; }
 
     /// <summary>The pointer width of the process that raised the record, 4 or 8; 0 when it was not stated, which is the plan's.</summary>
@@ -272,6 +279,49 @@ public struct AdmittedEvent
         extendedPresent = 0;
         extendedOmitted = 0;
         extendedAvailability = ExtendedDataAvailability.NotRequested;
+        content = null;
+        contentKept = 0;
+        contentOriginal = 0;
+        contentPresent = false;
+    }
+
+    /// <summary>Whether the record carries a content field's bytes, however many were kept (ADR-036).</summary>
+    public readonly bool HasContent => contentPresent;
+
+    /// <summary>How many of the content field's bytes were kept: at most the policy's per-record limit.</summary>
+    public readonly int ContentKept => contentKept;
+
+    /// <summary>The content field's length as the record carried it; more than <see cref="ContentKept"/> when it was cut.</summary>
+    public readonly int ContentOriginalLength => contentOriginal;
+
+    /// <summary>The kept content bytes, while the record still owns them.</summary>
+    public readonly ReadOnlySpan<byte> ContentBytes => content is null ? [] : content.AsSpan(0, contentKept);
+
+    /// <summary>
+    /// Takes ownership of a content buffer rented from the shared pool, whose first <paramref name="kept"/> bytes are the
+    /// content field's kept bytes, of <paramref name="original"/> the field had.
+    /// </summary>
+    public void SetContent(byte[] rented, int kept, int original)
+    {
+        ArgumentNullException.ThrowIfNull(rented);
+        ArgumentOutOfRangeException.ThrowIfNegative(kept);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(kept, rented.Length);
+        ArgumentOutOfRangeException.ThrowIfLessThan(original, kept);
+        content = rented;
+        contentKept = kept;
+        contentOriginal = original;
+        contentPresent = true;
+    }
+
+    /// <summary>
+    /// Hands the rented content buffer to its next owner and forgets it, so exactly one owner returns it to the pool; null
+    /// when the record owns none.
+    /// </summary>
+    public byte[]? DetachContent()
+    {
+        byte[]? taken = content;
+        content = null;
+        return taken;
     }
 
     /// <summary>Whether extended items were copied for this record, and if not, why (R21).</summary>

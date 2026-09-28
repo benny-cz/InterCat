@@ -21,6 +21,14 @@ public enum ContentEvidenceClassification
     EncryptedContent = 5,
 }
 
+/// <summary>How a content field's bytes are encoded, as its source declares it; never guessed from the bytes (§11.2).</summary>
+public enum ContentFieldEncoding
+{
+    Binary = 1,
+    Utf8 = 2,
+    Utf16LittleEndian = 3,
+}
+
 /// <summary>
 /// Adapter evidence required before a catalog source can compile scoped content. The catalog currently
 /// contains no instance; adding one requires measured descriptor semantics and scope/impact evidence.

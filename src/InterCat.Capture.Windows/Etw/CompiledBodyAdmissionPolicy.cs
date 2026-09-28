@@ -26,6 +26,21 @@ public sealed record CompiledBodyAdmissionPolicy
     public required IReadOnlyList<ushort> PermittedExtendedDataTypes { get; init; }
     public required string Summary { get; init; }
 
+    /// <summary>
+    /// Under a scoped content policy, the most bytes of one record's content kept (ADR-036): a longer message keeps its
+    /// prefix and the length it had. Zero under a metadata-only policy, which keeps no content.
+    /// </summary>
+    public int ContentRecordLimit { get; init; }
+
+    /// <summary>Under a scoped content policy, the most content bytes the capture keeps before it stops (stop-at-limit).</summary>
+    public long ContentSessionLimit { get; init; }
+
+    /// <summary>Under a scoped content policy, the inspection consent its content is kept under; null otherwise.</summary>
+    public ContentInspectionMode? ContentInspection { get; init; }
+
+    /// <summary>Whether this policy keeps content beside the metadata projection.</summary>
+    public bool KeepsContent => Mode == AdmissionMode.ScopedContent;
+
     public bool PermitsExtendedDataType(ushort type)
     {
         foreach (ushort permitted in PermittedExtendedDataTypes)
@@ -62,6 +77,37 @@ public static class CaptureBodyAdmissionPolicies
             + "before persistence, and original source bytes are never retained.",
     };
 
+    /// <summary>The reviewed scoped content policy: the controlled fixture's, the one content source admitted (ADR-036).</summary>
+    public const string ScopedContentFixturePolicyId = "scoped-content-fixture-v1";
+
+    /// <summary>The largest per-record content limit a policy names (`content-v1`'s record limit bound).</summary>
+    public const int MaximumContentRecordLimit = 1024 * 1024;
+
+    /// <summary>The largest session content limit a policy names.</summary>
+    public const long MaximumContentSessionLimit = 64L * 1024 * 1024 * 1024;
+
+    /// <summary>
+    /// The metadata projection of <see cref="MetadataOnly"/>, and beside it each content field's bytes up to
+    /// <paramref name="recordLimit"/>, kept as restricted evidence under <paramref name="inspection"/> until
+    /// <paramref name="sessionLimit"/> stops the capture (ADR-036). The journal body is still the projection; no source
+    /// body is ever retained.
+    /// </summary>
+    public static CompiledBodyAdmissionPolicy ScopedContentFixture(int recordLimit, long sessionLimit, ContentInspectionMode inspection)
+    {
+        CompiledBodyAdmissionPolicy policy = MetadataOnly with
+        {
+            PolicyId = ScopedContentFixturePolicyId,
+            Mode = AdmissionMode.ScopedContent,
+            ContentRecordLimit = recordLimit,
+            ContentSessionLimit = sessionLimit,
+            ContentInspection = inspection,
+            Summary = "Schema-approved metadata projection, and the controlled fixture's message bytes kept beside it as "
+                + "restricted evidence, bounded per record and per session; original source bodies are never retained.",
+        };
+        EnsureSupported(policy);
+        return policy;
+    }
+
     public static void EnsureSupported(CompiledBodyAdmissionPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
@@ -69,8 +115,20 @@ public static class CaptureBodyAdmissionPolicies
             policy.PermittedExtendedDataTypes.Count == EtwExtendedDataTypes.PermittedMetadata.Count
             && policy.PermittedExtendedDataTypes.Distinct().Count() == policy.PermittedExtendedDataTypes.Count
             && policy.PermittedExtendedDataTypes.All(EtwExtendedDataTypes.PermittedMetadata.Contains);
-        if (!string.Equals(policy.PolicyId, MetadataOnlyPolicyId, StringComparison.Ordinal)
-            || policy.Mode != AdmissionMode.MetadataOnly
+        bool metadataOnly = string.Equals(policy.PolicyId, MetadataOnlyPolicyId, StringComparison.Ordinal)
+            && policy.Mode == AdmissionMode.MetadataOnly
+            && policy.ContentRecordLimit == 0
+            && policy.ContentSessionLimit == 0
+            && policy.ContentInspection is null;
+
+        // The one scoped content policy reviewed: its limits inside their bounds and its consent stated.
+        bool scopedContent = string.Equals(policy.PolicyId, ScopedContentFixturePolicyId, StringComparison.Ordinal)
+            && policy.Mode == AdmissionMode.ScopedContent
+            && policy.ContentRecordLimit is >= 1 and <= MaximumContentRecordLimit
+            && policy.ContentSessionLimit >= policy.ContentRecordLimit
+            && policy.ContentSessionLimit <= MaximumContentSessionLimit
+            && policy.ContentInspection is { } inspection && Enum.IsDefined(inspection);
+        if (!(metadataOnly || scopedContent)
             || policy.RetainedBody != RetainedBodyShape.ApprovedMetadataProjection
             || policy.RetainsOriginalSourceBytes
             || policy.MaximumRetainedBodyBytes != MetadataOnly.MaximumRetainedBodyBytes
@@ -78,8 +136,9 @@ public static class CaptureBodyAdmissionPolicies
         {
             throw new NotSupportedException(
                 $"Admission policy '{policy.PolicyId}' is not enforceable by the bounded metadata mapper. "
-                + "Only the reviewed metadata policy, byte bound and extended-data allowlist are accepted. "
-                + "The capture was refused instead of being downgraded or retaining unreviewed content.");
+                + "Only the reviewed metadata policy and the controlled fixture's scoped content policy, with their byte "
+                + "bounds and extended-data allowlist, are accepted. The capture was refused instead of being downgraded "
+                + "or retaining unreviewed content.");
         }
     }
 }

@@ -33,6 +33,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         ServiceName = Option(args, "--service") ?? "Schedule",
     };
 
+    var contentOptions = new ContentFixtureOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_260_928,
+        Messages = Integer(args, "--messages") ?? 24,
+        MaximumMessageBytes = Integer(args, "--bytes") ?? 6_000,
+        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 20,
+    };
+
     var pipeOptions = new PipeLoopbackOptions
     {
         TruthDirectory = truth,
@@ -90,6 +99,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "rpc-local-client" when OperatingSystem.IsWindows() =>
                 await RpcLocalScenario.RunClientAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
             "rpc-local" or "rpc-local-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "content-fixture" => await ContentFixtureScenario.RunAsync(contentOptions, cancellationToken).ConfigureAwait(false),
             _ => await UnknownAsync(args[0]).ConfigureAwait(false),
         };
     }
@@ -161,6 +171,11 @@ static void PrintHelp()
     Console.WriteLine("  rpc-local --truth <dir> [--calls n] [--service <name>]");
     Console.WriteLine("      FX-RPC-001: a known number of local RPC calls to the Windows service control");
     Console.WriteLine("      manager through the ordinary service API, with the client logging every call.");
+    Console.WriteLine();
+    Console.WriteLine("  content-fixture --truth <dir> [--seed n] [--messages n] [--bytes n] [--delay ms]");
+    Console.WriteLine("      FX-CONTENT-001: raises InterCat's own content fixture provider with seeded messages, some");
+    Console.WriteLine("      longer than the content-fixture profile keeps, once a capture enables it (ADR-036). The");
+    Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

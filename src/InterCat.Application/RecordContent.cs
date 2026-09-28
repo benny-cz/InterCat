@@ -124,6 +124,11 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
                     ? string.Create(culture, $"{what} was {original:N0} bytes.")
                     : $"the length of {what} was not stated."),
                 null),
+
+            // An empty message is kept whole too, and "0 bytes of" it would read as though its bytes were lost.
+            _ when fragment.Kept == 0 && fragment.Offset is null or 0 => new(RecordContentState.Kept,
+                $"Kept whole: {what}, which held no bytes.",
+                null),
             _ => new(RecordContentState.Kept,
                 string.Create(culture, $"Kept whole: {fragment.Kept:N0} bytes of {what}{from}, {encoding}.") + hidden,
                 null),

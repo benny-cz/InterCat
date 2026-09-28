@@ -33,6 +33,15 @@ internal sealed record RecordingDocument
     public required CaptureHealthSnapshot? Health { get; init; }
     public required IReadOnlyList<string> Degradations { get; init; }
     public required IReadOnlyList<SessionMechanismCoverageDocument> Coverage { get; init; }
+
+    /// <summary>How many records' content a scoped content capture kept or omitted (`contracts/content-v1.md`).</summary>
+    public long ContentFragments { get; init; }
+
+    /// <summary>How many content bytes it kept.</summary>
+    public long ContentKeptBytes { get; init; }
+
+    /// <summary>Whether kept content reached the profile's session limit, which stopped the capture.</summary>
+    public bool ContentLimitReached { get; init; }
 }
 
 /// <summary>
@@ -80,13 +89,22 @@ internal static class RecordCommand
             "EXPLORE" => CaptureProfileKind.Explore,
             "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
             "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
+            "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
             _ => null,
         };
         if (profile is null)
         {
             ConsoleUi.Failure(
-                $"--profile records explore, focused-transport or rpc-peers; '{profileOption}' is not one. "
+                $"--profile records explore, focused-transport, rpc-peers or content-fixture; '{profileOption}' is not one. "
                 + "icat profiles lists every intent and what it would collect.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        // Kept content is published beside its journal chunk, which an evidence session's follower does not mirror.
+        if (profile == CaptureProfileKind.ContentFixture && evidenceOnly)
+        {
+            ConsoleUi.Failure("--evidence-only records metadata evidence for a follower, which does not mirror kept content; "
+                + "record the content fixture without it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -224,6 +242,9 @@ internal static class RecordCommand
             Health = result.Stop?.Health,
             Degradations = result.Stop?.Degradations ?? [],
             Coverage = result.Coverage is null ? [] : CollectedCoverage(result.Coverage),
+            ContentFragments = result.ContentFragments,
+            ContentKeptBytes = result.ContentKeptBytes,
+            ContentLimitReached = result.ContentLimitReached,
         };
 
         if (json)
@@ -292,6 +313,14 @@ internal static class RecordCommand
             ConsoleUi.Field("Derived", "nothing: this elevated process published the admitted evidence alone");
         }
 
+        // Kept content is restricted evidence beside the journal (ADR-036): said once, with its limit if it bit.
+        if (document.ContentFragments > 0)
+        {
+            ConsoleUi.Field("Content kept", $"{ConsoleUi.Bytes(document.ContentKeptBytes)} of "
+                + $"{ConsoleUi.Count(document.ContentFragments)} {(document.ContentFragments == 1 ? "record" : "records")}"
+                + (document.ContentLimitReached ? ", until the content limit stopped the capture" : string.Empty));
+        }
+
         if (document.Health is { } health)
         {
             ConsoleUi.Field("Delivered", ConsoleUi.Count(health.ObservedRecords));
@@ -339,7 +368,7 @@ internal static class RecordCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers] [--mechanism tcp|udp]");
+        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content-fixture] [--mechanism tcp|udp]");
         ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");

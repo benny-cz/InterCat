@@ -1,7 +1,8 @@
 # InterCat content v1
 
-Status: **implemented** in plan revision 234 (ADR-036): the chunk format, its publication and lifetime in the store,
-and its readers. No capture writes one yet; the capture path is the next slice, and the viewer follows it.
+Status: **implemented** in plan revisions 234 and 235 (ADR-036): the chunk format, its publication and lifetime in the
+store, its readers, and the capture path that writes one (§5), which keeps InterCat's own content fixture's
+messages. The viewer is the next slice.
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -87,16 +88,48 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 
 - **The viewer and `icat raw`** state a record's fragment: its classification, direction, encoding, lengths and
   disposition. They show its bytes only when the chunk's inspection is `hex-text` and a person asks, bounded and inert.
+- **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
+  kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
   logs, telemetry and crash diagnostics never read one.
 - **Sharing.** A redacted package (`redacted-session-v1`) keeps no chunk and no reference to one, and says so (I22).
   The original evidence package (`original-evidence-package-v1`) carries every chunk as the evidence it is, and states
   how many fragments and bytes it carries before it saves.
 
-## 5. What is not defined at this version
+## 5. Writing a chunk
 
-- A capture that writes chunks. The next slice admits a controlled fixture provider's bytes under a scoped content
-  profile.
+A capture keeps content only under a reviewed scoped content policy, and only of a source whose catalog entry carries a
+validated content contract naming the events and fields that hold it; every other source of the same capture keeps
+metadata only. At this version the one such policy is `scoped-content-fixture-v1` and the one such source is InterCat's
+own content fixture:
+
+| | |
+|---|---|
+| Provider | `InterCat-Fixture-Content`, `22f47a10-5a4c-5c08-9600-f69a24d5bfdd`, raised only by the FX-CONTENT-001 workload |
+| Events | 1 a message the process sent, 2 one it received, both version 1 |
+| Layout | `processId` i32 (the raising process, which names itself), `conversation` i64, `messageSize` u32, then `messageSize` bytes of `message`; read from the type that raises it |
+| Kept as | `ApplicationPayload`, encoding binary (the fixture declares no text encoding), direction by event, offset 0 |
+| Limits | 4,096 bytes a record; 16 MiB a session; inspection `hex-text` |
+| Recorded by | `icat record --profile content-fixture`, never through the broker, whose evidence follower refuses content (§2) |
+
+A content field is a message's bytes sized by a fixed length field before them, as the provider's manifest declares
+(`length=`). The capture copies at most the record limit of them in the callback, with the length the field states as
+the original. A message longer than the record limit is kept truncated. Once keeping a message would pass the session
+limit, its fragment is written as omitted, with its length, and the capture stops: a record arriving before the stop
+takes effect is omitted in turn, never kept past the limit. Each publication writes the fragments of the records its
+journal chunk holds.
+
+Qualified live on revision 235 against the workload's truth log, which names each message's length and SHA-256 and
+never its bytes: 24 messages kept 23 whole and 1 truncated to 4,096 bytes; 8,000 unpaced messages stopped the capture at
+16,773,163 kept bytes, 2,151 whole, 3,015 truncated and 2,834 omitted. In both, every fragment's length and direction was
+the truth's, every whole message's SHA-256 matched, nothing was reported lost, and no message byte was found in a
+journal or segment file.
+
+## 6. What is not defined at this version
+
+- Content of a real application's source: no such source is validated, so the Content profile's bounded request still
+  compiles no admission policy (`contracts/capture-profile-preview-v1.md`).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
+- An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.
 - Content an imported file already holds (§11.1).

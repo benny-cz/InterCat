@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 234 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 235 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-001–004, 007–010a (M0) | Complete for measured M0 scope | Qualify other supported retail builds and mechanisms as their gates require. |
 | IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence`; since revision 187, ALPC measured in the lab through a private system logger, linking RPC client calls to the calls that served them (ADR-034); since revision 223 captured by the product's opt-in RPC peers profile (ADR-035), whose links name each call's other end (revision 225) and draw RPC peers (revision 227) | Sections and wider mechanisms are unqualified; ALPC stays opt-in (Moderate), and no RPC byte claims. |
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
-| IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
+| IC-012 profiles | Metadata Explore, Focused TCP and RPC peers enforceable; the content fixture keeps InterCat's own messages through `icat record` only; Content request preview refuses start | A validated content-capable source, its payload-specific scope and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`); since revision 178 RPC calls are derived as operations (`rpc-call-operation-v1`), and since revision 183 counted on the logical-operations basis (`metrics-v1` §8a) | Canonical transfer owner, operation durations and operations beyond RPC calls (counted since revision 183), resource topology (process parents and children are shown since revision 211), relations beyond TCP and UDP, full coverage epoch publication. |
@@ -67,6 +67,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 235 — a capture keeps content, from InterCat's own fixture (ADR-036, `content-v1` §5, §11.2):**
+  - FX-CONTENT-001 raises `InterCat-Fixture-Content`, an EventSource whose layout the catalog reads from its type;
+    `icat record --profile content-fixture` admits its messages under `scoped-content-fixture-v1`, copies at most
+    4,096 bytes a record in the callback, writes them as a chunk with each publication, and stops at 16 MiB.
+  - Every other source keeps metadata only. The broker neither offers nor records the fixture. Its payload names its
+    own process, so ADR-030's header binding stays RPC's alone. `icat session` states a session's content in sum.
+  - Live: 24 and 8,000 messages matched the truth's lengths and SHA-256; the second stopped at the limit.
 
 - **Revision 234 — kept content is restricted evidence beside the journal (ADR-036, `content-v1`, §11.2):**
   - A `Content` chunk (store code 9) holds a journal chunk's records' kept content: each fragment's classification,
@@ -2059,9 +2067,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      5. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
         §6.2 density regime remains (item 5).
    - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could; revision 234 keeps
-     content beside the journal (ADR-036, `content-v1`). Next, in order: a controlled fixture path, a test provider's
-     bytes through a scoped content profile into chunks; the bounded hex and text viewer (§3.7); then one validated
-     content-capable source or import path. Later: a follower that mirrors content, and releasing content alone.
+     content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
+     the `content-fixture` profile. Next, in order: the bounded hex and text viewer (§3.7); then one validated
+     content-capable source or import path. Later: a follower that mirrors content, so a broker capture could keep it;
+     releasing content alone; and measuring whether application providers' headers name their owners (ADR-030).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2114,6 +2123,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 235 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,369 tests: 1,365
+  passed, 4 skipped**, zero failures. Live, elevated, into scratch: 24 fixture messages kept 23 whole and 1 cut to
+  4,096 bytes; 8,000 unpaced ones stopped the capture at 16,773,163 bytes (2,151 whole, 3,015 cut, 2,834 omitted).
+  Every length, direction and whole message's SHA-256 matched the truth, nothing was lost, no message text was in any
+  other file, no ETW session was left, and both sessions were deleted.
 - Revision 234 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,364 tests: 1,360
   passed, 4 skipped**, zero failures; nine of them hold the chunk format and its refusals, pages and the original
   record stating kept content, consent withholding bytes, release with the journal chunk, and both sharing presets.

@@ -52,6 +52,15 @@ public sealed record LiveRecordingResult
     /// be read, so the session's coverage is unknown.
     /// </summary>
     public CoverageLedgerV1? Coverage { get; init; }
+
+    /// <summary>How many records' content a scoped content capture kept or omitted (`contracts/content-v1.md`).</summary>
+    public long ContentFragments { get; init; }
+
+    /// <summary>How many content bytes it kept.</summary>
+    public long ContentKeptBytes { get; init; }
+
+    /// <summary>True when kept content reached the policy's session limit, which stopped the capture (stop-at-limit).</summary>
+    public bool ContentLimitReached { get; init; }
 }
 
 /// <summary>
@@ -124,6 +133,9 @@ public static class LiveSessionRecorder
             CompactionFailure = derivation?.CompactionFailure,
             JournaledRecords = captured.JournaledRecords,
             Coverage = captured.Coverage,
+            ContentFragments = captured.ContentFragments,
+            ContentKeptBytes = captured.ContentKeptBytes,
+            ContentLimitReached = captured.ContentLimitReached,
         };
     }
 

@@ -62,6 +62,15 @@ public sealed record LiveCaptureResult
     /// be read, so the session's coverage is unknown.
     /// </summary>
     public CoverageLedgerV1? Coverage { get; init; }
+
+    /// <summary>How many records' content a scoped content capture kept or omitted (`contracts/content-v1.md`).</summary>
+    public long ContentFragments { get; init; }
+
+    /// <summary>How many content bytes it kept.</summary>
+    public long ContentKeptBytes { get; init; }
+
+    /// <summary>True when kept content reached the policy's session limit, which stopped the capture (stop-at-limit).</summary>
+    public bool ContentLimitReached { get; init; }
 }
 
 /// <summary>
@@ -269,6 +278,9 @@ public static class LiveRecorder
             DiskReserveReached = chunks.DiskReserveReached,
             DiskReserveReason = chunks.DiskReserveReason,
             Coverage = ledger,
+            ContentFragments = chunks.ContentFragments,
+            ContentKeptBytes = chunks.ContentKeptBytes,
+            ContentLimitReached = chunks.ContentLimitReached,
         };
     }
 
@@ -311,6 +323,12 @@ public static class LiveRecorder
         private bool rolloverBlocked;
         private ulong recordsInChunk;
         private long journaled;
+
+        // The content kept of this chunk's records, published beside its journal chunk, and what the capture has kept so
+        // far against its session limit (ADR-036, `contracts/content-v1.md`).
+        private readonly List<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> content = [];
+        private CompiledBodyAdmissionPolicy? contentPolicy;
+        private long contentKept;
 
         // The largest projected length the current chunk may reach while the volume keeps the floor plus the headroom
         // to finish, as of the last probe. Bytes already written to the chunk were on the volume when it was probed.
@@ -360,6 +378,15 @@ public static class LiveRecorder
 
         public string? DiskReserveReason { get; private set; }
 
+        /// <summary>Whether kept content reached the policy's session limit, which stopped the capture (stop-at-limit).</summary>
+        public bool ContentLimitReached { get; private set; }
+
+        /// <summary>How many records' content the capture kept or omitted, over every chunk.</summary>
+        public long ContentFragments { get; private set; }
+
+        /// <summary>How many content bytes the capture kept, over every chunk.</summary>
+        public long ContentKeptBytes => contentKept;
+
         private bool AcquisitionLimited => JournalQuotaReached || DiskReserveReached;
 
         // The last generation names the chunks published so far plus the last chunk, the plan, ledger and marker.
@@ -372,7 +399,7 @@ public static class LiveRecorder
             {
                 while (session.Records.TryRead(out AdmittedEvent admitted))
                 {
-                    Write(in admitted);
+                    Write(ref admitted);
                     if (Due())
                     {
                         PublishChunk();
@@ -405,6 +432,7 @@ public static class LiveRecorder
                 builder.StageCoverageLedger(ledger);
             }
 
+            StageContent();
             DateTimeOffset finalizedUtc = DateTimeOffset.UtcNow;
             builder.StageCaptureFinalization(new CaptureFinalizationV1
             {
@@ -461,41 +489,123 @@ public static class LiveRecorder
             return true;
         }
 
-        private void Write(in AdmittedEvent admitted)
+        private void Write(ref AdmittedEvent admitted)
         {
-            if (AcquisitionLimited)
+            // A record's content buffer was rented in the callback; whatever happens to the record, it goes back here.
+            byte[]? contentBuffer = admitted.DetachContent();
+            try
             {
-                return;
-            }
+                if (AcquisitionLimited)
+                {
+                    return;
+                }
 
-            AdmittedEventPlan descriptor = session.AdmissionTable.FindBySourceIndex(
-                admitted.SourceIndex,
-                admitted.EventId,
-                admitted.Version,
-                admitted.Opcode)
-                ?? throw new InvalidDataException(
-                    $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"
-                    + $"v{admitted.Version}, which the compiled plan does not describe.");
+                AdmittedEventPlan descriptor = session.AdmissionTable.FindBySourceIndex(
+                    admitted.SourceIndex,
+                    admitted.EventId,
+                    admitted.Version,
+                    admitted.Opcode)
+                    ?? throw new InvalidDataException(
+                        $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"
+                        + $"v{admitted.Version}, which the compiled plan does not describe.");
 
-            // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
-            RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
-            derivation?.Derive(envelope, descriptor, (ulong)journaled, builder);
-            if (maximumJournalBytes is null && diskFloor is null)
-            {
-                builder.Journal.Append(envelope);
+                // Each envelope's buffers pass to the journal at append, so nothing here outlives its single owner (§18.1).
+                RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, descriptor, plan.Identity.CaptureId);
+                (uint stream, uint epoch, ulong ordinal) = (envelope.StreamId, envelope.SourceEpoch, envelope.RecordOrdinal);
+                derivation?.Derive(envelope, descriptor, (ulong)journaled, builder);
+                if (maximumJournalBytes is null && diskFloor is null)
+                {
+                    builder.Journal.Append(envelope);
+                }
+                else if (!TryAppendBounded(envelope))
+                {
+                    envelope.Dispose();
+                    onAcquisitionLimit();
+                    return;
+                }
+
+                recordsInChunk++;
+                journaled++;
+                if (admitted.HasContent)
+                {
+                    Keep(in admitted, contentBuffer, descriptor, stream, epoch, ordinal);
+                }
+
+                // Counted only once journaled: the preview shows what the chunk will publish, never a refused record.
+                preview?.Count(descriptor.Mechanism, admitted.TimestampQpc);
             }
-            else if (!TryAppendBounded(envelope))
+            finally
             {
-                envelope.Dispose();
+                if (contentBuffer is not null)
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(contentBuffer);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Keeps a journaled record's content as a fragment of this chunk (`contracts/content-v1.md`): whole, or cut to the
+        /// per-record limit with the length it had, or - once the kept bytes would pass the session limit - omitted with its
+        /// length, which stops the capture (stop-at-limit, ADR-036).
+        /// </summary>
+        private void Keep(
+            in AdmittedEvent admitted,
+            byte[]? buffer,
+            AdmittedEventPlan descriptor,
+            uint stream,
+            uint epoch,
+            ulong ordinal)
+        {
+            CompiledBodyAdmissionPolicy policy = descriptor.BodyPolicy;
+            AdmittedSlotPlan slot = descriptor.Slots.First(candidate => candidate.Kind == AdmittedSlotKind.Content);
+            contentPolicy ??= policy;
+            int kept = admitted.ContentKept;
+            int original = admitted.ContentOriginalLength;
+            bool omitted = ContentLimitReached || contentKept + kept > policy.ContentSessionLimit;
+            if (omitted && !ContentLimitReached)
+            {
+                ContentLimitReached = true;
                 onAcquisitionLimit();
+            }
+
+            byte[] bytes = omitted || buffer is null ? [] : buffer.AsSpan(0, kept).ToArray();
+            contentKept += bytes.Length;
+            ContentFragments++;
+            content.Add((new ContentFragmentV1(
+                stream,
+                epoch,
+                ordinal,
+                (ContentClassificationV1)(byte)slot.ContentClassification!.Value,
+                descriptor.Direction is Direction.Outbound or Direction.Inbound ? descriptor.Direction : Direction.UnknownDirection,
+                (ContentEncodingV1)(byte)slot.ContentEncoding!.Value,
+                omitted ? ContentDispositionV1.OmittedBySessionLimit
+                    : kept < original ? ContentDispositionV1.TruncatedByRecordLimit
+                    : ContentDispositionV1.Whole,
+                0,
+                original,
+                bytes.Length), bytes));
+        }
+
+        /// <summary>Stages the content kept of this chunk's records beside its journal, in record order, and starts afresh.</summary>
+        private void StageContent()
+        {
+            if (content.Count == 0 || contentPolicy is not { } policy)
+            {
                 return;
             }
 
-            recordsInChunk++;
-            journaled++;
-
-            // Counted only once journaled: the preview shows what the chunk will publish, never a refused record.
-            preview?.Count(descriptor.Mechanism, admitted.TimestampQpc);
+            content.Sort(static (left, right) =>
+                left.Fragment.StreamId != right.Fragment.StreamId ? left.Fragment.StreamId.CompareTo(right.Fragment.StreamId)
+                : left.Fragment.SourceEpoch != right.Fragment.SourceEpoch ? left.Fragment.SourceEpoch.CompareTo(right.Fragment.SourceEpoch)
+                : left.Fragment.RecordOrdinal.CompareTo(right.Fragment.RecordOrdinal));
+            builder.StageContent(
+                new ContentChunkHeaderV1(
+                    plan.Identity.CaptureId,
+                    policy.PolicyId,
+                    policy.ContentRecordLimit,
+                    (ContentInspectionV1)(byte)(policy.ContentInspection ?? ContentInspectionMode.Disabled)),
+                [.. content]);
+            content.Clear();
         }
 
         /// <summary>
@@ -598,6 +708,7 @@ public static class LiveRecorder
         private void PublishChunk()
         {
             ThrowIfClockRefused(session);
+            StageContent();
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);

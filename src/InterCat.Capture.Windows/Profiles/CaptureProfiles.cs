@@ -39,6 +39,12 @@ public sealed record CaptureProfileDescriptor
 
 public static class CaptureProfileCatalog
 {
+    /// <summary>The most bytes of one fixture message the content fixture keeps.</summary>
+    public const int ContentFixtureRecordLimit = 4_096;
+
+    /// <summary>The content the fixture keeps before it stops the capture.</summary>
+    public const long ContentFixtureSessionLimit = 16L * 1024 * 1024;
+
     public static IReadOnlyList<CaptureProfileDescriptor> All { get; } =
     [
         new()
@@ -135,11 +141,41 @@ public static class CaptureProfileCatalog
             "Rolling retention, visible oldest-time, pin reservation and export-freeze guarantees are not implemented yet."),
     ];
 
+    /// <summary>
+    /// Profiles that record InterCat's own instruments rather than what Windows delivers: the content fixture (ADR-036).
+    /// <see cref="Find(string)"/> resolves one, so icat record can start it, but <see cref="All"/> - what the broker
+    /// offers and what a machine can be asked to capture - never lists one.
+    /// </summary>
+    public static IReadOnlyList<CaptureProfileDescriptor> Fixtures { get; } =
+    [
+        new()
+        {
+            Kind = CaptureProfileKind.ContentFixture,
+            Id = "content-fixture",
+            DisplayName = "Content fixture",
+            Summary = "Lifecycle and InterCat's own content fixture, whose generated messages are kept as content: the "
+                + "controlled path that carries content end to end (ADR-036). It keeps no other application's bytes.",
+            Admission = AdmissionMode.ScopedContent,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.ContentFixtureSourceId, true, false,
+                    "The fixture's messages: each one's length, and its bytes kept as content up to the policy's limits."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"Collects lifecycle metadata and the content fixture's messages: each one's length, and up to {ContentFixtureRecordLimit:N0} of its bytes kept as restricted content beside the journal, until {ContentFixtureSessionLimit / (1024 * 1024):N0} MiB of content stops the capture. It keeps no other application's bytes and requests no call stacks."),
+        },
+    ];
+
     public static CaptureProfileDescriptor? Find(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         string normalized = id.Trim().Replace('_', '-').Replace(' ', '-').ToLowerInvariant();
-        foreach (CaptureProfileDescriptor profile in All)
+        foreach (CaptureProfileDescriptor profile in All.Concat(Fixtures))
         {
             if (string.Equals(profile.Id, normalized, StringComparison.Ordinal))
             {
@@ -151,7 +187,7 @@ public static class CaptureProfileCatalog
     }
 
     public static CaptureProfileDescriptor Find(CaptureProfileKind kind) =>
-        All.First(profile => profile.Kind == kind);
+        All.Concat(Fixtures).First(profile => profile.Kind == kind);
 
     private static CaptureProfileDescriptor Unavailable(
         CaptureProfileKind kind,
@@ -327,9 +363,15 @@ public static class CaptureProfileCompiler
                 contentDecision);
         }
 
-        CompiledBodyAdmissionPolicy bodyPolicy = profile.Admission switch
+        CompiledBodyAdmissionPolicy bodyPolicy = (profile.Admission, profile.Kind) switch
         {
-            AdmissionMode.MetadataOnly => CaptureBodyAdmissionPolicies.MetadataOnly,
+            (AdmissionMode.MetadataOnly, _) => CaptureBodyAdmissionPolicies.MetadataOnly,
+
+            // The one scoped content compiler: the controlled fixture's, whose source keeps only its own messages (ADR-036).
+            (AdmissionMode.ScopedContent, CaptureProfileKind.ContentFixture) => CaptureBodyAdmissionPolicies.ScopedContentFixture(
+                CaptureProfileCatalog.ContentFixtureRecordLimit,
+                CaptureProfileCatalog.ContentFixtureSessionLimit,
+                ContentInspectionMode.HexAndText),
             _ => throw new NotSupportedException(
                 $"Profile '{profile.Id}' requests {profile.Admission}, which has no production admission compiler."),
         };

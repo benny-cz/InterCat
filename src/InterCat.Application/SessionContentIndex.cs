@@ -13,9 +13,44 @@ public sealed record SessionContentEntry(string ChunkName, ContentChunkHeaderV1 
     public bool Inspectable => Header.Inspection == ContentInspectionV1.HexAndText;
 }
 
+/// <summary>What one content policy kept its fragments under: the policy, its per-record limit and whether a person may see them.</summary>
+public sealed record SessionContentPolicy(string PolicyId, int RecordLimit, ContentInspectionV1 Inspection);
+
+/// <summary>
+/// What a generation keeps as content, in sum (content-v1 §4): how many records' messages, whole, cut or omitted, and
+/// how many bytes, under which policies. It names no byte of any message.
+/// </summary>
+public sealed record SessionContentSummary
+{
+    /// <summary>How many content chunks the generation names.</summary>
+    public required int Chunks { get; init; }
+
+    /// <summary>How many records' content the readable chunks hold.</summary>
+    public required int Records { get; init; }
+
+    /// <summary>Records whose message was kept whole.</summary>
+    public required int Whole { get; init; }
+
+    /// <summary>Records whose message was cut to the policy's record limit.</summary>
+    public required int Cut { get; init; }
+
+    /// <summary>Records whose message was not kept because the capture had reached its content limit.</summary>
+    public required int Omitted { get; init; }
+
+    /// <summary>The bytes of messages kept, in all.</summary>
+    public required long KeptBytes { get; init; }
+
+    /// <summary>The policies the chunks were kept under, in policy order.</summary>
+    public required IReadOnlyList<SessionContentPolicy> Policies { get; init; }
+
+    /// <summary>Why a chunk could not be read, so these sums leave its records out; null when every one was read.</summary>
+    public required string? Problem { get; init; }
+}
+
 /// <summary>
 /// The content a generation keeps, by record (`contracts/content-v1.md`, ADR-036): every chunk it names, read and checked
-/// once. Only the viewer's and the command line's record readers use it; nothing that reads metadata does.
+/// once. Only the record readers and a session's summary use it; nothing that reads metadata does. It keeps no message
+/// byte: one is read afresh from its chunk only when asked for.
 /// </summary>
 /// <remarks>
 /// A chunk that cannot be read is not read in part. The index then holds no fragment of it and says why, so a record's
@@ -58,11 +93,54 @@ public sealed class SessionContentIndex
     public SessionContentEntry? Find(RawRecordId record) =>
         byRecord.GetValueOrDefault((record.CaptureId.Value, record.StreamId, record.SourceEpoch, record.RecordOrdinal));
 
+    /// <summary>What the generation keeps, in sum, from its fragments' facts alone.</summary>
+    public SessionContentSummary Summarize()
+    {
+        int whole = 0, cut = 0, omitted = 0;
+        long kept = 0;
+        var policies = new HashSet<SessionContentPolicy>();
+        foreach (SessionContentEntry entry in byRecord.Values)
+        {
+            _ = policies.Add(new(entry.Header.PolicyId, entry.Header.RecordLimit, entry.Header.Inspection));
+            kept += entry.Fragment.Kept;
+            switch (entry.Fragment.Disposition)
+            {
+                case ContentDispositionV1.Whole:
+                    whole++;
+                    break;
+                case ContentDispositionV1.TruncatedByRecordLimit:
+                    cut++;
+                    break;
+                default:
+                    omitted++;
+                    break;
+            }
+        }
+
+        return new()
+        {
+            Chunks = Chunks,
+            Records = byRecord.Count,
+            Whole = whole,
+            Cut = cut,
+            Omitted = omitted,
+            KeptBytes = kept,
+            Policies =
+            [
+                .. policies.OrderBy(policy => policy.PolicyId, StringComparer.Ordinal)
+                    .ThenBy(policy => policy.RecordLimit)
+                    .ThenBy(policy => policy.Inspection),
+            ],
+            Problem = Problem,
+        };
+    }
+
     /// <summary>
-    /// Reads every content chunk <paramref name="manifest"/> names. A chunk holds content of its capture's records, which
-    /// are the generation's segments' records; a chunk of another capture, or a record kept twice, is a refusal.
+    /// Reads and checks every content chunk <paramref name="manifest"/> names, keeping each fragment's facts and none of its
+    /// bytes. A chunk holds content of its capture's records, which are the generation's segments' records; a chunk of
+    /// another capture, or a record kept twice, is a refusal.
     /// </summary>
-    internal static SessionContentIndex Read(IOwnedDirectory directory, SessionManifestV1 manifest, CancellationToken cancellationToken)
+    public static SessionContentIndex Read(IOwnedDirectory directory, SessionManifestV1 manifest, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(manifest);

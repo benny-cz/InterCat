@@ -23,6 +23,12 @@ public sealed record ProviderSchemaField(string Name, string InType, FieldWidthK
     public string? OutType { get; init; }
 
     /// <summary>
+    /// The field whose value is this field's length in bytes, when the manifest names one: a binary field sized per
+    /// record, as a message's bytes are after the count that states how many there are. Null otherwise.
+    /// </summary>
+    public string? LengthField { get; init; }
+
+    /// <summary>
     /// A field as a manifest declares it. <paramref name="length"/> is the manifest's own length attribute: a number
     /// fixes a binary field's width, as a 16-byte IPv6 address has, while the name of another field, or none, leaves
     /// it data dependent.
@@ -30,7 +36,14 @@ public sealed record ProviderSchemaField(string Name, string InType, FieldWidthK
     public static ProviderSchemaField Create(string name, string inType, string? length = null, string? outType = null)
     {
         (FieldWidthKind kind, int width) = WidthOf(inType, length);
-        return new(name, inType, kind, width) { OutType = outType };
+        return new(name, inType, kind, width)
+        {
+            OutType = outType,
+            LengthField = kind == FieldWidthKind.Variable && inType == "win:Binary" && !string.IsNullOrWhiteSpace(length)
+                && !int.TryParse(length, NumberStyles.None, CultureInfo.InvariantCulture, out _)
+                    ? length
+                    : null,
+        };
     }
 
     private static (FieldWidthKind Kind, int Width) WidthOf(string inType, string? length) => inType switch

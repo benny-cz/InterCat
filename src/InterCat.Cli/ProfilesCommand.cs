@@ -309,6 +309,7 @@ internal static class ProfilesCommand
         ConsoleUi.Note("Preview a profile before capture: icat profiles explore");
         ConsoleUi.Note("Focused TCP preview: icat profiles focused-transport --mechanism tcp [--pid <id>]");
         ConsoleUi.Note("Content request preview: icat profiles content --help");
+        ConsoleUi.Note("InterCat's own content fixture records through icat record --profile content-fixture only (ADR-036).");
         ConsoleUi.Note("No profile command enables a provider or starts a capture.");
     }
 

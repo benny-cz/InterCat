@@ -156,6 +156,7 @@ public static class AdmissionPlanCompiler
         bool widthDependent = false;
         bool nameSlotTaken = false;
         bool identifierSlotTaken = false;
+        bool contentSlotTaken = false;
         int addressSlots = 0;
 
         foreach (AdmittedFieldIntent fieldIntent in intent.Fields)
@@ -218,6 +219,50 @@ public static class AdmissionPlanCompiler
                     declaredButUnreachable
                         ? $"Declared, but its offset follows the variable-length field '{blockedFrom}', which a bounded admission read cannot resolve."
                         : "Not declared by the saved schema of this descriptor version."));
+                continue;
+            }
+
+            // A content field: a message's bytes sized by a fixed length field before them, copied beside the metadata
+            // projection only under a scoped content policy (ADR-036).
+            if (fieldIntent.Role == FieldRole.Content)
+            {
+                (FieldAvailability availability, string reason)? refusal = ContentRefusal(
+                    fieldIntent, resolved.Offset, resolved.Field, resolvable, bodyPolicy, contentSlotTaken, slots.Count);
+                if (refusal is { } refused)
+                {
+                    report.Add(new(fieldIntent.FieldName, refused.availability, fieldIntent.Role, resolved.Field.InType,
+                        fieldIntent.Unit, fieldIntent.ByteDomain, refused.reason));
+                    continue;
+                }
+
+                (int Offset, ProviderSchemaField Field, bool AfterPointer) length = resolvable[resolved.Field.LengthField!];
+                slots.Add(new(
+                    resolved.Field.Name,
+                    fieldIntent.Role,
+                    resolved.Offset,
+                    0,
+                    null,
+                    null,
+                    SlotTransform.None,
+                    AdmittedSlotKind.Content)
+                {
+                    LengthOffset = length.Offset,
+                    LengthWidth = length.Field.FixedWidth,
+                    ContentClassification = fieldIntent.ContentClassification,
+                    ContentEncoding = fieldIntent.ContentEncoding,
+                });
+                contentSlotTaken = true;
+                widthDependent |= resolved.AfterPointer || length.AfterPointer;
+                minimumLength = Math.Max(minimumLength, resolved.Offset);
+                report.Add(new(
+                    resolved.Field.Name,
+                    FieldAvailability.Present,
+                    fieldIntent.Role,
+                    resolved.Field.InType,
+                    fieldIntent.Unit,
+                    fieldIntent.ByteDomain,
+                    string.Create(CultureInfo.InvariantCulture,
+                        $"Content sized by '{length.Field.Name}', kept up to {bodyPolicy.ContentRecordLimit:N0} bytes a record beside the metadata projection, never in it.")));
                 continue;
             }
 
@@ -386,6 +431,53 @@ public static class AdmissionPlanCompiler
     }
 
     /// <summary>
+    /// Why a content field cannot be admitted, or null when it can: only under a scoped content policy, one a
+    /// descriptor, a binary field sized by a fixed count of at most four bytes before it, and with the classification and
+    /// encoding the catalog states for it (ADR-036).
+    /// </summary>
+    private static (FieldAvailability Availability, string Reason)? ContentRefusal(
+        AdmittedFieldIntent intent,
+        int offset,
+        ProviderSchemaField field,
+        Dictionary<string, (int Offset, ProviderSchemaField Field, bool AfterPointer)> resolvable,
+        CompiledBodyAdmissionPolicy policy,
+        bool taken,
+        int slotCount)
+    {
+        if (!policy.KeepsContent)
+        {
+            return (FieldAvailability.ProfileDisabled,
+                "Content is admitted only under a scoped content policy; this capture keeps metadata only.");
+        }
+
+        if (taken)
+        {
+            return (FieldAvailability.ProfileDisabled, "A bounded admission copies at most one content field per descriptor.");
+        }
+
+        if (slotCount == MaximumSlots)
+        {
+            return (FieldAvailability.ProfileDisabled, $"The descriptor already admits the maximum of {MaximumSlots} fields.");
+        }
+
+        if (field.WidthKind != FieldWidthKind.Variable
+            || !string.Equals(field.InType, "win:Binary", StringComparison.Ordinal)
+            || field.LengthField is not { } lengthName
+            || !resolvable.TryGetValue(lengthName, out (int Offset, ProviderSchemaField Field, bool AfterPointer) length)
+            || length.Field.WidthKind != FieldWidthKind.Fixed
+            || length.Field.FixedWidth is not (1 or 2 or 4)
+            || length.Offset + length.Field.FixedWidth > offset)
+        {
+            return (FieldAvailability.SchemaUnknown,
+                "Content is a binary field sized by a fixed count of at most four bytes before it; this one is not.");
+        }
+
+        return intent.ContentClassification is null || intent.ContentEncoding is null
+            ? (FieldAvailability.SchemaUnknown, "The catalog states no classification or encoding for this content field.")
+            : null;
+    }
+
+    /// <summary>
     /// Computes a stable identity for everything that can affect bounded decoding or persistence. The
     /// canonical input is explicit so runtime or JSON formatting changes cannot alter the fingerprint.
     /// </summary>
@@ -422,6 +514,14 @@ public static class AdmissionPlanCompiler
             canonical.Append("extended:").Append(type.ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
 
+        // Content's terms are written only for a policy or slot that keeps content, so every metadata plan keeps the
+        // fingerprint it always had.
+        if (bodyPolicy.KeepsContent)
+        {
+            canonical.Append(CultureInfo.InvariantCulture,
+                $"content:{bodyPolicy.ContentRecordLimit}|{bodyPolicy.ContentSessionLimit}|{(int?)bodyPolicy.ContentInspection}\n");
+        }
+
         foreach (AdmittedSlotPlan slot in slots)
         {
             canonical.Append("slot:")
@@ -432,7 +532,14 @@ public static class AdmissionPlanCompiler
                 .Append(slot.Unit?.ToString() ?? "-").Append('|')
                 .Append(slot.ByteDomain?.ToString() ?? "-").Append('|')
                 .Append(((int)slot.Transform).ToString(CultureInfo.InvariantCulture)).Append('|')
-                .Append(((int)slot.Kind).ToString(CultureInfo.InvariantCulture)).Append('\n');
+                .Append(((int)slot.Kind).ToString(CultureInfo.InvariantCulture));
+            if (slot.Kind == AdmittedSlotKind.Content)
+            {
+                canonical.Append(CultureInfo.InvariantCulture,
+                    $"|length:{slot.LengthOffset}:{slot.LengthWidth}|{(int?)slot.ContentClassification}|{(int?)slot.ContentEncoding}");
+            }
+
+            canonical.Append('\n');
         }
 
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()));

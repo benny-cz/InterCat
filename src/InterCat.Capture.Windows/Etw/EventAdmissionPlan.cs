@@ -22,6 +22,18 @@ public sealed record AdmittedSlotPlan(
     /// changes what a derivation does with a copied value, never what is copied or persisted.
     /// </summary>
     public SourceField? SourceField { get; init; }
+
+    /// <summary>For a content slot: the offset of the fixed field that states the content's length in bytes.</summary>
+    public int? LengthOffset { get; init; }
+
+    /// <summary>For a content slot: that length field's width, 1, 2 or 4 bytes.</summary>
+    public int? LengthWidth { get; init; }
+
+    /// <summary>For a content slot: what its bytes are, as the source's validated content contract says (§11.2).</summary>
+    public ContentEvidenceClassification? ContentClassification { get; init; }
+
+    /// <summary>For a content slot: how its bytes are encoded, as the source declares it.</summary>
+    public ContentFieldEncoding? ContentEncoding { get; init; }
 }
 
 /// <summary>What a slot holds. A name is copied into a bounded inline buffer, never into new memory (R9).</summary>
@@ -53,6 +65,13 @@ public enum AdmittedSlotKind
     /// descriptor's address slots are listed (revision 174).
     /// </summary>
     Address128 = 6,
+
+    /// <summary>
+    /// A message's bytes, sized per record by a fixed length field before them: a prefix of at most the scoped content
+    /// policy's per-record limit is copied into a bounded buffer the record owns, with the length it had (ADR-036). Only a
+    /// scoped content policy admits one; it is never part of the metadata projection.
+    /// </summary>
+    Content = 7,
 }
 
 /// <summary>A compiled admission plan for exactly one event descriptor version.</summary>

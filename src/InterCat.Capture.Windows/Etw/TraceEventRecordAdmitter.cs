@@ -179,6 +179,20 @@ internal sealed class TraceEventRecordAdmitter
                 continue;
             }
 
+            if (slot.Kind == AdmittedSlotKind.Content)
+            {
+                if (!ReadContent(body, slot, data.EventDataLength, descriptorPlan.BodyPolicy.ContentRecordLimit, ref admitted))
+                {
+                    // A length that runs past the record is a record whose shape does not match its schema.
+                    Release(ref admitted);
+                    sink.OnUndecodable(UndecodableReason.BodyShorterThanSchema, in delivered);
+                    ReportRejectedCallback(callbackStarted);
+                    return;
+                }
+
+                continue;
+            }
+
             switch (slot.Width)
             {
                 case 1:
@@ -194,6 +208,7 @@ internal sealed class TraceEventRecordAdmitter
                     admitted.SetSlot(index, Marshal.ReadInt64(body, slot.Offset));
                     break;
                 default:
+                    Release(ref admitted);
                     sink.OnUndecodable(UndecodableReason.AdmissionReadFailed, in delivered);
                     ReportRejectedCallback(callbackStarted);
                     return;
@@ -201,8 +216,49 @@ internal sealed class TraceEventRecordAdmitter
         }
 
         CopyExtendedData(data, ref admitted);
-        _ = sink.Admit(admitted);
+        if (!sink.Admit(admitted))
+        {
+            // The queue did not take the record, so its content buffer is still this callback's to give back.
+            Release(ref admitted);
+        }
+
         ReportCallback(callbackStarted, in admitted);
+    }
+
+    /// <summary>
+    /// Copies a content field's kept bytes into a buffer the record owns: its length from the fixed field before it, the
+    /// bytes it states checked against the record's length, and at most <paramref name="recordLimit"/> of them kept, with
+    /// the length they had (ADR-036). False when the stated length runs past the record.
+    /// </summary>
+    private static bool ReadContent(IntPtr body, AdmittedSlotPlan slot, int bodyLength, int recordLimit, ref AdmittedEvent admitted)
+    {
+        int lengthOffset = slot.LengthOffset ?? throw new InvalidOperationException("A content slot names no length field.");
+        long length = slot.LengthWidth switch
+        {
+            1 => Marshal.ReadByte(body, lengthOffset),
+            2 => (ushort)Marshal.ReadInt16(body, lengthOffset),
+            4 => (uint)Marshal.ReadInt32(body, lengthOffset),
+            _ => throw new InvalidOperationException("A content slot's length field is 1, 2 or 4 bytes."),
+        };
+        if (slot.Offset + length > bodyLength)
+        {
+            return false;
+        }
+
+        int kept = (int)Math.Min(length, recordLimit);
+        byte[] rented = System.Buffers.ArrayPool<byte>.Shared.Rent(Math.Max(kept, 1));
+        Marshal.Copy(body + slot.Offset, rented, 0, kept);
+        admitted.SetContent(rented, kept, (int)length);
+        return true;
+    }
+
+    /// <summary>Returns a record's content buffer to the pool when the record goes no further.</summary>
+    private static void Release(ref AdmittedEvent admitted)
+    {
+        if (admitted.DetachContent() is { } buffer)
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>

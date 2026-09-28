@@ -309,6 +309,12 @@ public enum CaptureProfileKind
     /// the process that served it (ADR-034, ADR-035). Opt-in: collecting ALPC measured Moderate.
     /// </summary>
     RpcPeers = 6,
+
+    /// <summary>
+    /// Lifecycle and InterCat's own content fixture, whose generated messages are kept as content: the controlled path
+    /// that carries content end to end (ADR-036). It keeps no other application's bytes.
+    /// </summary>
+    ContentFixture = 7,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

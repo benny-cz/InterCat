@@ -31,6 +31,14 @@ public static class BrokerPrepareRequestPolicy
             throw new InvalidDataException("PrepareCapture requires a canonical catalog profile ID.");
         }
 
+        // The content fixture is InterCat's own test instrument, recorded by icat record into a directory of one's own; an
+        // evidence session's follower does not mirror content, so the broker never records it (ADR-036).
+        if (profile.Kind == CaptureProfileKind.ContentFixture)
+        {
+            throw new InvalidDataException(
+                "The content fixture records through icat record only, never through the broker.");
+        }
+
         if (profile.Kind == CaptureProfileKind.FocusedTransport)
         {
             if (request.FocusedMechanism != Mechanism.Tcp

@@ -28,7 +28,14 @@ public sealed record AdmittedFieldIntent(
     ByteDomain? ByteDomain = null,
     SlotTransform Transform = SlotTransform.None,
     string? Notes = null,
-    SourceField? SourceField = null);
+    SourceField? SourceField = null)
+{
+    /// <summary>For a content field: what its bytes are, as the source's validated content contract says (§11.2).</summary>
+    public ContentEvidenceClassification? ContentClassification { get; init; }
+
+    /// <summary>For a content field: how its bytes are encoded, as the source declares it; never guessed.</summary>
+    public ContentFieldEncoding? ContentEncoding { get; init; }
+}
 
 /// <summary>One event descriptor the adapter intends to admit under a metadata-only policy (§18.2).</summary>
 /// <remarks>
@@ -95,6 +102,13 @@ public sealed record WindowsSourceDefinition
 
     /// <summary>The kernel flags that enable a kernel flag group in a private system logger; 0 for a manifest provider.</summary>
     public ulong KernelFlags { get; init; }
+
+    /// <summary>
+    /// The manifest of a provider InterCat defines itself - the content fixture - generated from the type that raises its
+    /// events, so its layout is read from that type rather than from a registration the machine may not have; null for
+    /// every Windows provider, whose manifest the machine's registration supplies.
+    /// </summary>
+    public string? EmbeddedManifest { get; init; }
 }
 
 /// <summary>
@@ -247,6 +261,81 @@ public static class WindowsSourceCatalog
 
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
 
+    /// <summary>The content fixture's source: InterCat's own provider, raised only by its content-fixture workload (ADR-036).</summary>
+    public const string ContentFixtureSourceId = "etw/eventsource/InterCat-Fixture-Content";
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> ContentFixtureFields =
+    [
+        new("processId", FieldRole.ProcessAttribution,
+            Notes: "The workload's own process, which names itself in each message it raises: the record's owner (§2a)."),
+        new("conversation", FieldRole.CorrelationKey, Notes: "The fixture's conversation number. It names no process (R22)."),
+        new("messageSize", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.ApplicationPayload,
+            Notes: "The message's length as the workload raised it: every byte of it, however many the capture keeps."),
+        new("message", FieldRole.Content,
+            Notes: "The workload's generated message, each record one whole message from its first byte.")
+        {
+            ContentClassification = ContentEvidenceClassification.ApplicationPayload,
+            ContentEncoding = ContentFieldEncoding.Binary,
+        },
+    ];
+
+    /// <summary>
+    /// Sources that are not Windows capabilities but InterCat's own instruments: the content fixture (ADR-036). A profile
+    /// can request one, and <see cref="Find"/> resolves it, but the machine's capability report never lists one, because it
+    /// states what Windows can deliver on this machine.
+    /// </summary>
+    public static IReadOnlyList<WindowsSourceDefinition> Fixtures { get; } =
+    [
+        new WindowsSourceDefinition
+        {
+            SourceId = ContentFixtureSourceId,
+            DisplayName = "InterCat content fixture",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = ContentFixtureEventSource.ProviderName,
+            Mechanisms = [Mechanism.ApplicationSdk],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            ContentContract = new ValidatedContentSourceContract(
+                [ContentFixtureEventSource.MessageSentId, ContentFixtureEventSource.MessageReceivedId],
+                ["message"],
+                [ContentEvidenceClassification.ApplicationPayload],
+                EnforcesProcessScopeBeforePersistence: false,
+                EnforcesChannelScopeBeforePersistence: false,
+                "contracts/content-v1.md; the content-fixture workload's truth log (revision 235)",
+                OverheadClass.Unmeasured,
+                string.Empty),
+            FilteringNotes =
+                "InterCat's own provider, raised only by its content-fixture workload: the content it carries is the "
+                + "workload's generated messages, never another application's, so no process or channel scope applies.",
+            StartupBehaviour = "No rundown: a message raised before the capture enabled the provider is not seen.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Unmeasured,
+            EmbeddedManifest = System.Diagnostics.Tracing.EventSource.GenerateManifest(
+                typeof(ContentFixtureEventSource), string.Empty),
+            AdmittedEvents =
+            [
+                new(ContentFixtureEventSource.MessageSentId, ContentFixtureEventSource.EventVersion, "Fixture message sent",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Send, Direction.Outbound,
+                    ContentFixtureFields),
+                new(ContentFixtureEventSource.MessageReceivedId, ContentFixtureEventSource.EventVersion,
+                    "Fixture message received", Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Receive,
+                    Direction.Inbound, ContentFixtureFields),
+            ],
+            Notes =
+            [
+                "The layout is the one the raising type declares - the raising process, a conversation number, the "
+                + "message's length, then its bytes - read from that type, so the workload and this plan cannot disagree.",
+                "A record's owner is the process its payload names, as a kernel record's is; no application provider's "
+                + "event header is read as an owner (ADR-030).",
+                "The message is kept only under the scoped content fixture policy; under any other it is not admitted.",
+            ],
+        },
+    ];
+
     /// <summary>
     /// The kernel's classic event classes a private system logger delivers without being asked (ADR-035): its own trace
     /// records, process and thread starts, stops and rundown, and the system's configuration. They are Windows' fixed
@@ -268,7 +357,7 @@ public static class WindowsSourceCatalog
 
     public static WindowsSourceDefinition? Find(string sourceId)
     {
-        foreach (WindowsSourceDefinition definition in All)
+        foreach (WindowsSourceDefinition definition in All.Concat(Fixtures))
         {
             if (string.Equals(definition.SourceId, sourceId, StringComparison.Ordinal))
             {
