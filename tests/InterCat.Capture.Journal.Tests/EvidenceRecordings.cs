@@ -157,9 +157,13 @@ internal sealed class ScriptedHost : IEtwSessionHost
 
     public bool? IsElevated => true;
 
-    public void Admit(AdmittedEvent admitted) => script.Add(sink =>
+    public void Admit(AdmittedEvent admitted) =>
+        Admit(admitted, new DeliveredRecord(EvidenceRecordings.Provider, admitted.EventId, admitted.Version, admitted.TimestampQpc));
+
+    /// <summary>Delivers a record as the admitter names it, as a classic record is by its class and opcode.</summary>
+    public void Admit(AdmittedEvent admitted, DeliveredRecord delivered) => script.Add(sink =>
     {
-        sink.OnObserved(new DeliveredRecord(EvidenceRecordings.Provider, admitted.EventId, admitted.Version, admitted.TimestampQpc));
+        sink.OnObserved(in delivered);
         _ = sink.Admit(admitted);
     });
 
@@ -192,6 +196,8 @@ internal sealed class ScriptedHost : IEtwSessionHost
         public string SessionName => plan.Identity.SessionName;
 
         public ProviderEnablementResult Enable(ProviderEnablementRequest request) => new(request.SourceId, true, null);
+
+        public ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags) => new(sourceId, true, null);
 
         public bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason)
         {

@@ -308,7 +308,7 @@ public static class RedactedSessionPackage
     private static FieldTransform TransformOf(SourceField field) => field switch
     {
         SourceField.ProcessSessionId or SourceField.RpcProcedureNumber or SourceField.RpcProtocolSequence
-            or SourceField.FileByteOffset => FieldTransform.Keep,
+            or SourceField.FileByteOffset or SourceField.AlpcMessageId => FieldTransform.Keep,
         SourceField.ParentProcessId or SourceField.IssuingThreadId => FieldTransform.Number,
         SourceField.ProcessStartSequence or SourceField.ParentStartSequence => FieldTransform.Sequence,
         SourceField.ConnectionId or SourceField.IoRequestPacket or SourceField.FileObject
@@ -867,6 +867,7 @@ public static class RedactedSessionPackage
                         ProviderName = pseudonyms.ProviderName(collected.ProviderId),
                         EventId = collected.EventId,
                         Version = collected.Version,
+                        Opcode = collected.Opcode,
                         Mechanism = collected.Mechanism,
                     }),
                 ],
@@ -877,6 +878,7 @@ public static class RedactedSessionPackage
                         ProviderId = pseudonyms.Provider(delivery.ProviderId),
                         EventId = delivery.EventId,
                         Version = delivery.Version,
+                        Opcode = delivery.Opcode,
                         Delivered = delivery.Delivered,
                         Admitted = delivery.Admitted,
                         Omission = delivery.Omission,

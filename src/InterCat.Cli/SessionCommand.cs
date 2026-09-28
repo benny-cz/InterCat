@@ -3,6 +3,7 @@ using System.Text.Json;
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Capture.Journal;
+using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -720,9 +721,16 @@ internal static class SessionCommand
                         .. omitted.Select(delivery => new[]
                         {
                             delivery.ProviderId == Guid.Empty
-                                ? "Unidentified ETL provider"
-                                : names.GetValueOrDefault(delivery.ProviderId, delivery.ProviderId.ToString("D")),
-                            delivery.EventId?.ToString(CultureInfo.InvariantCulture) ?? "any",
+                                ? "Unidentified provider"
+                                : names.GetValueOrDefault(delivery.ProviderId)
+                                    ?? WindowsSourceCatalog.ClassicEventClassName(delivery.ProviderId)
+                                    ?? delivery.ProviderId.ToString("D"),
+                            delivery switch
+                            {
+                                { EventId: { } id, Opcode: { } opcode } => string.Create(CultureInfo.InvariantCulture, $"{id}, opcode {opcode}"),
+                                { EventId: { } id } => id.ToString(CultureInfo.InvariantCulture),
+                                _ => "any",
+                            },
                             delivery.Version?.ToString(CultureInfo.InvariantCulture) ?? "any",
                             ConsoleUi.Count(delivery.Omitted),
                             Words(delivery.Omission!.Value.ToString()),

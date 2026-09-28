@@ -303,6 +303,12 @@ public enum CaptureProfileKind
     Timing = 3,
     Content = 4,
     FlightRecorder = 5,
+
+    /// <summary>
+    /// Explore's lifecycle and RPC calls, with the kernel's ALPC messages in a private system logger, to link an RPC call to
+    /// the process that served it (ADR-034, ADR-035). Opt-in: collecting ALPC measured Moderate.
+    /// </summary>
+    RpcPeers = 6,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

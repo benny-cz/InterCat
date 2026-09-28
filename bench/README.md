@@ -135,6 +135,14 @@ records. `alpc-impact-20260927T171439Z` holds two series of seven pairs. The fir
 points; the second was run while other work loaded the machine - trials with and without the session reached 40 to 98%
 busy - and is kept as the record of that, not as decision evidence.
 
+`--session-check` runs ADR-035's session conditions: the product's own session identity with the kernel flags enabled
+first, and the other order. It records the session's mode, the system loggers on the machine before, during and after,
+and whether the session is gone after its stop. `alpc-session-check-20260928T033708Z` decided ADR-035, and
+`alpc-session-check-20260928T034426Z` added how each ALPC opcode names itself (its addendum).
+`alpc-session-check-20260928T044500Z` adds a census of every record the session delivered, as a consumer that listens
+to all of them sees each: the kernel's process and thread rundown and the system's configuration arrive unasked, and
+TraceEvent reports a provider for one only when a parser it has registered knows it (ADR-035's revision 223 addendum).
+
 ## Broker qualification
 
 Elevated only. Launches the production broker composition as a child process with real ETW over a

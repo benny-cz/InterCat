@@ -154,6 +154,68 @@ public sealed class CoverageLedgerTests
         }
     }
 
+    [Fact(DisplayName = "§18.3: a classic descriptor's opcode is part of its coverage identity, and a manifest ledger names no opcode")]
+    public void AClassicDescriptorIsNamedWithItsOpcode()
+    {
+        Guid alpc = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+        CoverageCollectedV1 Collected(int opcode) => new()
+        {
+            ProviderId = alpc,
+            ProviderName = "Kernel ALPC",
+            EventId = 0,
+            Version = 2,
+            Opcode = opcode,
+            Mechanism = Mechanism.Alpc,
+        };
+        CoverageDeliveryV1 Delivery(int? opcode, long admitted, long omitted) => new()
+        {
+            ProviderId = alpc,
+            EventId = 0,
+            Version = 2,
+            Opcode = opcode,
+            Delivered = admitted + omitted,
+            Admitted = admitted,
+            Omitted = omitted,
+            Omission = omitted > 0 ? OmissionReason.DescriptorNotAdmitted : null,
+        };
+        CoverageLedgerV1 original = Example();
+        CoverageEpochV1 epoch = Assert.Single(original.Epochs);
+        CoverageEpochV1 classic = epoch with
+        {
+            Collected = [.. epoch.Collected, Collected(33), Collected(34)],
+            Deliveries = [.. epoch.Deliveries, Delivery(33, 2, 0), Delivery(34, 1, 0), Delivery(36, 0, 4)],
+        };
+        CoverageLedgerV1 Ledger(CoverageEpochV1 changed) => original with { Epochs = [changed] };
+
+        CoverageEpochV1 decoded = Assert.Single(CoverageLedgerV1.Decode(Ledger(classic).Encode()).Epochs);
+        Assert.Equal([null, 33, 34], decoded.Collected.Select(descriptor => descriptor.Opcode));
+        Assert.Equal([null, 33, 34, 36], decoded.Deliveries.Select(delivery => delivery.Opcode));
+        Assert.DoesNotContain("opcode", Encoding.UTF8.GetString(original.Encode()), StringComparison.Ordinal);
+
+        // Send and receive share a class, an id and a version, so only the opcode keeps them from repeating each other;
+        // a record admitted under no opcode, or another, was not of a descriptor the epoch collected.
+        Assert.Throws<InvalidDataException>(() => Ledger(classic with { Collected = [.. classic.Collected, Collected(33)] }).Encode());
+        Assert.Throws<InvalidDataException>(() => Ledger(classic with { Deliveries = [.. classic.Deliveries, Delivery(35, 1, 0)] }).Encode());
+        Assert.Throws<InvalidDataException>(() => Ledger(classic with { Deliveries = [.. classic.Deliveries, Delivery(null, 1, 0)] }).Encode());
+        Assert.Throws<InvalidDataException>(() => Ledger(classic with { Collected = [.. classic.Collected, Collected(256)] }).Encode());
+        Assert.Throws<InvalidDataException>(() => Ledger(classic with
+        {
+            Deliveries =
+            [
+                .. classic.Deliveries,
+                new CoverageDeliveryV1
+                {
+                    ProviderId = Guid.NewGuid(),
+                    Opcode = 33,
+                    Delivered = 1,
+                    Admitted = 0,
+                    Omitted = 1,
+                    Omission = OmissionReason.UnrequestedProvider,
+                },
+            ],
+        }).Encode());
+    }
+
     private static CoverageLedgerV1 Example() => new()
     {
         Contract = CoverageLedgerV1.ContractName,

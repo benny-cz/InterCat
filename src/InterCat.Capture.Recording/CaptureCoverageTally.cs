@@ -7,7 +7,8 @@ namespace InterCat.Capture.Recording;
 /// <summary>
 /// What each descriptor delivered during one capture or replay and what became of it, for the coverage ledger
 /// (`contracts/coverage-v1.md` §3). A provider admission does not know is one entry, because every record of it met one
-/// policy; that keeps the ledger bounded by the plan's descriptors and the providers a source happens to deliver.
+/// policy; that keeps the ledger bounded by the plan's descriptors and the providers a source happens to deliver. A
+/// classic kernel descriptor is its class, id 0, version and opcode, so its opcode is part of its entry (ADR-035).
 /// </summary>
 /// <remarks>
 /// A live capture calls it from the capture callback, so every method is bounded and allocates only the first time a
@@ -19,7 +20,7 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     private readonly OwnedSessionPlan plan;
     private readonly CoverageAcquisition acquisition;
     private readonly HashSet<Guid> requested;
-    private readonly Dictionary<(Guid Provider, int? EventId, int? Version), Entry> entries = [];
+    private readonly Dictionary<(Guid Provider, int? EventId, int? Version, int? Opcode), Entry> entries = [];
     private readonly Entry overflow = new();
 
     // A live recording snapshots the tally for each publication while the callback keeps counting, so every access
@@ -73,17 +74,17 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     {
         lock (gate)
         {
-            EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version).Delivered++;
+            EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, delivered.Opcode).Delivered++;
             first = first is { } earliest && earliest <= delivered.NativeTicks ? earliest : delivered.NativeTicks;
             last = last is { } latest && latest >= delivered.NativeTicks ? latest : delivered.NativeTicks;
         }
     }
 
-    public void Admitted(Guid providerId, int eventId, int version, bool queued)
+    public void Admitted(Guid providerId, int eventId, int version, int opcode, bool queued)
     {
         lock (gate)
         {
-            Entry entry = EntryFor(providerId, eventId, version);
+            Entry entry = EntryFor(providerId, eventId, version, opcode);
             if (queued)
             {
                 entry.Admitted++;
@@ -101,13 +102,13 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     {
         lock (gate)
         {
-            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
+            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, delivered.Opcode);
             if (reason != OmissionReason.UnrequestedProvider && !requested.Contains(delivered.ProviderId))
             {
                 // A denied event of a provider admission does not know is its own descriptor, not the provider's
                 // unrequested remainder: move its delivery there so each entry keeps one policy.
                 entry.Delivered--;
-                entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, wholeProvider: false);
+                entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, delivered.Opcode, wholeProvider: false);
                 entry.Delivered++;
             }
 
@@ -120,7 +121,7 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
     {
         lock (gate)
         {
-            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version);
+            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, delivered.Opcode);
             entry.Undecodable[reason] = entry.Undecodable.GetValueOrDefault(reason) + 1;
         }
     }
@@ -164,12 +165,14 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
                             .OrderBy(descriptor => descriptor.ProviderGuid)
                             .ThenBy(descriptor => descriptor.EventId)
                             .ThenBy(descriptor => descriptor.Version)
+                            .ThenBy(descriptor => descriptor.Opcode ?? -1)
                             .Select(descriptor => new CoverageCollectedV1
                             {
                                 ProviderId = descriptor.ProviderGuid,
                                 ProviderName = names.GetValueOrDefault(descriptor.ProviderGuid, descriptor.ProviderGuid.ToString("D")),
                                 EventId = descriptor.EventId,
                                 Version = descriptor.Version,
+                                Opcode = descriptor.Opcode,
                                 Mechanism = descriptor.Mechanism,
                             }),
                     ],
@@ -180,11 +183,13 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
                             .OrderBy(entry => entry.Key.Provider)
                             .ThenBy(entry => entry.Key.EventId ?? -1)
                             .ThenBy(entry => entry.Key.Version ?? -1)
+                            .ThenBy(entry => entry.Key.Opcode ?? -1)
                             .Select(entry => new CoverageDeliveryV1
                             {
                                 ProviderId = entry.Key.Provider,
                                 EventId = entry.Key.EventId,
                                 Version = entry.Key.Version,
+                                Opcode = entry.Key.Opcode,
                                 Delivered = entry.Value.Delivered,
                                 Admitted = entry.Value.Admitted,
                                 Omission = entry.Value.Omitted > 0 ? entry.Value.Omission : null,
@@ -226,11 +231,11 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
         return names;
     }
 
-    private Entry EntryFor(Guid provider, int eventId, int version, bool? wholeProvider = null)
+    private Entry EntryFor(Guid provider, int eventId, int version, int opcode, bool? wholeProvider = null)
     {
-        (Guid, int?, int?) key = wholeProvider ?? !requested.Contains(provider)
-            ? (provider, null, null)
-            : (provider, eventId, version);
+        (Guid, int?, int?, int?) key = wholeProvider ?? !requested.Contains(provider)
+            ? (provider, null, null, null)
+            : (provider, eventId, version, opcode == EventAdmissionTable.ManifestOpcode ? null : opcode);
         if (!entries.TryGetValue(key, out Entry? entry))
         {
             if (entries.Count >= CoverageLedgerV1.MaximumDescriptors)

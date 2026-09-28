@@ -363,7 +363,7 @@ public static class EtlCanonicalImport
             try
             {
                 AdmittedEventPlan plan = plans.Resolve(in admitted);
-                coverage.Admitted(plan.ProviderGuid, plan.EventId, plan.Version, queued: true);
+                coverage.Admitted(plan.ProviderGuid, plan.EventId, plan.Version, plan.Opcode ?? EventAdmissionTable.ManifestOpcode, queued: true);
                 RecordEnvelopeV1 envelope = mapper.ToEnvelope(in admitted, plan, captureId);
                 if (generation is null)
                 {

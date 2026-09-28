@@ -190,8 +190,10 @@ public sealed record OwnedSessionPlan
     /// </summary>
     public ulong KernelFlags => Sources.Aggregate(0UL, (flags, source) => flags | (WindowsSourceCatalog.Find(source.SourceId)?.KernelFlags ?? 0));
 
-    /// <summary>The kernel flag groups among the plan's sources, named together in the one enablement they share.</summary>
-    public string KernelFlagSources => string.Join(", ", Sources
-        .Where(source => WindowsSourceCatalog.Find(source.SourceId) is { Kind: SourceKind.KernelFlagGroup, KernelFlags: > 0 })
-        .Select(source => source.SourceId));
+    /// <summary>The kernel flag groups among the plan's sources: sources the kernel flags enable, not a manifest provider.</summary>
+    public IEnumerable<SourceAdmissionPlan> KernelFlagGroups => Sources
+        .Where(source => WindowsSourceCatalog.Find(source.SourceId) is { Kind: SourceKind.KernelFlagGroup, KernelFlags: > 0 });
+
+    /// <summary>The kernel flag groups' sources, named together in the one enablement they share.</summary>
+    public string KernelFlagSources => string.Join(", ", KernelFlagGroups.Select(source => source.SourceId));
 }

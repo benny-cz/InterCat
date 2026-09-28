@@ -80,11 +80,15 @@ public sealed record JournalNormalizationPlanV1
     {
         ArgumentNullException.ThrowIfNull(table);
         Validate();
-        if (table.Schemas.Count != Descriptors.Count)
+        // A classic class's descriptors at a version share one schema entry (revision 221), so the plan interprets as
+        // many schemas as it has distinct provider/event/version keys, not one per descriptor.
+        int interpreted = Descriptors.Select(descriptor => (descriptor.ProviderGuid, descriptor.EventId, descriptor.Version))
+            .Distinct().Count();
+        if (table.Schemas.Count != interpreted)
         {
             throw new InvalidDataException(
                 $"The journal names {table.Schemas.Count} schemas but the retained plan interprets "
-                + $"{Descriptors.Count}. Replay refuses an incomplete or extra interpretation.");
+                + $"{interpreted}. Replay refuses an incomplete or extra interpretation.");
         }
 
         foreach (AdmittedEventPlan descriptor in Descriptors)

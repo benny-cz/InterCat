@@ -5,9 +5,16 @@ namespace InterCat.Capture.Windows;
 /// <summary>
 /// One delivered record's descriptor and native reading, as the callback saw it before any admission decision. A sink
 /// that keeps a coverage ledger attributes every outcome to it (`contracts/coverage-v1.md` §3); the reading is the
-/// record's own clock value, never a relative time (I8).
+/// record's own clock value, never a relative time (I8). A classic kernel record of a class admission knows names its
+/// descriptor with its opcode, because its class has one id for every event (ADR-035); any other record's opcode is
+/// <see cref="EventAdmissionTable.ManifestOpcode"/>, because its id names its descriptor.
 /// </summary>
-public readonly record struct DeliveredRecord(Guid ProviderId, int EventId, int Version, long NativeTicks);
+public readonly record struct DeliveredRecord(
+    Guid ProviderId,
+    int EventId,
+    int Version,
+    long NativeTicks,
+    int Opcode = EventAdmissionTable.ManifestOpcode);
 
 /// <summary>A capture attempt failed for a stated, non-retryable reason.</summary>
 public sealed class EtwSessionException : Exception
@@ -60,13 +67,14 @@ public interface IAdmittedEventSink
 /// Observes every delivery outcome with its descriptor, for a coverage ledger (`contracts/coverage-v1.md` §3). It is
 /// called from the capture callback, so its work must be bounded and allocation-free once a descriptor has been seen
 /// (R9, P12). A record the policy admitted but the bounded queue could not take is reported as not queued: it was lost
-/// after admission, not admitted.
+/// after admission, not admitted. An admitted record's <c>opcode</c> is its descriptor's, as
+/// <see cref="DeliveredRecord.Opcode"/> is.
 /// </summary>
 public interface IDeliveryObserver
 {
     void Delivered(in DeliveredRecord delivered);
 
-    void Admitted(Guid providerId, int eventId, int version, bool queued);
+    void Admitted(Guid providerId, int eventId, int version, int opcode, bool queued);
 
     void Omitted(OmissionReason reason, in DeliveredRecord delivered);
 

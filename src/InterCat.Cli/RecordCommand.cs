@@ -79,12 +79,13 @@ internal static class RecordCommand
         {
             "EXPLORE" => CaptureProfileKind.Explore,
             "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
+            "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
             _ => null,
         };
         if (profile is null)
         {
             ConsoleUi.Failure(
-                $"--profile records explore or focused-transport; '{profileOption}' is not one. "
+                $"--profile records explore, focused-transport or rpc-peers; '{profileOption}' is not one. "
                 + "icat profiles lists every intent and what it would collect.");
             return InterCatExitCode.InvalidInvocation;
         }
@@ -338,7 +339,7 @@ internal static class RecordCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
+        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers] [--mechanism tcp|udp]");
         ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");

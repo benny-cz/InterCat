@@ -72,6 +72,29 @@ public static class CaptureProfileCatalog
                 "Collects schema-approved metadata for one validated transport and the lifecycle context "
                 + "needed to explain it. It retains no payload bytes and requests no call stacks.",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.RpcPeers,
+            Id = "rpc-peers",
+            DisplayName = "RPC peers",
+            Summary = "Lifecycle, RPC calls and the kernel's ALPC messages, to find the process that served each local call. "
+                + "Opt-in: collecting ALPC costs more than Explore's sources.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.RpcSourceId, true, true, "The RPC calls whose other end ALPC resolves."),
+                new(WindowsSourceCatalog.KernelAlpcSourceId, true, true, "ALPC sends and receives, whose message ids link a call to the thread that served it (ADR-034)."),
+                new(WindowsSourceCatalog.KernelNetworkSourceId, false, true, "TCP and UDP context beside the calls."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects Explore's schema-approved metadata and, in a private system logger of its own, each ALPC message's "
+                + "id and the thread that sent or received it. It retains no payload bytes and requests no call stacks.",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

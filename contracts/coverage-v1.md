@@ -64,13 +64,13 @@ on the capture's clock. They bound what the epoch can speak for: before the firs
 `collected` lists what the admission plan admitted, whether or not it delivered anything:
 
 ```text
-Collected = (providerId, providerName, eventId, version, mechanism)
+Collected = (providerId, providerName, eventId, version, opcode?, mechanism)
 ```
 
 `deliveries` lists, for every descriptor that delivered at least one record, what became of its records:
 
 ```text
-Delivery = (providerId, eventId, version, delivered, admitted, omission?, omitted, undecodable{reason: records})
+Delivery = (providerId, eventId, version, opcode?, delivered, admitted, omission?, omitted, undecodable{reason: records})
 ```
 
 - `admitted + omitted + Σ undecodable = delivered`, exactly.
@@ -80,15 +80,22 @@ Delivery = (providerId, eventId, version, delivered, admitted, omission?, omitte
 - An unrequested provider is counted as one whole-provider omission with no event/version. Some ETL system records
   expose no provider GUID; their empty GUID is allowed only in this omitted bucket, never as a collected descriptor
   or admitted record. This keeps the delivered count without inventing a source identity.
+- A classic kernel record is counted under the class its header carries, with event id 0, whether or not the plan
+  admits the class (ADR-035). A class the plan does not admit is one unrequested provider of its own. A decoder's
+  name for such a record's provider depends on which of its parsers the consumer registered, so it is never the
+  identity.
+- `opcode` names a classic descriptor with its class, event id 0 and version, because a class has one id for every
+  event: ALPC's send and receive differ only by opcode. It is 0-255, present on every classic descriptor and delivery,
+  and absent otherwise, including on a whole-provider delivery. A file without it is read as it always was.
 - An undecodable record is delivered under an admitted descriptor and cannot be read, or has an unknown
   descriptor version under a requested provider. It is counted by
   `EN-UndecodableReason`: `BodyShorterThanSchema`, `UnknownDescriptorVersion`, `AdmissionReadFailed` or
   `PointerWidthMismatch`.
 
-A delivery names its descriptor by provider, event and version only, and assigns no mechanism to an omitted
-descriptor. A file carries no event names, and a name looked up on the importing machine is that machine's fact, not
-the capture's. A policy omission is also not a loss, and never changes a coverage state. It is disclosed beside the
-state: evidence the policy chose not to admit, which a wider policy could.
+A delivery names its descriptor by provider, event and version, with a classic descriptor's opcode, and assigns no
+mechanism to an omitted descriptor. A file carries no event names, and a name looked up on the importing machine is
+that machine's fact, not the capture's. A policy omission is also not a loss, and never changes a coverage state. It
+is disclosed beside the state: evidence the policy chose not to admit, which a wider policy could.
 
 `losses` lists what a layer reported lost and could not attribute to a descriptor:
 

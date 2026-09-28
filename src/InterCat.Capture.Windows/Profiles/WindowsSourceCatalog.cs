@@ -247,6 +247,25 @@ public static class WindowsSourceCatalog
 
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
 
+    /// <summary>
+    /// The kernel's classic event classes a private system logger delivers without being asked (ADR-035): its own trace
+    /// records, process and thread starts, stops and rundown, and the system's configuration. They are Windows' fixed
+    /// classes rather than names looked up on the reading machine, so a display may name them where no plan requested
+    /// them, as it names a source's provider.
+    /// </summary>
+    private static readonly Dictionary<Guid, string> UnaskedClassicClasses = new()
+    {
+        [Guid.Parse("68fdd900-4a3e-11d1-84f4-0000f80464e3")] = "Kernel trace records (EventTrace class)",
+        [Guid.Parse("3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c")] = "Kernel process events (Process class)",
+        [Guid.Parse("3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c")] = "Kernel thread events (Thread class)",
+        [Guid.Parse("01853a65-418f-4f36-aefc-dc0f1d2fd235")] = "Kernel system configuration (SystemConfig class)",
+    };
+
+    /// <summary>A classic kernel class's name: a kernel flag group's provider, or a class a system logger delivers unasked.</summary>
+    public static string? ClassicEventClassName(Guid classGuid) =>
+        All.FirstOrDefault(definition => definition.ClassicEventClass == classGuid)?.ProviderName
+        ?? UnaskedClassicClasses.GetValueOrDefault(classGuid);
+
     public static WindowsSourceDefinition? Find(string sourceId)
     {
         foreach (WindowsSourceDefinition definition in All)
@@ -532,7 +551,7 @@ public static class WindowsSourceCatalog
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
             Overhead = OverheadClass.Moderate,
-            OverheadEvidence = "bench/results/alpc-impact-20260927T171439Z/impact.json",
+            OverheadEvidence = "bench/results/alpc-impact-20260927T171439Z/series-1.json",
             ClassicEventClass = AlpcEventClass,
             KernelFlags = AlpcKernelFlag,
             AdmittedEvents =
@@ -548,6 +567,9 @@ public static class WindowsSourceCatalog
                 + "34 receive - tells the two apart; TDH reads their one 32-bit message id from the class's registration.",
                 "Collection alone measured 1.86 CPU pp at about 1,160 events a second, Moderate, so it is never in Explore "
                 + "(ADR-034's addendum); the profile that admits it states its own class once measured through the product.",
+                "Its private system logger also delivers, unasked, the kernel's process and thread starts, stops and rundown "
+                + "and the system's configuration; they are counted as unrequested classes, each under its own class, and "
+                + "never admitted.",
             ],
         };
 

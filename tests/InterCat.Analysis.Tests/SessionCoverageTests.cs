@@ -128,6 +128,40 @@ public sealed class SessionCoverageTests
             atMax, Mechanism.Tcp, new TimeRange(long.MaxValue - 1, long.MaxValue)).State);
     }
 
+    [Fact(DisplayName = "§18.3: a classic class's coverage counts only the opcodes it admitted, each as a descriptor of its own")]
+    public void AClassicClassIsCoveredByTheOpcodesItAdmitted()
+    {
+        Guid alpc = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+        CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.LiveCapture);
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        CoverageLedgerV1 classic = ledger with { Epochs = [epoch with
+        {
+            Collected =
+            [
+                .. epoch.Collected,
+                .. Enumerable.Range(33, 2).Select(opcode => new CoverageCollectedV1
+                {
+                    ProviderId = alpc, ProviderName = "Kernel ALPC", EventId = 0, Version = 2, Opcode = opcode, Mechanism = Mechanism.Alpc,
+                }),
+            ],
+            Deliveries =
+            [
+                .. epoch.Deliveries,
+                new CoverageDeliveryV1 { ProviderId = alpc, EventId = 0, Version = 2, Opcode = 33, Delivered = 5, Admitted = 5, Omitted = 0 },
+                new CoverageDeliveryV1 { ProviderId = alpc, EventId = 0, Version = 2, Opcode = 34, Delivered = 4, Admitted = 4, Omitted = 0 },
+                new CoverageDeliveryV1
+                {
+                    ProviderId = alpc, EventId = 0, Version = 2, Opcode = 36, Delivered = 7, Admitted = 0, Omitted = 7,
+                    Omission = OmissionReason.DescriptorNotAdmitted,
+                },
+            ],
+        }] };
+
+        MechanismCoverage coverage = SessionCoverage.Of(classic, Mechanism.Alpc);
+        Assert.Equal(CoverageState.Covered, coverage.State);
+        Assert.Equal("9 records from its 2 admitted descriptors, and nothing was reported lost", coverage.Reason);
+    }
+
     private static CoverageLedgerV1 Ledger(CoverageAcquisition acquisition) => new()
     {
         Contract = CoverageLedgerV1.ContractName,

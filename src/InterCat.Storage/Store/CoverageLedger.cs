@@ -108,7 +108,7 @@ public sealed record CoverageLedgerV1
                 $"{at} is bounded by its first and last delivered readings exactly when something was delivered.");
         }
 
-        var collected = new HashSet<(Guid, int, int)>();
+        var collected = new HashSet<(Guid, int, int, int?)>();
         foreach (CoverageCollectedV1 descriptor in epoch.Collected)
         {
             if (descriptor is null
@@ -117,14 +117,15 @@ public sealed record CoverageLedgerV1
                 || descriptor.ProviderName.Length > MaximumProviderNameLength
                 || descriptor.EventId is < 0 or > ushort.MaxValue
                 || descriptor.Version is < 0 or > byte.MaxValue
+                || descriptor.Opcode is < 0 or > byte.MaxValue
                 || !Enum.IsDefined(descriptor.Mechanism)
-                || !collected.Add((descriptor.ProviderId, descriptor.EventId, descriptor.Version)))
+                || !collected.Add((descriptor.ProviderId, descriptor.EventId, descriptor.Version, descriptor.Opcode)))
             {
                 throw new InvalidDataException($"{at} names a collected descriptor that is incomplete, out of range or repeated.");
             }
         }
 
-        var delivered = new HashSet<(Guid, int?, int?)>();
+        var delivered = new HashSet<(Guid, int?, int?, int?)>();
         Int128 totalDelivered = 0;
         foreach (CoverageDeliveryV1 delivery in epoch.Deliveries)
         {
@@ -132,8 +133,10 @@ public sealed record CoverageLedgerV1
                 || (delivery.ProviderId == Guid.Empty && delivery.EventId.HasValue)
                 || delivery.EventId is < 0 or > ushort.MaxValue
                 || delivery.Version is < 0 or > byte.MaxValue
+                || delivery.Opcode is < 0 or > byte.MaxValue
                 || delivery.EventId.HasValue != delivery.Version.HasValue
-                || !delivered.Add((delivery.ProviderId, delivery.EventId, delivery.Version)))
+                || (delivery.Opcode.HasValue && !delivery.EventId.HasValue)
+                || !delivered.Add((delivery.ProviderId, delivery.EventId, delivery.Version, delivery.Opcode)))
             {
                 throw new InvalidDataException($"{at} names a delivery that is incomplete, out of range or repeated.");
             }
@@ -162,7 +165,8 @@ public sealed record CoverageLedgerV1
                 || (delivery.Omission is { } omission && !Enum.IsDefined(omission))
                 || wholeProvider != (delivery.Omission == OmissionReason.UnrequestedProvider)
                 || (wholeProvider && delivery.Omitted != delivery.Delivered)
-                || (delivery.Admitted > 0 && !collected.Contains((delivery.ProviderId, delivery.EventId!.Value, delivery.Version!.Value))))
+                || (delivery.Admitted > 0
+                    && !collected.Contains((delivery.ProviderId, delivery.EventId!.Value, delivery.Version!.Value, delivery.Opcode))))
             {
                 throw new InvalidDataException(
                     $"{at} has a delivery whose outcomes do not add up to what it delivered, or that admitted records "
@@ -236,6 +240,12 @@ public sealed record CoverageCollectedV1
 
     public required int Version { get; init; }
 
+    /// <summary>
+    /// A classic kernel descriptor's opcode, which with its class, id 0 and version names it (ADR-035). Absent for a
+    /// manifest descriptor, whose id names it.
+    /// </summary>
+    public int? Opcode { get; init; }
+
     public required Mechanism Mechanism { get; init; }
 }
 
@@ -250,6 +260,9 @@ public sealed record CoverageDeliveryV1
     public int? EventId { get; init; }
 
     public int? Version { get; init; }
+
+    /// <summary>A classic kernel descriptor's opcode, as <see cref="CoverageCollectedV1.Opcode"/> is; absent otherwise.</summary>
+    public int? Opcode { get; init; }
 
     public required long Delivered { get; init; }
 

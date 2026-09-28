@@ -181,6 +181,16 @@ public sealed class EventAdmissionTable
     /// <summary>The opcode a manifest descriptor's key carries: a manifest event's opcode is not part of its identity.</summary>
     public const int ManifestOpcode = -1;
 
+    /// <summary>
+    /// The identity a delivered record is admitted and counted under. A manifest record is its provider and id. A classic
+    /// record is the class its header carries, with id 0 and its opcode, because a class has one id for every event
+    /// (ADR-035). That holds for a class the plan does not admit too: a decoder reports the generic kernel provider for
+    /// such a record, or no provider, depending on which of its parsers the consumer registered, so only the header's
+    /// class names it the same way every time.
+    /// </summary>
+    public static (Guid Provider, int EventId, int Opcode) RecordIdentity(bool classic, Guid providerGuid, Guid classGuid, int eventId, int opcode) =>
+        classic ? (classGuid, 0, opcode) : (providerGuid, eventId, ManifestOpcode);
+
     /// <summary>A descriptor's plan; <paramref name="opcode"/> is a classic record's, or <see cref="ManifestOpcode"/>.</summary>
     public AdmittedEventPlan? Find(Guid providerGuid, int eventId, int version, int opcode = ManifestOpcode) =>
         plans.TryGetValue(new(providerGuid, eventId, version, opcode), out AdmittedEventPlan? plan) ? plan : null;

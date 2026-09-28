@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 222 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 223 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 223 — an opt-in RPC peers profile admits ALPC (ADR-034, ADR-035):**
+  - `icat record --profile rpc-peers` takes lifecycle, RPC calls and ALPC's send and receive, as kernel flags, with TCP
+    and UDP context; without ALPC it does not start. ALPC rows publish with their message id as a source field.
+  - The coverage ledger names a classic descriptor with its opcode, and counts a classic record under its header's
+    class, whatever TraceEvent reports; a display names the classes a system logger delivers unasked.
+  - A real 15-second capture during 300 RPC calls admitted 9,382 ALPC rows and left no session behind.
 
 - **Revision 222 — the owned session takes kernel flags first (ADR-035):**
   - A plan's kernel flag groups give it kernel flags, enabled in one call before any manifest provider, which makes the
@@ -1972,8 +1979,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         in revision 188, so never Explore - in order: done in revision 218, ADR-035 for a private, uniquely named, owned
         system logger in the capture's one session, checked in the product's session conditions; done in revisions
         220 and 221, admission for ALPC's classic send and receive by opcode, from the class's registered layout; done
-        in revision 222, the owned session's kernel flags, first; next, a profile that admits them, the ALPC record's
-        normalization, and its measured class through the product path; the relation
+        in revision 222, the owned session's kernel flags, first; done in revision 223, the opt-in RPC peers profile
+        that admits them and the ALPC record's normalization, with a ledger that names a classic descriptor by opcode;
+        next, its measured class through the product path; the relation
         rule implementing ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence
         beneath a call and never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
@@ -2033,6 +2041,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 223 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,336 tests: 1,332
+  passed, 4 skipped**, zero failures. A real elevated `icat record --profile rpc-peers` of 15 s, with 300 RPC calls,
+  admitted 9,382 ALPC rows, each with its message id, published its ledger, and left no InterCat session (`logman`);
+  its scratch was deleted.
 - Revision 222 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,328 tests: 1,324
   passed, 4 skipped**, zero failures; four of them hold kernel flags first, a refusal's cleanup, plans without them
   unchanged, and no manifest request for a kernel flag group. No real session was started: no profile enables them yet.

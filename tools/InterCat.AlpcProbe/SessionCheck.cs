@@ -30,6 +30,7 @@ internal static class SessionCheck
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("alpc-check", Environment.ProcessId);
         long alpcSends = 0, alpcReceives = 0, alpcOther = 0, network = 0, other = 0;
         var descriptors = new SortedDictionary<int, Dictionary<string, object?>>();
+        var census = new Dictionary<(Guid Provider, Guid Task, bool Classic, int Opcode, int Id), (string Name, long Count)>();
         uint mode;
         int during;
         int lost;
@@ -64,7 +65,19 @@ internal static class SessionCheck
                         ["classic"] = data.IsClassicProvider,
                     };
                 }
-            };            session.Source.Kernel.ALPCSendMessage += _ => alpcSends++;
+            };
+            // Every record the session delivers, as a consumer that listens to all of them (as admission does) sees it:
+            // the parsers' callbacks above never see a record no parser knows.
+            session.Source.AllEvents += data =>
+            {
+                var key = (data.ProviderGuid, data.TaskGuid, data.IsClassicProvider, (int)data.Opcode, (int)data.ID);
+                lock (census)
+                {
+                    if (census.TryGetValue(key, out (string Name, long Count) seen)) census[key] = (seen.Name, seen.Count + 1);
+                    else if (census.Count < 64) census[key] = (data.EventName, 1);
+                }
+            };
+            session.Source.Kernel.ALPCSendMessage += _ => alpcSends++;
             session.Source.Kernel.ALPCReceiveMessage += _ => alpcReceives++;
             session.Source.Kernel.ALPCWaitForReply += _ => alpcOther++;
             session.Source.Kernel.ALPCUnwait += _ => alpcOther++;
@@ -130,6 +143,19 @@ internal static class SessionCheck
                 ["other"] = other,
             },
             ["alpcDescriptors"] = descriptors.Values.ToList(),
+            ["deliveredByIdentity"] = census
+                .OrderByDescending(entry => entry.Value.Count)
+                .Select(entry => new Dictionary<string, object?>
+                {
+                    ["eventName"] = entry.Value.Name,
+                    ["providerGuid"] = entry.Key.Provider.ToString("D"),
+                    ["taskGuid"] = entry.Key.Task.ToString("D"),
+                    ["classic"] = entry.Key.Classic,
+                    ["opcode"] = entry.Key.Opcode,
+                    ["id"] = entry.Key.Id,
+                    ["records"] = entry.Value.Count,
+                })
+                .ToList(),
             ["systemLoggersOnTheMachine"] = new Dictionary<string, object?>
             {
                 ["before"] = before,

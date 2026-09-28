@@ -998,9 +998,9 @@ public sealed class LiveSessionRecorderTests
             tally.Delivered(in delivered);
         }
 
-        tally.Admitted(Provider, 10, 0, queued: true);
-        tally.Admitted(Provider, 10, 0, queued: true);
-        tally.Admitted(Provider, 10, 0, queued: false);
+        tally.Admitted(Provider, 10, 0, EventAdmissionTable.ManifestOpcode, queued: true);
+        tally.Admitted(Provider, 10, 0, EventAdmissionTable.ManifestOpcode, queued: true);
+        tally.Admitted(Provider, 10, 0, EventAdmissionTable.ManifestOpcode, queued: false);
 
         CoverageLedgerV1 ledger = tally.ToLedger(
         [

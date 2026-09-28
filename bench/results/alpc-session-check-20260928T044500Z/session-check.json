@@ -1,0 +1,549 @@
+{
+  "session": {
+    "createdAs": "TraceEventSession(name, Create | NoRestartOnCreate), named by CaptureSessionIdentity",
+    "privateSystemLogger": true,
+    "realTime": true,
+    "logFileMode": "0x0A400100",
+    "eventsLost": 0,
+    "goneAfterStop": true
+  },
+  "events": {
+    "alpcSends": 5299,
+    "alpcReceives": 5299,
+    "alpcWaitsAndUnwaits": 5411,
+    "kernelNetworkTcp": 450,
+    "other": 50
+  },
+  "alpcDescriptors": [
+    {
+      "eventName": "ALPC/SendMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 33,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/ReceiveMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 34,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/WaitForReply",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 35,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/WaitForNewMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 36,
+      "version": 2,
+      "bodyLength": 60,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/Unwait",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 37,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    }
+  ],
+  "deliveredByIdentity": [
+    {
+      "eventName": "Thread/DCStop",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 4,
+      "id": 65535,
+      "records": 9110
+    },
+    {
+      "eventName": "Thread/DCStart",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 3,
+      "id": 65535,
+      "records": 9020
+    },
+    {
+      "eventName": "ALPC/SendMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 33,
+      "id": 65535,
+      "records": 5299
+    },
+    {
+      "eventName": "ALPC/ReceiveMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 34,
+      "id": 65535,
+      "records": 5299
+    },
+    {
+      "eventName": "ALPC/Unwait",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 37,
+      "id": 65535,
+      "records": 2740
+    },
+    {
+      "eventName": "ALPC/WaitForReply",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 35,
+      "id": 65535,
+      "records": 2464
+    },
+    {
+      "eventName": "Process/Defunct",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 39,
+      "id": 65535,
+      "records": 552
+    },
+    {
+      "eventName": "Process/DCStop",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 4,
+      "id": 65535,
+      "records": 426
+    },
+    {
+      "eventName": "Process/DCStart",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 3,
+      "id": 65535,
+      "records": 423
+    },
+    {
+      "eventName": "SystemConfig/Services",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 15,
+      "id": 65535,
+      "records": 312
+    },
+    {
+      "eventName": "ALPC/WaitForNewMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 36,
+      "id": 65535,
+      "records": 207
+    },
+    {
+      "eventName": "SystemConfig/PnP",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 22,
+      "id": 65535,
+      "records": 206
+    },
+    {
+      "eventName": "Thread/Start",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 1,
+      "id": 65535,
+      "records": 184
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Datareceived.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 11,
+      "id": 11,
+      "records": 156
+    },
+    {
+      "eventName": "Thread/Stop",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 2,
+      "id": 65535,
+      "records": 123
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Protocolcopieddataonbehalfofuser.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 18,
+      "id": 18,
+      "records": 122
+    },
+    {
+      "eventName": "Thread/SetName",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 72,
+      "id": 65535,
+      "records": 114
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Datasent.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 10,
+      "id": 10,
+      "records": 100
+    },
+    {
+      "eventName": "ALPC/Opcode(38)",
+      "providerGuid": "00000000-0000-0000-0000-000000000000",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 38,
+      "id": 0,
+      "records": 40
+    },
+    {
+      "eventName": "ALPC/Opcode(39)",
+      "providerGuid": "00000000-0000-0000-0000-000000000000",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 39,
+      "id": 0,
+      "records": 40
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_UDPIP/DatareceivedoverUDPprotocol.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 43,
+      "id": 43,
+      "records": 25
+    },
+    {
+      "eventName": "SystemConfig/Processors",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 35,
+      "id": 65535,
+      "records": 24
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_UDPIP/DatasentoverUDPprotocol.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 42,
+      "id": 42,
+      "records": 23
+    },
+    {
+      "eventName": "ALPC/Opcode(41)",
+      "providerGuid": "00000000-0000-0000-0000-000000000000",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "classic": true,
+      "opcode": 41,
+      "id": 0,
+      "records": 23
+    },
+    {
+      "eventName": "SystemConfig/IRQ",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 21,
+      "id": 65535,
+      "records": 19
+    },
+    {
+      "eventName": "Process/Start",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 1,
+      "id": 65535,
+      "records": 13
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Disconnectissued.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 13,
+      "id": 13,
+      "records": 12
+    },
+    {
+      "eventName": "Process/Terminate",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 11,
+      "id": 65535,
+      "records": 10
+    },
+    {
+      "eventName": "Process/Stop",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "3d6fa8d0-fe05-11d0-9dda-00c04fd7ba7c",
+      "classic": true,
+      "opcode": 2,
+      "id": 65535,
+      "records": 10
+    },
+    {
+      "eventName": "SystemConfig/NIC",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 13,
+      "id": 65535,
+      "records": 8
+    },
+    {
+      "eventName": "SystemConfig/Defragmentation",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 31,
+      "id": 65535,
+      "records": 8
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Disconnectissued.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 13,
+      "id": 29,
+      "records": 6
+    },
+    {
+      "eventName": "SystemConfig/PhyDisk",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 11,
+      "id": 65535,
+      "records": 5
+    },
+    {
+      "eventName": "SystemConfig/Opcode(19)",
+      "providerGuid": "00000000-0000-0000-0000-000000000000",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 19,
+      "id": 0,
+      "records": 5
+    },
+    {
+      "eventName": "SystemConfig/LogDisk",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 12,
+      "id": 65535,
+      "records": 5
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Connectionattempted.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 12,
+      "id": 12,
+      "records": 4
+    },
+    {
+      "eventName": "EventTrace/EndExtension",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "68fdd900-4a3e-11d1-84f4-0000f80464e3",
+      "classic": true,
+      "opcode": 32,
+      "id": 65535,
+      "records": 3
+    },
+    {
+      "eventName": "EventTrace/Extension",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "68fdd900-4a3e-11d1-84f4-0000f80464e3",
+      "classic": true,
+      "opcode": 5,
+      "id": 65535,
+      "records": 3
+    },
+    {
+      "eventName": "EventTrace/RundownComplete",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "68fdd900-4a3e-11d1-84f4-0000f80464e3",
+      "classic": true,
+      "opcode": 8,
+      "id": 65535,
+      "records": 3
+    },
+    {
+      "eventName": "KERNEL_NETWORK_TASK_TCPIP/Connectionaccepted.",
+      "providerGuid": "7dd42a49-5329-4832-8dfd-43d979153a88",
+      "taskGuid": "00000000-0000-0000-0000-000000000000",
+      "classic": false,
+      "opcode": 15,
+      "id": 15,
+      "records": 2
+    },
+    {
+      "eventName": "SystemConfig/Video",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 14,
+      "id": 65535,
+      "records": 2
+    },
+    {
+      "eventName": "SystemConfig/DPI",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 28,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/CPU",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 10,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/Power",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 16,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/Platform",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 25,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/DeviceFamily",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 33,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/FlightIds",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 34,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/CodeIntegrity",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 29,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/TelemetryConfiguration",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 30,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/VirtualizationConfigInfo",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 36,
+      "id": 65535,
+      "records": 1
+    },
+    {
+      "eventName": "SystemConfig/BootConfigInfo",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "01853a65-418f-4f36-aefc-dc0f1d2fd235",
+      "classic": true,
+      "opcode": 37,
+      "id": 65535,
+      "records": 1
+    }
+  ],
+  "systemLoggersOnTheMachine": {
+    "before": 4,
+    "during": 5,
+    "after": 4
+  },
+  "manifestProviderFirst": {
+    "kernelFlagsAfterward": "Exception: The kernel provider must be enabled first and only once in a session.",
+    "privateSystemLogger": false,
+    "logFileMode": "0x08400100",
+    "goneAfterStop": true
+  },
+  "schema": "intercat.alpc-session-check.v1",
+  "measuredUtc": "2026-09-28T04:45:00.3470223+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

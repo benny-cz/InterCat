@@ -77,6 +77,33 @@ wait for a new message carries 38 bytes. So:
 - The plan's body check is the measured length: 4 bytes for the four that carry only a message id. The wait for a new
   message carries a port name besides, and admitting it is a later question.
 
+## Addendum: the first product capture (revision 223)
+
+The RPC peers profile admits ALPC through the product. A real 15-second `icat record --profile rpc-peers`, during 300
+local RPC calls, started one private system logger, and no session of it was left after its stop. It admitted 9,382 ALPC
+sends and receives, each with its message id as a source field. Its ledger names send and receive as two descriptors of
+ALPC's class, told apart by opcode. The class's other opcodes (35 to 41) are counted as delivered and not admitted.
+
+The logger also delivered, unasked, 9,646 records of the kernel's Thread class, most of them its rundown at the start,
+455 of its Process class and 6 of its own trace records. A census of every record a session delivered
+(`bench/results/alpc-session-check-20260928T044500Z`) found why the ledger first counted most of them under no provider.
+TraceEvent reports the generic kernel provider for such a record when a parser it has registered knows the record, and
+no provider when none does. Admission listens to every record without the kernel parser, so it received most thread
+records with no provider and the process records with the kernel's. So:
+
+- A classic record is counted under its header's class, with id 0 and its opcode, whether or not a plan admits the
+  class. The class is the one identity that does not depend on a decoder's parsers.
+- The coverage ledger names a classic descriptor with its opcode (`contracts/coverage-v1.md`), because send and
+  receive share a class, an id and a version.
+- A display names the classes a system logger delivers unasked. They are Windows' fixed classes, not a name looked up
+  on the reading machine.
+
+Decision 5's reason is restated. Explore takes every measured source its profile lists, and Kernel-Process, at
+Moderate, is one of them. ALPC stays out of Explore because it needs a system logger, one of at most eight on a machine,
+as well as because its collection alone measured Moderate.
+
+The profile's measured class through the product path is still owed; this capture's cost is not a measurement.
+
 ## Alternatives considered
 
 - **A second session, a system logger beside the capture's.** Rejected. Ownership, recovery and cleanup would track two

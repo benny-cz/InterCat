@@ -57,16 +57,12 @@ internal sealed class TraceEventRecordAdmitter
 
     private void AdmitCore(TraceEvent data, long callbackStarted)
     {
-        // A classic kernel record: TraceEvent reports the generic kernel provider and no id, and puts the record's class
-        // in its task. The header has the class with id 0, and only the opcode tells its events apart (ADR-035). A record
-        // of a class the plan does not admit keeps the identity TraceEvent reports, so a capture with no classic source
-        // tallies its trace header and any other classic record exactly as before.
-        bool classic = data.IsClassicProvider && table.IsKnownProvider(data.TaskGuid);
-        Guid provider = classic ? data.TaskGuid : data.ProviderGuid;
-        int eventId = classic ? 0 : (int)data.ID;
-        int opcode = classic ? (int)data.Opcode : EventAdmissionTable.ManifestOpcode;
+        // A classic kernel record: TraceEvent puts its class in its task, and reports a provider that depends on its own
+        // parsers. The header has the class with id 0, and only the opcode tells its events apart (ADR-035).
+        (Guid provider, int eventId, int opcode) = EventAdmissionTable.RecordIdentity(
+            data.IsClassicProvider, data.ProviderGuid, data.TaskGuid, (int)data.ID, (int)data.Opcode);
 #pragma warning disable CS0618 // I8 requires the original clock reading; relative milliseconds cannot replace it.
-        var delivered = new DeliveredRecord(provider, eventId, data.Version, data.TimeStampQPC);
+        var delivered = new DeliveredRecord(provider, eventId, data.Version, data.TimeStampQPC, opcode);
 #pragma warning restore CS0618
         sink.OnObserved(in delivered);
         if (denied.Contains(new(provider, eventId)))

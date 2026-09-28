@@ -9,8 +9,8 @@ public sealed class CaptureProfileCompilerTests
     [Fact(DisplayName = "IC-012: the profile catalog exposes every intent without pretending unfinished modes are available")]
     public void CatalogExposesUnavailableProfiles()
     {
-        Assert.Equal(5, CaptureProfileCatalog.All.Count);
-        Assert.Equal(5, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
+        Assert.Equal(6, CaptureProfileCatalog.All.Count);
+        Assert.Equal(6, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
         CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
         Assert.True(focused.CompilationAvailable);
@@ -298,6 +298,68 @@ public sealed class CaptureProfileCompilerTests
 
         // ALPC measured Moderate, so it is never Explore's; an opt-in profile admits it (ADR-034, ADR-035).
         Assert.DoesNotContain(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId);
+    }
+
+    [Fact(DisplayName = "§9.4: RPC peers admits ALPC beside lifecycle and RPC, as kernel flags rather than a manifest request")]
+    public void RpcPeersAdmitsAlpcAsKernelFlags()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 1, 5);
+        SourceAdmissionPlan alpc = BuildPlan(WindowsSourceCatalog.KernelAlpcSourceId, 2, 0);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.RpcPeers),
+            new SourcePlanCompilation([process, rpc, alpc], []));
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("rpc-peers", plan.EffectiveProfileId);
+        Assert.Equal(3, plan.Sources.Count);
+        Assert.Equal([WindowsSourceCatalog.KernelProcessSourceId, WindowsSourceCatalog.RpcSourceId],
+            plan.Providers.Select(provider => provider.SourceId));
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId
+            && decision.State == ProfileSourceDecisionState.Included && decision.Overhead == OverheadClass.Moderate);
+
+        // Network context is optional here: absent from the compilation, it is left out with its reason.
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelNetworkSourceId
+            && decision.State == ProfileSourceDecisionState.Omitted);
+    }
+
+    [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]
+    public void RpcPeersWithoutAlpcIsBlocked()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 1, 5);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.RpcPeers),
+            new SourcePlanCompilation([process, rpc], [new(WindowsSourceCatalog.KernelAlpcSourceId, SourcePlanIssueSeverity.Refusal,
+                "The machine registers no layout for this classic event class at the version it is planned for.")]));
+
+        Assert.False(plan.CanStart);
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId
+            && decision.State == ProfileSourceDecisionState.Blocking
+            && decision.Reason.Contains("registers no layout", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "§4.3: every measured source cites evidence the repository holds")]
+    public void EveryMeasuredSourceCitesEvidenceThatExists()
+    {
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        Assert.NotNull(root);
+        Assert.All(
+            WindowsSourceCatalog.All.Where(definition => definition.Overhead != OverheadClass.Unmeasured),
+            definition =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(definition.OverheadEvidence), definition.SourceId);
+                Assert.True(
+                    File.Exists(Path.Combine(root.FullName, definition.OverheadEvidence!)),
+                    $"{definition.SourceId} cites {definition.OverheadEvidence}, which the repository does not hold.");
+            });
     }
 
     [Fact(DisplayName = "IC-012: a missing required source blocks Explore instead of silently weakening it")]

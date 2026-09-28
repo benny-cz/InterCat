@@ -153,11 +153,11 @@ public static class SessionCoverage
 
     private static MechanismCoverage StateIn(CoverageEpochV1 epoch, Mechanism mechanism)
     {
-        HashSet<(Guid, int, int)> descriptors =
+        HashSet<(Guid, int, int, int?)> descriptors =
         [
             .. epoch.Collected
                 .Where(descriptor => descriptor.Mechanism == mechanism)
-                .Select(descriptor => (descriptor.ProviderId, descriptor.EventId, descriptor.Version)),
+                .Select(descriptor => (descriptor.ProviderId, descriptor.EventId, descriptor.Version, descriptor.Opcode)),
         ];
         if (descriptors.Count == 0)
         {
@@ -167,7 +167,7 @@ public static class SessionCoverage
         List<CoverageDeliveryV1> deliveries =
         [
             .. epoch.Deliveries.Where(delivery => delivery is { EventId: { } eventId, Version: { } version }
-                && descriptors.Contains((delivery.ProviderId, eventId, version))),
+                && descriptors.Contains((delivery.ProviderId, eventId, version, delivery.Opcode))),
         ];
         long delivered = deliveries.Sum(delivery => delivery.Delivered);
         string admitted = Count(descriptors.Count, "admitted descriptor");
@@ -183,13 +183,13 @@ public static class SessionCoverage
         [
             .. epoch.Losses.Where(loss => loss.Lost > 0).OrderBy(loss => loss.Layer).Select(loss => Describe(loss, epoch.Acquisition)),
         ];
-        HashSet<(Guid, int, int)> allCollected =
+        HashSet<(Guid, int, int, int?)> allCollected =
         [
-            .. epoch.Collected.Select(descriptor => (descriptor.ProviderId, descriptor.EventId, descriptor.Version)),
+            .. epoch.Collected.Select(descriptor => (descriptor.ProviderId, descriptor.EventId, descriptor.Version, descriptor.Opcode)),
         ];
         long unassignedUndecodable = epoch.Deliveries
             .Where(delivery => delivery is { EventId: { } eventId, Version: { } version }
-                && !allCollected.Contains((delivery.ProviderId, eventId, version)))
+                && !allCollected.Contains((delivery.ProviderId, eventId, version, delivery.Opcode)))
             .Sum(delivery => delivery.Undecodable?.Values.Sum() ?? 0);
         if (unassignedUndecodable > 0)
         {

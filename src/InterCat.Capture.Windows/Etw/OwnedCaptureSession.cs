@@ -50,6 +50,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private readonly CancellationTokenSource lifetime = new();
     private readonly IDeliveryObserver? observer;
     private readonly Guid[] providerBySource;
+    private readonly bool[] classicBySource;
 
     private IOwnedEtwSession? session;
     private Task? pumpTask;
@@ -84,9 +85,11 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         this.clock = clock ?? TimeProvider.System;
         this.observer = observer;
         providerBySource = new Guid[plan.Sources.Count == 0 ? 0 : plan.Sources.Max(source => source.SourceIndex) + 1];
+        classicBySource = new bool[providerBySource.Length];
         foreach (SourceAdmissionPlan source in plan.Sources)
         {
             providerBySource[source.SourceIndex] = source.ProviderGuid;
+            classicBySource[source.SourceIndex] = source.Events.Any(descriptor => descriptor.Opcode is not null);
         }
 
         admissionTable = new(plan.Sources);
@@ -640,7 +643,9 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             bool queued = owner.Enqueue(admitted);
             if (owner.observer is { } observer && (uint)admitted.SourceIndex < (uint)owner.providerBySource.Length)
             {
-                observer.Admitted(owner.providerBySource[admitted.SourceIndex], admitted.EventId, admitted.Version, queued);
+                // Only a classic source's opcode names its descriptor; a manifest record's opcode is not its identity.
+                int opcode = owner.classicBySource[admitted.SourceIndex] ? admitted.Opcode : EventAdmissionTable.ManifestOpcode;
+                observer.Admitted(owner.providerBySource[admitted.SourceIndex], admitted.EventId, admitted.Version, opcode, queued);
             }
 
             return queued;

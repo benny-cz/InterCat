@@ -122,7 +122,7 @@ A field row joins its observation by the package's locator. What happens to its 
 
 | Field | Value |
 |---|---|
-| Process terminal session, RPC procedure number, RPC protocol sequence, file byte offset | kept |
+| Process terminal session, RPC procedure number, RPC protocol sequence, file byte offset, ALPC message id | kept |
 | Parent PID, issuing thread | process and thread id pseudonym |
 | Process start sequence, parent start sequence | start-sequence pseudonym, one namespace for both |
 | Connection id, request packet, file object, file key | kernel-object pseudonym, one namespace |

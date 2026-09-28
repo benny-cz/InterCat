@@ -163,8 +163,13 @@ public static class LiveRecorder
         }
 
         HashSet<string> enabledSources = [.. start.Providers.Where(provider => provider.Enabled).Select(provider => provider.SourceId)];
+        // A kernel flag group is enabled by the session's kernel flags, not as a provider: one enablement names every
+        // group, and a capture whose kernel flags were refused was refused (ADR-035).
         coverage.RestrictToEnabledProviders(
-            plan.Providers.Where(provider => enabledSources.Contains(provider.SourceId)).Select(provider => provider.ProviderGuid));
+            plan.Providers.Where(provider => enabledSources.Contains(provider.SourceId)).Select(provider => provider.ProviderGuid)
+                .Concat(enabledSources.Contains(plan.KernelFlagSources)
+                    ? plan.KernelFlagGroups.Select(source => source.ProviderGuid)
+                    : []));
         CaptureClockEvidence clock = session.SourceClock
             ?? throw new InvalidOperationException("A started capture carries a source clock descriptor.");
         // A preview is kept only where a status request can read it, and on the capture's own clock.
