@@ -1,6 +1,6 @@
 # ADR-036: Content is restricted evidence kept beside the journal, never inside its metadata
 
-- Status: accepted; the store and its readers are revision 234, the capture path revision 235, and the viewer follows
+- Status: accepted; the store and its readers are revision 234, the capture path revision 235, and the viewer 236
 - Date: 2026-09-28
 - Relates to: §3.7, §10.1, §11, §18.2, I13, I21, I22, `contracts/content-v1.md`, `contracts/journal-v1.md`,
   `contracts/store-v1.md`, `contracts/capture-profile-preview-v1.md`, ADR-010
@@ -60,6 +60,8 @@ encryption states. Revision 233 says per record why none is held; nothing holds 
   by `icat record --profile content-fixture` only, never through the broker: its messages are admitted under the one
   reviewed scoped content policy, copied bounded in the callback, and written as a chunk with each publication. Every
   other source of the same capture keeps metadata only. The fixture names its own process in its payload, so no
-  application provider's event header is read as an owner (ADR-030). The viewer follows it.
+  application provider's event header is read as an owner (ADR-030).
+- The viewer (revision 236) states a fragment's facts before any byte, and shows its bytes only when asked and allowed:
+  a typed range, bounded and inert, which a person may copy as hex or save as it is (`contracts/content-v1.md` §4).
 - Content from an imported file (§11.1's inspection of what an ETL already holds) is a later adapter: it will write
   chunks under its own policy, with the inspection warning §11.1 asks for.

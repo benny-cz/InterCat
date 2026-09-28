@@ -298,6 +298,10 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.E when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = viewModel.ShowEvidence();
                 break;
+            case Key.C when e.KeyModifiers == KeyModifiers.None && viewModel.HasSelectedContent:
+                OpenContent();
+                e.Handled = true;
+                break;
             case Key.O when e.KeyModifiers == KeyModifiers.None && viewModel.SelectedRung is { HasOtherEnd: true }:
                 // An RPC call linked to another opens the call at its other end (operations-v1 §5c).
                 e.Handled = viewModel.OpenOtherEnd();
@@ -704,6 +708,32 @@ public sealed partial class MainWindow : Window, IDisposable
         catch (InvalidOperationException exception)
         {
             if (!closed) CaptureDetail.Text = "Could not open the original record: " + exception.Message;
+        }
+        finally
+        {
+            openingRecord = false;
+        }
+    }
+
+    private void OpenContent(object? sender, RoutedEventArgs eventArgs) => OpenContent();
+
+    /// <summary>
+    /// Opens the selected record's kept content (§3.7). Its bytes stay hidden until the person asks in the window, and
+    /// the record is found by its stable raw identity, as the original record is.
+    /// </summary>
+    private async void OpenContent()
+    {
+        if (openingRecord || workspace.SelectedEvidence is not { Content: not null } record || currentSessionPath is null
+            || displayedSessionId is not { } sessionId) return;
+        openingRecord = true;
+        try
+        {
+            using var window = new SessionContentWindow(currentSessionPath, sessionId, record);
+            await window.ShowDialog(this);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the record's content: " + exception.Message;
         }
         finally
         {

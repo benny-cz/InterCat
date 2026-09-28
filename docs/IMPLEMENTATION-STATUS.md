@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 235 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 236 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 236 — a person inspects kept content (§3.7, §11.2, ADR-036, `content-v1` §4):**
+  - C, or "Inspect its content", opens a record's content: its facts first - what it is, its source and declared
+    encoding, which bytes were kept and which are missing, not reassembled, the policy - and its bytes only on request.
+  - A typed range shows at most 64 KiB as inert hex with ASCII, and declared text with controls made visible; Copy as
+    hex, Save writes the bytes as they are. Without consent nothing is shown. `icat content` does the same.
+  - The inspector's size says what it measures in words ("604 B of the application's own message").
 
 - **Revision 235 — a capture keeps content, from InterCat's own fixture (ADR-036, `content-v1` §5, §11.2):**
   - FX-CONTENT-001 raises `InterCat-Fixture-Content`, an EventSource whose layout the catalog reads from its type;
@@ -2068,9 +2075,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         §6.2 density regime remains (item 5).
    - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could; revision 234 keeps
      content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
-     the `content-fixture` profile. Next, in order: the bounded hex and text viewer (§3.7); then one validated
+     the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7). Next: one validated
      content-capable source or import path. Later: a follower that mirrors content, so a broker capture could keep it;
-     releasing content alone; and measuring whether application providers' headers name their owners (ADR-030).
+     releasing content alone; a fixture decoder (§11.2's `DecodedFields`); and measuring whether application providers'
+     headers name their owners (ADR-030).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2123,6 +2131,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 236 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,377 tests: 1,373
+  passed, 4 skipped**, zero failures. Live on the Release build, on a fixture capture recorded into scratch: C opened
+  the viewer on the reveal button; the reveal moved the keyboard to the first hex line; a range and a refused range
+  read as typed; Esc returned to the record; a message saved through the native dialog, and one by `icat content
+  --save`, matched the truth's SHA-256. The clipboard was left alone (Copy is covered headlessly); scratch was deleted.
 - Revision 235 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,369 tests: 1,365
   passed, 4 skipped**, zero failures. Live, elevated, into scratch: 24 fixture messages kept 23 whole and 1 cut to
   4,096 bytes; 8,000 unpaced ones stopped the capture at 16,773,163 bytes (2,151 whole, 3,015 cut, 2,834 omitted).

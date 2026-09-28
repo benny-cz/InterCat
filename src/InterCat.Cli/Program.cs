@@ -40,6 +40,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "package" => await PackageCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "content" => await ContentCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -154,6 +155,11 @@ static void PrintHelp()
     ConsoleUi.Line("  icat raw <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
     ConsoleUi.Line("           [--reveal-bytes] [--json]");
     ConsoleUi.Line("      One original retained journal record, from an icat evidence page's exact row locator.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat content <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
+    ConsoleUi.Line("               [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+    ConsoleUi.Line("      One record's kept content from the same locator: its facts, and its bytes only when asked,");
+    ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036).");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--bytes] [--json]");
     ConsoleUi.Line("              [--mechanism <name> | --process <instance-id> [--direction <name>]");

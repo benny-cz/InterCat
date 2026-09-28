@@ -4108,6 +4108,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public bool HasSelectedEvidence => IsEvidenceRung && selectedEvidence is not null;
 
+    /// <summary>Whether the selected record has content the session keeps, which C opens in the content viewer (§3.7).</summary>
+    public bool HasSelectedContent => SelectedEvidence?.Content is not null;
+
     public SessionEvidenceRecord? SelectedEvidence => IsEvidenceRung ? selectedEvidence : null;
 
     /// <summary>What the evidence rung reads, in words: the channel, the owners or the whole session, and any time range.</summary>
@@ -4159,8 +4162,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 new("Owner", EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)),
             };
             if (EvidenceRowText.Endpoints(row) is { } endpoints) fields.Add(new("Endpoints", endpoints));
-            if (EvidenceRowText.Size(row, CultureInfo.CurrentCulture) is { } size)
-                fields.Add(new("Size", size + (row.ByteDomain is { } domain ? $" · {domain}" : string.Empty)));
+            if (EvidenceRowText.SizeWithDomain(row, CultureInfo.CurrentCulture) is { } size) fields.Add(new("Size", size));
 
             // Whether the bytes or arguments themselves were kept, and why not: the question a transfer's size raises (§3.7).
             fields.Add(new("Content", RecordContent.Of(row, synthetic: wholeSnapshot.Redaction is not null, record.Content,
@@ -4351,6 +4353,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : evidence.Records.FirstOrDefault(record => EvidenceKey(record) == key);
         OnPropertyChanged(nameof(SelectedEvidence));
         OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(HasSelectedContent));
         OnPropertyChanged(nameof(SelectedEvidenceTitle));
         OnPropertyChanged(nameof(SelectedEvidenceFields));
         OnPropertyChanged(nameof(SelectedEvidenceTick));
@@ -4399,7 +4402,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             size ?? string.Empty, tokens.Label, tokens.Glyph, string.Empty, recordNoun, source)
         {
             SpokenName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, {ownership}. "
-                + $"Press Enter to open the {recordNoun}.",
+                + $"Press Enter to open the {recordNoun}."
+                + (record.Content is null ? string.Empty : " Press C to inspect its content."),
         };
     }
 
@@ -4441,6 +4445,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         OnPropertyChanged(nameof(SelectedEvidence));
         OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(HasSelectedContent));
         OnPropertyChanged(nameof(SelectedEvidenceTitle));
         OnPropertyChanged(nameof(SelectedEvidenceFields));
         OnPropertyChanged(nameof(SelectedEvidenceTick));

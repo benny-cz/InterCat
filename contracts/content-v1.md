@@ -1,8 +1,8 @@
 # InterCat content v1
 
-Status: **implemented** in plan revisions 234 and 235 (ADR-036): the chunk format, its publication and lifetime in the
-store, its readers, and the capture path that writes one (§5), which keeps InterCat's own content fixture's
-messages. The viewer is the next slice.
+Status: **implemented** in plan revisions 234 to 236 (ADR-036): the chunk format, its publication and lifetime in the
+store, its readers and viewer (§4), and the capture path that writes one (§5), which keeps InterCat's own content
+fixture's messages.
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -86,8 +86,18 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 
 ## 4. Who reads a fragment
 
-- **The viewer and `icat raw`** state a record's fragment: its classification, direction, encoding, lengths and
-  disposition. They show its bytes only when the chunk's inspection is `hex-text` and a person asks, bounded and inert.
+- **The evidence inspector and `icat raw`** state a record's fragment in one sentence: its classification, direction,
+  encoding, lengths and disposition.
+- **The content viewer and `icat content`** (revision 236) read one record's fragment afresh, found by its raw identity
+  in the current generation under a lease. They state its facts first: what it is and its source, its declared encoding,
+  the message's length, which bytes were kept and which are missing, that it is one fragment and not a reassembled
+  whole, and the policy it was kept under. Only when the chunk's inspection is `hex-text` and a person asks do they
+  show its bytes: a typed range of them, by offset in the message, at most 64 KiB at once, as inert hexadecimal with
+  each byte's printable ASCII beside it and, only where the source declares text, as that text with every control,
+  format, separator and private character shown as a visible mark. A person may copy the shown bytes as hex, or save a
+  range as the bytes it is to a file they name, published whole or not at all. Content kept without that consent is
+  never shown, copied or saved one record at a time. `icat content --json` (`content-view-v1`) states the facts and
+  never a byte.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,

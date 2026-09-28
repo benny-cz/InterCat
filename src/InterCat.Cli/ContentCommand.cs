@@ -1,0 +1,214 @@
+using System.Globalization;
+using System.Text.Json;
+using InterCat.Application;
+using InterCat.Domain;
+using InterCat.Storage;
+
+namespace InterCat.Cli;
+
+/// <summary>
+/// One record's kept content, named by an evidence page's exact row locator (§3.7, ADR-036): its facts, and its bytes only
+/// when asked - shown bounded and inert, or saved as they are to a file the person names.
+/// </summary>
+internal static class ContentCommand
+{
+    public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
+    {
+        if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
+        {
+            PrintHelp();
+            return InterCatExitCode.Success;
+        }
+
+        string? directory = command.TakePositional();
+        string? sessionText = command.TakeOption("--session-id");
+        string? generationText = command.TakeOption("--generation");
+        string? segment = command.TakeOption("--segment");
+        string? rowText = command.TakeOption("--row");
+        string? fromText = command.TakeOption("--from");
+        string? toText = command.TakeOption("--to");
+        string? saveOption = command.TakeOption("--save");
+        bool reveal = command.TryTakeFlag("--reveal");
+        bool overwrite = command.TryTakeFlag("--overwrite");
+        bool json = command.TryTakeFlag("--json");
+        bool hasUnknown = command.TryReportUnknown(out string? unknown);
+        bool validSession = Guid.TryParse(sessionText, out Guid sessionId) && sessionId != Guid.Empty;
+        bool validGeneration = long.TryParse(generationText, NumberStyles.None, CultureInfo.InvariantCulture,
+            out long generation) && generation > 0;
+        bool validRow = int.TryParse(rowText, NumberStyles.None, CultureInfo.InvariantCulture, out int row);
+        string? problem = directory is null ? "A session directory is required: icat content <directory>."
+            : hasUnknown ? $"Unknown or incomplete option: {unknown}"
+            : !validSession ? "--session-id must be the nonempty GUID printed by icat evidence."
+            : !validGeneration ? "--generation must be the positive number printed by icat evidence."
+            : string.IsNullOrWhiteSpace(segment) ? "--segment must name an evidence-page segment."
+            : !validRow ? "--row must be a nonnegative evidence-page segment row."
+            // Bytes go to a person or to a file they name, never into a document programs read (ADR-036).
+            : json && (reveal || saveOption is not null) ? "--json states a record's content facts only; its bytes are "
+                + "shown with --reveal or saved with --save, never written into JSON."
+            : (fromText is not null || toText is not null) && !reveal && saveOption is null
+                ? "--from and --to choose the bytes --reveal shows or --save writes; add one of them."
+            : overwrite && saveOption is null ? "--overwrite applies only to --save."
+            : null;
+        if (problem is not null)
+        {
+            ConsoleUi.Failure(problem);
+            PrintHelp();
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string path = Path.GetFullPath(directory!);
+        if (!Directory.Exists(path))
+        {
+            ConsoleUi.Failure($"No session directory at {path}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string? savePath = saveOption is null ? null : Path.GetFullPath(saveOption);
+        if (savePath is not null && File.Exists(savePath) && !overwrite)
+        {
+            ConsoleUi.Failure($"{savePath} exists. Pass --overwrite to replace it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        SessionContentDetail detail;
+        try
+        {
+            detail = SessionContentQuery.ReadAt(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), sessionId,
+                generation, segment!, row, revealBytes: reveal || savePath is not null, cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.InvalidInvocation;
+        }
+        catch (InvalidOperationException exception)
+        {
+            ConsoleUi.Warn(exception.Message);
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        IReadOnlyList<ContentFact> facts = detail.Entry is { } found
+            ? ContentBytesView.Facts(found, detail.Observation, detail.Generation, CultureInfo.CurrentCulture)
+            : [];
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(new
+            {
+                Contract = "content-view-v1",
+                SessionPath = path,
+                detail.Available,
+                detail.UnavailableReason,
+                detail.Generation,
+                Chunk = detail.Entry?.ChunkName,
+                Fragment = detail.Entry?.Fragment,
+                Policy = detail.Entry is { } entry
+                    ? new { entry.Header.PolicyId, entry.Header.RecordLimit, entry.Header.Inspection }
+                    : null,
+                Facts = facts,
+            }, JsonContracts.Indented));
+            return detail.Available ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
+        }
+
+        ConsoleUi.Heading("Kept content of one record");
+        ConsoleUi.Field("Session", path);
+        ConsoleUi.Field("Generation", detail.Generation.ToString("N0", CultureInfo.CurrentCulture));
+        ObservationRowV1 observation = detail.Observation;
+        ConsoleUi.Field("Record", string.Create(CultureInfo.InvariantCulture,
+            $"raw {observation.RawStreamId}/{observation.RawSourceEpoch}/{observation.RawRecordOrdinal}"));
+        if (!detail.Available || detail.Entry is not { } kept)
+        {
+            ConsoleUi.Warn(detail.UnavailableReason!);
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        foreach (ContentFact fact in facts)
+        {
+            ConsoleUi.Field(fact.Label, fact.Value);
+        }
+
+        if (ContentBytesView.Kept(kept.Fragment) is not { } all)
+        {
+            // An empty message was kept whole; an omitted one was not kept, which a request for its bytes cannot meet.
+            bool omitted = kept.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit;
+            ConsoleUi.Note(omitted
+                ? "No byte of this message was kept, so there is nothing to show or save."
+                : "The message held no bytes, so there is nothing to show or save.");
+            return omitted && (reveal || savePath is not null) ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+        }
+
+        if (!kept.Inspectable)
+        {
+            if (reveal || savePath is not null)
+            {
+                ConsoleUi.Warn("The capture kept these bytes without consent to inspect them, so they are never shown "
+                    + "or saved one record at a time; an original evidence package carries them as evidence.");
+                return InterCatExitCode.PartialResultSuccess;
+            }
+
+            return InterCatExitCode.Success;
+        }
+
+        if (detail.Bytes is not { } bytes)
+        {
+            ConsoleUi.Note("Its bytes are hidden. Add --reveal to show them, bounded and inert, or --save <file> to write "
+                + "them as they are.");
+            return InterCatExitCode.Success;
+        }
+
+        ContentRange chosen = all;
+        if ((fromText is not null || toText is not null)
+            && !ContentBytesView.TryParseRange(fromText ?? all.First.ToString(CultureInfo.InvariantCulture),
+                toText ?? all.Last.ToString(CultureInfo.InvariantCulture), all, out chosen, out string? rangeProblem))
+        {
+            ConsoleUi.Failure(rangeProblem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (reveal)
+        {
+            ContentRange shown = ContentBytesView.Shown(chosen);
+            ReadOnlyMemory<byte> window = ContentBytesView.Slice(bytes, all, shown);
+            ConsoleUi.Heading("Chosen bytes · inert hexadecimal");
+            ConsoleUi.Note("Chosen: " + chosen.Describe(CultureInfo.CurrentCulture)
+                + (shown == chosen ? "." : $"; shown: its first {shown.Length.ToString("N0", CultureInfo.CurrentCulture)}."));
+            foreach (ContentHexRow line in ContentBytesView.Rows(window.Span, shown.First))
+            {
+                ConsoleUi.Line("  " + line.Line);
+            }
+
+            if (ContentBytesView.DeclaresText(kept.Fragment.Encoding))
+            {
+                ContentText text = ContentBytesView.Text(window.Span, kept.Fragment.Encoding);
+                ConsoleUi.Heading("The same bytes as the text their source declares");
+                ConsoleUi.Note("Control and invisible characters are shown as marks, like ␀ or ⟨U+202E⟩"
+                    + (text.Cut ? "; the text stops at its bound." : "."));
+                foreach (string line in text.Text.Split('\n'))
+                {
+                    ConsoleUi.Line("  " + line);
+                }
+            }
+        }
+
+        if (savePath is not null)
+        {
+            await ExportFileWriter.WriteAsync(savePath, ContentBytesView.Slice(bytes, all, chosen), overwrite, cancellationToken)
+                .ConfigureAwait(false);
+            ConsoleUi.Success($"Saved {chosen.Describe(CultureInfo.CurrentCulture)} to {savePath}, as they are.");
+        }
+
+        return InterCatExitCode.Success;
+    }
+
+    private static void PrintHelp()
+    {
+        ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
+        ConsoleUi.Line("             [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+        ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
+        ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
+        ConsoleUi.Line("  under. Its bytes are hidden unless --reveal shows them as inert hex (and, where the source");
+        ConsoleUi.Line("  declares text, that text with control characters made visible), at most 64 KiB at once, or");
+        ConsoleUi.Line("  --save writes them as they are to a new file. --from and --to choose the bytes, by offset in");
+        ConsoleUi.Line("  the message, decimal or 0x hexadecimal. Content kept without consent to inspect it is never");
+        ConsoleUi.Line("  shown or saved. --json states the facts only.");
+    }
+}

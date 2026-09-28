@@ -74,6 +74,27 @@ public static class EvidenceRowText
     }
 
     /// <summary>
+    /// The size with what it measures, in words (R5): "1,460 B carried by the transport", "604 B of the application's own
+    /// message". A size's domain says which bytes were counted, and one domain's bytes are never another's (P3).
+    /// </summary>
+    public static string? SizeWithDomain(ObservationRowV1 row, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (Size(row, culture) is not { } size) return null;
+        if (row.ByteValue is null || row.ByteDomain is not { } domain) return size;
+        return size + domain switch
+        {
+            ByteDomain.TransportObserved => " carried by the transport",
+            ByteDomain.RequestedIo => " requested by an I/O",
+            ByteDomain.CompletedIo => " completed by an I/O",
+            ByteDomain.ApplicationPayload => " of the application's own message",
+            ByteDomain.CapturedContent => " of captured content",
+            ByteDomain.Capacity => ", a capacity rather than a transfer",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
     /// The PID the row belongs to under the binding rule: the owner its payload names, or the process that raised it
     /// when its mechanism's records are raised in the process they describe (<see cref="RecordAttribution"/>). Null
     /// when neither applies.

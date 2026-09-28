@@ -953,6 +953,20 @@ public sealed class EvidenceRungTests
         Assert.Equal("Kept in part: the first 4 of 9 bytes of an application payload it received, UTF-8 text; the other 5 "
             + "were cut by the 4-byte record limit.", ContentOf(3));
         Assert.StartsWith("None. The kernel's network events", ContentOf(4), StringComparison.Ordinal);
+
+        // A record with kept content offers the content viewer, on its button, its key and its spoken name (§3.7).
+        workspace.SelectedRung = workspace.RungRows[3];
+        Assert.True(workspace.HasSelectedContent);
+
+        // Its size says what it measures in words, never as a code's name (R5).
+        string size = workspace.SelectedEvidenceFields.Single(field => field.Label == "Size").Value;
+        Assert.EndsWith(" B carried by the transport", size, StringComparison.Ordinal);
+        Assert.DoesNotContain("TransportObserved", size, StringComparison.Ordinal);
+        Assert.EndsWith("Press Enter to open the original record. Press C to inspect its content.",
+            workspace.RungRows[3].SpokenName, StringComparison.Ordinal);
+        workspace.SelectedRung = workspace.RungRows[4];
+        Assert.False(workspace.HasSelectedContent);
+        Assert.EndsWith("Press Enter to open the original record.", workspace.RungRows[4].SpokenName, StringComparison.Ordinal);
     }
 
     private static WorkspaceViewModel Open(TemporarySession session)

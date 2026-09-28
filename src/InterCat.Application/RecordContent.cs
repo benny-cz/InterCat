@@ -136,7 +136,7 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
     }
 
     /// <summary>A fragment's classification as the noun phrase a statement uses (`EN-ContentClassification`).</summary>
-    private static string Classification(ContentClassificationV1 classification) => classification switch
+    internal static string Classification(ContentClassificationV1 classification) => classification switch
     {
         ContentClassificationV1.OpaqueProviderData => "opaque provider data",
         ContentClassificationV1.TransportFragment => "a transport fragment",
