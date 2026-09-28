@@ -139,7 +139,7 @@ public sealed class TimelineFocus
     public static TimelineFocus? Of(EvidenceScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return scope.Problem is null && !scope.IsWholeSession && scope.RpcKey is null
+        return scope.Problem is null && !scope.IsWholeSession && scope.OperationKey is null
             ? new(scope.ChannelKey, scope.OwnerProcesses)
             : null;
     }

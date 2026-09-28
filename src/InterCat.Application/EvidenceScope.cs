@@ -16,10 +16,13 @@ public sealed record EvidenceScope(
     string? ContributingEdgeKey,
     string? Problem = null)
 {
-    /// <summary>The RPC channel or call whose records the scope reads (<see cref="RpcChannelKeys"/>); null otherwise.</summary>
-    public string? RpcKey { get; init; }
+    /// <summary>
+    /// The RPC channel or call (<see cref="RpcChannelKeys"/>), or the process's HTTP exchanges or one exchange
+    /// (<see cref="HttpExchangeKeys"/>), whose records the scope reads; null otherwise.
+    /// </summary>
+    public string? OperationKey { get; init; }
 
-    public bool IsWholeSession => ChannelKey is null && OwnerProcesses.Count == 0 && RpcKey is null;
+    public bool IsWholeSession => ChannelKey is null && OwnerProcesses.Count == 0 && OperationKey is null;
 }
 
 /// <summary>
@@ -99,11 +102,11 @@ public static class EvidenceScopes
             {
                 case DetailLevel.Machine:
                     return Whole(interval, time);
-                case DetailLevel.Channel when RpcChannelKeys.IsRpc(filter.Key):
-                    return new($"Records of {filter.Value}{time}", null, [], interval, null) { RpcKey = filter.Key };
-                case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key):
-                    // A call is one entity: its records are its start and stop wherever the view is zoomed.
-                    return new($"Records of {filter.Value}", null, [], null, null) { RpcKey = filter.Key };
+                case DetailLevel.Channel when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
+                    return new($"Records of {filter.Value}{time}", null, [], interval, null) { OperationKey = filter.Key };
+                case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
+                    // A call or an exchange is one entity: its records are all of its own wherever the view is zoomed.
+                    return new($"Records of {filter.Value}", null, [], null, null) { OperationKey = filter.Key };
                 case DetailLevel.Channel when filter.Key is { } channelKey:
                     Channel? channel = snapshot.Channels.FirstOrDefault(candidate => candidate.Key == channelKey);
                     return new($"Paired TCP channel {channel?.Name ?? filter.Value}{time}", channelKey, [], interval,

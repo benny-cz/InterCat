@@ -50,6 +50,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "metric" => await MetricCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "operations" => await OperationsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "exchanges" => await ExchangesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -230,6 +231,10 @@ static void PrintHelp()
     ConsoleUi.Line("  icat operations <directory> [--pid <id>] [--interface <uuid>] [--calls <n>] [--json]");
     ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");
     ConsoleUi.Line("      side and interface, with durations and every unpaired call's reason.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat exchanges <directory> [--pid <id>] [--exchanges <n>] [--json]");
+    ConsoleUi.Line("      Lists the HTTP exchanges a content capture recorded through WinINet: each client process's");
+    ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

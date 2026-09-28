@@ -119,9 +119,9 @@ public sealed class SessionRpcCallsTests
         string? cursor = null;
         do
         {
-            SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, pageSize: 4, cursor: cursor, resolveOwners: true, rpcKey: channel);
+            SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, pageSize: 4, cursor: cursor, resolveOwners: true, operationKey: channel);
             Assert.False(page.RestartRequired);
-            Assert.Equal(channel, page.RpcKey);
+            Assert.Equal(channel, page.OperationKey);
             Assert.All(page.Records, record => Assert.Equal(client, record.Owner!.Instance));
             seen.AddRange(page.Records.Select(record => record.Observation.RawRecordOrdinal));
             cursor = page.NextCursor;
@@ -131,11 +131,11 @@ public sealed class SessionRpcCallsTests
         Assert.Equal([10UL, 11UL, 20UL, 21UL, 30UL, 31UL], seen);
 
         RpcCallRow second = SessionRpcCalls.Calls(session.Store, channel).Calls[1];
-        Assert.Equal([20UL, 21UL], SessionEvidenceQuery.Read(session.Store, rpcKey: second.Key)
+        Assert.Equal([20UL, 21UL], SessionEvidenceQuery.Read(session.Store, operationKey: second.Key)
             .Records.Select(record => record.Observation.RawRecordOrdinal));
 
-        _ = Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, channelKey: "tcp:x", rpcKey: channel));
-        _ = Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, rpcKey: "rpc:nonsense"));
+        _ = Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, channelKey: "tcp:x", operationKey: channel));
+        _ = Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "rpc:nonsense"));
     }
 
     [Fact(DisplayName = "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out")]
@@ -263,10 +263,10 @@ public sealed class SessionRpcCallsTests
         };
 
         EvidenceScope scope = EvidenceScopes.Resolve(snapshot, rung);
-        Assert.Equal((call, (TimeRange?)null, "Records of call at +1 s"), (scope.RpcKey, scope.Interval, scope.Description));
+        Assert.Equal((call, (TimeRange?)null, "Records of call at +1 s"), (scope.OperationKey, scope.Interval, scope.Description));
         Assert.False(scope.IsWholeSession);
         EvidenceScope wider = EvidenceScopes.Resolve(snapshot, rung with { Filters = [rung.Filters[0]] });
-        Assert.Equal(channel, wider.RpcKey);
+        Assert.Equal(channel, wider.OperationKey);
         Assert.StartsWith("Records of calls to svcctl", wider.Description, StringComparison.Ordinal);
     }
 

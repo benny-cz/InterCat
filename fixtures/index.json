@@ -770,6 +770,8 @@
       },
       "tests": [
         "R22: an exchange number used again in one process ID is two parts, told apart in time, never one",
+        "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
+        "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away",
         "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
@@ -990,8 +992,10 @@
         "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
         "I21: a fragment that misstates how it was cut, or breaks record order, is never written",
         "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
+        "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away",
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "I21: a recording keeps each fixture message's bytes beside its journal chunk, and stops at its content limit",
+        "I21: an exchange's evidence is its own buffers, and a process's exchanges are all of theirs",
         "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
       "I22": [
@@ -1448,6 +1452,7 @@
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
         "R22: a process filter is held to running processes, each held open so its ID stays its own",
+        "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
         "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",

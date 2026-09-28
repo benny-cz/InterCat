@@ -708,6 +708,78 @@ public sealed class EvidenceRungTests
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
+    [Fact(DisplayName = "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away")]
+    public async Task HttpExchangesAreARowOfTheProcessRung()
+    {
+        // Process 100 made two HTTP exchanges beside its paired channel: exchange 1 in four buffers, and exchange 2, whose
+        // response body's last buffer was not recorded.
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes)[] buffers =
+        [
+            (5_000, 2001, 1, 0, 3, 181), (5_002, 2003, 1, 0, 3, 115), (5_004, 2004, 1, 0, 1, 900), (5_006, 2004, 1, 1, 2, 0),
+            (6_000, 2001, 2, 0, 3, 181), (6_002, 2003, 2, 0, 3, 115), (6_004, 2004, 2, 0, 1, 50),
+        ];
+        ObservationRowV1[] http = [.. buffers.Select((buffer, index) => Timed(Transfer(buffer.Ticks,
+            buffer.Event <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            buffer.Event <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, buffer.Bytes, null, (ulong)(60_000 + index)) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = buffer.Event,
+            HeaderProcessId = 100,
+            Direction = buffer.Event <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        }))];
+        SourceFieldRowV1[] fields =
+        [
+            .. buffers.SelectMany((buffer, index) => new[]
+            {
+                Field(http[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(http[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(http[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows(), .. http], fields: fields);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.HttpReady;
+
+        // Its exchanges are a row of their own beside its paired channel, where it had said Nothing at this level of them.
+        RungRow row = workspace.RungRows.Single(candidate => candidate.Label == "HTTP exchanges");
+        Assert.Equal(HttpChannelSummary.Name, row.Source.Label);
+        Assert.Equal("HTTP client · 2 exchanges · 1 not recorded whole · median 600 ns", row.Detail.Replace(' ', ' '));
+        Assert.Equal("7", row.Observations);
+        Assert.EndsWith(" · admitted paired TCP and this process's HTTP exchanges; not all session observations",
+            workspace.LevelSummary, StringComparison.Ordinal);
+
+        // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded.
+        workspace.SelectedRung = row;
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.IsHttpChannelRung);
+        await workspace.HttpReady;
+        Assert.Equal(["600 ns", "response end not recorded"], workspace.RungRows.Select(exchange => exchange.Label));
+        Assert.Contains("exchange 2 · request 181 B · response 115 B + 50 B · not recorded whole: response body",
+            workspace.RungRows[1].Detail.Replace(' ', ' '), StringComparison.Ordinal);
+        Assert.StartsWith("2 exchanges · 1 not recorded whole", workspace.LevelSummaryShort, StringComparison.Ordinal);
+        Assert.False(workspace.CanLoadMore);
+
+        // An exchange's buffers are one step away, and so are all of the process's.
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.All(workspace.RungRows, buffer => Assert.StartsWith("HTTP ", buffer.Label, StringComparison.Ordinal));
+        Assert.StartsWith("Records of HTTP exchange at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        await workspace.HttpReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(7, workspace.RungRows.Count);
+    }
+
     [Fact]
     public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
     {

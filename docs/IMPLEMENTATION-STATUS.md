@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 246 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 247 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 247 — a process's HTTP exchanges on its rung (M8, `http-exchanges-v1`):**
+  - A content session's process rung lists its HTTP exchanges as a row, where it said "Nothing at this level"; Enter
+    lists the exchanges, each leading with how long it took and saying what was recorded of its request and response
+    heads and bodies; Enter on one opens its buffers, where C shows a buffer and its whole part. `icat exchanges` lists
+    the same (R18).
+  - An exchange is a use of its client's number (`http-exchange-v1`): a new use opens at a request head flagged first,
+    or at a buffer that repeats a place the use holds. The live session showed why nothing else may end one: WinINet
+    raises a request body's closing buffer after the response has ended, and a first rule read 96 exchanges as 191.
+  - `EvidenceScope.RpcKey` is `OperationKey` now: it names an RPC channel or call, or a process's HTTP exchanges or
+    one exchange, and an evidence cursor names the rule its key reads by.
 
 - **Revision 246 — a small session's persisted overview is read, not refused (`overview-index-v1` §3):**
   - A live pass over a fresh content session found `icat overview` calling its persisted overview "not readable: a
@@ -289,8 +300,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Revision 242 reassembles a part from its buffers for a person (M8's first step); revision 243 measures HTTPS
      through it (FX-HTTP-002): kept as its plaintext, which a request says first; revision 244 measures exchanges at once
      and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart; revision 245 holds a
-     request's scope to the named processes themselves. Next: a process's HTTP exchanges on its rung, each with its
-     parts, as revision 246's live pass asks. Later: HTTP/2 and compressed responses through it; a part that
+     request's scope to the named processes themselves; revision 247 puts a process's HTTP exchanges on its rung, each
+     with its parts (`http-exchanges-v1`, `icat exchanges`). Later: exchanges as marks in the timeline, as an RPC
+     channel's calls are; HTTP/2 and compressed responses through it; a part that
      is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
      releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
@@ -346,6 +358,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 247 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,391 tests: 1,387
+  passed, 4 skipped**, zero failures. Live, on the fresh 96-exchange content session: `icat exchanges` listed 96
+  exchanges, all recorded whole, from 580 buffers; the Release window's process rung showed them as a row, Enter
+  listed them with their parts, Enter on one opened its buffers, and C opened a buffer's content. The capture was
+  deleted.
 - Revision 246 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,388 tests: 1,384
   passed, 4 skipped**, zero failures. Live: `icat overview` of the fresh 986-record content session that had refused
   its persisted overview now reads it; the session's summary, byte metrics (929,043 B sent and 870,465 B received,

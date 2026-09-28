@@ -110,6 +110,10 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   so one number, event and process ID can name two exchanges in a session - a process ID used again, or WinINet loaded
   again - and a part is found among its number's buffers in time: a buffer flagged first, one after a buffer flagged
   last, or one numbered no later than the one before it opens another use, and two uses are never merged (R22).
+- **An exchange** (revision 247, `contracts/http-exchanges-v1.md`). A process's HTTP exchanges are a row of its rung;
+  Enter lists them, each with what was recorded of its four parts and how long it took, and Enter on one opens its
+  buffers, where the viewer reads a buffer and its part. Listing exchanges reads metadata and source fields, never
+  content.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,

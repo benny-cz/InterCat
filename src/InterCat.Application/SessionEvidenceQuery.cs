@@ -68,8 +68,11 @@ public sealed record SessionEvidencePage(
     /// </summary>
     public long? ContinuedFromGeneration { get; init; }
 
-    /// <summary>The RPC channel or call the page is scoped to (<see cref="RpcChannelKeys"/>); null when it is not.</summary>
-    public string? RpcKey { get; init; }
+    /// <summary>
+    /// The RPC channel or call (<see cref="RpcChannelKeys"/>), or the process's HTTP exchanges or one exchange
+    /// (<see cref="HttpExchangeKeys"/>), the page is scoped to; null when it is not.
+    /// </summary>
+    public string? OperationKey { get; init; }
 }
 
 public static class SessionEvidenceQuery
@@ -100,7 +103,7 @@ public static class SessionEvidenceQuery
         string? cursor = null,
         IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
         bool resolveOwners = false,
-        string? rpcKey = null,
+        string? operationKey = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -109,9 +112,9 @@ public static class SessionEvidenceQuery
             throw new ArgumentException("Name one owner process or a set of them, not both.", nameof(ownerProcesses));
         ProcessInstanceId[] owners = Owners(channelKey, policy,
             ownerProcesses ?? (ownerProcessScope is { } single ? [single] : null));
-        RequireOneScope(channelKey, owners, rpcKey);
+        RequireOneScope(channelKey, owners, operationKey);
         return ReadCore(store, channelKey, interval, owners, policy, pageSize, ParseCursor(cursor), resolveOwners,
-            rpcKey, withContent: true, cancellationToken);
+            operationKey, withContent: true, cancellationToken);
     }
 
     /// <summary>
@@ -127,25 +130,26 @@ public static class SessionEvidenceQuery
         IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         bool resolveOwners = false,
-        string? rpcKey = null,
+        string? operationKey = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         ProcessInstanceId[] owners = Owners(channelKey, policy, ownerProcesses);
-        RequireOneScope(channelKey, owners, rpcKey);
-        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, rpcKey, withContent: false,
+        RequireOneScope(channelKey, owners, operationKey);
+        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, operationKey, withContent: false,
             cancellationToken);
     }
 
     /// <summary>An RPC scope names its own records, so it is never combined with a channel or an owner scope.</summary>
-    private static void RequireOneScope(string? channelKey, ProcessInstanceId[] owners, string? rpcKey)
+    private static void RequireOneScope(string? channelKey, ProcessInstanceId[] owners, string? operationKey)
     {
-        if (rpcKey is null) return;
-        if (!RpcChannelKeys.IsRpc(rpcKey))
-            throw new ArgumentException("This key names no RPC channel or call.", nameof(rpcKey));
+        if (operationKey is null) return;
+        if (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey))
+            throw new ArgumentException("This key names no RPC channel or call, and no HTTP exchanges.", nameof(operationKey));
         if (channelKey is not null || owners.Length > 0)
-            throw new ArgumentException("An RPC channel or call scopes its own records; name it alone.", nameof(rpcKey));
+            throw new ArgumentException("An RPC channel or call, or HTTP exchanges, scope their own records; name one alone.",
+                nameof(operationKey));
     }
 
     private static ProcessInstanceId[] Owners(
@@ -176,7 +180,7 @@ public static class SessionEvidenceQuery
         int maximum,
         EvidenceCursor? position,
         bool resolveOwners,
-        string? rpcKey,
+        string? operationKey,
         bool withContent,
         CancellationToken cancellationToken)
     {
@@ -189,7 +193,7 @@ public static class SessionEvidenceQuery
             ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
             : SessionContentIndex.Empty;
         SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
-        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, rpcKey);
+        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, operationKey);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
             new(identity, manifest.SessionId, manifest.Generation, channelKey,
@@ -197,7 +201,7 @@ public static class SessionEvidenceQuery
             {
                 OwnerProcesses = Array.AsReadOnly(owners),
                 ContinuedFromGeneration = continuedFrom,
-                RpcKey = rpcKey,
+                OperationKey = operationKey,
             };
 
         if (position is { Legacy: true })
@@ -210,7 +214,7 @@ public static class SessionEvidenceQuery
         SessionDerivation? derivation = null;
         SourceClockDescriptor clock = default;
         SegmentReaderV1[] fields = [];
-        if (channelKey is not null || owners.Length > 0 || rpcKey is not null || (resolveOwners && segments.Length > 0))
+        if (channelKey is not null || owners.Length > 0 || operationKey is not null || (resolveOwners && segments.Length > 0))
         {
             clock = SessionSegments.SourceClock(store.Root, manifest)
                 ?? throw new InvalidDataException("This generation has no source clock for process binding.");
@@ -247,9 +251,16 @@ public static class SessionEvidenceQuery
 
         // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls.
         HashSet<(string Segment, int Row)>? rpcRecords = null;
-        if (rpcKey is not null)
+        if (operationKey is not null && HttpExchangeKeys.IsHttp(operationKey))
         {
-            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, segments, rpcKey, policy, cancellationToken)
+            // A process's HTTP exchanges, or one exchange, are the buffers their exchange numbers group (ADR-037).
+            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, segments, operationKey, policy, cancellationToken)
+                ?? throw new InvalidOperationException("These HTTP exchanges are not in the current generation under the "
+                    + "evidence policy. Return to the process and select them again.");
+        }
+        else if (operationKey is not null)
+        {
+            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, segments, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("This RPC channel or call is not in the current generation under the "
                     + "evidence policy. Return to the process and select its channel again.");
         }
@@ -355,14 +366,15 @@ public static class SessionEvidenceQuery
     }
 
     private static string Identity(Guid sessionId, IReadOnlyList<SegmentReaderV1> segments, string? channelKey,
-        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? rpcKey)
+        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? operationKey)
     {
         string timeScope = interval is { } range
             ? string.Create(CultureInfo.InvariantCulture, $"{range.StartTicks}:{range.EndTicks}")
             : "all-time";
         string relationRule = channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule;
-        string bindingRule = owners.Length == 0 && rpcKey is null ? "unscoped" : ProcessInstanceIndex.BindingRule;
-        string operationScope = rpcKey is null ? string.Empty : $"|{RpcCallIndex.OperationRule}|{rpcKey.Length}:{rpcKey}";
+        string bindingRule = owners.Length == 0 && operationKey is null ? "unscoped" : ProcessInstanceIndex.BindingRule;
+        string rule = HttpExchangeKeys.IsHttp(operationKey) ? HttpExchangeIndex.GroupingRule : RpcCallIndex.OperationRule;
+        string operationScope = operationKey is null ? string.Empty : $"|{rule}|{operationKey.Length}:{operationKey}";
         string captures = string.Join(",", segments.Select(segment => segment.CaptureId.Value.ToString("N"))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
         string derivations = string.Join(",", segments.Select(segment => segment.Derivation.Value)

@@ -108,6 +108,18 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionRpcCalls.CallsThrough(Store(), callKey, interval: interval, cancellationToken: cancellationToken),
             cancellationToken);
 
+    /// <summary>
+    /// One process instance's HTTP exchanges in the current generation, as one channel (ADR-037), counting the exchanges
+    /// the whole session holds, or <paramref name="interval"/> does.
+    /// </summary>
+    public Task<HttpChannelList> HttpChannelsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHttpExchanges.Channels(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
+
+    /// <summary>One process's HTTP exchanges in reading order, from <paramref name="offset"/>, one page, within <paramref name="interval"/> if given.</summary>
+    public Task<HttpExchangePage> HttpExchangesAsync(string channelKey, int offset, TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHttpExchanges.Exchanges(Store(), channelKey, offset, interval: interval, cancellationToken: cancellationToken),
+            cancellationToken);
+
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
     public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(
@@ -153,7 +165,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             cursor: cursor,
             ownerProcesses: scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses,
             resolveOwners: true,
-            rpcKey: scope.RpcKey,
+            operationKey: scope.OperationKey,
             cancellationToken: cancellationToken), cancellationToken);
     }
 }

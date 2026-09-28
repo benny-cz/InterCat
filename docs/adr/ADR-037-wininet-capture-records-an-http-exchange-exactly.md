@@ -4,7 +4,7 @@
   to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
   (revision 239); HTTPS measured, and kept as its plaintext (revision 243); exchanges at once and chunked responses
   measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
-  themselves (revision 245)
+  themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
@@ -129,6 +129,11 @@ names, not by time.
    two uses of the number apart in time: a buffer flagged first, one after a buffer flagged last, or one numbered no
    later than the buffer before it opens another use. A part is its record's use, never two merged into one (R22,
    revision 244). A body is what its client read: a chunked body without its framing.
+8. **A process's exchanges are a row of its rung** (revision 247, `http-exchanges-v1`). Grouped from buffers' source
+   fields and metadata alone, a use of a number opens at a request head flagged first, or at a buffer that repeats a
+   place the use already holds; nothing else ends it, since WinINet raises the empty buffer that ends a request body
+   after the response has ended (a live content capture of 96 exchanges read as 191 before this was known). An
+   exchange's duration runs from its first buffer to the one that ended its response.
 
 ## Consequences
 

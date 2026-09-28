@@ -104,6 +104,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private ProcessActivityIndex? activity;
     private RpcCallIndex? rpcCalls;
     private RpcPeerIndex? rpcPeers;
+    private HttpExchangeIndex? httpExchanges;
     private DerivationCheckpoint? checkpoint;
     private bool checkpointRead;
     private string? checkpointProblem;
@@ -271,6 +272,31 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             RpcCallIndex paired = RpcCallIndex.Derive(segments, fields, instances, clock, cancellationToken);
             Volatile.Write(ref rpcCalls, paired);
             return paired;
+        }
+    }
+
+    /// <summary>
+    /// The generation's HTTP exchanges (ADR-037), grouped from its WinINet capture records once on first use and bound to
+    /// the same process instances as every other derivation of it.
+    /// </summary>
+    public HttpExchangeIndex HttpExchanges(
+        IOwnedDirectory directory,
+        IReadOnlyList<SegmentReaderV1> segments,
+        SourceClockDescriptor clock,
+        IReadOnlyList<SegmentReaderV1> fields,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (httpExchanges is { } known)
+            {
+                return known;
+            }
+
+            ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+            HttpExchangeIndex grouped = HttpExchangeIndex.Derive(segments, fields, instances, cancellationToken);
+            Volatile.Write(ref httpExchanges, grouped);
+            return grouped;
         }
     }
 

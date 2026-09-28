@@ -558,13 +558,13 @@ public static class SessionRpcCalls
         SessionStore store,
         SessionManifestV1 manifest,
         IReadOnlyList<SegmentReaderV1> segments,
-        string rpcKey,
+        string operationKey,
         EvidencePolicy policy,
         CancellationToken cancellationToken)
     {
-        string channelKey = rpcKey;
+        string channelKey = operationKey;
         (uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey)? first = null;
-        if (RpcChannelKeys.TryParseCall(rpcKey, out string callChannel, out var callFirst))
+        if (RpcChannelKeys.TryParseCall(operationKey, out string callChannel, out var callFirst))
         {
             channelKey = callChannel;
             first = callFirst;
@@ -572,7 +572,7 @@ public static class SessionRpcCalls
 
         if (!RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface))
         {
-            throw new ArgumentException("This key names no RPC channel or call.", nameof(rpcKey));
+            throw new ArgumentException("This key names no RPC channel or call.", nameof(operationKey));
         }
 
         RpcCallIndex calls = Index(store, manifest, segments, cancellationToken);

@@ -1390,6 +1390,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 // key; its reader says when this generation no longer holds it.
                 LadderRow? row = target.Level == DetailLevel.Channel && RpcChannelKeys.IsRpc(targetFocus.Key)
                     ? RpcChannelRow(targetFocus.Key, targetFocus.Label, string.Empty, 0)
+                    : target.Level == DetailLevel.Channel && HttpExchangeKeys.IsHttp(targetFocus.Key)
+                    ? HttpChannelRow(targetFocus.Key, targetFocus.Label, string.Empty, 0)
                     : LadderProjection.Project(Snapshot, ladder.Current).Rows.FirstOrDefault(
                         candidate => candidate.Key == targetFocus.Key && candidate.DescendsTo == target.Level);
                 if (row is not null)
@@ -1946,16 +1948,22 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool ShowsLoadMoreEvidence => CanLoadMoreEvidence && !IsSearching;
 
     /// <summary>Whether the rung has another page to load: source records at the evidence rung, calls at an RPC channel's.</summary>
-    public bool CanLoadMore => CanLoadMoreEvidence || CanLoadMoreCalls;
+    public bool CanLoadMore => CanLoadMoreEvidence || CanLoadMoreCalls || CanLoadMoreExchanges;
 
     public bool ShowsLoadMore => CanLoadMore && !IsSearching;
 
-    public string LoadMoreLabel => CanLoadMoreCalls ? "Load more calls (M)" : "Load more records (M)";
+    public string LoadMoreLabel => CanLoadMoreCalls ? "Load more calls (M)"
+        : CanLoadMoreExchanges ? "Load more exchanges (M)"
+        : "Load more records (M)";
 
-    public string LoadMoreName => CanLoadMoreCalls ? "Load the next page of calls" : "Load the next page of source records";
+    public string LoadMoreName => CanLoadMoreCalls ? "Load the next page of calls"
+        : CanLoadMoreExchanges ? "Load the next page of HTTP exchanges"
+        : "Load the next page of source records";
 
     /// <summary>Loads the rung's next page, whichever it lists.</summary>
-    public Task LoadMoreAsync() => CanLoadMoreCalls ? LoadMoreCallsAsync() : LoadMoreEvidenceAsync();
+    public Task LoadMoreAsync() => CanLoadMoreCalls ? LoadMoreCallsAsync()
+        : CanLoadMoreExchanges ? LoadMoreExchangesAsync()
+        : LoadMoreEvidenceAsync();
 
     /// <summary>Goes to a search hit - the selected one when none is named - and clears the search.</summary>
     public bool OpenSearchResult(SearchRow? row = null)
@@ -2426,6 +2434,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         disposed = true;
         CancelEvidence();
         CancelRpc();
+        CancelHttp();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
@@ -2537,8 +2546,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
         : IsRpcChannelRung ? rpcCallRows
-        : rpcChannelRows.Count == 0 ? LadderRows()
-        : Ranked([.. LadderRows(), .. rpcChannelRows.Select(RankedRpcChannel)]);
+        : IsHttpChannelRung ? httpExchangeRows
+        : rpcChannelRows.Count == 0 && httpChannelRows.Count == 0 ? LadderRows()
+        : Ranked([.. LadderRows(), .. rpcChannelRows.Select(RankedRpcChannel), .. httpChannelRows.Select(RankedHttpChannel)]);
 
     /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
     private IReadOnlyList<RungRow> LadderRows()
@@ -2610,6 +2620,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
             : row;
 
+    /// <summary>
+    /// A process's HTTP exchanges under a byte ranking: their bytes are HTTP messages, which never rank with the transport
+    /// bytes the channels beside them rank by (P3), so the row says so and ranks after every TCP channel.
+    /// </summary>
+    private RungRow RankedHttpChannel(RungRow row) => ShownMeasures is SessionByteMeasures
+        && ladder.Current.Level == DetailLevel.ProcessInstance
+        && view.Rows.All(channel => channel.Ranked is not null)
+            ? row with
+            {
+                Source = row.Source with { Ranked = new RankedValue(rankBy, null, 0, 0) },
+                RankedFigure = "HTTP messages",
+                RankedSpoken = "its bytes are HTTP messages, which do not rank with transport bytes",
+            }
+            : row;
+
     /// <summary>The breadcrumb. It always names the level and the selection at each rung (section 3.2).</summary>
     public IReadOnlyList<CrumbRow> Crumbs => LadderRowBuilder.Crumbs(ladder);
 
@@ -2627,6 +2652,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ? (evidence?.Scope.Description ?? string.Empty) + " · " + EvidenceStatus
         : IsRpcChannelRung
             ? RpcCallSummary(brief: false)
+        : IsHttpChannelRung
+            ? HttpExchangeSummary(brief: false)
         : FocusedRealChannel is { } channel
             ? Spoken.Count(channel.ObservationCount, "observed record")
                 + $" at this channel's two ends · {FocusedChannelBytes(channel)} · no operation rung; E shows the records"
@@ -2638,7 +2665,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     private string RungTotal(bool brief)
     {
-        if (rpcChannelRows.Count == 0 || view.Rows.Count > 0)
+        if ((rpcChannelRows.Count == 0 && httpChannelRows.Count == 0) || view.Rows.Count > 0)
         {
             // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
             // paired channels' known bytes, which would read as a second, contradicting byte figure.
@@ -2653,6 +2680,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return brief ? LadderRowBuilder.DescribeTotalShort(view) : LadderRowBuilder.DescribeTotal(view);
         }
 
+        if (httpChannelRows.Count > 0)
+        {
+            // Call records and buffer records are each their own process's, so they add up, but they are not one kind of
+            // record, and each kind is counted apart.
+            long buffers = httpChannelRows.Sum(row => row.Source.ObservationCount);
+            string http = Spoken.Count(buffers, "HTTP buffer record");
+            if (rpcChannelRows.Count == 0) return http;
+            long calls = rpcChannelRows.Sum(row => row.Source.ObservationCount);
+            return Spoken.Count(calls, "call record") + " and " + http;
+        }
+
         long records = rpcChannelRows.Sum(row => row.Source.ObservationCount);
         return brief
             ? Spoken.Count(records, "call record")
@@ -2665,6 +2703,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ? EvidenceStatus
         : IsRpcChannelRung
             ? RpcCallSummary(brief: true)
+        : IsHttpChannelRung
+            ? HttpExchangeSummary(brief: true)
         : FocusedRealChannel is { } channel
             ? Spoken.Count(channel.ObservationCount, "record") + " on this channel · no operation rung"
             : RungTotal(brief: true) + RealScopeNote(brief: true);
@@ -2688,6 +2728,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     ? string.Create(CultureInfo.CurrentCulture,
                         $" · each process's own records; {none:N0} more {(none == 1 ? "row" : "rows")} no process holds, in the timeline only")
                     : " · each process's own records";
+        }
+
+        if (ladder.Current.Level == DetailLevel.ProcessInstance && httpChannelRows.Count > 0)
+        {
+            // It names what the rung lists: its HTTP exchanges, and its RPC calls only when it made some.
+            return rpcChannelRows.Count > 0
+                ? brief ? " · paired TCP, RPC calls and HTTP exchanges"
+                    : " · admitted paired TCP, this process's RPC calls by interface and its HTTP exchanges; not all session observations"
+                : brief ? " · paired TCP and HTTP exchanges"
+                    : " · admitted paired TCP and this process's HTTP exchanges; not all session observations";
         }
 
         if (ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannelRows.Count > 0)
@@ -2732,11 +2782,25 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         : "This channel has no call in this generation. Its records are one step away.");
             }
 
-            if (view.EmptyReason is null || rpcChannelRows.Count > 0) return string.Empty;
+            if (IsHttpChannelRung)
+            {
+                if (httpExchangeRows.Count > 0) return string.Empty;
+                return httpExchanges?.Problem
+                    ?? (httpExchanges is null || httpExchanges.Loading
+                        ? "Reading this process's HTTP exchanges…"
+                        : "This process has no HTTP exchange in this scope. Its records are one step away.");
+            }
+
+            if (view.EmptyReason is null || rpcChannelRows.Count > 0 || httpChannelRows.Count > 0) return string.Empty;
             if (emptyWorkspace) return awaitingCaptureNote ?? "No capture is running. Start exploring to publish a live session.";
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannels is { Loading: true })
             {
                 return "Reading this process's RPC calls…";
+            }
+
+            if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && httpChannels is { Loading: true })
+            {
+                return "Reading this process's HTTP exchanges…";
             }
 
             if (realOverview && ladder.Current.Level is DetailLevel.Channel or DetailLevel.Operation)
@@ -2765,7 +2829,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public bool IsEmptyRung => IsEvidenceRung ? evidenceRows.Count == 0
         : IsRpcChannelRung ? rpcCallRows.Count == 0
-        : view.EmptyReason is not null && rpcChannelRows.Count == 0;
+        : IsHttpChannelRung ? httpExchangeRows.Count == 0
+        : view.EmptyReason is not null && rpcChannelRows.Count == 0 && httpChannelRows.Count == 0;
 
     /// <summary>Whether the empty rung can offer its one-step path to evidence as a button beside the reason.</summary>
     public bool OffersEvidenceStep => IsEmptyRung && realOverview && evidenceSource is not null
@@ -4060,6 +4125,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RefreshIntervalRows(timelineFocusBuckets);
         SyncEvidence();
         SyncRpc();
+        SyncHttp();
         RaiseRankingChanged();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
@@ -5198,6 +5264,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRankingChanged();
         RankingReady = FollowRankedMeasuresAsync();
         SyncRpcScope();
+        SyncHttpScope();
         FollowDescribedBytes();
     }
 
