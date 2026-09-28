@@ -179,15 +179,26 @@ public sealed class RealSessionGraphTests
         Assert.All(whole.Zip(focus), pair => Assert.InRange(pair.Second.ObservationCount, 0, pair.First.ObservationCount));
         if (members.Count > 1)
         {
-            if (members.Count <= SessionTimelineQuery.MaximumProcessLanes
-                && (long)members.Count * focus.Count <= SessionTimelineQuery.MaximumProcessLaneCells)
+            if (members.Count <= SessionTimelineQuery.MaximumProcessLanes)
             {
+                // Within the cell budget the lanes share the focus's columns; past it they are counted coarser (§6.2).
                 IReadOnlyList<ProcessTimelineLane> lanes =
                     Assert.IsAssignableFrom<IReadOnlyList<ProcessTimelineLane>>(viewModel.TimelineProcessLanes);
                 Assert.Equal(members.Count, lanes.Count);
-                Assert.All(focus.Select((bucket, index) => (bucket, index)), pair =>
-                    Assert.Equal(pair.bucket.ObservationCount, lanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
-                report.AppendLine(CultureInfo.InvariantCulture, $"L1 process lanes: {lanes.Count} exact owner rows");
+                if ((long)members.Count * focus.Count <= SessionTimelineQuery.MaximumProcessLaneCells)
+                {
+                    Assert.All(focus.Select((bucket, index) => (bucket, index)), pair =>
+                        Assert.Equal(pair.bucket.ObservationCount, lanes.Sum(lane => lane.Buckets[pair.index].ObservationCount)));
+                }
+                else
+                {
+                    Assert.All(lanes, lane => Assert.True(lane.Buckets.Count < focus.Count));
+                    Assert.Equal(focus.Sum(bucket => (long)bucket.ObservationCount),
+                        lanes.Sum(lane => lane.Buckets.Sum(bucket => (long)bucket.ObservationCount)));
+                }
+
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"L1 process lanes: {lanes.Count} exact owner rows in {lanes[0].Buckets.Count} columns");
                 Assert.True(viewModel.ShowsProcessLanes);
                 ScrollViewer laneScroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
                 if (lanes.Count > 12)

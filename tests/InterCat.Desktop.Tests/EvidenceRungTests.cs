@@ -433,6 +433,47 @@ public sealed class EvidenceRungTests
         static int Sum(IReadOnlyList<TimelineBucket> buckets) => buckets.Sum(bucket => bucket.ObservationCount);
     }
 
+    [Fact(DisplayName = "§6.2: a large group zoomed keeps its process lanes, counted in fewer columns, and says so")]
+    public async Task ALargeGroupZoomedKeepsItsLanesCountedCoarser()
+    {
+        using var session = new TemporarySession();
+
+        // Forty instances of one executable, each created and then sending ten times across the capture.
+        Publish(session.Store, [.. Enumerable.Range(0, 40).SelectMany(index => new[]
+        {
+            Lifecycle(index + 1, ObservationKind.Create, 2_000 + index, (ulong)(index * 20)) with
+            {
+                ResourceName = @"C:\Tools\pool.exe", SessionRelativeTicks = (index + 1) * 100L,
+            },
+        }.Concat(Enumerable.Range(0, 10).Select(step =>
+            Transfer(100 + (step * 100) + index, ObservationKind.Send, AccountingSide.SendSide, 8, 2_000 + index,
+                (ulong)((index * 20) + step + 1)) with { SessionRelativeTicks = (100 + (step * 100) + index) * 100L })))]);
+        using WorkspaceViewModel workspace = Open(session);
+        string group = workspace.Snapshot.Processes.First(node => node.ProcessId == 2_000).GroupKey;
+        TimeRange extent = workspace.Snapshot.Extent;
+        DescendTo(workspace, group);
+
+        // Zoomed in at 1,000 columns, forty lanes would need 40,000 cells: they are counted in the 500 that fit.
+        workspace.RequestTimelineDetail(new TimeRange(extent.StartTicks + 1, extent.EndTicks), 1_000);
+        await workspace.TimelineDetailReady;
+        Assert.Null(workspace.ProcessLaneProblem);
+        Assert.True(workspace.ShowsProcessLanes);
+        Assert.Equal(40, workspace.ProcessLaneDisplay.Count);
+        Assert.All(workspace.ProcessLaneDisplay, lane => Assert.Equal(500, lane.Buckets.Count));
+        // The view starts one tick after the first record, the first instance's creation.
+        Assert.Equal((40 * 11) - 1, workspace.ProcessLaneDisplay.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
+        string cells = 20_000.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
+        Assert.Contains($"40 process lanes in 500 columns, coarser than the view, to stay within {cells} cells",
+            workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // A lane bucket's card says whose count it is, at which resolution, and why.
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        TimelineBucket bucket = lane.Buckets.First(candidate => candidate.ObservationCount > 0);
+        ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
+        Assert.Contains($"Resolution: the lanes' own count, 500 columns, coarser than the view's so the group's 40 lanes stay within {cells} cells",
+            workspace.DescribeTimelineHover(bucket, 1, ownerLane: owner).Lines);
+    }
+
     private static int FocusTotal(WorkspaceViewModel workspace) =>
         Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineFocusBuckets).Sum(bucket => bucket.ObservationCount);
 

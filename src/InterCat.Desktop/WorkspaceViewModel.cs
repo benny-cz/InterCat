@@ -1091,6 +1091,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool ShowsProcessLanes => ladder.Current.Level == DetailLevel.Group && processLaneDisplay.Count > 0
         && timelineFocusProblem is null;
 
+    /// <summary>
+    /// The columns the process lanes were counted in when fewer than the view draws: past the cell budget a group's lanes
+    /// are counted coarser rather than dropped (§6.2); null when they share the view's columns.
+    /// </summary>
+    private int? CoarserLaneColumns => processLaneDisplay.Count > 0
+        && processLaneDisplay[0].Buckets.Count < (timelineDetail?.Buckets.Count ?? wholeSnapshot.Timeline.Count)
+            ? processLaneDisplay[0].Buckets.Count
+            : null;
+
+    /// <summary>What the lanes' caption adds when they are counted coarser than the view: their columns and why.</summary>
+    private string LaneResolutionNote => CoarserLaneColumns is { } lanes
+        ? string.Create(CultureInfo.CurrentCulture,
+            $" in {lanes:N0} columns, coarser than the view, to stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
+        : string.Empty;
+
     private ProcessTimelineLane? SelectedProcessLane => ShowsProcessLanes && selectedProcess is { } process
         ? processLaneDisplay.FirstOrDefault(lane => lane.ProcessId == process.Id) : null;
 
@@ -1164,7 +1179,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
-                ? $"{focus} · {processLaneDisplay.Count:N0} process lanes · machine context above · scroll names for more"
+                ? $"{focus} · {processLaneDisplay.Count:N0} process lanes" + LaneResolutionNote
+                    + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction · machine context above"
                     + (SelectedTimelineDirection is { } direction
@@ -3171,7 +3187,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
             : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
         return FinishTimelineHover(bucket, zoomed, lines,
-            ScopeOfLane(lane, ownerLane?.Id, directionLane, end: null));
+            ScopeOfLane(lane, ownerLane?.Id, directionLane, end: null),
+            ownerLane is not null && CoarserLaneColumns is { } laneColumns
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"Resolution: the lanes' own count, {laneColumns:N0} columns, coarser than the view's so the group's "
+                    + $"{processLaneDisplay.Count:N0} lanes stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
+                : null);
     }
 
     /// <summary>
@@ -3217,7 +3238,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// What every timeline card closes with: the unmeasured part, bytes, coverage, resolution and the click. A real
     /// session's bucket states its bytes where the interval table has read them for the same records and interval.
     /// </summary>
-    private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope)
+    private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope,
+        string? resolution = null)
     {
         lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
         lines.Add(bucket.KnownBytes is { } bytes ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
@@ -3226,12 +3248,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : "Bytes: unknown · this timeline counts records");
         lines.Add("Coverage: " + DescribeCoverage(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));
-        lines.Add(zoomed
+        lines.Add(resolution ?? (zoomed
             ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own count, {timelineDetail!.Buckets.Count:N0} buckets")
                 + (timelineDetail.Generation != DisplayedGeneration
                     ? string.Create(CultureInfo.CurrentCulture, $" from generation {timelineDetail.Generation:N0}")
                     : string.Empty)
-            : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} buckets over the whole session"));
+            : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} buckets over the whole session")));
         lines.Add(selectedInterval == bucket.Interval
             ? "This bucket is the analysis interval"
             : "Click makes it the analysis interval · Shift+drag brushes a range");

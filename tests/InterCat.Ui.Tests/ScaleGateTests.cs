@@ -116,8 +116,8 @@ public sealed class ScaleGateTests
                 "The reopen is the store's open and the first overview projection; the window's open to laid out is "
                     + "reported beside it. The L0 timeline query counts 2,000 columns. At a 40-process group it is timed "
                     + "twice: with the group's 40 process lanes, counted in the same pass, at the window's widest request "
-                    + "of 256 columns; and at 2,000 columns, where the lane bound of 20,000 cells refuses the lanes and "
-                    + "says so, and the group's own count is what is timed.",
+                    + "of 256 columns; and at 2,000 columns, where the 40 lanes are counted in the 500 columns the "
+                    + "20,000-cell bound allows (revision 210), in the same pass as the group's own 2,000.",
                 "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it "
                     + "includes counting the interval's records per process, edge and channel.",
             },
@@ -239,14 +239,16 @@ public sealed class ScaleGateTests
         });
         result["processLanesCounted"] = lanes;
 
-        // At §12's 2,000 columns the lane bound refuses 40 lanes, and says so; the group's own count stays exact.
-        string? laneProblem = null;
+        // At §12's 2,000 columns the 40 lanes would need 40,000 cells: they are counted in the 500 columns the bound
+        // allows, in the same pass as the group's own 2,000.
+        int laneColumns = 0;
         result["timelineL1At2000Columns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
         {
             SessionFocusedTimeline focused = SessionTimelineQuery.Focused(store, viewport, Columns, focus);
-            laneProblem = focused.ProcessLaneProblem;
+            Assert.Null(focused.ProcessLaneProblem);
+            laneColumns = focused.ProcessLanes[0].Buckets.Count;
         });
-        result["processLaneProblemAt2000Columns"] = laneProblem;
+        result["processLaneColumnsAt2000Columns"] = laneColumns;
         Retain("timeline");
 
         // The bounded graph and the top 100 rows of the machine and group rungs, from the overview in memory.

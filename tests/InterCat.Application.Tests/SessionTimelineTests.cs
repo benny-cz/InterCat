@@ -331,6 +331,41 @@ public sealed class SessionTimelineTests
             [owner, overview.Nodes.Single(node => node.ProcessId == 200).Id])).OwnerLane);
     }
 
+    [Fact(DisplayName = "§6.2: a group's lanes past the cell budget are counted in fewer, wider columns, and still partition its records")]
+    public void LanesPastTheCellBudgetAreCountedCoarser()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(1, 64).SelectMany(index => new[]
+        {
+            Timed(Lifecycle(index * 10, ObservationKind.Create, 1_000 + index, (ulong)(index * 2))),
+            Timed(Transfer((index * 10) + 5, ObservationKind.Send, AccountingSide.SendSide, 8, 1_000 + index,
+                (ulong)((index * 2) + 1))),
+        })]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        TimeRange extent = overview.Extent!.Value;
+        TimelineFocus group = new(null, [.. overview.Nodes.Select(node => node.Id)]);
+
+        // 64 lanes of 400 columns would be 25,600 cells: they are counted in the 312 columns 20,000 cells allow.
+        SessionFocusedTimeline zoomed = SessionTimelineQuery.Focused(session.Store, extent, 400, group);
+        Assert.Null(zoomed.ProcessLaneProblem);
+        Assert.Equal(64, zoomed.ProcessLanes.Count);
+        Assert.All(zoomed.ProcessLanes, lane => Assert.Equal(20_000 / 64, lane.Buckets.Count));
+        Assert.Equal(400, zoomed.Focus.Count);
+        Assert.Equal(64 * 2, zoomed.ProcessLanes.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
+
+        // At that resolution the lanes partition exactly what the focus counts there, column by column.
+        SessionFocusedTimeline coarse = SessionTimelineQuery.Focused(session.Store, extent, 20_000 / 64, group);
+        Assert.All(coarse.Focus.Select((bucket, index) => (bucket, index)), pair =>
+        {
+            Assert.Equal(pair.bucket.Interval, zoomed.ProcessLanes[0].Buckets[pair.index].Interval);
+            Assert.Equal(pair.bucket.ObservationCount,
+                zoomed.ProcessLanes.Sum(lane => lane.Buckets[pair.index].ObservationCount));
+        });
+        Assert.All(zoomed.ProcessLanes.Zip(coarse.ProcessLanes), pair =>
+            Assert.Equal(pair.First.Buckets.Select(bucket => (bucket.ObservationCount, bucket.Coverage)),
+                pair.Second.Buckets.Select(bucket => (bucket.ObservationCount, bucket.Coverage))));
+    }
+
     [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]
     public void ProcessLaneBudgetFallsBackToAnExactAggregate()
     {
@@ -348,11 +383,13 @@ public sealed class SessionTimelineTests
         Assert.Contains("201 process lanes", tooMany.ProcessLaneProblem, StringComparison.Ordinal);
         Assert.Equal(201, tooMany.Focus.Sum(bucket => bucket.ObservationCount));
 
+        // Past the cell budget the lanes are kept, counted coarser, rather than refused.
         TimelineFocus withinCount = new(null, owners.Take(64).ToArray());
         SessionFocusedTimeline tooManyCells = SessionTimelineQuery.Focused(session.Store, extent, 400, withinCount);
-        Assert.Empty(tooManyCells.ProcessLanes);
-        Assert.Contains("cells", tooManyCells.ProcessLaneProblem, StringComparison.Ordinal);
+        Assert.Null(tooManyCells.ProcessLaneProblem);
+        Assert.Equal(64, tooManyCells.ProcessLanes.Count);
         Assert.Equal(64, tooManyCells.Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(64, tooManyCells.ProcessLanes.Sum(lane => lane.Buckets.Sum(bucket => bucket.ObservationCount)));
 
         SessionFocusedTimeline bounded = SessionTimelineQuery.Focused(session.Store, extent, 300, withinCount);
         Assert.Null(bounded.ProcessLaneProblem);

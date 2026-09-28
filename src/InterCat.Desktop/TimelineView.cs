@@ -326,11 +326,23 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         IReadOnlyList<TimelineBucket> first = rows.Rows[0];
-        IReadOnlyList<TimelineBucket>? context = viewModel.TimelineDetail is { } detail && MatchingIntervals(first, detail.Buckets)
+
+        // A group's lanes past the cell budget are counted in fewer, wider columns over the machine row's own span, in the
+        // same query (§6.2): they share its span, not its columns, and each row is drawn at its own resolution on the
+        // shared rate scale.
+        bool coarserLanes = rows.Kind == FocusRowKind.Owners;
+        IReadOnlyList<TimelineBucket>? context = viewModel.TimelineDetail is { } detail
+            && (MatchingIntervals(first, detail.Buckets) || (coarserLanes && SameSpan(first, detail.Buckets)))
             ? detail.Buckets
             : MatchingIntervals(first, viewModel.Snapshot.Timeline) ? viewModel.Snapshot.Timeline : null;
         return context is null ? null : new(rows.Kind, context, rows.Rows);
     }
+
+    /// <summary>Whether two rows of columns cover exactly one span, whatever their resolutions.</summary>
+    private static bool SameSpan(IReadOnlyList<TimelineBucket> left, IReadOnlyList<TimelineBucket> right) =>
+        left.Count > 0 && right.Count > 0
+        && left[0].Interval.StartTicks == right[0].Interval.StartTicks
+        && left[^1].Interval.EndTicks == right[^1].Interval.EndTicks;
 
     private bool ShowingLanes => ShowingMechanismLanes || FocusRows is not null;
 

@@ -157,7 +157,11 @@ public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOn
     /// </summary>
     public IReadOnlyList<MechanismTimelineLane> FocusLanes { get; init; } = [];
 
-    /// <summary>When a group fits the lane budget, these owner rows partition Focus on the same columns.</summary>
+    /// <summary>
+    /// When a group fits the lane bound, these owner rows partition Focus. They share Focus's columns while the lanes and
+    /// columns fit the cell budget, and past it are counted in fewer, wider columns of the same interval (§6.2): exact
+    /// counts at a coarser resolution, drawn on the same rate scale, rather than no lanes at all.
+    /// </summary>
     public IReadOnlyList<ProcessTimelineLane> ProcessLanes { get; init; } = [];
 
     /// <summary>At a single-owner process focus, exact rows split by each observed source direction.</summary>
@@ -246,15 +250,17 @@ public static class SessionTimelineQuery
         FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
-        long laneCells = focus is null ? 0 : (long)focus.OwnerProcesses.Count * Math.Min(columns, interval.SpanTicks);
         string? laneProblem = !groupFocus ? null
-            : focus!.OwnerProcesses.Count > MaximumProcessLanes || laneCells > MaximumProcessLaneCells
-                ? $"This group needs {focus.OwnerProcesses.Count:N0} process lanes and {laneCells:N0} cells; the "
-                    + $"current bounds are {MaximumProcessLanes:N0} lanes and {MaximumProcessLaneCells:N0} cells. "
-                    + "Its aggregate timeline remains exact. A bounded grouping or paging control is required "
-                    + "to inspect these process rows; the query does not silently drop them."
+            : focus!.OwnerProcesses.Count > MaximumProcessLanes
+                ? $"This group needs {focus.OwnerProcesses.Count:N0} process lanes; the current bound is "
+                    + $"{MaximumProcessLanes:N0} lanes. Its aggregate timeline remains exact. A bounded grouping or paging "
+                    + "control is required to inspect these process rows; the query does not silently drop them."
                 : null;
         ProcessInstanceId[] laneOwners = groupFocus && laneProblem is null ? [.. focus!.OwnerProcesses] : [];
+
+        // The lanes share one cell budget: past it they are counted in fewer, wider columns of the same interval (§6.2),
+        // exact at that resolution, rather than refused.
+        int laneColumns = LaneColumnsFor(laneOwners.Length, columns, interval);
 
         // At most five direction codes and 2,000 columns: no extra segment pass or unbounded owner-by-peer matrix.
         bool directionLanes = focus is { ChannelKey: null, OwnerProcesses.Count: 1 };
@@ -276,10 +282,10 @@ public static class SessionTimelineQuery
         if (rows is not null)
         {
             int[]? laneOf = laneOwners.Length == 0 ? null : rows.LanesOf(laneOwners);
-            total = new FocusTally(interval, columns, laneOwners.Length, directionLanes, endRelation);
+            total = new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation);
             SegmentPasses.Run(
                 segments,
-                () => new FocusTally(interval, columns, laneOwners.Length, directionLanes, endRelation),
+                () => new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation),
                 (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
                 total.Add,
                 cancellationToken);
@@ -298,11 +304,13 @@ public static class SessionTimelineQuery
         CoverageState[]? capture = laneOwners.Length == 0 && total?.Directions is null
             ? null
             : counted.CaptureCoverage(coverage, clock);
+        CoverageState[]? laneCapture = total?.Lanes is not { Length: > 0 } counting ? null
+            : counting[0].Counts.Count == counted.Counts.Count ? capture : counting[0].CaptureCoverage(coverage, clock);
         return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock)))
         {
             FocusLanes = total is null ? [] : Array.AsReadOnly(total.Focused.MechanismLanes(coverage, clock)),
             ProcessLanes = total?.Lanes is not { } lanes ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
-                new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(capture!))))]),
+                new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(laneCapture!))))]),
             DirectionLanes = total?.Directions is not { } directions ? [] : Array.AsReadOnly([.. LaneDirections.Select(
                 (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture!))))]),
             ChannelEndLanes = total?.Ends is not { } ends ? []
@@ -310,6 +318,18 @@ public static class SessionTimelineQuery
             OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture!)),
             ProcessLaneProblem = laneProblem,
         };
+    }
+
+    /// <summary>
+    /// The columns a group's lanes are counted in: the view's own while every lane's cells fit
+    /// <see cref="MaximumProcessLaneCells"/>, else as many as fit, at least one.
+    /// </summary>
+    internal static int LaneColumnsFor(int lanes, int columns, TimeRange interval)
+    {
+        int drawn = (int)Math.Min(columns, interval.SpanTicks);
+        return lanes == 0 || (long)lanes * drawn <= MaximumProcessLaneCells
+            ? drawn
+            : Math.Max(1, MaximumProcessLaneCells / lanes);
     }
 
     /// <summary>
@@ -353,7 +373,9 @@ public static class SessionTimelineQuery
             tally.Focused.Add(column, mechanism);
             if (laneOf is not null && inFocus.OwnerPosition(row) is { } position && laneOf[position] is >= 0 and int lane)
             {
-                tally.Lanes![lane].Add(column, mechanism);
+                // Lanes past the cell budget have columns of their own over the same interval.
+                TimelineColumns laneColumns = tally.Lanes![lane];
+                laneColumns.Add(tally.LanesShareColumns ? column : laneColumns.ColumnOf(nanoseconds / 100)!.Value, mechanism);
             }
 
             if (tally.Directions is not null)
@@ -391,11 +413,12 @@ public static class SessionTimelineQuery
     /// <summary>One worker's focused counts: the focus, and its process, direction or channel-end lanes.</summary>
     private sealed class FocusTally
     {
-        public FocusTally(TimeRange interval, int columns, int lanes, bool directions, TransportRelation? ends)
+        public FocusTally(TimeRange interval, int columns, int lanes, int laneColumns, bool directions, TransportRelation? ends)
         {
             Focused = new(interval, columns, tallyMechanisms: true);
             Lanes = lanes == 0 ? null
-                : [.. Enumerable.Range(0, lanes).Select(_ => new TimelineColumns(interval, columns, tallyMechanisms: true))];
+                : [.. Enumerable.Range(0, lanes).Select(_ => new TimelineColumns(interval, laneColumns, tallyMechanisms: true))];
+            LanesShareColumns = Lanes is null || Lanes[0].Counts.Count == Focused.Counts.Count;
             Directions = directions
                 ? [.. LaneDirections.Select(_ => new TimelineColumns(interval, columns, tallyMechanisms: true))]
                 : null;
@@ -409,6 +432,9 @@ public static class SessionTimelineQuery
         public TimelineColumns Focused { get; }
 
         public TimelineColumns[]? Lanes { get; }
+
+        /// <summary>Whether the lanes are counted in the focus's own columns, so a row's column is the focus's.</summary>
+        public bool LanesShareColumns { get; }
 
         public TimelineColumns[]? Directions { get; }
 
