@@ -42,6 +42,9 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>A session folder picker is open, so a second one is not started behind it.</summary>
     private bool choosingSession;
     private bool closed;
+
+    // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
+    private bool railOwnsKeyboard;
     private bool closingPrompt;
     private bool closeAfterCapture;
 
@@ -139,6 +142,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // A ranked row in §6.7's multi-selection is marked where it is drawn, and says so to a screen reader; the rows are
         // not rebuilt, so the keyboard focus a Ctrl+Space set out from stays where it was.
         RungList.ContainerPrepared += (_, prepared) => MarkSelectionShare(prepared.Container);
+        AddHandler(GotFocusEvent, FollowKeyboardOwner, RoutingStrategies.Bubble, handledEventsToo: true);
 
         Opened += (_, _) => StartExploringButton.Focus();
         SizeChanged += (_, change) => FollowRailWidth(change.NewSize.Width);
@@ -313,6 +317,37 @@ public sealed partial class MainWindow : Window, IDisposable
             default:
                 break;
         }
+
+    }
+
+    /// <summary>
+    /// Gives the keyboard back to the ranked table's selected row, or its first, once rebuilt rows are laid out. A rung
+    /// change rebuilds the table, and so do rows arriving for the same rung - a process's RPC channels, the next page of
+    /// records - and the row that had the keyboard goes with them; while the table owns the keyboard, the new rows get
+    /// it back, so the next arrow and Enter act on the rung the user is on (§3.2, R15).
+    /// </summary>
+    private void KeepRailKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || !railOwnsKeyboard || RungList.ItemCount == 0) return;
+        if (FocusManager?.GetFocusedElement() is Visual focused && RungList.IsVisualAncestorOf(focused)) return;
+        object? row = RungList.SelectedItem ?? RungList.Items[0];
+        if (row is null) return;
+        RungList.ScrollIntoView(row);
+        if (RungList.ContainerFromItem(row) is Control container)
+        {
+            container.Focus(NavigationMethod.Directional);
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Follows who owns the keyboard as far as the user is concerned: the ranked table does once focus moves into it, and
+    /// stops only when focus moves to another control. A row rebuilt away under the focus, which leaves focus nowhere or on
+    /// the window itself, does not take the keyboard from the table.
+    /// </summary>
+    private void FollowKeyboardOwner(object? sender, GotFocusEventArgs focus)
+    {
+        if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
+        railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target);
     }
 
     /// <summary>
@@ -1910,6 +1945,11 @@ public sealed partial class MainWindow : Window, IDisposable
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection))
         {
             MarkSelectionShares();
+        }
+
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.RungRows) or nameof(WorkspaceViewModel.Crumbs))
+        {
+            KeepRailKeyboard();
         }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();

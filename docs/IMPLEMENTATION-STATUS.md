@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 212 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 213 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 213 — the ranked table keeps the keyboard across rungs (§3.2, R15):**
+  - After Enter, E or Esc the new rung's selected row, or its first, has the keyboard, and so does a table whose rows
+    arrive later (RPC channels, record pages); before, focus fell to nothing and the next arrow and Enter did nothing.
+  - Esc selects the row the rung was opened from again, so the way back lands where the way down began.
 
 - **Revision 212 — the channel browser reads by process and opens on Enter (§3.2, R15):**
   - A row names the processes at its two ends, then its endpoints and records ("queue.exe · PID 84016 ↔ worker.exe
@@ -1956,6 +1961,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 213 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,307 tests: 1,303
+  passed, 4 skipped**, zero failures. A keyboard-only walk of the Release window on a 20-second dense capture found the
+  lost focus and, fixed, kept a row focused from L0 to L2, into the evidence and back. Alt and Shift posted as window
+  messages are not seen as held (Avalonia reads the keyboard's state), so Alt+Left/Right stay covered by headless tests.
 - Revision 212 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,306 tests: 1,302
   passed, 4 skipped**, zero failures. In the Release window on a 20-second dense capture the browser listed its 112
   channels by process, and Enter posted to it opened the first one's records; the capture was deleted afterwards.

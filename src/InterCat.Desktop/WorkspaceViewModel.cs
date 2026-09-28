@@ -3734,6 +3734,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool Ascend()
     {
         ladder.RecordInterval(selectedInterval);
+        NavigationState left = ladder.Current;
         if (!ladder.TryAscend(out NavigationState restored))
         {
             ClearSelection();
@@ -3742,6 +3743,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         ResumeIntervalOf(restored);
         AfterNavigation();
+
+        // The row the rung was opened from is selected again, so the way back lands where the way down began and the
+        // keyboard can take the next row from there (§3.2).
+        if (!IsEvidenceRung && left.Focus is { } opened
+            && RungRows.FirstOrDefault(row => string.Equals(row.Key, opened.Key, StringComparison.Ordinal)) is { } row)
+        {
+            SelectedRung = row;
+        }
+
         return true;
     }
 

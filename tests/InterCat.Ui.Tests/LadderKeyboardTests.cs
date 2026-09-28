@@ -147,6 +147,39 @@ public sealed class LadderKeyboardTests
         Assert.Single(viewModel.Crumbs);
     }
 
+    [AvaloniaFact(DisplayName = "§3.2: after Enter or Escape the new rung's table keeps the keyboard, so the next arrow and Enter act on it")]
+    public void TheKeyboardStaysOnTheRailAcrossRungs()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        ListBox list = window.GetControl<ListBox>("RungList");
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        Settle(window);
+        Assert.True(list.ContainerFromIndex(0)!.Focus());
+
+        // Enter opens the group: its table has the keyboard, on its first row, so Down moves and Enter opens again.
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
+        IInputElement? focused = TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement();
+        ListBoxItem item = Assert.IsType<ListBoxItem>(focused);
+        Assert.Same(list, item.GetVisualAncestors().OfType<ListBox>().First());
+        Assert.Equal(viewModel.RungRows[0].Key, Assert.IsType<RungRow>(item.DataContext).Key);
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(viewModel.RungRows[Math.Min(1, viewModel.RungRows.Count - 1)].Key, viewModel.SelectedRung?.Key);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L2 · PROCESS", viewModel.LevelBadge);
+
+        // Escape returns a rung up, with the keyboard on the row the user had opened.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
+        ListBoxItem back = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement());
+        Assert.Equal(viewModel.SelectedRung?.Key, Assert.IsType<RungRow>(back.DataContext).Key);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§3.2: Alt and Left ascend, the second gesture the ladder promises")]
     public void AltLeftAscends()
     {
