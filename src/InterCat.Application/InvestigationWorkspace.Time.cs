@@ -515,14 +515,10 @@ public static partial class InvestigationWorkspace
             : throw new InvalidDataException($"Session {sessionId:N}'s clock calibration names another clock than its journal.");
     }
 
-    /// <summary>A source reading as session time: nanoseconds after the capture epoch, rounded to the nearest.</summary>
-    private static long SessionNanoseconds(SourceClockDescriptor clock, long nativeTicks)
-    {
-        Int128 scaled = (Int128)(nativeTicks - clock.CaptureEpochNativeTicks) * 1_000_000_000;
-        Int128 quotient = Int128.DivRem(scaled, clock.TicksPerSecond).Quotient;
-        Int128 remainder = scaled - (quotient * clock.TicksPerSecond);
-        return checked((long)(quotient + (Int128.Abs(remainder) * 2 >= clock.TicksPerSecond ? Int128.Sign(remainder) : 0)));
-    }
+    /// <summary>A source reading as session time, converted as every reader converts it (§8.1).</summary>
+    private static long SessionNanoseconds(SourceClockDescriptor clock, long nativeTicks) =>
+        SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, nativeTicks)).SessionTime?.Nanoseconds
+            ?? throw new InvalidDataException($"A calibration sample's reading {nativeTicks} is not on its capture's clock.");
 
     private static int NextRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Alignments.Count == 0 ? 1 : checked(workspace.Alignments.Max(alignment => alignment.Revision) + 1);

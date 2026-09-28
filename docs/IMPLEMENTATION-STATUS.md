@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 257 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 258 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions | Aligning and comparing in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures | Accepting and rejecting candidates, a known two-host exchange (needs a second host), aligning and comparing in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 258 — a join across captures is a candidate, never established (ADR-041):**
+  - `icat workspace correlate` compares every member's one-sided connections: mirrored endpoints of one protocol whose
+    lifetimes overlap in the investigation's time within their uncertainty, or cannot be compared, which is said;
+    loopback only within one host. Each candidate lists its evidence, bytes both ways, and its alternatives.
+  - One machine cannot capture an exchange's ends apart, so the rule is proven on synthetic sessions; live it proposed
+    nothing between two real concurrent captures, in 0.4 s. A known two-host exchange needs a second host.
 
 - **Revision 257 — an investigation in the Desktop (ADR-038):**
   - The start page's Investigation button opens or starts one, and an `.icat-workspace` on the command line opens it,
@@ -451,14 +458,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      cross-host correlation;
    - a rate from two separated anchors, and aligning through another aligned member;
    - a person's confirmation that two host identities are one host, versioned (§8.3);
-   - cross-host correlation of network observations under timing uncertainty (§8.3), and flagging partial overlap
-     between two captures of one host;
+   - cross-host correlation: candidates since revision 258 (ADR-041); next, accepting or rejecting one as a versioned
+     revision, the Desktop's candidate list, known address translations, and a real two-host exchange, which needs a
+     second host; flagging partial overlap between two captures of one host;
    - the Desktop's investigation: done in revision 257 for its members, their states, relinks, additions and opening
      one; next, aligning and comparing there, the merged time across sessions, then pins, notes and saved views;
    - packaging a workspace with its sessions (§8.4).
 
 ## Verification and cautions
 
+- Revision 258 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,426 tests: 1,422
+  passed, 4 skipped**, zero failures. Live, `icat workspace correlate` over two concurrent explore captures of this
+  machine, aligned by their boot, proposed no candidate in 0.4 s, as it must: every connection there is paired within
+  one capture or one-sided the same way in both. A focused capture's `--pid` does not split an exchange's ends here.
 - Revision 257 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,424 tests: 1,420
   passed, 4 skipped**, zero failures. Live, the Release Desktop opened an investigation of two scratch captures, aligned
   by their boot, from the command line in its own window; UI Automation read both rows as sentences, and Open showed
@@ -597,4 +609,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v3.md`, `clock-calibration-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–040; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v3.md`, `clock-calibration-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

@@ -68,6 +68,19 @@ public sealed record ConnectionSummary(
 public sealed record ConnectionList(Guid SessionId, long Generation, IReadOnlyList<ConnectionSummary> Connections);
 
 /// <summary>
+/// A one-sided connection with the process that held it and its lifetime in session time: the span from its first record
+/// to its last, which is where the capture saw it, not necessarily where it began or ended.
+/// </summary>
+public sealed record HeldConnection(
+    ConnectionSummary Summary,
+    ProcessInstance Holder,
+    long FirstNanoseconds,
+    long LastNanoseconds);
+
+/// <summary>Every one-sided connection of one generation, whoever held it.</summary>
+public sealed record SessionConnectionIndex(Guid SessionId, long Generation, IReadOnlyList<HeldConnection> Connections);
+
+/// <summary>
 /// Reads a process's one-sided connections for its rung: the TCP connections and UDP flows it held whose other end no
 /// record of the capture holds, most often another host's. Each read leases the current generation and reads the
 /// generation's relations once, shared by every read of it.
@@ -86,6 +99,43 @@ public static class SessionConnections
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
+        (Guid session, long generation, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+            Read(store, connection => connection.Holder.Id == instance, interval, policy, cancellationToken);
+        return new(session, generation, [.. held.Select(pair => pair.Summary)]);
+    }
+
+    /// <summary>
+    /// Every one-sided connection of the session, whoever held it, with its holder and its lifetime in session time - what
+    /// an investigation compares with another capture's connections (`contracts/workspace-v3.md` §6).
+    /// </summary>
+    public static SessionConnectionIndex All(
+        SessionStore store,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        (Guid session, long generation, SourceClockDescriptor? clock, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+            Read(store, _ => true, null, policy, cancellationToken);
+        return new(session, generation,
+        [
+            .. held.Select(pair => new HeldConnection(
+                pair.Summary,
+                pair.Connection.Holder,
+                SessionTime(clock!.Value, pair.Connection.FirstNativeTicks),
+                SessionTime(clock.Value, pair.Connection.LastNativeTicks))),
+        ]);
+    }
+
+    private static long SessionTime(SourceClockDescriptor clock, long nativeTicks) =>
+        SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, nativeTicks)).SessionTime?.Nanoseconds
+            ?? throw new InvalidDataException($"A connection's reading {nativeTicks} is not on its capture's clock.");
+
+    private static (Guid Session, long Generation, SourceClockDescriptor? Clock, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Held) Read(
+        SessionStore store,
+        Func<TransportConnection, bool> selected,
+        TimeRange? interval,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(store);
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         using EvidenceLease lease = store.AcquireLease();
@@ -93,16 +143,16 @@ public static class SessionConnections
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         if (segments.Length == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
         {
-            return new(manifest.SessionId, manifest.Generation, []);
+            return (manifest.SessionId, manifest.Generation, null, []);
         }
 
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         TransportRelationIndex relations = SessionDerivationCache.For(manifest).Relations(store.Root, segments, clock, fields, cancellationToken);
         TransportConnection[] held = [.. relations.OneSided.Where(connection =>
-            connection.Holder.Id == instance && SessionOverviewProjector.Admitted(connection.Strength, policy))];
+            selected(connection) && SessionOverviewProjector.Admitted(connection.Strength, policy))];
         if (held.Length == 0)
         {
-            return new(manifest.SessionId, manifest.Generation, []);
+            return (manifest.SessionId, manifest.Generation, clock, []);
         }
 
         // One pass over the segments counts every connection's records and bytes at once, by the channel each row names.
@@ -164,11 +214,11 @@ public static class SessionConnections
             }
         }
 
-        return new(manifest.SessionId, manifest.Generation,
+        return (manifest.SessionId, manifest.Generation, clock,
         [
             .. Enumerable.Range(0, held.Length)
                 .Where(index => interval is null || records[index] > 0)
-                .Select(index => new ConnectionSummary(
+                .Select(index => (held[index], new ConnectionSummary(
                     held[index].StableKey,
                     held[index].Mechanism,
                     held[index].LocalEndpoint,
@@ -181,9 +231,9 @@ public static class SessionConnections
                     received[index],
                     unsizedReceives[index],
                     held[index].OpenWitnessed,
-                    held[index].CloseWitnessed))
-                .OrderByDescending(connection => connection.Records)
-                .ThenBy(connection => connection.Key, StringComparer.Ordinal),
+                    held[index].CloseWitnessed)))
+                .OrderByDescending(pair => pair.Item2.Records)
+                .ThenBy(pair => pair.Item2.Key, StringComparer.Ordinal),
         ]);
     }
 }

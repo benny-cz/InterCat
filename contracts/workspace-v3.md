@@ -2,7 +2,7 @@
 
 Status: M4, revision 256 (ADR-038, ADR-039, ADR-040); version 1 was revision 253's, version 2 revision 254's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align`; read by `icat workspace show | compare`
+Produced by: `icat workspace new | add | relink | alias | align`; read by `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
 `*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
@@ -136,11 +136,32 @@ only manual alignments and withdrawals. A same-boot revision names a boot and st
 states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; no other
 revision states any of these.
 
-## 6. Not defined at this version
+## 6. Candidate joins
+
+`icat workspace correlate` proposes candidate joins between members (§8.3, ADR-041), under the rule
+`cross-capture-connection-candidate-v1`. Each member that holds its capture is read for its one-sided connections - the
+TCP connections and UDP flows whose other end its own capture holds no record of (`relations-v1` §5b) - and a connection
+of one member is a candidate with a connection of another when:
+
+- they are of one protocol, and the one's local endpoint is the other's remote endpoint and the other way round;
+- neither endpoint is a loopback address, unless both members were recorded on one host identity;
+- their lifetimes - each from its first record to its last - overlap once each end is widened by its uncertainty in
+  the investigation's time (§5), or cannot be compared because an end has no workspace time or no known uncertainty.
+
+A mirrored pair whose lifetimes lie apart beyond their uncertainty is not proposed, and is counted. A candidate is never
+an established join: it states its evidence - the mirrored endpoints, whether the lifetimes overlap or cannot be
+compared and why, and the bytes each side measured of each direction, the same or not - and how many other candidates
+either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v1`: the
+rule, each candidate's two ends (session, key, protocol, endpoints, process, lifetime and bytes), its timing, its
+alternatives and its evidence; the mirrored pairs not proposed and the loopback pairs of two hosts, counted; the members
+not compared and why; and caveats. Nothing is joined by time alone, by an address alone or by a name.
+
+## 7. Not defined at this version
 
 - Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from shared
   markers (§8.2's third mode).
-- Confirming two host identities as one host; cross-host correlation revisions; pins, notes and saved views.
+- Confirming two host identities as one host; accepting or rejecting a candidate join as a versioned revision; pins,
+  notes and saved views.
 - Aligning and comparing in the Desktop, whose investigation window (revision 257) lists, relinks, adds and opens
   sessions; packaging a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.

@@ -88,6 +88,52 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v3.md` §6).</summary>
+internal sealed record WorkspaceCorrelationDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required string Rule { get; init; }
+    public required IReadOnlyList<CandidateDocument> Candidates { get; init; }
+
+    /// <summary>Mirrored pairs not proposed: their lifetimes lie apart beyond their uncertainty.</summary>
+    public required int DisjointMirrors { get; init; }
+
+    /// <summary>Mirrored loopback pairs on two hosts, which are never one connection.</summary>
+    public required int LoopbackAcrossHosts { get; init; }
+
+    public required IReadOnlyList<UnreadMember> Unread { get; init; }
+    public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+internal sealed record CandidateDocument
+{
+    public required CandidateEndDocument First { get; init; }
+    public required CandidateEndDocument Second { get; init; }
+    public required CandidateTiming Timing { get; init; }
+
+    /// <summary>How many other candidates either connection has.</summary>
+    public required int Alternatives { get; init; }
+
+    public required IReadOnlyList<string> Evidence { get; init; }
+}
+
+internal sealed record CandidateEndDocument
+{
+    public required Guid SessionId { get; init; }
+    public required string Key { get; init; }
+    public required string Protocol { get; init; }
+    public required string LocalEndpoint { get; init; }
+    public required string RemoteEndpoint { get; init; }
+    public required int ProcessId { get; init; }
+    public required string? ImagePath { get; init; }
+    public required long FirstNanoseconds { get; init; }
+    public required long LastNanoseconds { get; init; }
+    public required long SentBytes { get; init; }
+    public required long ReceivedBytes { get; init; }
+    public required string Lifetime { get; init; }
+}
+
 /// <summary>
 /// Makes, extends and shows an investigation workspace (ADR-038, M4): one file naming separately valid sessions by identity,
 /// one member per capture, resolved against where each was last found, and aligned to one member's clock by a person. It
@@ -98,6 +144,8 @@ internal static partial class WorkspaceCommand
     public const string ResolutionContract = "workspace-resolution-v3";
 
     public const string ComparisonContract = "workspace-comparison-v1";
+
+    public const string CorrelationContract = "workspace-correlation-v1";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -145,6 +193,7 @@ internal static partial class WorkspaceCommand
                 "icat workspace align <workspace> <session> <reference> --wall-clock --sync <duration> --drift-ppm <rate>"),
             "align" => (2, 2, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>"),
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
+            "correlate" => (0, 0, "icat workspace correlate <workspace>"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
@@ -158,7 +207,7 @@ internal static partial class WorkspaceCommand
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align or compare"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare or correlate"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -171,6 +220,11 @@ internal static partial class WorkspaceCommand
             if (verb == "compare")
             {
                 return Compare(path, operands[0], operands[1], json);
+            }
+
+            if (verb == "correlate")
+            {
+                return Correlate(path, json, cancellationToken);
             }
 
             InterCatExitCode written = verb switch
@@ -360,6 +414,110 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  " + document.Statement);
         return InterCatExitCode.Success;
     }
+
+    private static InterCatExitCode Correlate(string path, bool json, CancellationToken cancellationToken)
+    {
+        ConsoleUi.Progress("Reading every session's one-sided connections and comparing their endpoints, mirrored.");
+        WorkspaceCorrelationResult result = WorkspaceCorrelation.Candidates(path, cancellationToken: cancellationToken);
+        var document = new WorkspaceCorrelationDocument
+        {
+            Contract = CorrelationContract,
+            Path = path,
+            Rule = result.Rule,
+            Candidates = [.. result.Candidates.Select(candidate => new CandidateDocument
+            {
+                First = End(candidate.First),
+                Second = End(candidate.Second),
+                Timing = candidate.Timing,
+                Alternatives = candidate.Alternatives,
+                Evidence = candidate.Evidence,
+            })],
+            DisjointMirrors = result.DisjointMirrors,
+            LoopbackAcrossHosts = result.LoopbackAcrossHosts,
+            Unread = result.Unread,
+            Caveats = result.Caveats,
+        };
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
+            return InterCatExitCode.Success;
+        }
+
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ConsoleUi.Heading("Connection candidates");
+        ConsoleUi.Field("Investigation", path);
+        ConsoleUi.Field("Rule", result.Rule);
+        int ambiguous = result.Candidates.Count(candidate => candidate.Ambiguous);
+        ConsoleUi.Field("Candidates", string.Create(culture,
+            $"{result.Candidates.Count:N0}, {ambiguous:N0} of them not the only match of a connection"));
+        ConsoleUi.Line();
+        int number = 0;
+        foreach (CandidateDocument candidate in document.Candidates)
+        {
+            number++;
+            ConsoleUi.Line(string.Create(culture, $"  {number:N0}. {candidate.First.Protocol} {candidate.First.LocalEndpoint} ⇄ "
+                + $"{candidate.First.RemoteEndpoint} · ")
+                + (candidate.Timing == CandidateTiming.Overlapping ? "lifetimes overlap" : "lifetimes not comparable")
+                + (candidate.Alternatives > 0 ? string.Create(culture, $" · {candidate.Alternatives:N0} other candidates") : string.Empty));
+            foreach (CandidateEndDocument end in new[] { candidate.First, candidate.Second })
+            {
+                ConsoleUi.Line(string.Create(culture, $"     {Short(end.SessionId)} · {Image(end)} (PID {end.ProcessId}): ")
+                    + string.Create(culture, $"{end.SentBytes:N0} B sent, {end.ReceivedBytes:N0} B received; {end.Lifetime}"));
+            }
+
+            foreach (string line in candidate.Evidence)
+            {
+                ConsoleUi.Note("   - " + line);
+            }
+        }
+
+        if (result.Candidates.Count == 0)
+        {
+            ConsoleUi.Note("No connection one session holds one end of has its mirrored end in another.");
+        }
+
+        ConsoleUi.Line();
+        if (result.DisjointMirrors > 0 || result.LoopbackAcrossHosts > 0)
+        {
+            ConsoleUi.Note(string.Create(culture, $"Not proposed: {result.DisjointMirrors:N0} mirrored pairs whose lifetimes lie apart "
+                + $"beyond their uncertainty, and {result.LoopbackAcrossHosts:N0} loopback pairs of two hosts."));
+        }
+
+        foreach (UnreadMember unread in result.Unread)
+        {
+            ConsoleUi.Note($"Not compared: session {Short(unread.SessionId)}, because {unread.Reason}");
+        }
+
+        foreach (string caveat in result.Caveats)
+        {
+            ConsoleUi.Note(caveat);
+        }
+
+        return InterCatExitCode.Success;
+    }
+
+    private static CandidateEndDocument End(WorkspaceConnection connection)
+    {
+        ConnectionSummary summary = connection.Connection.Summary;
+        return new()
+        {
+            SessionId = connection.SessionId,
+            Key = summary.Key,
+            Protocol = summary.Mechanism == Mechanism.Udp ? "UDP" : "TCP",
+            LocalEndpoint = summary.LocalEndpoint,
+            RemoteEndpoint = summary.RemoteEndpoint,
+            ProcessId = connection.Connection.Holder.ProcessId,
+            ImagePath = connection.Connection.Holder.ImagePath,
+            FirstNanoseconds = connection.Connection.FirstNanoseconds,
+            LastNanoseconds = connection.Connection.LastNanoseconds,
+            SentBytes = summary.SentBytes,
+            ReceivedBytes = summary.ReceivedBytes,
+            Lifetime = summary.Lifetime,
+        };
+    }
+
+    private static string Image(CandidateEndDocument end) =>
+        end.ImagePath is { Length: > 0 } image ? Path.GetFileName(image) : "a process of no recorded image";
 
     private static WorkspaceInstantDocument InstantDocument(WorkspaceInstant instant) => new()
     {
@@ -599,6 +757,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("                     --drift-ppm <rate> [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace align <workspace> <session> --withdraw [--json]");
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
+        ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("An investigation over separately captured sessions (workspace-v2, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
@@ -623,5 +782,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  compare  places two instants in the workspace's time and states their order only beyond");
         ConsoleUi.Line("           their combined uncertainty; nothing when an instant has no time or its uncertainty");
         ConsoleUi.Line("           is unknown. Two instants of one member are ordered exactly.");
+        ConsoleUi.Line("  correlate proposes candidate joins: a connection one session holds one end of, and another");
+        ConsoleUi.Line("           session its mirrored end, where their lifetimes can overlap in the investigation's");
+        ConsoleUi.Line("           time. A candidate is never established; its evidence and alternatives are listed.");
     }
 }
