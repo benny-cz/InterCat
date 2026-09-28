@@ -119,6 +119,120 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window aligns a session by an instant read in both, says what is missing, and withdraws it")]
+    public async Task TheWindowAlignsAndWithdraws()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 1;
+            Assert.True(Named<Button>(window, "Align the selected session to the investigation's time").IsEnabled);
+            Assert.False(Named<Button>(window, "Withdraw the selected session's alignment").IsEnabled);
+
+            // The dialog aligns to the other session's clock, and says in words what it needs.
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write both instants in seconds of their own session's time, such as 12.5.",
+                Named<TextBlock>(dialog, "Alignment status").Text);
+
+            // By boot, sessions that recorded no calibration are refused, in words.
+            dialog.Choose(WorkspaceAlignmentMode.SameBoot);
+            Assert.False(await dialog.AlignAsync());
+            Assert.Contains("records no clock calibration", Named<TextBlock>(dialog, "Alignment status").Text, StringComparison.Ordinal);
+
+            dialog.Choose(WorkspaceAlignmentMode.Manual);
+            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "2";
+            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "5,5";
+            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = "20";
+            Save(dialog, "investigation-align.png");
+            Assert.True(await dialog.AlignAsync());
+            InvestigationWorkspaceFile aligned = InvestigationWorkspace.Read(workspace);
+            WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(aligned, b)!;
+            Assert.Equal((a, 2_000_000_000L, 5_500_000_000L, 1_000_000L, (double?)20),
+                (aligned.TimeReference!.Value, made.SessionNanoseconds!.Value, made.ReferenceNanoseconds!.Value,
+                    made.WithinNanoseconds!.Value, made.DriftPartsPerMillion));
+
+            // The window shows it, and withdraws it; the revision is kept.
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members[1].IsAligned);
+            Assert.StartsWith("Aligned by a person", window.View!.Members[1].Time, StringComparison.Ordinal);
+            list.SelectedIndex = 1;
+            Assert.True(Named<Button>(window, "Withdraw the selected session's alignment").IsEnabled);
+            await window.WithdrawSelectedAsync();
+            WaitFor(() => !window.View!.Members[1].IsAligned);
+            Assert.Equal(2, InvestigationWorkspace.Read(workspace).Alignments.Count);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
+    public async Task TheWindowListsCandidateJoins()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed);
+        InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(1);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await window.FindCandidatesAsync();
+            InvestigationCandidates found = window.Candidates!;
+            InvestigationCandidateRow row = Assert.Single(found.Rows);
+            Assert.Equal("TCP 10.0.0.1:50000 ⇄ 10.0.0.2:443 · lifetimes not comparable", row.Title);
+            Assert.StartsWith("Candidate join: TCP 10.0.0.1:50000", row.AccessibleName, StringComparison.Ordinal);
+            Assert.Equal("1 candidate join, none established; 0 not the only match of a connection.", found.Summary);
+            Assert.Equal(found.Summary, Named<TextBlock>(window, "What finding candidate joins found").Text);
+            ListBox list = Named<ListBox>(window, "Candidate joins between the sessions; none is established");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal(row.AccessibleName, AutomationProperties.GetName(list.ContainerFromIndex(0)!));
+            Save(window, "investigation-candidates.png");
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>A session whose one process holds one end of a TCP connection: it opens, sends and closes it.</summary>
+    private static string Session(string root, string name, string[] ends, int owner)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                Lifecycle(1, ObservationKind.Create, owner, 1) with { SessionRelativeTicks = 100 },
+                Transfer(1_000, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, owner, 20).Between(ends[0], ends[1]) with { SessionRelativeTicks = 100_000 },
+                Transfer(1_001, ObservationKind.Send, AccountingSide.SendSide, 64, owner, 21).Between(ends[0], ends[1]) with { SessionRelativeTicks = 100_100 },
+                Transfer(1_002, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, owner, 22).Between(ends[0], ends[1]) with { SessionRelativeTicks = 100_200 },
+            ],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
     private static string Session(string root, string name)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;

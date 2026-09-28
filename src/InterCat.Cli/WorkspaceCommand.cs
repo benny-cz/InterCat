@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using InterCat.Application;
 using InterCat.Domain;
 
@@ -313,16 +312,12 @@ internal static partial class WorkspaceCommand
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
         (WorkspaceMember member, long at) = Instant(workspace, instant);
         (WorkspaceMember reference, long referenceAt) = Instant(workspace, referenceInstant);
-        long bound = Duration(within)
+        long bound = InvestigationInput.Duration(within)
             ?? throw new InvalidOperationException($"--within expects a duration with its unit, such as 500us, 2ms or 1s; '{within}' is not one.");
-        double? rate = null;
-        if (drift is not null)
-        {
-            rate = double.TryParse(drift.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
-                && double.IsFinite(parsed) && parsed >= 0
-                ? parsed
-                : throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
-        }
+        double? rate = drift is null
+            ? null
+            : InvestigationInput.PartsPerMillion(drift)
+                ?? throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
 
         WorkspaceAlignment alignment = InvestigationWorkspace.Align(
             path, member.SessionId, at, reference.SessionId, referenceAt, bound, rate, note, DateTimeOffset.UtcNow);
@@ -353,12 +348,10 @@ internal static partial class WorkspaceCommand
 
     private static InterCatExitCode AlignByWallClock(string path, string session, string reference, string sync, string drift, string? note)
     {
-        long agreement = Duration(sync)
+        long agreement = InvestigationInput.Duration(sync)
             ?? throw new InvalidOperationException($"--sync expects a duration with its unit, such as 10ms; '{sync}' is not one.");
-        double rate = double.TryParse(drift.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
-            && double.IsFinite(parsed) && parsed >= 0
-            ? parsed
-            : throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
+        double rate = InvestigationInput.PartsPerMillion(drift)
+            ?? throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
         WorkspaceMember member = InvestigationWorkspace.MemberNamed(workspace, session);
         WorkspaceMember to = InvestigationWorkspace.MemberNamed(workspace, reference);
@@ -698,40 +691,11 @@ internal static partial class WorkspaceCommand
     private static (WorkspaceMember Member, long Nanoseconds) Instant(InvestigationWorkspaceFile workspace, string text)
     {
         int at = text.LastIndexOf('@');
-        decimal seconds = 0;
-        if (at <= 0 || !decimal.TryParse(text[(at + 1)..].Replace(',', '.'), NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
-            CultureInfo.InvariantCulture, out seconds) || Math.Abs(seconds) > 9_000_000_000m)
-        {
-            throw new InvalidOperationException(
+        return at > 0 && InvestigationInput.Seconds(text[(at + 1)..]) is { } nanoseconds
+            ? (InvestigationWorkspace.MemberNamed(workspace, text[..at]), nanoseconds)
+            : throw new InvalidOperationException(
                 $"An instant is written <session>@<seconds>, its session time in seconds, such as 3f2a9c1b@12.5; '{text}' is not one.");
-        }
-
-        return (InvestigationWorkspace.MemberNamed(workspace, text[..at]), (long)Math.Round(seconds * 1_000_000_000m, MidpointRounding.ToEven));
     }
-
-    /// <summary>A duration written with its unit - ns, us, µs, ms or s - in nanoseconds; null when it is not one.</summary>
-    private static long? Duration(string text)
-    {
-        Match match = DurationPattern().Match(text.Trim());
-        if (!match.Success || !decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.AllowDecimalPoint,
-            CultureInfo.InvariantCulture, out decimal value))
-        {
-            return null;
-        }
-
-        decimal scale = match.Groups[2].Value switch
-        {
-            "ns" => 1m,
-            "us" or "µs" => 1_000m,
-            "ms" => 1_000_000m,
-            _ => 1_000_000_000m,
-        };
-        decimal nanoseconds = value * scale;
-        return nanoseconds > long.MaxValue ? null : (long)Math.Ceiling(nanoseconds);
-    }
-
-    [GeneratedRegex(@"^([0-9]+(?:[.,][0-9]+)?)\s*(ns|us|µs|ms|s)$", RegexOptions.CultureInvariant)]
-    private static partial Regex DurationPattern();
 
     /// <summary>A session instant in seconds, to the nanosecond, as a person reads it.</summary>
     private static string Seconds(long nanoseconds) =>

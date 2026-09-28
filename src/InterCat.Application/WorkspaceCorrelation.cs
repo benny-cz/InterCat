@@ -205,6 +205,12 @@ public static class WorkspaceCorrelation
     private static string Bytes(string sender, long sent, long sends, string receiver, long received, long receives, CultureInfo culture) =>
         sends == 0 && receives == 0
             ? $"Neither records a measured transfer from the {sender} to the {receiver}."
+            : receives == 0
+                ? string.Create(culture, $"The {sender} sent {sent:N0} B in {sends:N0} measured {(sends == 1 ? "transfer" : "transfers")}; ")
+                    + $"the {receiver} recorded no measured receive of them."
+            : sends == 0
+                ? string.Create(culture, $"The {receiver} received {received:N0} B in {receives:N0} measured {(receives == 1 ? "transfer" : "transfers")}; ")
+                    + $"the {sender} recorded no measured send of them."
             : string.Create(culture, $"The {sender} sent {sent:N0} B in {sends:N0} measured {(sends == 1 ? "transfer" : "transfers")}, ")
                 + string.Create(culture, $"and the {receiver} received {received:N0} B in {receives:N0}")
                 + (sent == received ? ": the same bytes." : ": not the same - one side lost or never recorded some.");

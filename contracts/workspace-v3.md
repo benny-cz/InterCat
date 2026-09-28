@@ -162,6 +162,6 @@ not compared and why; and caveats. Nothing is joined by time alone, by an addres
   markers (§8.2's third mode).
 - Confirming two host identities as one host; accepting or rejecting a candidate join as a versioned revision; pins,
   notes and saved views.
-- Aligning and comparing in the Desktop, whose investigation window (revision 257) lists, relinks, adds and opens
-  sessions; packaging a workspace with its sessions.
+- Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
+  257), aligns and withdraws them and lists candidate joins (revision 259); packaging a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.

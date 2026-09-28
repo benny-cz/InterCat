@@ -1466,6 +1466,7 @@
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
         "R21: source loss and undecodable records make coverage partial; policy omissions do not",
+        "R21: the investigation window aligns a session by an instant read in both, says what is missing, and withdraws it",
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
@@ -1520,6 +1521,7 @@
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
+        "R22: the investigation window lists candidate joins with their evidence, none established",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"

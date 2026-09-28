@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 258 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 259 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures | Accepting and rejecting candidates, a known two-host exchange (needs a second host), aligning and comparing in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, and since revision 259 the investigation window aligns sessions and lists candidates | Accepting and rejecting candidates, a known two-host exchange (needs a second host), comparing instants in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 259 — aligning and candidate joins in the investigation window (ADR-039, ADR-041):**
+  - An Align dialog offers the three ways - by boot, by wall clocks with a stated agreement and drift, by an instant read
+    in both - and says in words what is missing or refused; Withdraw keeps the revision. Candidate joins list on request,
+    each with its evidence, none established. One parser reads durations, seconds and rates for both front ends.
+  - Live, the dialog aligned two captures by their boot; a byte statement "received 0 B in 0" now says no receive.
 
 - **Revision 258 — a join across captures is a candidate, never established (ADR-041):**
   - `icat workspace correlate` compares every member's one-sided connections: mirrored endpoints of one protocol whose
@@ -461,12 +467,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - cross-host correlation: candidates since revision 258 (ADR-041); next, accepting or rejecting one as a versioned
      revision, the Desktop's candidate list, known address translations, and a real two-host exchange, which needs a
      second host; flagging partial overlap between two captures of one host;
-   - the Desktop's investigation: done in revision 257 for its members, their states, relinks, additions and opening
-     one; next, aligning and comparing there, the merged time across sessions, then pins, notes and saved views;
+   - the Desktop's investigation: its members, states, relinks, additions and opening one (revision 257), aligning,
+     withdrawing and candidate joins (revision 259); next, comparing instants there and the merged time across
+     sessions, then pins, notes and saved views;
    - packaging a workspace with its sessions (§8.4).
 
 ## Verification and cautions
 
+- Revision 259 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,428 tests: 1,424
+  passed, 4 skipped**, zero failures. Live, the Release Desktop opened an investigation of two scratch captures from the
+  command line; UI Automation chose the second session, opened Align, chose "by their boot" and aligned it exactly
+  (4.9344874 s), and the Candidate joins tab found none, as two captures of one machine must. Captures deleted after.
 - Revision 258 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,426 tests: 1,422
   passed, 4 skipped**, zero failures. Live, `icat workspace correlate` over two concurrent explore captures of this
   machine, aligned by their boot, proposed no candidate in 0.4 s, as it must: every connection there is paired within

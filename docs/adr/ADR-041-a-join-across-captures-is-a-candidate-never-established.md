@@ -39,5 +39,6 @@ and alternatives, to keep a person's accepted joins as manual, and never to pair
 - One machine cannot capture a TCP exchange's two ends apart - the TCP source is machine-wide - so the rule is proven on
   synthetic sessions, and live only in proposing nothing on two real captures of one machine. A known two-host exchange,
   M4's exit gate, needs a second host.
-- Accepting or rejecting a candidate as a versioned revision of the investigation, the Desktop's candidate list, and
-  known address translations follow.
+- Revision 259 lists the candidates in the Desktop's investigation window, each with its evidence and named for a screen
+  reader as a sentence. Accepting or rejecting a candidate as a versioned revision of the investigation, and known
+  address translations, follow.
