@@ -55,7 +55,9 @@ redacted package, which is deliberately not linkable to its original.
 ## Consequences
 
 - Revision 253 implements decisions 1 to 5 and the host names of 6: `icat workspace new`, `add`, `show`, `relink` and
-  `alias`, with `show --json` printing `workspace-resolution-v1`.
+  `alias`, with `show --json` printing `workspace-resolution-v1`. Revision 257 shows an investigation in the Desktop, in
+  a window of its own that lists its sessions where they stand with their host and time, relinks and adds them, and
+  opens one in InterCat's window; the start page offers it, and a `.icat-workspace` named on the command line opens it.
 - A live capture's host identity was derived from its machine's name and build alone, an identity from an equal name
   that P6 forbids: two machines of one name and build would have been one host. Since revision 253 it includes the
   installation's machine GUID. Sessions recorded before keep the identity they recorded, so one machine's older and newer

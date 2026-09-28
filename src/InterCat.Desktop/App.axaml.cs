@@ -62,6 +62,13 @@ public sealed partial class App : Avalonia.Application
                 string path = Path.GetFullPath(named);
                 window.Opened += async (_, _) => _ = await window.OpenSessionAsync(path);
             }
+            else if (desktop.Args is [string investigation] && File.Exists(investigation)
+                && investigation.EndsWith(InterCat.Application.InvestigationWorkspace.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                // An investigation named on the command line, or dropped on the program, opens in its own window.
+                string path = Path.GetFullPath(investigation);
+                window.Opened += (_, _) => _ = window.ShowInvestigation(path);
+            }
 
             // A viewer that crashed while recording loses no evidence; this launch offers to finish its session (§3.1
             // step 6), and lists the sessions saved before.

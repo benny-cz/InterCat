@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 256 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 257 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks | Alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions | Aligning and comparing in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 257 — an investigation in the Desktop (ADR-038):**
+  - The start page's Investigation button opens or starts one, and an `.icat-workspace` on the command line opens it,
+    in a window of its own: each session where it stands, its host, its time in words and why it is not present.
+  - Enter or Open shows a session in InterCat's window; Relink and Add sessions keep the investigation whole, each
+    refusal said. Live, its rows read to a screen reader as sentences, and Open showed a member in the main window.
 
 - **Revision 256 — a workspace aligns captures by what they recorded (ADR-039 decision 7, `workspace-v3`):**
   - `icat workspace align --same-boot` aligns two captures that recorded one boot's token exactly through their epochs:
@@ -447,11 +453,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - a person's confirmation that two host identities are one host, versioned (§8.3);
    - cross-host correlation of network observations under timing uncertainty (§8.3), and flagging partial overlap
      between two captures of one host;
-   - the Desktop's workspace: its members, their states and relinks, then pins, notes and saved views;
+   - the Desktop's investigation: done in revision 257 for its members, their states, relinks, additions and opening
+     one; next, aligning and comparing there, the merged time across sessions, then pins, notes and saved views;
    - packaging a workspace with its sessions (§8.4).
 
 ## Verification and cautions
 
+- Revision 257 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,424 tests: 1,420
+  passed, 4 skipped**, zero failures. Live, the Release Desktop opened an investigation of two scratch captures, aligned
+  by their boot, from the command line in its own window; UI Automation read both rows as sentences, and Open showed
+  the second in the main window ("Saved session open"). The captures were deleted after.
 - Revision 256 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,422 tests: 1,418
   passed, 4 skipped**, zero failures. Live, on two `icat record` captures in scratch, deleted after: aligned by their
   shared boot token, the second's start fell 5.0632029 s into the first - their epochs' 50,632,029 ticks - and instants

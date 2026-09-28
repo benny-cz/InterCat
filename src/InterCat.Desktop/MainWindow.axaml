@@ -265,6 +265,18 @@
                     Click="ToggleFollow" AutomationProperties.Name="Pause or resume following the live capture" />
             <Button x:Name="OpenSavedSessionButton" Content="Open saved session" FontSize="13"
                     Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
+            <!-- An investigation spans sessions captured apart, on this machine or others (ADR-038). -->
+            <Button x:Name="InvestigationButton" Content="Investigation" FontSize="13"
+                    AutomationProperties.Name="Open or start an investigation over several sessions">
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem x:Name="OpenInvestigationItem" Header="Open investigation…" Click="OpenInvestigation"
+                            AutomationProperties.Name="Open an investigation file" />
+                  <MenuItem x:Name="NewInvestigationItem" Header="New investigation…" Click="NewInvestigation"
+                            AutomationProperties.Name="Start a new investigation file" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
             <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
                        AutomationProperties.Name="How fresh the live view is" />

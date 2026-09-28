@@ -141,5 +141,6 @@ revision states any of these.
 - Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from shared
   markers (§8.2's third mode).
 - Confirming two host identities as one host; cross-host correlation revisions; pins, notes and saved views.
-- A workspace in the Desktop, and packaging a workspace with its sessions.
+- Aligning and comparing in the Desktop, whose investigation window (revision 257) lists, relinks, adds and opens
+  sessions; packaging a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.

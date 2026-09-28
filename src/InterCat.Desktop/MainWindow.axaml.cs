@@ -796,6 +796,62 @@ public sealed partial class MainWindow : Window, IDisposable
         if (folders.Count > 0 && !closed) _ = await OpenSessionAsync(folders[0].Path.LocalPath);
     }
 
+    private async void OpenInvestigation(object? sender, RoutedEventArgs eventArgs)
+    {
+        IReadOnlyList<Avalonia.Platform.Storage.IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
+        {
+            Title = "Open an InterCat investigation",
+            AllowMultiple = false,
+            FileTypeFilter = [InvestigationFiles],
+        });
+        if (files.Count > 0 && !closed) _ = ShowInvestigation(files[0].Path.LocalPath);
+    }
+
+    private async void NewInvestigation(object? sender, RoutedEventArgs eventArgs)
+    {
+        Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+        {
+            Title = "Start an InterCat investigation",
+            SuggestedFileName = "investigation" + InvestigationWorkspace.Extension,
+            DefaultExtension = InvestigationWorkspace.Extension.TrimStart('.'),
+            FileTypeChoices = [InvestigationFiles],
+            ShowOverwritePrompt = false,
+        });
+        if (file is null || closed) return;
+        _ = ShowInvestigation(file.Path.LocalPath, create: true);
+    }
+
+    private static readonly Avalonia.Platform.Storage.FilePickerFileType InvestigationFiles = new("InterCat investigation")
+    {
+        Patterns = ["*" + InvestigationWorkspace.Extension],
+    };
+
+    /// <summary>
+    /// Shows an investigation in a window of its own, beside the session this window shows, making it first when asked
+    /// and none is there; a file that already exists is opened, never written over. Opening a member opens it here.
+    /// </summary>
+    internal InvestigationWindow ShowInvestigation(string path, bool create = false)
+    {
+        string full = Path.GetFullPath(path);
+        string? made = null;
+        if (create && !File.Exists(full))
+        {
+            try
+            {
+                InvestigationWorkspace.Create(full, DateTimeOffset.UtcNow);
+                made = "A new investigation: add the sessions it covers.";
+            }
+            catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                made = "The investigation could not be made: " + exception.Message;
+            }
+        }
+
+        var window = new InvestigationWindow(full, session => OpenSessionAsync(session), made);
+        window.Show(this);
+        return window;
+    }
+
     /// <summary>
     /// Opens a published session directory as the workspace. A redacted package says so where the status is read, so
     /// nobody mistakes its pseudonyms for the source machine's names and IDs. False when the directory could not open;
@@ -1750,11 +1806,13 @@ public sealed partial class MainWindow : Window, IDisposable
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StartExploringButton.IsEnabled = !busy;
         OpenSavedSessionButton.IsEnabled = !busy;
+        InvestigationButton.IsEnabled = !busy;
 
         // While a capture runs the card holds only what can be done now - stop it, pause the view - and its state. The
         // actions that wait for it to end, and the words about starting one, give the ranked list the rail's height.
         StartExploringButton.IsVisible = !busy;
         OpenSavedSessionButton.IsVisible = !busy;
+        InvestigationButton.IsVisible = !busy;
         CaptureIntro.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
