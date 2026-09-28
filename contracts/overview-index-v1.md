@@ -30,6 +30,14 @@ Coverage is not held: the projection judges each column's coverage from the gene
 for counts it made itself. A column's bounds are held only as the rules above give them, so a reader that would place
 columns otherwise does not use the counts (§3).
 
+Since minor 1 (plan revision 229), when the generation's coverage ledger names a collected ALPC descriptor, it also
+holds the **RPC links** of `contracts/operations-v1.md` §5c: for every pair of process instances a served call joins,
+at each strength a link between them has, the call records at both ends of those links. A link is correlated at best
+and as weak as the weaker binding of its two calls, and a link one of whose calls binds to no instance joins no pair.
+They are held before any evidence policy, which the projection applies to them as it does to relations, so the graph's
+RPC edges come from them and no call is paired or followed before the first view. A generation whose ledger names no
+collected ALPC holds none.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -47,7 +55,7 @@ segment. A generation names at most one.
 Little-endian throughout, with derivation-checkpoint-v1's `str8` and `guid`. An overview is at most 16 MiB.
 
 ```text
-overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 0,
+overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
              session guid, derivedGeneration i64 (>= 1),
              mainBound u16 (= 64), minimapBound u16 (= 2000),
              count u32, (name str8, length i64, digest str8)*   ; covered observation segments, ascending by name
@@ -57,8 +65,14 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 0,
               mainColumns u32,
               count u32, (column u32, mechanism u16, records i32 (> 0))*        ; ascending by (column, mechanism)
               minimapStart i64, minimapEnd i64, minimapColumns u32,
-              count u32, (column u32, records i32 (> 0))*]                      ; ascending by column
+              count u32, (column u32, records i32 (> 0))*],                     ; ascending by column
+             hasRpcLinks u8 (0, 1),                                             ; minor 1 only
+             [count u32, (first guid, second guid, strength u8, records i64 (> 0))*]
+                  ; first before second as their "N" forms order; ascending by (first, second, strength)
 ```
+
+A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; it is read as
+before. A link's strength is `EN-RelationStrength`'s `Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
 
@@ -68,7 +82,9 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
 - a count exceeds the bytes left, a name is not an owned file name, a digest is malformed, or an order above is broken;
 - a column index is outside its columns, a mechanism is not one §23 defines, or bytes remain;
 - the main column count, or the minimap span and column count, are not what this build derives from the extent;
-- the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed.
+- the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed;
+- an RPC link names an empty identity or the same instance twice, puts its pair or its links out of order, has a
+  strength a link cannot have, holds no record, or there are more than 1,000,000 of them.
 
 A refused overview is not used, and the overview says why in one caveat. A reader uses an overview for a generation
 only when it covers exactly the generation's observation segments, with the same names, lengths and digests. Counts
@@ -81,3 +97,4 @@ from the segments' tiles.
   them, so a zoom into a long session reads only the tiles it draws, is the pyramid's next level.
 - Focused counts, which filter rows by owner or channel and are not what these counts hold (§10.3).
 - Byte sums. The overview counts records only, and so does this.
+- RPC links within an interval. A brush still follows the calls it holds from the segments.

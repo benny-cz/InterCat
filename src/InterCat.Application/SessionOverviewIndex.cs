@@ -15,7 +15,14 @@ internal sealed record OverviewCounts(
     long WithoutTime,
     TimeRange? Extent,
     TimelineColumns? Main,
-    TimelineColumns? Minimap);
+    TimelineColumns? Minimap)
+{
+    /// <summary>
+    /// The RPC links between process instances, by pair and strength, when the capture collected ALPC and a persisted
+    /// overview kept them (overview-index-v1 minor 1); null when they were not kept, and then they are derived when needed.
+    /// </summary>
+    public IReadOnlyList<RpcPeerLinkTotal>? RpcLinks { get; init; }
+}
 
 /// <summary>
 /// The persisted whole-session overview (`contracts/overview-index-v1.md`), S4's top level: the counts a finished session's
@@ -31,7 +38,12 @@ internal static class SessionOverviewIndex
     private const string FileSuffix = ".bin";
     private const string What = "persisted overview";
     private const ushort Major = 1;
-    private const ushort Minor = 0;
+
+    /// <summary>Minor 1 adds the RPC link totals after the counts (§3); a minor-0 overview holds none and is still read.</summary>
+    private const ushort Minor = 1;
+
+    /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
+    private const int MaximumRpcLinks = 1_000_000;
 
     private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
@@ -139,6 +151,20 @@ internal static class SessionOverviewIndex
             }
         }
 
+        // Minor 1: the RPC links, kept only for a capture that collected ALPC, in their canonical order.
+        writer.Flag(counts.RpcLinks is not null);
+        if (counts.RpcLinks is { } links)
+        {
+            writer.Count(links.Count);
+            foreach (RpcPeerLinkTotal link in links)
+            {
+                writer.Identity(link.First.Value);
+                writer.Identity(link.Second.Value);
+                writer.U8((byte)link.Strength);
+                writer.I64(link.Records);
+            }
+        }
+
         writer.Flush();
         return writer.Written;
     }
@@ -184,9 +210,9 @@ internal static class SessionOverviewIndex
 
         ushort major = reader.U16();
         ushort minor = reader.U16();
-        if (major != Major || minor != Minor)
+        if (major != Major || minor > Minor)
         {
-            throw reader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.{Minor}.");
+            throw reader.Invalid($"it is format {major}.{minor}, and this build reads {Major}.0 to {Major}.{Minor}.");
         }
 
         Guid session = reader.Identity();
@@ -234,9 +260,10 @@ internal static class SessionOverviewIndex
 
         if (!reader.Flag())
         {
+            IReadOnlyList<RpcPeerLinkTotal>? untimedLinks = minor >= 1 ? ReadLinks(reader) : null;
             reader.RequireEnd();
             return rows == withoutTime
-                ? (new(rows, withoutTime, null, null, null), segments.AsReadOnly())
+                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks }, segments.AsReadOnly())
                 : throw reader.Invalid("it has timed rows and no extent.");
         }
 
@@ -298,10 +325,62 @@ internal static class SessionOverviewIndex
             before = (int)column;
         }
 
+        IReadOnlyList<RpcPeerLinkTotal>? links = minor >= 1 ? ReadLinks(reader) : null;
         reader.RequireEnd();
         return total == timed && mapped == timed
-            ? (new(rows, withoutTime, extent, main, minimap), segments.AsReadOnly())
+            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links }, segments.AsReadOnly())
             : throw reader.Invalid("its columns do not add up to its timed rows.");
+    }
+
+    /// <summary>
+    /// Minor 1's RPC links (§3): none when they were not kept; otherwise each pair of distinct instances, the first in
+    /// display order, at a strength a link can have, with the records it holds, each pair and strength once and in order.
+    /// </summary>
+    private static System.Collections.ObjectModel.ReadOnlyCollection<RpcPeerLinkTotal>? ReadLinks(IndexFileReader reader)
+    {
+        if (!reader.Flag())
+        {
+            return null;
+        }
+
+        int count = reader.Count(16 + 16 + 1 + 8);
+        if (count > MaximumRpcLinks)
+        {
+            throw reader.Invalid($"it keeps more than {MaximumRpcLinks:N0} RPC links.");
+        }
+
+        var links = new List<RpcPeerLinkTotal>(count);
+        for (int index = 0; index < count; index++)
+        {
+            var first = new ProcessInstanceId(reader.Identity());
+            var second = new ProcessInstanceId(reader.Identity());
+            var strength = (RelationStrength)reader.U8();
+            long records = reader.I64();
+            if (first.Value == Guid.Empty || second.Value == Guid.Empty
+                || string.CompareOrdinal(first.ToString(), second.ToString()) >= 0
+                || strength is not (RelationStrength.Correlated or RelationStrength.Candidate or RelationStrength.Conflicting)
+                || records <= 0
+                || (links.Count > 0 && CompareLinks(links[^1], first, second, strength) >= 0))
+            {
+                throw reader.Invalid("an RPC link names no pair of distinct instances in order, a strength a link cannot have, "
+                    + "or no record, or is out of order.");
+            }
+
+            links.Add(new(first, second, strength, records));
+        }
+
+        return links.AsReadOnly();
+    }
+
+    private static int CompareLinks(RpcPeerLinkTotal before, ProcessInstanceId first, ProcessInstanceId second, RelationStrength strength)
+    {
+        int order = string.CompareOrdinal(before.First.ToString(), first.ToString());
+        if (order == 0)
+        {
+            order = string.CompareOrdinal(before.Second.ToString(), second.ToString());
+        }
+
+        return order != 0 ? order : before.Strength.CompareTo(strength);
     }
 
     private static StoreDependency[] Named(SessionManifestV1 manifest, IReadOnlyList<string> names)

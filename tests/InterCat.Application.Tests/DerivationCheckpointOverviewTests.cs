@@ -296,6 +296,90 @@ public sealed class DerivationCheckpointOverviewTests
         _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read((byte[])[.. bytes, 0], manifest.SessionId));
     }
 
+    [Fact(DisplayName = "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment")]
+    public void AnRpcPeersSessionReopensWithItsLinks()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = RpcPeerEdgesTests.LinkedCalls();
+        Publish(session.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        CommunicationEdge derived = Assert.Single(SessionOverviewProjector.Project(session.Store).Edges, edge => edge.Mechanism == Mechanism.Rpc);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+
+        // The overview keeps the two links as one pair's total; a reopen draws the edge from it and opens no segment.
+        (OverviewCounts kept, _) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!, SessionOverviewIndex.MaximumBytes),
+            session.Store.Current!.SessionId);
+        RpcPeerLinkTotal total = Assert.Single(kept.RpcLinks!);
+        Assert.Equal((RelationStrength.Correlated, 8L), (total.Strength, total.Records));
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        CommunicationEdge drawn = Assert.Single(SessionOverviewProjector.Project(reopened).Edges, edge => edge.Mechanism == Mechanism.Rpc);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(derived, drawn);
+
+        // A capture that collected no ALPC keeps no links at all.
+        using var plain = new TemporarySession();
+        Publish(plain.Store, rows, fields: fields, coverage: RpcLedger(alpc: false));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(plain.Store, Committed).Outcome);
+        (OverviewCounts none, _) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(plain.Store.Root, SessionOverviewIndex.NamedBy(plain.Store.Current!)!, SessionOverviewIndex.MaximumBytes),
+            plain.Store.Current!.SessionId);
+        Assert.Null(none.RpcLinks);
+    }
+
+    [Fact(DisplayName = "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused")]
+    public void PersistedRpcLinksReadBackOrAreRefused()
+    {
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        OverviewCounts counts = SessionOverviewProjector.Count(segments, CancellationToken.None);
+        StoreDependency[] covered = SessionOverviewIndex.ObservationSegments(manifest);
+        var first = new ProcessInstanceId(Guid.Parse("11111111-0000-4000-8000-000000000001"));
+        var second = new ProcessInstanceId(Guid.Parse("22222222-0000-4000-8000-000000000002"));
+        RpcPeerLinkTotal[] links =
+        [
+            new(first, second, RelationStrength.Correlated, 8),
+            new(first, second, RelationStrength.Candidate, 3),
+        ];
+        byte[] Written(OverviewCounts written)
+        {
+            using var stream = new MemoryStream();
+            _ = SessionOverviewIndex.Write(stream, manifest.SessionId, manifest.Generation, covered, written);
+            return stream.ToArray();
+        }
+
+        byte[] bytes = Written(counts with { RpcLinks = links });
+        Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
+
+        // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links.
+        byte[] minorZero = Written(counts)[..^1];
+        minorZero[10] = 0;
+        OverviewCounts earlier = SessionOverviewIndex.Read(minorZero, manifest.SessionId).Counts;
+        Assert.Null(earlier.RpcLinks);
+        Assert.Equal(counts.Main!.Tallies(), earlier.Main!.Tallies());
+
+        // A link at a strength no link has, out of order, or joining an instance to itself is refused.
+        foreach (RpcPeerLinkTotal[] damaged in new[]
+        {
+            new[] { new RpcPeerLinkTotal(first, second, RelationStrength.Direct, 8) },
+            [links[1], links[0]],
+            [new RpcPeerLinkTotal(second, first, RelationStrength.Correlated, 8)],
+            [new RpcPeerLinkTotal(first, first, RelationStrength.Correlated, 8)],
+        })
+        {
+            Assert.Contains("an RPC link", Assert.Throws<InvalidDataException>(
+                () => SessionOverviewIndex.Read(Written(counts with { RpcLinks = damaged }), manifest.SessionId)).Message,
+                StringComparison.Ordinal);
+        }
+    }
+
     /// <summary>
     /// Publishes, as the next generation, a checkpoint of the current one when asked and an overview holding
     /// <paramref name="overview"/> when given. The checkpoint is in the format revisions 162 to 165 wrote, without the

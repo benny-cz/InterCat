@@ -151,10 +151,11 @@ public static class SessionOverviewProjector
                 group.Max(relation => relation.Strength)))];
 
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
-        // §5c). A session without ALPC reads nothing here, so its first view opens no segment on their account.
-        RpcPeerEdge[] rpc = RpcPeerEdges.Collected(coverage)
-            ? [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)]
-            : [];
+        // §5c): from the links a persisted overview kept, or followed here when it kept none. A session without ALPC
+        // reads nothing for them, so its first view opens no segment on their account.
+        RpcPeerEdge[] rpc = !RpcPeerEdges.Collected(coverage) ? []
+            : counted.RpcLinks is { } kept ? [.. RpcPeerEdges.Of(kept, policy)]
+            : [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
             edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength))];
 

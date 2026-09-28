@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 228 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 229 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 229 — an RPC peers session reopens without opening a segment (S1):**
+  - The persisted overview (overview-index-v1 minor 1) keeps the RPC links of a capture that collected ALPC, by
+    instance pair and strength, before any evidence policy; the graph's RPC edges are read from them.
+  - A minor-0 overview reads as before and keeps none; a brush still follows the calls it holds.
 
 - **Revision 228 — peers of RPC calls in metrics (metrics-v1 §8a):**
   - participant(P), peer(P,Q), between(A,B) either way, grouping by peer and ActivePeers with a focus read a call's
@@ -2017,8 +2022,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         the relation rule (`rpc-call-peer-v1`, operations-v1 §5c) in `icat operations`; done in revision 226, other ends
         on the RPC rung; done in revision 227, RPC edges in the graph for a session that collected ALPC, counting call
         records and never ALPC's (§5.1, M3's exit gate); done in revision 228, peers counted from the links
-        (metrics-v1 §8a); next, the links persisted in the derivation checkpoint, so an RPC peers session's first view
-        opens no segment either.
+        (metrics-v1 §8a); done in revision 229, the links kept with the persisted overview, so an RPC peers session's
+        first view opens no segment either.
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
@@ -2076,6 +2081,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 229 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,350 tests: 1,346
+  passed, 4 skipped**, zero failures; two of them hold a reopen that draws the RPC edge with no segment open, a
+  minor-0 overview read as before, and damaged links refused.
 - Revision 228 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,348 tests: 1,344
   passed, 4 skipped**, zero failures; three of them hold peer(P,Q), grouping by peer, participant(P), between(A,B)
   and a count of peers over linked calls. A real elevated `icat record --profile rpc-peers` session was answered by

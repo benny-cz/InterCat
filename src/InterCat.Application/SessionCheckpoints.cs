@@ -93,6 +93,17 @@ public static class SessionCheckpoints
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
             OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
+
+            // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
+            // (overview-index-v1 §3); one that did not keeps none, and reads nothing for them.
+            if (RpcPeerEdges.Collected(SessionSegments.CoverageLedger(store.Root, manifest)))
+            {
+                counts = counts with
+                {
+                    RpcLinks = RpcPeerEdges.Totals(derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken)),
+                };
+            }
+
             long next = store.NextGeneration;
             using StoreStagingFile checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index);
             long bytes = DerivationCheckpoint.Write(

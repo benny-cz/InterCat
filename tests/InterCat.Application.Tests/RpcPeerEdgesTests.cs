@@ -57,7 +57,7 @@ public sealed class RpcPeerEdgesTests
     /// A caller's three calls to the service control manager and the three the host served, the first and third linked by
     /// an ALPC message sent on the caller's thread and received on the thread that began the served call.
     /// </summary>
-    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls()
+    internal static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls()
     {
         ObservationRowV1[] messages =
         [
