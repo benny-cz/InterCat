@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v1.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v2.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v1.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v2.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -58,7 +58,7 @@ public sealed record WorkspaceMember
 /// <summary>A person's name for a host identity; it makes no two identities one host (§8.3).</summary>
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
-/// <summary>A workspace as its file holds it (`workspace-v1`).</summary>
+/// <summary>A workspace as its file holds it (`workspace-v2`; a `workspace-v1` file is read as one without alignments).</summary>
 public sealed record InvestigationWorkspaceFile
 {
     public required string Contract { get; init; }
@@ -72,6 +72,12 @@ public sealed record InvestigationWorkspaceFile
     public required IReadOnlyList<WorkspaceMember> Members { get; init; }
 
     public required IReadOnlyList<WorkspaceHostAlias> HostAliases { get; init; }
+
+    /// <summary>The member whose session clock is the workspace's time, once a member is aligned to it; null before.</summary>
+    public Guid? TimeReference { get; init; }
+
+    /// <summary>Every alignment revision, in the order recorded; a member's latest one is in force (§8.2).</summary>
+    public IReadOnlyList<WorkspaceAlignment> Alignments { get; init; } = [];
 }
 
 /// <summary>A member as resolved against its path: the generation found there, and why it is not present, when not.</summary>
@@ -91,13 +97,16 @@ public sealed record WorkspaceMemberResolution(
 public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Guid> Members);
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v1` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v2` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
-/// person relinks it, and a relink checks identity.
+/// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
-public static class InvestigationWorkspace
+public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v1";
+    public const string Contract = "workspace-v2";
+
+    /// <summary>The first version, revision 253's: members and host names, no time. It is read, and written as the current one.</summary>
+    public const string FirstContract = "workspace-v1";
 
     /// <summary>A workspace file's conventional extension, added to a new workspace's name when it has none.</summary>
     public const string Extension = ".icat-workspace";
@@ -112,6 +121,7 @@ public static class InvestigationWorkspace
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>The path a new workspace named <paramref name="path"/> is made at: the conventional extension added when it has none.</summary>
@@ -259,7 +269,7 @@ public static class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v1.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v2.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -402,9 +412,9 @@ public static class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract != Contract)
+        if (workspace.Contract is not (Contract or FirstContract))
         {
-            return $"it is '{workspace.Contract}', not {Contract}";
+            return $"it is '{workspace.Contract}', neither {FirstContract} nor {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)
@@ -447,7 +457,7 @@ public static class InvestigationWorkspace
         return workspace.HostAliases.GroupBy(alias => alias.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1) is { } name
             ? $"'{name.Key}' names two host identities"
-            : null;
+            : TimeProblem(workspace);
     }
 
     /// <summary>
@@ -459,7 +469,7 @@ public static class InvestigationWorkspace
         string temporary = $"{full}.{Guid.NewGuid():N}.writing";
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(workspace, Json) + "\n");
+            File.WriteAllText(temporary, JsonSerializer.Serialize(workspace with { Contract = Contract }, Json) + "\n");
             if (readText is not null && (!File.Exists(full) || File.ReadAllText(full) != readText))
             {
                 throw new InvalidOperationException(

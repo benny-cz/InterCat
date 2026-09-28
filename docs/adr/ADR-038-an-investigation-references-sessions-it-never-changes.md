@@ -2,7 +2,7 @@
 
 - Status: accepted; the workspace manifest, adding, showing, relinking and host names are revision 253
 - Date: 2026-09-28
-- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, `contracts/workspace-v1.md`, `contracts/store-v1.md`
+- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v2.md`, `contracts/store-v1.md`
 
 ## Context
 
@@ -23,10 +23,11 @@ redacted package, which is deliberately not linkable to its original.
 
 ## Decision
 
-1. **A workspace is one file, `workspace-v1`, and changes no session.** A `.icat-workspace` JSON file names its members;
-   it never writes to a session - reading one opens it as a viewer does and reads its journal's header - and a session
-   never learns it belongs to one. A source's timestamps, records and derivations stay exactly its own (I9). The file is
-   kept beside its sessions, never inside one, whose directory holds only its own files.
+1. **A workspace is one file, `workspace-v1` (`workspace-v2` since revision 254), and changes no session.** A
+   `.icat-workspace` JSON file names its members; it never writes to a session - reading one opens it as a viewer does
+   and reads its journal's header - and a session never learns it belongs to one. A source's timestamps, records and
+   derivations stay exactly its own (I9). The file is kept beside its sessions, never inside one, whose directory holds
+   only its own files.
 2. **A member is a session identity, not a path.** Each member records the session's id and the capture its journal
    records, the generation selected and that manifest's digest, and its source clock's host, clock and capture epoch. Its
    path is where it was last found: relative to the workspace's folder when the session lies under it, so a workspace and

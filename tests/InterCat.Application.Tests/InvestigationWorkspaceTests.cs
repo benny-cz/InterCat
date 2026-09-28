@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -224,7 +225,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         string[] refused =
         [
-            text.Replace("\"workspace-v1\"", "\"workspace-v2\"", StringComparison.Ordinal),
+            text.Replace("\"workspace-v2\"", "\"workspace-v9\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\"", "\"notes\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": null", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": [{ \"hostId\": \"" + Guid.NewGuid() + "\", \"alias\": \" \" }]", StringComparison.Ordinal),
@@ -250,6 +251,128 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(text, File.ReadAllText(workspace));
         Assert.Equal([workspace], Directory.EnumerateFiles(root));
     }
+
+    [Fact(DisplayName = "I9: a manual alignment is an annotation, kept and reopened as recorded, and changes no timestamp")]
+    public void AManualAlignmentIsAnAnnotation()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        SessionStore beta = NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New());
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, beta.Root.Path, Now).SessionId;
+        IReadOnlyDictionary<string, string> before = Snapshot(alpha, beta);
+
+        // Beta's 2 s is alpha's 5 s, within 500 µs, the clocks drifting apart by at most 50 ppm: alpha's clock becomes the
+        // workspace's time.
+        WorkspaceAlignment aligned = InvestigationWorkspace.Align(workspace, b, Seconds(2), a, Seconds(5), 500_000, 50, " shared connect ", Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((a, 1, "shared connect"), (read.TimeReference, aligned.Revision, aligned.Note));
+        Assert.Equal([aligned], read.Alignments);
+        Assert.Equal(Seconds(5), InvestigationWorkspace.Place(read, b, Seconds(2)).WorkspaceNanoseconds);
+        Assert.Equal(new TimeUncertainty(500_000, 0), InvestigationWorkspace.Place(read, b, Seconds(2)).Uncertainty);
+        Assert.Equal(new TimeUncertainty(600_000, 0), InvestigationWorkspace.Place(read, b, Seconds(4)).Uncertainty);
+        Assert.Equal((Seconds(7), TimeUncertainty.Exact), Placed(InvestigationWorkspace.Place(read, a, Seconds(7))));
+        Assert.Equal((WorkspaceTimeGap.None, (long?)null), (InvestigationWorkspace.Place(read, a, Seconds(7)).Gap, InvestigationWorkspace.Place(read, a, Seconds(7)).FromAnchorNanoseconds));
+        Assert.Equal(Seconds(2), InvestigationWorkspace.Place(read, b, Seconds(4)).FromAnchorNanoseconds);
+
+        // Withdrawn, the member has no workspace time, and with no member aligned the workspace has no time reference; both
+        // revisions are kept.
+        InvestigationWorkspace.Withdraw(workspace, b, Now.AddMinutes(1));
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Null(read.TimeReference);
+        Assert.Equal([WorkspaceAlignmentMode.Manual, WorkspaceAlignmentMode.Withdrawn], read.Alignments.Select(alignment => alignment.Mode));
+        Assert.Equal(WorkspaceTimeGap.NoTimeReference, InvestigationWorkspace.Place(read, b, Seconds(2)).Gap);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now));
+
+        // Any member may then be the reference. Its sessions were never written to.
+        InvestigationWorkspace.Align(workspace, a, Seconds(5), b, Seconds(2), 1_000_000, null, null, Now.AddMinutes(2));
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((b, 3), (read.TimeReference, read.Alignments[^1].Revision));
+        Assert.Equal(before, Snapshot(alpha, beta));
+    }
+
+    [Fact(DisplayName = "R21: a workspace orders instants across members only as far as their alignments allow")]
+    public void AWorkspaceOrdersInstantsOnlyAsFarAsItsAlignmentsAllow()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "a"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "b"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "c"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "d"), "lab-4", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, Seconds(2), a, Seconds(5), 500_000, 50, null, Now);
+        InvestigationWorkspace.Align(workspace, c, Seconds(1), a, Seconds(5), 1_000_000, null, null, Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+
+        // Within the anchor's bound, no order; beyond it, an order with the pair's uncertainty.
+        WorkspaceComparison close = InvestigationWorkspace.Compare(read, a, Seconds(5), b, Seconds(2) + 400_000);
+        Assert.Equal((TimeOrder.Ambiguous, 400_000L), (close.Result.Order, close.Result.DifferenceNanoseconds));
+        WorkspaceComparison apart = InvestigationWorkspace.Compare(read, a, Seconds(5), b, Seconds(2) + 1_000_000);
+        Assert.Equal(TimeOrder.Before, apart.Result.Order);
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"The first is before the second by {1.0m:N1} ms, more than their combined uncertainty of ±{501m:N0} µs."),
+            apart.Statement(CultureInfo.CurrentCulture));
+
+        // Two aligned members' bounds add: 500 µs and 1 ms make 1.5 ms. Away from its anchor, a member with no drift bound
+        // has an unknown uncertainty, so nothing is stated, not even the difference; nor for a member not aligned at all.
+        Assert.Equal(1_500_000, InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(1)).Result.Uncertainty!.Value.HalfWidthNanoseconds);
+        WorkspaceComparison drifting = InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(3));
+        Assert.Equal(new TimeComparison(TimeOrder.Unknown, null, null), drifting.Result);
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"No order is stated: the second instant's session's drift from the time reference is not stated, so {2.0m:N1} s from its anchor its uncertainty is unknown."),
+            drifting.Statement(CultureInfo.CurrentCulture));
+        Assert.Equal("No order is stated: the second instant's session is not aligned to the workspace's time.",
+            InvestigationWorkspace.Compare(read, a, Seconds(1), d, Seconds(1)).Statement(CultureInfo.CurrentCulture));
+
+        // Two instants of one member are ordered exactly, on its one clock, aligned or not.
+        WorkspaceComparison one = InvestigationWorkspace.Compare(read, d, Seconds(3), d, Seconds(1));
+        Assert.Equal((TimeOrder.After, TimeUncertainty.Exact), (one.Result.Order, one.Result.Uncertainty));
+        Assert.EndsWith("on one clock.", one.Statement(CultureInfo.CurrentCulture), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R22: a member is aligned to the workspace's one time reference, and a file whose time contradicts itself is refused")]
+    public void AnAlignmentIsToTheOneTimeReference()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "a"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "b"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "c"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        string members = File.ReadAllText(workspace);
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 10, null, Now);
+
+        Assert.Contains("is the workspace's time reference", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("so a member is aligned to it", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Align(workspace, c, 0, b, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, c, 0, 1_000, 10, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, a, 0, -1, 10, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, a, 0, 1_000, -10, null, Now));
+        string aligned = File.ReadAllText(workspace);
+
+        // Revision 253's files, which hold no time, are read, and written as the current version.
+        File.WriteAllText(workspace, members.Replace("\"workspace-v2\"", "\"workspace-v1\"", StringComparison.Ordinal));
+        Assert.Equal(3, InvestigationWorkspace.Read(workspace).Members.Count);
+        InvestigationWorkspace.Alias(workspace, InvestigationWorkspace.Read(workspace).Members[0].HostId, "lab", Now);
+        Assert.Equal(InvestigationWorkspace.Contract, InvestigationWorkspace.Read(workspace).Contract);
+
+        // A file whose time contradicts itself is refused whole.
+        string[] refused =
+        [
+            aligned.Replace("\"workspace-v2\"", "\"workspace-v1\"", StringComparison.Ordinal),
+            aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{c}\"", StringComparison.Ordinal),
+            aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{Guid.NewGuid()}\"", StringComparison.Ordinal),
+            aligned.Replace("\"withinNanoseconds\": 1000", "\"withinNanoseconds\": -1", StringComparison.Ordinal),
+            aligned.Replace("\"mode\": \"Manual\"", "\"mode\": \"Withdrawn\"", StringComparison.Ordinal),
+            aligned.Replace("\"revision\": 1", "\"revision\": 0", StringComparison.Ordinal),
+        ];
+        foreach (string variant in refused)
+        {
+            Assert.NotEqual(aligned, variant);
+            File.WriteAllText(workspace, variant);
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace));
+        }
+    }
+
+    private static long Seconds(int seconds) => seconds * 1_000_000_000L;
+
+    private static (long?, TimeUncertainty?) Placed(WorkspaceInstant instant) => (instant.WorkspaceNanoseconds, instant.Uncertainty);
 
     private string NewWorkspace()
     {

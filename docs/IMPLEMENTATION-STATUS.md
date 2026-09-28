@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 253 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 254 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (`workspace-v1`, ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's | Clock mappings with their uncertainty (§8.2), confirmed host equivalence, cross-host correlation, the Desktop's workspace, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty | Alignment from recorded wall clocks and shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 254 — an alignment is a bounded statement, and an unknown bound orders nothing (M4, ADR-039):**
+  - §8.2's model in `InterCat.Domain`: an affine clock mapping with named contributions - bounds added, measured parts in
+    quadrature, one unknown making the whole unknown - and an order between two clocks' instants stated only beyond the
+    pair's uncertainty. §8.2's pair formula counted the systematic part twice; it now names each side's two parts.
+  - `icat workspace align` records a person's statement that a member's instant is the time reference's, within a bound
+    and an optional drift bound, as a kept revision of the file (`workspace-v2`, which reads version 1); `compare`
+    states an order, an ambiguity, or nothing - not even the difference - with the reason. A stated bound is rounded up.
 
 - **Revision 253 — an investigation references sessions it never changes (M4, ADR-038, `workspace-v1`):**
   - `icat workspace new | add | show | relink | alias` keeps an `.icat-workspace` file naming separately valid sessions
@@ -415,9 +423,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      197's live pass found it had none of. (The relationship table's scope, the pass's other finding, is revision 198's.)
    - Done in revision 203: TCP connection events no longer admit the source's always-zero size field as bytes.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
-   their resolution, and host names (`workspace-v1`). Next, in order:
-   - clock mappings between members' clocks (§8.2's affine segments with their uncertainty), recorded as annotations;
-     until one exists, no cross-host order, latency or pairing is stated;
+   their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
+   member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
+   (`workspace-v2`). Next, in order:
+   - alignment from recorded wall clocks: a capture records paired monotonic and wall-clock samples with their
+     acquisition uncertainty, and a boot identity, so two captures of one boot share a clock exactly; a
+     synchronization accuracy no one stated stays unknown;
+   - a rate from two separated anchors, and aligning through another aligned member;
    - a person's confirmation that two host identities are one host, versioned (§8.3);
    - cross-host correlation of network observations under timing uncertainty (§8.3), and flagging partial overlap
      between two captures of one host;
@@ -426,6 +438,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 254 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,413 tests: 1,409
+  passed, 4 skipped**, zero failures. Live, on two `icat record` captures in scratch, deleted after: aligned by their
+  recorded epochs on this machine's one QPC counter (48,342,261 ticks apart), `compare` stated instants 26.1 µs apart as
+  ordered beyond ±1.0 µs, the anchor itself as ambiguous, and 6.3 s apart as ordered; with no drift bound, an instant
+  1.0 s from the anchor as no order; withdrawn, nothing. A session's files hashed the same before and after.
 - Revision 253 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,407 tests: 1,403
   passed, 4 skipped**, zero failures. Live, with the Release CLI on captures recorded into scratch and deleted after: a
   copy of a member was refused; a moved member read Missing and was relinked; a rederived one read Advanced, then
@@ -545,4 +562,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–039; the complete historical ledger linked above.

@@ -1,11 +1,12 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using InterCat.Application;
 using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v1.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v2.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -15,6 +16,13 @@ internal sealed record WorkspaceDocument
     public required DateTimeOffset UpdatedUtc { get; init; }
     public required IReadOnlyList<WorkspaceMemberDocument> Members { get; init; }
     public required IReadOnlyList<WorkspaceHost> Hosts { get; init; }
+
+    /// <summary>The member whose clock is the workspace's time; null while no member is aligned.</summary>
+    public required Guid? TimeReference { get; init; }
+
+    /// <summary>Every alignment revision, in the order recorded; each member's latest one is in force.</summary>
+    public required IReadOnlyList<WorkspaceAlignment> Alignments { get; init; }
+
     public required IReadOnlyList<string> Caveats { get; init; }
 }
 
@@ -43,15 +51,53 @@ internal sealed record WorkspaceMemberDocument
     public required Guid ClockId { get; init; }
     public required long CaptureEpochNativeTicks { get; init; }
     public required DateTimeOffset AddedUtc { get; init; }
+
+    /// <summary>The revision of the member's alignment in force; null when it is the time reference or not aligned.</summary>
+    public required int? Alignment { get; init; }
+}
+
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v2.md` §5).</summary>
+internal sealed record WorkspaceComparisonDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required WorkspaceInstantDocument First { get; init; }
+    public required WorkspaceInstantDocument Second { get; init; }
+    public required TimeOrder Order { get; init; }
+
+    /// <summary>The second instant less the first in the workspace's time; null when nothing is stated.</summary>
+    public required long? DifferenceNanoseconds { get; init; }
+
+    /// <summary>The pair's half-width; null when it is unknown.</summary>
+    public required double? UncertaintyNanoseconds { get; init; }
+
+    public required string Statement { get; init; }
+}
+
+internal sealed record WorkspaceInstantDocument
+{
+    public required Guid SessionId { get; init; }
+    public required long SessionNanoseconds { get; init; }
+    public required long? WorkspaceNanoseconds { get; init; }
+    public required double? UncertaintyNanoseconds { get; init; }
+
+    /// <summary>Why the instant has no workspace time, or no known uncertainty; None when it has both.</summary>
+    public required WorkspaceTimeGap Gap { get; init; }
+
+    /// <summary>The instant's distance from its member's anchor; null when its member is not aligned.</summary>
+    public required long? FromAnchorNanoseconds { get; init; }
 }
 
 /// <summary>
 /// Makes, extends and shows an investigation workspace (ADR-038, M4): one file naming separately valid sessions by identity,
-/// one member per capture, resolved against where each was last found. It never writes to a session.
+/// one member per capture, resolved against where each was last found, and aligned to one member's clock by a person. It
+/// never writes to a session.
 /// </summary>
-internal static class WorkspaceCommand
+internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v1";
+    public const string ResolutionContract = "workspace-resolution-v2";
+
+    public const string ComparisonContract = "workspace-comparison-v1";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -66,6 +112,9 @@ internal static class WorkspaceCommand
 
         string? verb = command.TakePositional();
         string? workspace = command.TakePositional();
+        string? within = command.TakeOption("--within");
+        string? drift = command.TakeOption("--drift-ppm");
+        string? note = command.TakeOption("--note");
         List<string> operands = [];
         while (command.TakePositional() is { } operand)
         {
@@ -73,6 +122,7 @@ internal static class WorkspaceCommand
         }
 
         bool remove = command.TryTakeFlag("--remove");
+        bool withdraw = command.TryTakeFlag("--withdraw");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
@@ -86,12 +136,19 @@ internal static class WorkspaceCommand
             "add" => (1, int.MaxValue, "icat workspace add <workspace> <session-dir>..."),
             "relink" => (2, 2, "icat workspace relink <workspace> <session> <session-dir>"),
             "alias" => (remove ? 1 : 2, remove ? 1 : 2, "icat workspace alias <workspace> <host> (<name> | --remove)"),
+            "align" when withdraw => (1, 1, "icat workspace align <workspace> <session> --withdraw"),
+            "align" => (2, 2, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>"),
+            "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             _ => (-1, -1, string.Empty),
         };
-        if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (remove && verb != "alias"))
+        bool misplaced = (remove && verb != "alias") || (withdraw && verb != "align")
+            || ((within ?? drift ?? note) is not null && (verb != "align" || withdraw))
+            || (verb == "align" && !withdraw && within is null);
+        if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? $"icat workspace expects new, add, show, relink or alias{(verb is null ? string.Empty : $"; '{verb}' is none of them")}."
+                ? "icat workspace expects new, add, show, relink, alias, align or compare"
+                    + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
             return InterCatExitCode.InvalidInvocation;
@@ -100,12 +157,19 @@ internal static class WorkspaceCommand
         string path = verb == "new" ? InvestigationWorkspace.PathFor(workspace) : Path.GetFullPath(workspace);
         try
         {
+            if (verb == "compare")
+            {
+                return Compare(path, operands[0], operands[1], json);
+            }
+
             InterCatExitCode written = verb switch
             {
                 "new" => New(path),
                 "add" => Add(path, operands),
                 "relink" => Relink(path, operands[0], operands[1]),
                 "alias" => Alias(path, operands[0], remove ? null : operands[1]),
+                "align" when withdraw => Withdraw(path, operands[0]),
+                "align" => Align(path, operands[0], operands[1], within!, drift, note),
                 _ => InterCatExitCode.Success,
             };
             WorkspaceDocument document = Describe(path, cancellationToken);
@@ -177,6 +241,100 @@ internal static class WorkspaceCommand
         return InterCatExitCode.Success;
     }
 
+    private static InterCatExitCode Align(string path, string instant, string referenceInstant, string within, string? drift, string? note)
+    {
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        (WorkspaceMember member, long at) = Instant(workspace, instant);
+        (WorkspaceMember reference, long referenceAt) = Instant(workspace, referenceInstant);
+        long bound = Duration(within)
+            ?? throw new InvalidOperationException($"--within expects a duration with its unit, such as 500us, 2ms or 1s; '{within}' is not one.");
+        double? rate = null;
+        if (drift is not null)
+        {
+            rate = double.TryParse(drift.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
+                && double.IsFinite(parsed) && parsed >= 0
+                ? parsed
+                : throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
+        }
+
+        WorkspaceAlignment alignment = InvestigationWorkspace.Align(
+            path, member.SessionId, at, reference.SessionId, referenceAt, bound, rate, note, DateTimeOffset.UtcNow);
+        ConsoleUi.Success($"Session {Short(member.SessionId)} at {Seconds(at)} is session {Short(reference.SessionId)} at "
+            + $"{Seconds(referenceAt)}, within ±{OperationText.Duration(bound, CultureInfo.CurrentCulture)} "
+            + string.Create(CultureInfo.InvariantCulture, $"(alignment revision {alignment.Revision})."));
+        if (rate is null)
+        {
+            ConsoleUi.Warn("No drift bound was stated, so away from the anchor this member's uncertainty is unknown and no order "
+                + "is stated there. --drift-ppm bounds how fast the two clocks drift apart.");
+        }
+
+        return InterCatExitCode.Success;
+    }
+
+    private static InterCatExitCode Withdraw(string path, string session)
+    {
+        WorkspaceMember member = InvestigationWorkspace.MemberNamed(InvestigationWorkspace.Read(path), session);
+        WorkspaceAlignment withdrawal = InvestigationWorkspace.Withdraw(path, member.SessionId, DateTimeOffset.UtcNow);
+        ConsoleUi.Success(string.Create(CultureInfo.InvariantCulture,
+            $"Session {Short(member.SessionId)} is not aligned any more (alignment revision {withdrawal.Revision}); its earlier revisions are kept."));
+        return InterCatExitCode.Success;
+    }
+
+    private static InterCatExitCode Compare(string path, string first, string second, bool json)
+    {
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        (WorkspaceMember a, long at) = Instant(workspace, first);
+        (WorkspaceMember b, long bt) = Instant(workspace, second);
+        WorkspaceComparison comparison = InvestigationWorkspace.Compare(workspace, a.SessionId, at, b.SessionId, bt);
+        var document = new WorkspaceComparisonDocument
+        {
+            Contract = ComparisonContract,
+            Path = path,
+            First = InstantDocument(comparison.First),
+            Second = InstantDocument(comparison.Second),
+            Order = comparison.Result.Order,
+            DifferenceNanoseconds = comparison.Result.DifferenceNanoseconds,
+            UncertaintyNanoseconds = comparison.Result.Uncertainty?.HalfWidthNanoseconds,
+            Statement = comparison.Statement(CultureInfo.CurrentCulture),
+        };
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
+            return InterCatExitCode.Success;
+        }
+
+        ConsoleUi.Heading("Comparison");
+        ConsoleUi.Field("First", Placed(comparison.First, workspace));
+        ConsoleUi.Field("Second", Placed(comparison.Second, workspace));
+        ConsoleUi.Line();
+        ConsoleUi.Line("  " + document.Statement);
+        return InterCatExitCode.Success;
+    }
+
+    private static WorkspaceInstantDocument InstantDocument(WorkspaceInstant instant) => new()
+    {
+        SessionId = instant.SessionId,
+        SessionNanoseconds = instant.SessionNanoseconds,
+        WorkspaceNanoseconds = instant.WorkspaceNanoseconds,
+        UncertaintyNanoseconds = instant.Uncertainty?.HalfWidthNanoseconds,
+        Gap = instant.Gap,
+        FromAnchorNanoseconds = instant.FromAnchorNanoseconds,
+    };
+
+    /// <summary>An instant as a person reads it: its session and time, and where it falls in the workspace's time.</summary>
+    private static string Placed(WorkspaceInstant instant, InvestigationWorkspaceFile workspace)
+    {
+        string at = $"session {Short(instant.SessionId)} at {Seconds(instant.SessionNanoseconds)}";
+        return instant switch
+        {
+            _ when instant.SessionId == workspace.TimeReference => at + ", the workspace's time reference",
+            { WorkspaceNanoseconds: { } placed, Uncertainty: { } uncertainty } =>
+                $"{at}, which is {Seconds(placed)} ±{OperationText.DurationAtLeast(uncertainty.HalfWidthNanoseconds, CultureInfo.CurrentCulture)} of workspace time",
+            { WorkspaceNanoseconds: { } placed } => $"{at}, which is {Seconds(placed)} of workspace time, its uncertainty unknown",
+            _ => at + ", which has no workspace time",
+        };
+    }
+
     private static WorkspaceDocument Describe(string path, CancellationToken cancellationToken)
     {
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
@@ -188,13 +346,13 @@ internal static class WorkspaceCommand
             "Members are grouped by host identity: a live capture's is derived from its installation and its machine's name "
                 + "and build, an import's from its file. Equal identities are evidence of one host, never proof, and no name "
                 + "or address makes two of them one.",
+            workspace.TimeReference is null
+                ? "No member is aligned, so the workspace has no time across members and states no order, latency or pairing "
+                    + "between them: their uncertainty is unknown, not zero."
+                : "The workspace's time is its reference member's clock. An aligned member's instants are placed in it with "
+                    + "the uncertainty its alignment states, and an order across members is stated only beyond it; an "
+                    + "alignment is an annotation and changes no timestamp.",
         ];
-        if (hosts.Count > 1)
-        {
-            caveats.Add("No clock mapping between these hosts exists yet, so no order, latency or pairing across them is "
-                + "stated: its uncertainty is unknown, not zero.");
-        }
-
         return new()
         {
             Contract = ResolutionContract,
@@ -218,8 +376,11 @@ internal static class WorkspaceCommand
                 ClockId = resolution.Member.ClockId,
                 CaptureEpochNativeTicks = resolution.Member.CaptureEpochNativeTicks,
                 AddedUtc = resolution.Member.AddedUtc,
+                Alignment = InvestigationWorkspace.ActiveAlignment(workspace, resolution.Member.SessionId)?.Revision,
             })],
             Hosts = hosts,
+            TimeReference = workspace.TimeReference,
+            Alignments = workspace.Alignments,
             Caveats = caveats,
         };
     }
@@ -233,6 +394,11 @@ internal static class WorkspaceCommand
             ? "none yet"
             : string.Join(", ", document.Members.GroupBy(member => member.State).OrderBy(group => group.Key)
                 .Select(group => string.Create(CultureInfo.CurrentCulture, $"{group.Count():N0} {group.Key.ToString().ToLowerInvariant()}"))));
+        int others = document.Members.Count - 1;
+        ConsoleUi.Field("Time", document.TimeReference is { } reference
+            ? $"session {Short(reference)}'s clock; " + string.Create(CultureInfo.CurrentCulture,
+                $"{document.Members.Count(member => member.Alignment is not null):N0} of {others:N0} other {(others == 1 ? "member" : "members")} aligned to it")
+            : "none: no member is aligned, so no order across members is stated");
         ConsoleUi.Line();
         if (document.Members.Count == 0)
         {
@@ -241,7 +407,7 @@ internal static class WorkspaceCommand
         }
 
         ConsoleUi.Table(
-            ["Session", "State", "Generation", "Host", "Path"],
+            ["Session", "State", "Generation", "Host", "Time", "Path"],
             [.. document.Members.Select(member => (IReadOnlyList<string>)
             [
                 Short(member.SessionId),
@@ -253,11 +419,44 @@ internal static class WorkspaceCommand
                 },
                 ConsoleUi.Count(member.Generation),
                 member.Host ?? Short(member.HostId),
+                member.SessionId == document.TimeReference ? "reference"
+                    : member.Alignment is { } revision ? string.Create(CultureInfo.CurrentCulture, $"aligned (revision {revision:N0})")
+                    : "not aligned",
                 Shown(member.Path, member.FullPath),
             ])]);
         foreach (WorkspaceMemberDocument member in document.Members.Where(member => member.Reason is not null))
         {
             ConsoleUi.Note($"{Short(member.SessionId)}: {member.Reason}");
+        }
+
+        WorkspaceAlignment[] inForce = [.. document.Members
+            .Select(member => document.Alignments.Where(alignment => alignment.SessionId == member.SessionId).MaxBy(alignment => alignment.Revision))
+            .OfType<WorkspaceAlignment>()
+            .Where(alignment => alignment.Mode == WorkspaceAlignmentMode.Manual)];
+        if (inForce.Length > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Alignments");
+            ConsoleUi.Table(
+                ["Session", "At", "Is reference at", "Within", "Drift", "Revision", "Note"],
+                [.. inForce.Select(alignment => (IReadOnlyList<string>)
+                [
+                    Short(alignment.SessionId),
+                    Seconds(alignment.SessionNanoseconds!.Value),
+                    Seconds(alignment.ReferenceNanoseconds!.Value),
+                    "±" + OperationText.Duration(alignment.WithinNanoseconds!.Value, CultureInfo.CurrentCulture),
+                    alignment.DriftPartsPerMillion is { } drift ? string.Create(CultureInfo.CurrentCulture, $"≤ {drift:0.###} ppm") : "not stated",
+                    ConsoleUi.Count(alignment.Revision),
+                    alignment.Note ?? "-",
+                ])]);
+            int earlier = document.Alignments.Count - inForce.Length;
+            if (earlier > 0)
+            {
+                ConsoleUi.Note(earlier == 1
+                    ? "1 earlier alignment revision is kept in the file; icat workspace show --json lists it."
+                    : string.Create(CultureInfo.CurrentCulture,
+                        $"{earlier:N0} earlier alignment revisions are kept in the file; icat workspace show --json lists them."));
+            }
         }
 
         ConsoleUi.Line();
@@ -277,6 +476,49 @@ internal static class WorkspaceCommand
         }
     }
 
+    /// <summary>A member and an instant of its session time, written `session@seconds`.</summary>
+    private static (WorkspaceMember Member, long Nanoseconds) Instant(InvestigationWorkspaceFile workspace, string text)
+    {
+        int at = text.LastIndexOf('@');
+        decimal seconds = 0;
+        if (at <= 0 || !decimal.TryParse(text[(at + 1)..].Replace(',', '.'), NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture, out seconds) || Math.Abs(seconds) > 9_000_000_000m)
+        {
+            throw new InvalidOperationException(
+                $"An instant is written <session>@<seconds>, its session time in seconds, such as 3f2a9c1b@12.5; '{text}' is not one.");
+        }
+
+        return (InvestigationWorkspace.MemberNamed(workspace, text[..at]), (long)Math.Round(seconds * 1_000_000_000m, MidpointRounding.ToEven));
+    }
+
+    /// <summary>A duration written with its unit - ns, us, µs, ms or s - in nanoseconds; null when it is not one.</summary>
+    private static long? Duration(string text)
+    {
+        Match match = DurationPattern().Match(text.Trim());
+        if (!match.Success || !decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture, out decimal value))
+        {
+            return null;
+        }
+
+        decimal scale = match.Groups[2].Value switch
+        {
+            "ns" => 1m,
+            "us" or "µs" => 1_000m,
+            "ms" => 1_000_000m,
+            _ => 1_000_000_000m,
+        };
+        decimal nanoseconds = value * scale;
+        return nanoseconds > long.MaxValue ? null : (long)Math.Ceiling(nanoseconds);
+    }
+
+    [GeneratedRegex(@"^([0-9]+(?:[.,][0-9]+)?)\s*(ns|us|µs|ms|s)$", RegexOptions.CultureInvariant)]
+    private static partial Regex DurationPattern();
+
+    /// <summary>A session instant in seconds, to the nanosecond, as a person reads it.</summary>
+    private static string Seconds(long nanoseconds) =>
+        (nanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
+
     private static string Short(Guid identity) => identity.ToString("N")[..8];
 
     /// <summary>A member's path as this system writes paths: relative as stored, or the whole path it resolves to.</summary>
@@ -290,18 +532,29 @@ internal static class WorkspaceCommand
         ConsoleUi.Line("icat workspace show <workspace> [--json]");
         ConsoleUi.Line("icat workspace relink <workspace> <session> <session-dir> [--json]");
         ConsoleUi.Line("icat workspace alias <workspace> <host> (<name> | --remove) [--json]");
+        ConsoleUi.Line("icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>");
+        ConsoleUi.Line("                     [--drift-ppm <rate>] [--note <text>] [--json]");
+        ConsoleUi.Line("icat workspace align <workspace> <session> --withdraw [--json]");
+        ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("An investigation over separately captured sessions (workspace-v1, ADR-038): one file that names each");
+        ConsoleUi.Line("An investigation over separately captured sessions (workspace-v2, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
-        ConsoleUi.Line("  new     makes an empty workspace; a name without an extension gets .icat-workspace.");
-        ConsoleUi.Line("  add     adds sessions at their current generation. A capture is one member: a copy of a");
-        ConsoleUi.Line("          member, or another session of its capture, is refused.");
-        ConsoleUi.Line("  show    resolves each member where it was last found: present, advanced (a newer generation");
-        ConsoleUi.Line("          was published), replaced (an older or separately derived one is there), missing,");
-        ConsoleUi.Line("          different or unreadable, and why. Exits 1 when any member is not present.");
-        ConsoleUi.Line("  relink  points a member at a new path, or at its own to select what is there, only when the");
-        ConsoleUi.Line("          session there is that member. <session> is its identity or a unique leading part.");
-        ConsoleUi.Line("  alias   names a member's host for people; one name never names two host identities.");
-        ConsoleUi.Line("          <host> is its identity, a unique leading part, or its current name.");
+        ConsoleUi.Line("  new      makes an empty workspace; a name without an extension gets .icat-workspace.");
+        ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one member: a copy of a");
+        ConsoleUi.Line("           member, or another session of its capture, is refused.");
+        ConsoleUi.Line("  show     resolves each member where it was last found: present, advanced (a newer generation");
+        ConsoleUi.Line("           was published), replaced (an older or separately derived one is there), missing,");
+        ConsoleUi.Line("           different or unreadable, and why. Exits 1 when any member is not present.");
+        ConsoleUi.Line("  relink   points a member at a new path, or at its own to select what is there, only when the");
+        ConsoleUi.Line("           session there is that member. <session> is its identity or a unique leading part.");
+        ConsoleUi.Line("  alias    names a member's host for people; one name never names two host identities.");
+        ConsoleUi.Line("           <host> is its identity, a unique leading part, or its current name.");
+        ConsoleUi.Line("  align    states that an instant of one member is an instant of another, within a bound: the");
+        ConsoleUi.Line("           first alignment makes the other member's clock the workspace's time. --drift-ppm");
+        ConsoleUi.Line("           bounds how fast the clocks drift apart; without it the uncertainty away from the");
+        ConsoleUi.Line("           anchor is unknown. Seconds are session time; a duration takes ns, us, ms or s.");
+        ConsoleUi.Line("  compare  places two instants in the workspace's time and states their order only beyond");
+        ConsoleUi.Line("           their combined uncertainty; nothing when an instant has no time or its uncertainty");
+        ConsoleUi.Line("           is unknown. Two instants of one member are ordered exactly.");
     }
 }

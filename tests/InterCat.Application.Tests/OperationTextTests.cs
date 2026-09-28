@@ -29,6 +29,22 @@ public sealed class OperationTextTests
         _ = Assert.Throws<ArgumentOutOfRangeException>(() => OperationText.Duration(-1, invariant));
     }
 
+    [Fact(DisplayName = "R3: a bound is written rounded up at the precision written, so it never reads smaller than it is")]
+    public void ABoundNeverReadsSmallerThanItIs()
+    {
+        CultureInfo invariant = CultureInfo.InvariantCulture;
+        Assert.Equal("0 ns", OperationText.DurationAtLeast(0, invariant));
+        Assert.Equal("1 ns", OperationText.DurationAtLeast(0.2, invariant));
+        Assert.Equal("1.0 µs", OperationText.DurationAtLeast(999.5, invariant));
+        Assert.Equal("4.9 µs", OperationText.DurationAtLeast(4_801, invariant));
+        Assert.Equal("100 µs", OperationText.DurationAtLeast(99_901, invariant));
+        Assert.Equal("501 µs", OperationText.DurationAtLeast(500_050, invariant));
+        Assert.Equal("1.0 ms", OperationText.DurationAtLeast(999_001, invariant));
+        Assert.Equal("1.3 s", OperationText.DurationAtLeast(1_200_000_001, invariant));
+        Assert.Equal("1.2 s", OperationText.DurationAtLeast(1_200_000_000, invariant));
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() => OperationText.DurationAtLeast(double.NaN, invariant));
+    }
+
     [Fact]
     public void EveryCallStateHasWordsAndNoOtherValueDoes()
     {

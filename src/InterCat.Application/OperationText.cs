@@ -32,6 +32,31 @@ public static class OperationText
         return string.Create(provider, $"{value.ToString(value < 99.95m ? "N1" : "N0", provider)} {unit}");
     }
 
+    /// <summary>
+    /// A bound written as <see cref="Duration"/> writes a duration, but rounded up at the precision written, so it never
+    /// reads smaller than it is: 500.05 µs is "501 µs", where a duration would read "500 µs".
+    /// </summary>
+    public static string DurationAtLeast(double nanoseconds, IFormatProvider? culture = null)
+    {
+        if (!double.IsFinite(nanoseconds) || nanoseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nanoseconds), nanoseconds, "A bound is a finite, non-negative duration.");
+        }
+
+        long whole = checked((long)Math.Ceiling(nanoseconds));
+        long step = whole switch
+        {
+            < 1_000 => 1,
+            < 99_950 => 100,
+            < 999_500 => 1_000,
+            < 99_950_000 => 100_000,
+            < 999_500_000 => 1_000_000,
+            < 99_950_000_000 => 100_000_000,
+            _ => 1_000_000_000,
+        };
+        return Duration(checked((whole + step - 1) / step * step), culture);
+    }
+
     /// <summary>What a call's records establish, in words.</summary>
     public static string State(RpcCallState state) => state switch
     {

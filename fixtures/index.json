@@ -1100,6 +1100,7 @@
         "I8: negative session ticks map to native coverage without rounding a bucket across zero"
       ],
       "I9": [
+        "I9: a manual alignment is an annotation, kept and reopened as recorded, and changes no timestamp",
         "I9: a workspace file that holds anything else is refused whole, and a change made meanwhile is never written over",
         "I9: a workspace names its sessions by identity and writes nothing to any of them",
         "I9: alignment revisions never rewrite source time"
@@ -1446,6 +1447,7 @@
         "R21: a selection's bytes are read and stated for its scope, and a relationship's are what was sent across it",
         "R21: a variant with no queue reports no utilization rather than zero",
         "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview",
+        "R21: a workspace orders instants across members only as far as their alignments allow",
         "R21: an absent source-loss counter is never interpreted as a reported zero",
         "R21: an import distinguishes delivered, quiet, and uncollected mechanisms",
         "R21: an interval ending at maximum ticks is evaluated without overflow",
@@ -1469,6 +1471,7 @@
         "R21: the timeline counts a connection's records apart, the same records its evidence reads",
         "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
         "R21: total-machine processor time is readable or explicitly unavailable",
+        "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
@@ -1482,6 +1485,7 @@
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a live capture's host is its installation's, and a name alone never makes two machines one host",
+        "R22: a member is aligned to the workspace's one time reference, and a file whose time contradicts itself is refused",
         "R22: a member put back to an earlier copy, or derived apart, is not the generation selected",
         "R22: a member that moved, advanced or was replaced by another says so, and a relink takes only the member itself",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
@@ -1518,12 +1522,14 @@
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
         "R3: CRC-32C matches its published vectors",
         "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none",
+        "R3: a bound is written rounded up at the precision written, so it never reads smaller than it is",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a descriptor with no byte field reports it inapplicable, not zero",
         "R3: a group with only unknown contributions is unmeasured, never ranked below a measured zero",
         "R3: a grouped rate divides every group by the same whole interval",
+        "R3: a mapping's uncertainty adds its bounds, combines its random parts in quadrature, and is unknown when any part is",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a null measurement always states why, and a present one cannot be null",
