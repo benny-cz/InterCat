@@ -1,0 +1,71 @@
+{
+  "contract": "measured-coverage-v1",
+  "source": "fixtures/index.json",
+  "note": "Generated from the fixture index by MeasuredCoverageTests; each entry is the latest fixture evidence of one mechanism on one build.",
+  "entries": [
+    {
+      "mechanism": "Http",
+      "build": "10.0.26220.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-HTTP-003",
+      "date": "2026-09-28",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "NamedPipe",
+      "build": "10.0.26220.0-x64",
+      "tier": "Unsupported",
+      "fixture": "FX-PIPE-001",
+      "date": "2026-09-21",
+      "supportTier": "Untested at the time of the run; ADR-007 later added this build"
+    },
+    {
+      "mechanism": "NamedPipe",
+      "build": "10.0.26220.9223-x64",
+      "tier": "Unsupported",
+      "fixture": "FX-PIPE-001",
+      "date": "2026-09-21",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Rpc",
+      "build": "10.0.26220.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-RPC-001",
+      "date": "2026-09-27",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Rpc",
+      "build": "10.0.26220.9223-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-RPC-001",
+      "date": "2026-09-21",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Tcp",
+      "build": "10.0.26220.0-x64",
+      "tier": "TrafficVisualization",
+      "fixture": "FX-TCP-002",
+      "date": "2026-09-27",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Tcp",
+      "build": "10.0.26220.9223-x64",
+      "tier": "TrafficVisualization",
+      "fixture": "FX-TCP-001",
+      "date": "2026-09-21",
+      "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Udp",
+      "build": "10.0.26220.0-x64",
+      "tier": "TrafficVisualization",
+      "fixture": "FX-UDP-002",
+      "date": "2026-09-27",
+      "supportTier": "Primary"
+    }
+  ]
+}

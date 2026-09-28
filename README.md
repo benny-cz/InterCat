@@ -76,5 +76,6 @@ dotnet run --project src/InterCat.Desktop
 | `docs/reviews/` | Scored interaction reviews with the screens they were taken from |
 | `docs/adr/` | Architecture decisions, including the M0 capture-session strategy |
 | `docs/IMPLEMENTATION-STATUS.md` | Where implementation stands and what comes next |
+| `docs/PER-BUILD-COVERAGE.md` | Each mechanism's measured tier on each Windows build, from the fixture evidence |
 
 The complete product and engineering blueprint is in [the implementation plan](docs/design/INTERCAT-IMPLEMENTATION-PLAN.md).

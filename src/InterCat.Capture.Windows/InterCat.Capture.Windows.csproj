@@ -4,6 +4,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Per-build coverage, projected from fixtures/index.json and kept in step with it by the traceability tests. -->
+    <EmbeddedResource Include="Inventory/measured-coverage.json" LogicalName="InterCat.Capture.Windows.measured-coverage.json" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>

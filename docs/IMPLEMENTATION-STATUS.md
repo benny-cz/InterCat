@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 250 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 251 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 251 — per-build coverage, published and stated (M3's exit gate, §13.5, P27):**
+  - `icat capabilities` said every mechanism was "Unsupported - no capture has measured it", TCP and HTTP included, on
+    the very build their fixtures measured: the probe measures nothing, and the fixture index held its tiers only in
+    prose. Each fixture now names its mechanism and each environment entry its tier, which a test holds to the prose.
+  - The latest evidence of each mechanism on each build is projected into a file every InterCat build embeds and a
+    page, `docs/PER-BUILD-COVERAGE.md`, both checked against the index. The capability report states a tier measured on
+    its own build - TCP and UDP TrafficVisualization, RPC and HTTP ExperimentalEvidence, named pipes Unsupported - and
+    names another build's evidence as another's.
 
 - **Revision 250 — a redacted package keeps an HTTP exchange's shape (`redacted-session-v1` §4, I22):**
   - A live pass over sharing a fresh content session found the redacted package sound - no content file, no reference
@@ -383,6 +392,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 251 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,399 tests: 1,395
+  passed, 4 skipped**, zero failures. Live: the Release `icat capabilities` on this workstation's build states TCP and
+  UDP TrafficVisualization (FX-TCP-002, FX-UDP-002), RPC and HTTP ExperimentalEvidence (FX-RPC-001, FX-HTTP-003) and
+  named pipes Unsupported (FX-PIPE-001), each as committed fixture evidence, where it had said Unsupported for all.
 - Revision 250 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,396 tests: 1,392
   passed, 4 skipped**, zero failures. Live, on a fresh 16-exchange content session in scratch: its redacted package held
   no content file, `icat exchanges` on it grouped 16 of 16 exchanges whole with the source's bytes and median under

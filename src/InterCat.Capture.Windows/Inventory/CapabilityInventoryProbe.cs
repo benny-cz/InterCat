@@ -545,18 +545,26 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             measurements?.TryGetValue(mechanism, out measurement);
             TierAssessment? assessment = measurement is null ? null : CoverageTierCalculator.Assess(measurement);
 
+            // Without a measurement of its own, the report states the tier this build's fixtures measured, and only this
+            // build's: another build's evidence is named as another build's, never claimed (§14.2, P27).
+            MeasuredCoverageEntry? measured = assessment is null ? MeasuredCoverage.On(mechanism, environment.BuildId) : null;
             results.Add(new()
             {
                 Mechanism = mechanism,
                 State = state,
-                Tier = assessment?.Tier ?? CapabilityTier.Unsupported,
+                Tier = assessment?.Tier ?? measured?.Tier ?? CapabilityTier.Unsupported,
                 Coverage = measurement is null ? CoverageState.UnknownCoverage : CoverageState.ReducedFidelity,
-                Summary = Summarize(mechanism, state, assessment, environment),
+                Summary = assessment is null && measured is not null
+                    ? $"{mechanism}: tier {measured.Tier} on this build, measured by {measured.Fixture} on {measured.Date} (committed fixture evidence; this probe measures nothing)."
+                    : Summarize(mechanism, state, assessment, environment)
+                        + (assessment is null && MeasuredCoverage.Elsewhere(mechanism, environment.BuildId) is [var other, ..]
+                            ? $" {other.Fixture} measured it as {other.Tier} on {other.Build}, another build."
+                            : string.Empty),
                 SourceIds = sourceIds,
                 UnavailableReason = state == CapabilityState.Available ? null : reason,
                 Measurement = measurement,
                 TierAssessment = assessment,
-                FixtureIds = measurement is null ? [] : [measurement.FixtureId],
+                FixtureIds = measurement is not null ? [measurement.FixtureId] : measured is not null ? [measured.Fixture] : [],
             });
         }
 

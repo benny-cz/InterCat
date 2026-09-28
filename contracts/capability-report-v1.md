@@ -59,9 +59,14 @@ impact is unmeasured, and reports that as an effective-profile decision rather t
 
 ## Tiers
 
-`mechanisms[].tier` is computed by `CoverageTierCalculator` from `measurement` counters only. Without
-a measurement the tier is `Unsupported` and `coverage` is `UnknownCoverage`, meaning *not yet
-measured* rather than *no traffic*. A measurement taken on a build outside the §1.3 matrix cannot
+`mechanisms[].tier` is computed by `CoverageTierCalculator` from `measurement` counters when the report
+took one (`icat measure`). Without one, since revision 251, it is the tier committed fixture evidence
+measured on exactly this build - the per-build coverage each InterCat build carries, projected from
+`fixtures/index.json` and published as `docs/PER-BUILD-COVERAGE.md` - with that fixture in `fixtureIds`,
+and the summary says this probe measured nothing. With neither the tier is `Unsupported`, and a summary
+names another build's evidence as another build's, never as this one's. `coverage` stays
+`UnknownCoverage` without a measurement, meaning *not measured by this report* rather than *no
+traffic*. A measurement taken on a build outside the §1.3 matrix cannot
 promote a mechanism beyond `ExperimentalEvidence`, and the cap is stated in `tierAssessment.gaps`
 (P27). Every threshold appears in `tierAssessment.criteria` with its numerator and denominator, so a
 reader can recompute the tier; a criterion with a zero denominator is `not measured`, never a pass (R3).
