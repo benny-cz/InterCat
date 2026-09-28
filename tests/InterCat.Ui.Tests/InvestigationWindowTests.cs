@@ -230,6 +230,61 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window's timeline places each session on the investigation's time, and says it in words")]
+    public async Task TheWindowDrawsTheInvestigationsTimeline()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        _ = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "gamma", 2), Committed);
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 500_000, 10, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            InvestigationTimelineView timeline = window.Timeline!;
+            Assert.Equal([true, true, false], timeline.Lanes.Select(lane => lane.Placed));
+            Assert.Equal((4L, 6L), (timeline.Lanes[0].Records, timeline.Lanes[1].Records));
+            Assert.EndsWith("of the investigation's time, the investigation's own clock, exactly.", window.TimelineSentences[0], StringComparison.Ordinal);
+            Assert.Contains("records, from ", window.TimelineSentences[1], StringComparison.Ordinal);
+            Assert.Contains("placed within ±", window.TimelineSentences[1], StringComparison.Ordinal);
+            Assert.EndsWith("not placed: not aligned to the investigation's time.", window.TimelineSentences[2], StringComparison.Ordinal);
+            Assert.Equal(string.Join("\n", window.TimelineSentences),
+                Named<TextBlock>(window, "The investigation's timeline, each session in words").Text);
+            Save(window, "investigation-timeline.png");
+            await Task.CompletedTask;
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>A session whose process 100 sends <paramref name="records"/> datagrams 100 µs into its capture, 1 µs apart.</summary>
+    private static string Datagrams(string root, string name, int records)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                .. Enumerable.Range(0, records).Select(index =>
+                    Transfer(1_000 + (index * 10), ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(index + 1))
+                        .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = (1_000 + (index * 10)) * 100 }),
+            ],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
     /// <summary>A session whose one process holds one end of a TCP connection: it opens, sends and closes it.</summary>
     private static string Session(string root, string name, string[] ends, int owner)
     {

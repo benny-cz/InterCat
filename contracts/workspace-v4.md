@@ -184,6 +184,7 @@ for their own two sessions exactly when they decide, is refused, as is a join in
   markers (§8.2's third mode).
 - Confirming two host identities as one host; pins, notes and saved views.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
-  257), aligns and withdraws them and lists candidate joins (revision 259), and decides them (revision 260); packaging
-  a workspace with its sessions.
+  257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
+  session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records;
+  packaging a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.

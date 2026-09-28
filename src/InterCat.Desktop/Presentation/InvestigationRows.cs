@@ -160,6 +160,48 @@ public static class InvestigationRows
         return new(rows, summary, notes);
     }
 
+    /// <summary>
+    /// The investigation's merged time (§8.2): its timeline over <paramref name="columns"/> columns, a label for each lane,
+    /// and each lane in words - where its records fall in the investigation's time, how sure that placement is, or why a
+    /// session has no place.
+    /// </summary>
+    public static (InvestigationTimelineView View, IReadOnlyList<string> Labels, IReadOnlyList<string> Sentences) Timeline(
+        string path,
+        CultureInfo culture,
+        int columns,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        IReadOnlyList<WorkspaceHost> hosts = InvestigationWorkspace.Hosts(workspace);
+        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, cancellationToken: cancellationToken);
+        var labels = new List<string>();
+        var sentences = new List<string>();
+        foreach (InvestigationLane lane in view.Lanes)
+        {
+            WorkspaceMember member = workspace.Members.First(known => known.SessionId == lane.SessionId);
+            string host = hosts.First(known => known.HostId == member.HostId).Alias ?? "host " + Short(member.HostId);
+            string place = lane switch
+            {
+                { Unread: { } unread } => "not placed: " + unread,
+                { Placed: false, Gap: WorkspaceTimeGap.NoTimeReference } => "not placed: no session is aligned yet",
+                { Placed: false } => "not placed: not aligned to the investigation's time",
+                _ when lane.SessionId == workspace.TimeReference => "the investigation's own clock, exactly",
+                { Uncertainty.HalfWidthNanoseconds: 0 } => "placed exactly",
+                { Uncertainty: { } uncertainty } => "placed within ±" + OperationText.DurationAtLeast(uncertainty.HalfWidthNanoseconds, culture),
+                _ => "placed, its uncertainty unknown at its ends: its drift is not stated",
+            };
+            labels.Add($"Session {Short(lane.SessionId)} · {host}\n{place}");
+            sentences.Add(lane.Placed
+                ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} records, from ")
+                    + Seconds(lane.Extent!.Value.StartTicks * 100, culture) + " to " + Seconds(lane.Extent.Value.EndTicks * 100, culture)
+                    + $" of the investigation's time, {place}."
+                : $"Session {Short(lane.SessionId)} ({host}): {place}.");
+        }
+
+        return (view, labels, sentences);
+    }
+
     private static string End(WorkspaceConnection end, CultureInfo culture)
     {
         ConnectionSummary summary = end.Connection.Summary;

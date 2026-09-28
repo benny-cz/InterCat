@@ -50,6 +50,18 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly Button rejectJoin = new() { Content = "Reject", IsEnabled = false };
     private readonly Button withdrawJoin = new() { Content = "Withdraw decision", IsEnabled = false };
     private readonly TabControl tabs = new();
+    private readonly InvestigationTimelineControl timelineChart = new();
+    private readonly TextBlock timelineWords = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
+    private readonly TextBlock timelineIntro = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Text = "Each session is a lane on the investigation's own time: its records where its alignment places them, each lane "
+            + "scaled to its own busiest column. A session with no alignment has no place.",
+    };
+    private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
+    private bool timelineLoaded;
+    private bool timelineLoading;
     private bool loading;
     private bool finding;
     private bool closed;
@@ -78,6 +90,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
+        AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
+        AutomationProperties.SetName(refreshTimeline, "Draw the investigation's timeline again");
         AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
         AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
@@ -130,6 +144,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         add.Click += (_, _) => _ = PickAddAsync();
         refresh.Click += (_, _) => _ = RefreshAsync();
         find.Click += (_, _) => _ = FindCandidatesAsync();
+        refreshTimeline.Click += (_, _) => _ = ShowTimelineAsync();
         acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
@@ -184,10 +199,34 @@ internal sealed class InvestigationWindow : Window, IDisposable
         candidatesPage.Children.Add(decisions);
         candidatesPage.Children.Add(candidateNotes);
 
+        var timelineHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 8, 0, 0) };
+        Grid.SetColumn(refreshTimeline, 1);
+        refreshTimeline.VerticalAlignment = VerticalAlignment.Top;
+        timelineIntro.Margin = new Thickness(0, 0, 12, 0);
+        timelineHeader.Children.Add(timelineIntro);
+        timelineHeader.Children.Add(refreshTimeline);
+        var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8 };
+        var chart = new ScrollViewer
+        {
+            Content = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = timelineChart },
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+        };
+        Grid.SetRow(timelineHeader, 0);
+        Grid.SetRow(chart, 1);
+        Grid.SetRow(timelineWords, 2);
+        timelinePage.Children.Add(timelineHeader);
+        timelinePage.Children.Add(chart);
+        timelinePage.Children.Add(timelineWords);
+
         tabs.ItemsSource = new[]
         {
             new TabItem { Header = new TextBlock { Text = "Sessions", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = sessionsPage },
             new TabItem { Header = new TextBlock { Text = "Candidate joins", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = candidatesPage },
+            new TabItem { Header = new TextBlock { Text = "Timeline", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = timelinePage },
+        };
+        tabs.SelectionChanged += (_, _) =>
+        {
+            if (tabs.SelectedIndex == 2 && !timelineLoaded) _ = ShowTimelineAsync();
         };
         AutomationProperties.SetName(tabs, "Sessions and candidate joins");
 
@@ -216,6 +255,46 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
     /// <summary>The candidate joins as last found; null before they were looked for.</summary>
     internal InvestigationCandidates? Candidates { get; private set; }
+
+    /// <summary>The timeline as last drawn; null before it was first shown.</summary>
+    internal InvestigationTimelineView? Timeline { get; private set; }
+
+    /// <summary>Each lane of the timeline in words, as last drawn.</summary>
+    internal IReadOnlyList<string> TimelineSentences { get; private set; } = [];
+
+    /// <summary>Draws the investigation's timeline, off the window's thread for its reading of every session.</summary>
+    internal async Task ShowTimelineAsync()
+    {
+        if (timelineLoading || closed) return;
+        timelineLoading = true;
+        refreshTimeline.IsEnabled = false;
+        timelineWords.Text = "Placing each session on the investigation's time…";
+        try
+        {
+            CancellationToken token = lifetime.Token;
+            (InvestigationTimelineView view, IReadOnlyList<string> labels, IReadOnlyList<string> sentences) =
+                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, token), token);
+            if (closed) return;
+            Timeline = view;
+            TimelineSentences = sentences;
+            timelineChart.Show(view, labels);
+            timelineWords.Text = string.Join("\n", sentences);
+            timelineLoaded = true;
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed) timelineWords.Text = "The timeline could not be drawn: " + exception.Message;
+        }
+        finally
+        {
+            timelineLoading = false;
+            refreshTimeline.IsEnabled = true;
+        }
+    }
 
     /// <summary>Shows the sessions or the candidate joins, as choosing a tab does.</summary>
     internal void ShowTab(int index) => tabs.SelectedIndex = index;
@@ -409,6 +488,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         {
             _ = await Task.Run(() => InvestigationWorkspace.Withdraw(path, row.SessionId, DateTimeOffset.UtcNow));
             await RefreshAsync($"{row.Title.Split(',')[0]} is not aligned any more; its earlier alignment is kept in the file.");
+            if (timelineLoaded) await ShowTimelineAsync();
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
@@ -423,6 +503,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         if (await dialog.ShowDialog<bool>(this) && !closed)
         {
             await RefreshAsync($"{row.Title.Split(',')[0]} aligned to the investigation's time.");
+            if (timelineLoaded) await ShowTimelineAsync();
         }
     }
 
