@@ -93,6 +93,25 @@ public sealed class RpcScopeTests
             ],
             workspace.RungRows.Select(row => row.Detail.Split(" · ", 3)[2]));
         Assert.Contains("served by services.exe · 1960", workspace.RungRows[0].SpokenName, StringComparison.Ordinal);
+
+        // O opens the call at the other end: the host's call that served it, on the host's own channel, with its records.
+        RungRow first = workspace.RungRows[0];
+        Assert.Equal(("Open the call services.exe · 1960 served (O)", false), (first.OtherEndMenu, workspace.RungRows[1].HasOtherEnd));
+        workspace.SelectedRung = first;
+        Assert.True(workspace.OpenOtherEnd());
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(["RPC request start", "RPC request end"], workspace.RungRows.Select(row => row.Label));
+        Assert.StartsWith("Records of RPC call at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        string crumbs = string.Join(" › ", workspace.Crumbs.Select(crumb => crumb.Label));
+        Assert.Contains("services.exe", crumbs, StringComparison.Ordinal);
+        Assert.Contains("RPC calls served on svcctl", crumbs, StringComparison.Ordinal);
+
+        // Esc climbs to the host's channel, whose served calls name the caller as theirs.
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        Assert.Equal(3, workspace.RungRows.Count);
+        Assert.Contains(workspace.RungRows, row => row.Detail.EndsWith("called by caller.exe · 400", StringComparison.Ordinal));
     });
 
     [Fact(DisplayName = "§7.4: the graph joins a caller and the process that served it by an RPC edge, read as call records with no size")]

@@ -298,6 +298,11 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.E when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = viewModel.ShowEvidence();
                 break;
+            case Key.O when e.KeyModifiers == KeyModifiers.None && viewModel.SelectedRung is { HasOtherEnd: true }:
+                // An RPC call linked to another opens the call at its other end (operations-v1 §5c).
+                e.Handled = viewModel.OpenOtherEnd();
+                if (e.Handled) FocusRail();
+                break;
             case Key.M when viewModel.CanLoadMore:
                 _ = viewModel.LoadMoreAsync();
                 e.Handled = true;
@@ -519,6 +524,15 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>The menu equivalent of Ctrl+click on a ranked row (§6.7, R15).</summary>
     private void ToggleRowInSelection(object? sender, RoutedEventArgs eventArgs) =>
         workspace.ToggleRungInSelection((sender as StyledElement)?.DataContext as RungRow);
+
+    /// <summary>The row menu's way to the call at an RPC call's other end, as O is the keyboard's.</summary>
+    private void OpenOtherEndOfRow(object? sender, RoutedEventArgs eventArgs)
+    {
+        if ((sender as StyledElement)?.DataContext is RungRow row && workspace.OpenOtherEnd(row))
+        {
+            FocusRail();
+        }
+    }
 
     /// <summary>§6.7's Ctrl+click on a ranked row: adds it to the multi-selection or removes it, never selecting it alone.</summary>
     private void OnRungListPointerPressed(object? sender, PointerPressedEventArgs eventArgs)

@@ -96,6 +96,9 @@ public sealed record RpcChannelPeers(
 /// </summary>
 public sealed record RpcCallPeerView(RpcPeerState? Unresolved, RpcChannelPeer? Process, string? CallKey)
 {
+    /// <summary>When the call at the other end began - its start, or its stop without one - in session nanoseconds.</summary>
+    public long? FirstNanoseconds { get; init; }
+
     /// <summary>The other end in one phrase, or null for a server call no client call is known to have made.</summary>
     public string? Describe(RpcCallSide side) => Process is { } peer
         ? (side == RpcCallSide.Client ? "served by " : "called by ") + peer.Name
@@ -443,7 +446,10 @@ public static class SessionRpcCalls
         string? key = process.Instance is { } instance
             ? CallKey(RpcChannelKeys.Channel(instance, otherGroup.Side, otherGroup.Interface), other)
             : null;
-        return row with { OtherEnd = new(null, process, key) };
+        return row with
+        {
+            OtherEnd = new(null, process, key) { FirstNanoseconds = (other.Start ?? other.Stop)?.SessionRelativeTicks },
+        };
     }
 
     /// <summary>Who is at the other end of a channel's calls, or of those at <paramref name="positions"/>.</summary>

@@ -39,6 +39,21 @@ public sealed record RungRow(
     /// <summary>How a screen reader says the label where the shown one leads with a symbol, as a channel named by its peer.</summary>
     public string? SpokenLabel { get; init; }
 
+    /// <summary>
+    /// For an RPC call linked to another: the key of the call at its other end, which opens that call's records on its
+    /// own channel (`contracts/operations-v1.md` §5c); null for any other row.
+    /// </summary>
+    public string? OtherEndKey { get; init; }
+
+    /// <summary>The crumb the call at the other end is named by once opened: "RPC call at +4.560896 s".</summary>
+    public string? OtherEndLabel { get; init; }
+
+    /// <summary>What the row's menu offers for the other end: "Open the call services.exe · 1960 served (O)".</summary>
+    public string? OtherEndMenu { get; init; }
+
+    /// <summary>Whether the row can open the call at its other end.</summary>
+    public bool HasOtherEnd => OtherEndKey is not null;
+
     /// <summary>The label's tooltip: the label, and the row's own name where the rail shows it by another.</summary>
     public string Tip => string.Equals(Source.Label, Label, StringComparison.Ordinal) ? Label : $"{Label}\n{Source.Label}";
 

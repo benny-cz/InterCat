@@ -178,6 +178,7 @@
                   <Grid.ContextMenu>
                     <ContextMenu>
                       <MenuItem Header="Add to or remove from the selection (Ctrl+Space)" Click="ToggleRowInSelection" />
+                      <MenuItem Header="{Binding OtherEndMenu}" IsVisible="{Binding HasOtherEnd}" Click="OpenOtherEndOfRow" />
                     </ContextMenu>
                   </Grid.ContextMenu>
                   <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" VerticalAlignment="Center" />

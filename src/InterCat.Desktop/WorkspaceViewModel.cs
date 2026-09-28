@@ -1802,6 +1802,37 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
+    /// Opens the records of the call at the other end of an RPC call row (`contracts/operations-v1.md` §5c): the ladder
+    /// runs from the machine through that call's process group, its process and its own channel, which is read by its key
+    /// as a restored rung is, to the call's records, which its key finds wherever the channel's pages would list it. The
+    /// breadcrumb states every rung, and each Esc climbs one. False when the row links no call, or the process is gone.
+    /// </summary>
+    public bool OpenOtherEnd(RungRow? row = null)
+    {
+        row ??= selectedRung;
+        if (row is not { OtherEndKey: { } callKey }
+            || !RpcChannelKeys.TryParseCall(callKey, out string channelKey, out _)
+            || !RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface)
+            || wholeSnapshot.Processes.FirstOrDefault(process => process.Id == instance) is not { } process
+            || !TryBuildDescents([process.GroupKey, process.Id.ToString()], Snapshot, out List<LadderDescent> descents))
+        {
+            return false;
+        }
+
+        ladder.RecordInterval(selectedInterval);
+        if (!ladder.TryReturnTo(0, out _)) return false;
+        foreach (LadderDescent descent in descents) _ = TryDescend(descent);
+        string channelName = (side == RpcCallSide.Client ? "RPC calls to " : "RPC calls served on ") + RpcInterfaceNames.Describe(rpcInterface);
+        _ = TryDescend(LadderProjection.DescentFor(RpcChannelRow(channelKey, channelName, string.Empty, 0), ladder.Current,
+            selectedInterval ?? ladder.Current.Viewport));
+        var call = new LadderRow(callKey, row.OtherEndLabel ?? "RPC call", string.Empty, 2, null, Mechanism.Rpc,
+            CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
+        _ = TryDescend(LadderProjection.DescentFor(call, ladder.Current, selectedInterval ?? ladder.Current.Viewport));
+        AfterNavigation();
+        return true;
+    }
+
+    /// <summary>
     /// Goes to an entity by the rows a person would choose. Validate the whole path before mutating the ladder so a
     /// stale hit cannot send someone back to the machine rung and leave them there. The rung left keeps
     /// <paramref name="leftWith"/>, the interval the user had there before the jump began.
@@ -4762,12 +4793,25 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         long records = (call.Start is null ? 0 : 1) + (call.Stop is null ? 0 : 1);
         var source = new LadderRow(row.Key, $"RPC call at {when}", detail, records, null, Mechanism.Rpc,
             CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
+        // A linked call opens the call at its other end, on that call's own channel (operations-v1 §5c).
+        RpcCallPeerView? linked = row.OtherEnd is { CallKey: not null, Process: not null } other ? other : null;
+        string? otherWhen = linked?.FirstNanoseconds is { } otherNanoseconds
+            ? string.Create(CultureInfo.CurrentCulture, $"+{otherNanoseconds / 1_000_000_000m:0.000000} s")
+            : null;
         return new(row.Key, label, detail, records.ToString("N0", CultureInfo.CurrentCulture),
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
             NavigationState.Name(DetailLevel.Evidence), source)
         {
             SpokenName = $"RPC call at {when}, {label}, {status}{(otherEnd is null ? string.Empty : ", " + otherEnd)}, "
-                + $"{channel.Name}. Press Enter to open its records.",
+                + $"{channel.Name}. Press Enter to open its records"
+                + (linked is null ? "." : ", or O to open the call at its other end."),
+            OtherEndKey = linked?.CallKey,
+            OtherEndLabel = linked is null ? null : otherWhen is null ? "RPC call" : $"RPC call at {otherWhen}",
+            OtherEndMenu = linked is null
+                ? null
+                : call.Side == RpcCallSide.Client
+                    ? $"Open the call {linked.Process!.Name} served (O)"
+                    : $"Open the call {linked.Process!.Name} made (O)",
         };
     }
 
