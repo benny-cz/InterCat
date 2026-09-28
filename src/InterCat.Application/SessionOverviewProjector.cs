@@ -122,6 +122,9 @@ public static class SessionOverviewProjector
             captured)
         {
             Activity = ActivityOf(activity, positions[index], policy),
+            ParentProcessId = instance.ParentProcessId,
+            Parent = instance.Parent,
+            ParentBinding = instance.ParentBinding,
         })];
 
         // Every row is held by at most one instance, so what no instance holds is the rest: rows naming no owner, naming

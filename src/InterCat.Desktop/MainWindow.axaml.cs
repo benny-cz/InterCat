@@ -436,6 +436,10 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>The pointer equivalent of L: lays the graph out afresh, keeping pinned nodes where they are.</summary>
     private void RelayoutGraph(object? sender, RoutedEventArgs eventArgs) => _ = workspace.RelayoutGraph();
 
+    private void SelectParent(object? sender, RoutedEventArgs eventArgs) => _ = workspace.SelectParent();
+
+    private void SelectChildren(object? sender, RoutedEventArgs eventArgs) => _ = workspace.SelectChildren();
+
     private void ExportView(object? sender, RoutedEventArgs eventArgs) => ExportView();
 
     private void ShareRedactedView(object? sender, RoutedEventArgs eventArgs) => ExportView(redacted: true);

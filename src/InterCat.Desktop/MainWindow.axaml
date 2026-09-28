@@ -521,6 +521,18 @@
                   <TextBlock Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>
+                <!-- Who started the process and whom it started (entities-v1's parent link): a parent named but not in the
+                     capture stays a PID, never a guessed process. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="Started by" Classes="muted" />
+                  <TextBlock x:Name="ParentText" Text="{Binding ParentText}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding ParentText, StringFormat='Started by {0}'}" />
+                </StackPanel>
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="Started" Classes="muted" />
+                  <TextBlock x:Name="ChildrenText" Text="{Binding ChildrenText}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding ChildrenText, StringFormat='Started {0}'}" />
+                </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock Text="{Binding LevelBadge}" Classes="muted" />
                   <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"
@@ -534,6 +546,15 @@
               <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
                       Click="ShowSourceRecords"
                       AutomationProperties.Name="Show this rung's source records in the ladder" />
+              <!-- The lineage the card states, one action away: the parent as the selection, the children as a set. -->
+              <WrapPanel IsVisible="{Binding ShowsLineage}">
+                <Button x:Name="SelectParentButton" Content="Go to parent" Click="SelectParent" Margin="0,0,8,0"
+                        IsEnabled="{Binding CanSelectParent}"
+                        AutomationProperties.Name="Select the process that started this one" />
+                <Button x:Name="SelectChildrenButton" Content="{Binding SelectChildrenLabel}" Click="SelectChildren"
+                        IsEnabled="{Binding CanSelectChildren}"
+                        AutomationProperties.Name="Select the processes this one started" />
+              </WrapPanel>
               <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
               <WrapPanel>
                 <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"

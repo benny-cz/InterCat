@@ -1966,6 +1966,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(PinActionLabel));
         OnPropertyChanged(nameof(CanTogglePin));
+        RaiseLineageChanged();
         UpdateHighlight();
         FollowDescribedBytes();
     }

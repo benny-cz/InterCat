@@ -54,6 +54,22 @@ public sealed record ProcessNode(
     /// </summary>
     public IReadOnlyList<MechanismCount> Activity { get; init; } = [];
 
+    /// <summary>
+    /// The PID of the process that created this one, as its creation or rundown record named it (ntities-v1 §3); null
+    /// when no lifecycle record of it named one.
+    /// </summary>
+    public int? ParentProcessId { get; init; }
+
+    /// <summary>
+    /// The parent instance, when the capture holds it: linked by the parent's start key, or by its PID and this
+    /// process's creation reading. A parent named but not in the capture is <see cref="ParentProcessId"/> alone, never
+    /// a guessed instance.
+    /// </summary>
+    public ProcessInstanceId? Parent { get; init; }
+
+    /// <summary>How strongly <see cref="Parent"/> is established: Direct by start key, Correlated by PID and time.</summary>
+    public RelationStrength? ParentBinding { get; init; }
+
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);
 
