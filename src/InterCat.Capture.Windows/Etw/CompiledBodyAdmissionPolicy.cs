@@ -38,8 +38,17 @@ public sealed record CompiledBodyAdmissionPolicy
     /// <summary>Under a scoped content policy, the inspection consent its content is kept under; null otherwise.</summary>
     public ContentInspectionMode? ContentInspection { get; init; }
 
+    /// <summary>
+    /// Under a scoped content policy, the sources whose content it keeps; every other source of the capture keeps its
+    /// metadata only. Empty under a metadata-only policy.
+    /// </summary>
+    public IReadOnlyList<string> ContentSourceIds { get; init; } = [];
+
     /// <summary>Whether this policy keeps content beside the metadata projection.</summary>
     public bool KeepsContent => Mode == AdmissionMode.ScopedContent;
+
+    /// <summary>Whether this policy keeps the content of <paramref name="sourceId"/>: a scoped policy that names it.</summary>
+    public bool KeepsContentOf(string sourceId) => KeepsContent && ContentSourceIds.Contains(sourceId, StringComparer.Ordinal);
 
     public bool PermitsExtendedDataType(ushort type)
     {
@@ -101,6 +110,7 @@ public static class CaptureBodyAdmissionPolicies
             ContentRecordLimit = recordLimit,
             ContentSessionLimit = sessionLimit,
             ContentInspection = inspection,
+            ContentSourceIds = [WindowsSourceCatalog.ContentFixtureSourceId],
             Summary = "Schema-approved metadata projection, and the controlled fixture's message bytes kept beside it as "
                 + "restricted evidence, bounded per record and per session; original source bodies are never retained.",
         };
@@ -119,7 +129,8 @@ public static class CaptureBodyAdmissionPolicies
             && policy.Mode == AdmissionMode.MetadataOnly
             && policy.ContentRecordLimit == 0
             && policy.ContentSessionLimit == 0
-            && policy.ContentInspection is null;
+            && policy.ContentInspection is null
+            && policy.ContentSourceIds.Count == 0;
 
         // The one scoped content policy reviewed: its limits inside their bounds and its consent stated.
         bool scopedContent = string.Equals(policy.PolicyId, ScopedContentFixturePolicyId, StringComparison.Ordinal)
@@ -127,7 +138,8 @@ public static class CaptureBodyAdmissionPolicies
             && policy.ContentRecordLimit is >= 1 and <= MaximumContentRecordLimit
             && policy.ContentSessionLimit >= policy.ContentRecordLimit
             && policy.ContentSessionLimit <= MaximumContentSessionLimit
-            && policy.ContentInspection is { } inspection && Enum.IsDefined(inspection);
+            && policy.ContentInspection is { } inspection && Enum.IsDefined(inspection)
+            && policy.ContentSourceIds is [WindowsSourceCatalog.ContentFixtureSourceId];
         if (!(metadataOnly || scopedContent)
             || policy.RetainedBody != RetainedBodyShape.ApprovedMetadataProjection
             || policy.RetainsOriginalSourceBytes

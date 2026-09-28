@@ -15,7 +15,7 @@ on.
 ## 1. Scope
 
 A derivation reads every segment of one generation, of **one capture on one clock**, as the process derivation it
-rests on does. The process instances are `process-binding-v3`'s over the same segments.
+rests on does. The process instances are `process-binding-v4`'s over the same segments.
 
 ## 2. Call records
 
@@ -27,7 +27,7 @@ names its side:
 | `Outbound` | client | 5 call start, 7 call stop |
 | `Inbound` | server | 6 call start, 8 call stop |
 
-Its process is the PID it belongs to under `process-binding-v3`, which for RPC is the process that raised it
+Its process is the PID it belongs to under `process-binding-v4`, which for RPC is the process that raised it
 (ADR-030). A start carries the interface (`SourceIdentifier`) and, as `source-fields-v1` fields, the procedure number
 and protocol sequence. A stop carries the status (`StatusCode`). Any other RPC row is not a call record, and a
 derivation counts it as such.
@@ -170,7 +170,7 @@ whose coverage ledger names no collected ALPC descriptor draws none and reads no
 
 ## 7. Identity of a derivation
 
-A derivation is identified by `rpc-call-operation-v1`, the `process-binding-v3` derivation it rests on, and the
+A derivation is identified by `rpc-call-operation-v1`, the `process-binding-v4` derivation it rests on, and the
 generation it was derived from. A change to what pairs, how, or what a call holds is a new rule identity (§24
 `correlationRevision`). The other ends of §5c are identified by `rpc-call-peer-v1`, the `rpc-call-operation-v1`
 derivation they rest on, and the generation; a change to what links, how, or when a link is refused is a new rule.

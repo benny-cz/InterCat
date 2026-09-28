@@ -1,6 +1,6 @@
 # ADR-030: An RPC record binds to the process that raised it
 
-- Status: accepted for M1
+- Status: accepted for M1; revision 238 adds HTTP to its list as `process-binding-v4` (ADR-037)
 - Date: 2026-09-27
 - Decision owners: InterCat maintainers
 - Relates to: §4.1 (header and payload), §7.1 (process instances), §7.3 (`EntityBindingRevision`), §24
@@ -41,8 +41,9 @@ The fixture ran twice in one capture, and both runs produced the same shape.
 
 1. **A header binds where it was measured to.** A record belongs to the PID its payload names. When its payload names
    none, and its mechanism is one measured to raise its records in the process they describe, it belongs to the process
-   its header names. RPC is the only such mechanism (`RecordAttribution`). A test pins that list, so adding a
-   mechanism brings its own measurement and the texts that name RPC.
+   its header names. RPC was the only such mechanism (`RecordAttribution`); HTTP joined it in revision 238, measured
+   on FX-HTTP-001 (ADR-037). A test pins that list, so adding a mechanism brings its own measurement, a new rule
+   identity and the texts that name the list.
 2. **It is a binding rule, not a normalization.** The stored row keeps an empty owner and an unknown attribution
    quality (R1). The derivation reads the header column only in a segment where such a record names no owner, so a
    segment of transfers costs no more to read. Re-deriving an older session applies the rule without reading its

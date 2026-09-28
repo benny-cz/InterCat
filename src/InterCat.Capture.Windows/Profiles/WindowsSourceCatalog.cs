@@ -259,6 +259,34 @@ public static class WindowsSourceCatalog
         new("ImageName", FieldRole.ResourceName, Notes: "The image file name as an 8-bit string, the last field of the stop descriptor."),
     ];
 
+    /// <summary>WinINet's own capture of an HTTP exchange's buffers, for the processes a capture names (ADR-037).</summary>
+    public const string WinInetCaptureSourceId = "etw/manifest/Microsoft-Windows-WinINet-Capture";
+
+    /// <summary>The capture events' own keywords - send, receive, personal data present, packet - and not the operational channel's.</summary>
+    public const ulong WinInetCaptureKeywords = 0x0000_0603_0000_0000;
+
+    /// <summary>
+    /// Every capture event's layout (ADR-037): its exchange, its buffer's place and ends, its length, its bytes. Declared
+    /// before <see cref="All"/>, whose initializer reads it: static fields initialize in the order they are written.
+    /// </summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> WinInetCaptureFields =
+    [
+        new("SessionId", FieldRole.CorrelationKey, SourceField: SourceField.HttpExchangeId,
+            Notes: "WinINet's number for the exchange - a request and its response - within the client process (ADR-037)."),
+        new("SequenceNumber", FieldRole.Unclassified, SourceField: SourceField.ContentBufferSequence,
+            Notes: "The buffer's place in its part - head or body - from 0."),
+        new("Flags", FieldRole.Unclassified, SourceField: SourceField.ContentBufferFlags,
+            Notes: "1 marks its part's first buffer and 2 its last; a body ends with an empty last buffer."),
+        new("PayloadByteLength", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.ApplicationPayload,
+            Notes: "The buffer's length: every byte of it, however many a capture keeps."),
+        new("Payload", FieldRole.Content,
+            Notes: "The buffer's bytes: part of an HTTP message as the client library held it, above any encryption.")
+        {
+            ContentClassification = ContentEvidenceClassification.ApplicationPayload,
+            ContentEncoding = ContentFieldEncoding.Binary,
+        },
+    ];
+
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
 
     /// <summary>The content fixture's source: InterCat's own provider, raised only by its content-fixture workload (ADR-036).</summary>
@@ -662,6 +690,59 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc];
+        var winInetCapture = new WindowsSourceDefinition
+        {
+            SourceId = WinInetCaptureSourceId,
+            DisplayName = "WinINet HTTP exchanges",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = "Microsoft-Windows-WinINet-Capture",
+            Mechanisms = [Mechanism.Http],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = WinInetCaptureKeywords,
+            RequestedKeywords =
+                ["WININET_KEYWORD_SEND", "WININET_KEYWORD_RECEIVE", "WININET_KEYWORD_PII_PRESENT", "WININET_KEYWORD_PACKET"],
+            SupportsCaptureSideProcessFilter = true,
+            FilteringNotes =
+                "Enabled only for the processes a capture names, by the session's process filter, which keeps every other "
+                + "process's records out of the session (ADR-037). Unscoped it would record every WinINet client's requests "
+                + "on the machine, their cookies and authorization headers among them.",
+            StartupBehaviour = "No rundown: an exchange made before the capture enabled the provider is not seen.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Unmeasured,
+            ContentContract = new ValidatedContentSourceContract(
+                [2001, 2002, 2003, 2004],
+                ["Payload"],
+                [ContentEvidenceClassification.ApplicationPayload],
+                EnforcesProcessScopeBeforePersistence: true,
+                EnforcesChannelScopeBeforePersistence: false,
+                "ADR-037; bench/results/wininet-capture-feasibility-20260928T102426Z",
+                OverheadClass.Unmeasured,
+                string.Empty),
+            AdmittedEvents =
+            [
+                new(2001, 0, "HTTP request head sent", Mechanism.Http, ObservationLayer.Application, ObservationKind.Send,
+                    Direction.Outbound, WinInetCaptureFields),
+                new(2002, 0, "HTTP request body sent", Mechanism.Http, ObservationLayer.Application, ObservationKind.Send,
+                    Direction.Outbound, WinInetCaptureFields),
+                new(2003, 0, "HTTP response head received", Mechanism.Http, ObservationLayer.Application, ObservationKind.Receive,
+                    Direction.Inbound, WinInetCaptureFields),
+                new(2004, 0, "HTTP response body received", Mechanism.Http, ObservationLayer.Application, ObservationKind.Receive,
+                    Direction.Inbound, WinInetCaptureFields),
+            ],
+            Notes =
+            [
+                "Measured on FX-HTTP-001 (ADR-037): every head and body of every exchange, concatenated from its buffers, was "
+                + "the wire's; the session id names the exchange, the sequence number a part's buffers from 0, and the flags "
+                + "its first and last.",
+                "Every record is raised in the client process that made the exchange, so a record binds to its header's "
+                + "process (ADR-030, process-binding-v4).",
+                "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
+                "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
+            ],
+        };
+
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture];
     }
 }

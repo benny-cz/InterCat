@@ -210,6 +210,7 @@ public static class EvidenceRowText
         Mechanism.Quic => "QUIC",
         Mechanism.Dde => "DDE",
         Mechanism.ApplicationSdk => "Application SDK",
+        Mechanism.Http => "HTTP",
         Mechanism.UnknownMechanism => "Unknown mechanism",
         _ => mechanism.ToString(),
     };

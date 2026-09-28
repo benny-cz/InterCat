@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 237 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 238 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 238 — HTTP records bind to their client (ADR-037, ADR-030, `process-binding-v4`):**
+  - A new mechanism, `Http`, and WinINet's capture source in the catalog: its four events are HTTP messages sent and
+    received, their exchange, buffer order and ends kept as source fields 16 to 18, their length measured.
+  - `process-binding-v4` binds an HTTP record to the client that raised it; a v2 or v3 checkpoint is read as v4's
+    wherever every record named its owner. A scoped content policy now names the sources it keeps content of.
+  - No profile captures the source yet: its admission is revision 239.
 
 - **Revision 237 — M3's content-capable source, measured (ADR-037, §11.2):**
   - WinINet's own capture provider records each request and response head and body of an HTTP exchange. A lab probe
@@ -2083,11 +2090,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could; revision 234 keeps
      content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
      the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7); revision 237
-     measures M3's content-capable source, WinINet's capture provider (ADR-037). Next: its admission - a content source
-     naming its four events, a Content profile that refuses a request without a process scope, its records bound to the
-     client that raised them (a `process-binding-v3` revision), its overhead, and FX-HTTP-001 and FX-CONTENT-001 in the
-     fixture index. Later: HTTPS and HTTP/2 through it; a follower that mirrors content, so a broker capture could keep
-     it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+     measures M3's content-capable source, WinINet's capture provider (ADR-037); revision 238 puts it in the catalog and
+     binds its records to their client (`process-binding-v4`). Next: its admission - its overhead, a Content request
+     that refuses one without a process scope and says it keeps every exchange of the named processes, `icat record`
+     options, a live run - and FX-HTTP-001 and FX-CONTENT-001 in the fixture index. Later: HTTPS and HTTP/2 through it;
+     a follower that mirrors content, so a broker capture could keep it; releasing content alone; and a fixture decoder
+     (§11.2's `DecodedFields`).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2140,6 +2148,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 238 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,380 tests: 1,376
+  passed, 4 skipped**, zero failures. They include WinINet's four events compiled against its registered layout, a
+  content policy that keeps only the sources it names, and v3 checkpoints read as v4's where every record named its
+  owner. No capture ran: no profile admits the source yet.
 - Revision 237 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,377 tests: 1,373
   passed, 4 skipped**, zero failures. The probe ran four times, elevated, into scratch: 16 and 64 requests, bodies to
   96 and 256 KiB; every part of every exchange matched, nothing was lost, and a concurrent decoy's 64 exchanges left no

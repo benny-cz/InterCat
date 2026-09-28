@@ -227,7 +227,8 @@ public static class AdmissionPlanCompiler
             if (fieldIntent.Role == FieldRole.Content)
             {
                 (FieldAvailability availability, string reason)? refusal = ContentRefusal(
-                    fieldIntent, resolved.Offset, resolved.Field, resolvable, bodyPolicy, contentSlotTaken, slots.Count);
+                    definition.SourceId, fieldIntent, resolved.Offset, resolved.Field, resolvable, bodyPolicy, contentSlotTaken,
+                    slots.Count);
                 if (refusal is { } refused)
                 {
                     report.Add(new(fieldIntent.FieldName, refused.availability, fieldIntent.Role, resolved.Field.InType,
@@ -436,6 +437,7 @@ public static class AdmissionPlanCompiler
     /// encoding the catalog states for it (ADR-036).
     /// </summary>
     private static (FieldAvailability Availability, string Reason)? ContentRefusal(
+        string sourceId,
         AdmittedFieldIntent intent,
         int offset,
         ProviderSchemaField field,
@@ -448,6 +450,12 @@ public static class AdmissionPlanCompiler
         {
             return (FieldAvailability.ProfileDisabled,
                 "Content is admitted only under a scoped content policy; this capture keeps metadata only.");
+        }
+
+        if (!policy.KeepsContentOf(sourceId))
+        {
+            return (FieldAvailability.ProfileDisabled,
+                $"The capture's content policy '{policy.PolicyId}' keeps no content of this source; its metadata is kept.");
         }
 
         if (taken)

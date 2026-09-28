@@ -11,9 +11,10 @@ public static class RecordAttribution
     /// <summary>
     /// Whether a mechanism's records are raised in the process they describe. Measured for RPC on FX-RPC-001: every truth
     /// call's start was raised in the calling process, and 122 of 122 server calls to its interface in the service host
-    /// that served them.
+    /// that served them. Measured for HTTP on FX-HTTP-001 (ADR-037): 444 of 444 of WinINet's capture records were raised
+    /// in the client process that made the exchange, and none of a decoy's reached a session scoped to that client.
     /// </summary>
-    public static bool RaisedByTheirProcess(Mechanism mechanism) => mechanism == Mechanism.Rpc;
+    public static bool RaisedByTheirProcess(Mechanism mechanism) => mechanism is Mechanism.Rpc or Mechanism.Http;
 
     /// <summary>
     /// The PID a record belongs to: the owner its payload names, or the process that raised it when its mechanism's

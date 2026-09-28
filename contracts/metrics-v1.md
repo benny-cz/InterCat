@@ -166,7 +166,7 @@ request's evidence policy:
 
 | Filter | A record is kept when |
 |---|---|
-| `owner(P)` | its own owner (`contracts/entities-v1.md` §2a) binds to P under `process-binding-v3` |
+| `owner(P)` | its own owner (`contracts/entities-v1.md` §2a) binds to P under `process-binding-v4` |
 | `participant(P)` | P made it, or P is its other end under `relations-v1` |
 | `sender(P)` | data left P: P made a `Send` record, or P is the other end of a `Receive` record |
 | `receiver(P)` | data reached P: P made a `Receive` record, or P is the other end of a `Send` record |

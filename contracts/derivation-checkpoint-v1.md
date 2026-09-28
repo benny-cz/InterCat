@@ -1,7 +1,7 @@
 # InterCat derivation checkpoint v1
 
 Status: **implemented** in plan revision 162. A generation can name one checkpoint: the state of its
-`process-binding-v3` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
+`process-binding-v4` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
 (`contracts/relations-v1.md`), as derived from named segments. A reader that finds a checkpoint builds both
 derivations from it, reads only the segments it does not cover, and gets exactly what a derivation from every segment
 gives. Without one, opening a session reads every record's owner, endpoints and canonical position before the first
@@ -170,12 +170,12 @@ checkpoint when:
   `transport-endpoint-relation-v3` is read as `v4`'s when it counts no related record without an end. `v4` differs
   from `v3` only in giving an IPv6 record the end `v3` left it without, so where no record went without one the two
   derivations are one state. One that counts any is refused and derived again. No checkpoint of format 1.2 was written
-  under `v3`. A checkpoint of format 1.1 or 1.2 derived under `process-binding-v2` is read as `v3`'s when its counts
-  name no record without an owner. `v3` differs from `v2` only in binding a record whose payload names no owner to
-  the process that raised it, for a mechanism measured to raise its records there (entities-v1 §2a), so where every
-  record named its owner the two derivations are one state. One that counts any record without an owner is refused
-  and derived again, because the count does not say whether one was such a record. A checkpoint of format 1.0 holds
-  no counts and was written only under `v2`, so it is refused;
+  under `v3`. A checkpoint of format 1.1 or 1.2 derived under `process-binding-v2` or `process-binding-v3` is read
+  as `v4`'s when its counts name no record without an owner. Each differs from `v4` only in binding fewer records
+  whose payload names no owner to the process that raised them - `v2` none, `v3` an RPC record, `v4` an RPC or HTTP
+  record (entities-v1 §2a) - so where every record named its owner the derivations are one state. One that counts any
+  record without an owner is refused and derived again, because the count does not say whether one was such a
+  record. A checkpoint of format 1.0 holds no counts and was written only under `v2`, so it is refused;
 - a checkpoint before format 1.2 claims an IPv6 end, which it cannot hold;
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order

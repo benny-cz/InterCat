@@ -74,7 +74,7 @@ answers.
 | Member | Value | Present |
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
-| `entityRevision` | the process binding rule, e.g. `process-binding-v3` | when the answer reads a process binding: a process filter, a process or peer grouping, a relation, or an operation |
+| `entityRevision` | the process binding rule, e.g. `process-binding-v4` | when the answer reads a process binding: a process filter, a process or peer grouping, a relation, or an operation |
 | `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v4`; on the logical-operations basis, the operation rule, e.g. `rpc-call-operation-v1` | when the answer uses records' other ends, and for every answer on the logical-operations basis |
 | `metricsContract` | `metrics-v1` | always |
 

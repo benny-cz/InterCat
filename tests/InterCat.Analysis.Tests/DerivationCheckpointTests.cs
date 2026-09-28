@@ -174,8 +174,12 @@ public sealed class DerivationCheckpointTests
             EarlierCheckpoints.UnderEarlierBindingRule(EarlierCheckpoints.UnderEarlierRelationRule(bytes)), Session, TestClock);
         Assert.Equal(bytes, Checkpoint(both.Processes, both.Relations, both.Activity!));
 
-        // A record naming no owner might have been an RPC record, which this rule binds to the process that raised it,
-        // so a checkpoint that left one unbound is derived again. Its count is all the checkpoint says of them.
+        // So did process-binding-v3, which bound only an RPC record among those that named none (ADR-037).
+        DerivationCheckpoint third = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 3), Session, TestClock);
+        Assert.Equal(bytes, Checkpoint(third.Processes, third.Relations, third.Activity!));
+
+        // A record naming no owner might have been an RPC or HTTP record, which this rule binds to the process that raised
+        // it, so a checkpoint that left one unbound is derived again. Its count is all the checkpoint says of them.
         using var incomplete = new TemporarySession();
         Publish(incomplete.Store,
         [
@@ -188,6 +192,9 @@ public sealed class DerivationCheckpointTests
         _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
         Assert.Contains("left 1 record naming no owner unbound", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(
             EarlierCheckpoints.UnderEarlierBindingRule(bytes), Session, TestClock)).Message, StringComparison.Ordinal);
+        Assert.Contains("derived under process-binding-v3, which left 1 record naming no owner unbound", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 3), Session, TestClock)).Message,
+            StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I14: relations of the rule before this one are read as this rule's only when no related record went without an end")]

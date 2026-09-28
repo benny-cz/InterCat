@@ -154,9 +154,10 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 continue;
             }
 
-            // A scoped content policy reaches only a source whose validated content contract allows it; every other source
-            // of the same capture keeps metadata only, and its records name that policy (ADR-036).
-            CompiledBodyAdmissionPolicy? sourcePolicy = bodyPolicy is { KeepsContent: true } && definition.ContentContract is null
+            // A scoped content policy reaches only a source it names whose validated content contract allows it; every other
+            // source of the same capture keeps metadata only, and its records name that policy (ADR-036).
+            CompiledBodyAdmissionPolicy? sourcePolicy = bodyPolicy is { KeepsContent: true }
+                && (definition.ContentContract is null || !bodyPolicy.KeepsContentOf(definition.SourceId))
                 ? CaptureBodyAdmissionPolicies.MetadataOnly
                 : bodyPolicy;
 

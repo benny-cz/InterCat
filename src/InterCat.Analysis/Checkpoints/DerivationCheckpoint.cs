@@ -270,17 +270,17 @@ public sealed class DerivationCheckpoint
         // relations section says (§4); only a format before 1.2 was written under it.
         bool earlierRule = relation == TransportRelationIndex.EarlierRelationRule && minor < 2;
 
-        // Instances and counts of the binding rule before this one are this rule's when every record named its owner,
+        // Instances and counts of a binding rule before this one are this rule's when every record named its owner,
         // which the activity section says (§4); a format before 1.1 holds no such section.
-        bool earlierBinding = binding == ProcessInstanceIndex.EarlierBindingRule && minor >= 1;
-        if (binding == ProcessInstanceIndex.EarlierBindingRule && !earlierBinding)
+        string? earlierBinding = ProcessInstanceIndex.EarlierBindingRules.Contains(binding) && minor >= 1 ? binding : null;
+        if (ProcessInstanceIndex.EarlierBindingRules.Contains(binding) && earlierBinding is null)
         {
             throw reader.Invalid(
                 $"it was derived under {binding} in format {major}.{minor}, which holds no counts to show that every record "
                 + $"named its owner, as reading it under {ProcessInstanceIndex.BindingRule} requires.");
         }
 
-        if ((binding != ProcessInstanceIndex.BindingRule && !earlierBinding)
+        if ((binding != ProcessInstanceIndex.BindingRule && earlierBinding is null)
             || (relation != TransportRelationIndex.RelationRule && !earlierRule))
         {
             throw reader.Invalid(

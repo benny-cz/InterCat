@@ -22,6 +22,12 @@ public enum Mechanism
     Quic = 18,
     ApplicationSdk = 19,
     Instrumented = 20,
+
+    /// <summary>
+    /// An HTTP exchange's messages as the client library that made it recorded them - WinINet's own capture (ADR-037) -
+    /// carried by a TCP connection whose transfers stay the transport's records.
+    /// </summary>
+    Http = 21,
     UnknownMechanism = 99,
 }
 
@@ -151,6 +157,19 @@ public enum SourceField : ushort
     /// inside one call's window and thread chain, and is never an identity by itself (ADR-034).
     /// </summary>
     AlpcMessageId = 15,
+
+    /// <summary>
+    /// The HTTP exchange - a request and its response - a record's buffer belongs to, as the client library numbers it
+    /// within its process. One per exchange where measured (ADR-037); its reuse over a process's life is unmeasured, so
+    /// it joins records only within one process and one exchange's time, never as an identity by itself.
+    /// </summary>
+    HttpExchangeId = 16,
+
+    /// <summary>A buffer's place in its message part: 0 for the first, then 1, 2 and on (ADR-037).</summary>
+    ContentBufferSequence = 17,
+
+    /// <summary>Which end of its message part a buffer is: 1 the first, 2 the last, 3 both, 0 neither (ADR-037).</summary>
+    ContentBufferFlags = 18,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

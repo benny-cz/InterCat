@@ -1,6 +1,7 @@
 # ADR-037: WinINet's capture provider records an HTTP exchange exactly, for the processes a capture names
 
-- Status: accepted as M3's content-capable source; measured in the lab (revision 237) and admitted to no profile yet
+- Status: accepted as M3's content-capable source; measured in the lab (revision 237); in the catalog, its records bound
+  to their client as `process-binding-v4` (revision 238); admitted to no profile yet
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.2, M3, M8, I21, R21, ADR-030, ADR-036, FX-HTTP-001, `contracts/content-v1.md`,
@@ -61,7 +62,8 @@ and two of 64 with bodies to 256 KiB, the last beside the decoy.
    which is a reading of the bytes, not a declaration of the source, and is not claimed (content-v1 §1).
 4. **Whose records they are.** The records name no process; each is raised in the client process that made the
    exchange - 444 of 444 here. Binding them by their header's process is ADR-030's rule reaching a new mechanism, which
-   changes what `process-binding-v3` binds (`contracts/entities-v1.md` §7); the admission decides that rule's revision.
+   changes what `process-binding-v3` bound (`contracts/entities-v1.md` §7); revision 238 binds them so, as
+   `process-binding-v4`, under a new mechanism, `Http`.
 5. **Not yet a profile.** Like ADR-034's spike, this is a measurement: no profile admits the provider until its
    admission slice implements items 1 to 4 and measures its overhead.
 

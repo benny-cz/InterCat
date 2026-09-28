@@ -27,21 +27,24 @@ internal static class EarlierCheckpoints
     }
 
     /// <summary>
-    /// A checkpoint as revisions 166 to 176 wrote it, under `process-binding-v2`. It differs from one under v3 only in
-    /// that word when every record names its owner: v2 bound no record that named none, and v3 binds only such records.
+    /// A checkpoint as an earlier binding rule wrote it: `process-binding-v2`, as revisions 166 to 176 did, or
+    /// `process-binding-v3`, as revisions 177 to 237 did. Either differs from one under v4 only in that word when every
+    /// record names its owner: each bound fewer records that named none, and v4 binds more of only such records.
     /// </summary>
-    public static byte[] UnderEarlierBindingRule(byte[] bytes)
+    public static byte[] UnderEarlierBindingRule(byte[] bytes, int version = 2)
     {
         ArgumentNullException.ThrowIfNull(bytes);
+        ArgumentOutOfRangeException.ThrowIfLessThan(version, 2);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(version, 3);
         byte[] rule = System.Text.Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule);
         int at = bytes.AsSpan().IndexOf(rule);
-        if (at < 0 || !ProcessInstanceIndex.BindingRule.EndsWith("-v3", StringComparison.Ordinal))
+        if (at < 0 || !ProcessInstanceIndex.BindingRule.EndsWith("-v4", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The checkpoint does not name the binding rule this helper rewrites.");
         }
 
         byte[] earlier = [.. bytes];
-        earlier[at + rule.Length - 1] = (byte)'2';
+        earlier[at + rule.Length - 1] = (byte)('0' + version);
         return earlier;
     }
 

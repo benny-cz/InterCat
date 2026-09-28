@@ -1,8 +1,8 @@
 # InterCat entities v1
 
-Status: **implemented** as `process-binding-v3`, with the v1 fallback for older generations that publish no
-`source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8); which process is at a
-record's other end is `contracts/relations-v1.md`'s, built on the bindings fixed here.
+Status: **implemented** as `process-binding-v4` (revision 238), with the v1 fallback for older generations that
+publish no `source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8); which process is
+at a record's other end is `contracts/relations-v1.md`'s, built on the bindings fixed here.
 
 This contract fixes how the process instances of §7.1 are derived from one capture's published `observation-v1`
 segments and how every record binds to one of them (§7.3's `EntityBindingRevision`). It owns no bytes: a derivation
@@ -41,10 +41,12 @@ whose payload names no owner belongs to the process its event header names (ADR-
 | Mechanism | A header binds when the payload names no owner | Measured |
 |---|---|---|
 | `Rpc` | yes: a client call is raised in the calling process, a server call in the serving one | FX-RPC-001: every truth call's start in the calling process, and 122 of 122 server calls to its interface in the service host that served them |
+| `Http` | yes: WinINet raises its capture records in the client process that made the exchange | FX-HTTP-001: 444 of 444 records raised in the client process, and none of a decoy's reached a session scoped to that client (ADR-037) |
 | any other | no | — |
 
 A payload owner always wins. `process-binding-v2` bound payload owners only; `process-binding-v3` (revision 177)
-adds this table and changes nothing for a record whose payload names its owner. A record with no owner by either
+adds this table and changes nothing for a record whose payload names its owner; `process-binding-v4` (revision 238)
+adds its `Http` row and changes nothing else. A record with no owner by either
 belongs to no process and is counted as such.
 
 ## 3. Instances
@@ -133,10 +135,11 @@ states this as an assumption rather than a verified condition.
 
 ## 7. Identity of a derivation
 
-A derivation is identified by `process-binding-v3` and the generation it was derived from. A change to what binds,
+A derivation is identified by `process-binding-v4` and the generation it was derived from. A change to what binds,
 how strongly, or how an instance is keyed is a new rule identity (§24 `entityRevision`); a result names the rule it
-was grouped under. Version 3 adds §2a; a derivation under version 2 is version 3's wherever every record named its
-owner, which a derivation checkpoint's counts can show (`contracts/derivation-checkpoint-v1.md` §4).
+was grouped under. Version 3 adds §2a and version 4 its `Http` row. A derivation under version 2 or 3 is version 4's
+wherever every record named its owner, since each differs from it only in binding fewer records that name none; a
+derivation checkpoint's counts can show that (`contracts/derivation-checkpoint-v1.md` §4).
 
 ## 8. Not defined at this version
 

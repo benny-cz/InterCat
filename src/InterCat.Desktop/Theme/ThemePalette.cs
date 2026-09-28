@@ -263,7 +263,7 @@ public static class ThemePalette
         Mechanism.UnixDomainSocket or Mechanism.Quic or Mechanism.RemoteFileOrSmb => MechanismFamily.OtherSocket,
         Mechanism.Synchronization or Mechanism.WindowMessage or Mechanism.Clipboard
             or Mechanism.Mailslot or Mechanism.Dde => MechanismFamily.LegacyIpc,
-        Mechanism.ApplicationSdk or Mechanism.Instrumented => MechanismFamily.Application,
+        Mechanism.ApplicationSdk or Mechanism.Instrumented or Mechanism.Http => MechanismFamily.Application,
         _ => MechanismFamily.UnknownMechanism,
     };
 

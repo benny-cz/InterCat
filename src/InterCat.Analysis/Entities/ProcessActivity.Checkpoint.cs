@@ -54,15 +54,15 @@ public sealed partial class ProcessActivityIndex
 
     /// <summary>
     /// Rebuilds counts a checkpoint holds over <paramref name="processes"/>, whose positions they name.
-    /// <paramref name="earlierRule"/> says the checkpoint was derived under
-    /// <see cref="ProcessInstanceIndex.EarlierBindingRule"/>, whose instances and counts are this rule's only when every
-    /// record named its owner: that rule bound none that did not, and this one binds some of them.
+    /// <paramref name="earlierRule"/> names the rule of <see cref="ProcessInstanceIndex.EarlierBindingRules"/> the
+    /// checkpoint was derived under, whose instances and counts are this rule's only when every record named its owner:
+    /// that rule bound fewer of those that did not, and this one binds some of them.
     /// </summary>
     internal static ProcessActivityIndex ReadState(
         IndexFileReader reader,
         ProcessInstanceIndex processes,
         HashSet<StoreDependency> read,
-        bool earlierRule)
+        string? earlierRule)
     {
         string rule = reader.Str8();
         if (!string.Equals(rule, CountRule, StringComparison.Ordinal))
@@ -76,12 +76,12 @@ public sealed partial class ProcessActivityIndex
             throw reader.Invalid("it counts a negative number of records without an owner.");
         }
 
-        if (earlierRule && withoutOwner > 0)
+        if (earlierRule is not null && withoutOwner > 0)
         {
             throw reader.Invalid(
-                $"it was derived under {ProcessInstanceIndex.EarlierBindingRule}, which left {withoutOwner:N0} "
+                $"it was derived under {earlierRule}, which left {withoutOwner:N0} "
                 + $"{(withoutOwner == 1 ? "record" : "records")} naming no owner unbound, and "
-                + $"{ProcessInstanceIndex.BindingRule} binds an RPC record among them to the process that raised it.");
+                + $"{ProcessInstanceIndex.BindingRule} binds an RPC or HTTP record among them to the process that raised it.");
         }
 
         int count = reader.Count(4 + 8 + 8 + 8);
