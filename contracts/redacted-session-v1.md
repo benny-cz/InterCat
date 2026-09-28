@@ -40,7 +40,8 @@ A package publishes exactly one generation, generation 1, with:
 | `redaction-policy-0000000001.json` | `RedactionPolicy` (code 8) | The policy and counts (§7) |
 
 A normalizer plan, a capture-finalization marker, an index or any other kind is never published. The directory holds
-nothing else: no README, no source file, no staging leftover.
+nothing else: no README, no source file, no staging leftover. In particular no message content a capture kept
+(`contracts/content-v1.md`, I22): the preview and the result state the source's content files as left behind.
 
 ## 3. Rows
 

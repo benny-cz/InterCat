@@ -30,7 +30,14 @@ public sealed record RedactedSessionPackagePreview(
     long SourceJournalBytes,
     bool CoverageLedger,
     bool NormalizerPlan,
-    bool CaptureFinalization);
+    bool CaptureFinalization)
+{
+    /// <summary>How many content chunks the source keeps (`contracts/content-v1.md`): a package holds none of them (I22).</summary>
+    public int SourceContentChunks { get; init; }
+
+    /// <summary>What those chunks weigh.</summary>
+    public long SourceContentBytes { get; init; }
+}
 
 /// <summary>A published, verified package: where it is, its new identity, and what the verification covered.</summary>
 public sealed record RedactedSessionPackageResult(
@@ -541,7 +548,13 @@ public static class RedactedSessionPackage
                 journals.Sum(journal => journal.LengthBytes),
                 ledger is not null,
                 manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan),
-                manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization)),
+                manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization))
+            {
+                // Kept content is never in a package, and the preview says how much of it stays behind (I22, ADR-036).
+                SourceContentChunks = manifest.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Content),
+                SourceContentBytes = manifest.Dependencies
+                    .Where(dependency => dependency.Kind == StoreDependencyKind.Content).Sum(dependency => dependency.LengthBytes),
+            },
         };
     }
 

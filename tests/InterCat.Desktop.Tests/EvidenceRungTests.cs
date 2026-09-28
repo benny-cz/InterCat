@@ -929,6 +929,32 @@ public sealed class EvidenceRungTests
         Assert.Equal(rows.Length + 1, csv.Length);
     }
 
+    [Fact(DisplayName = "§3.7: a record whose content the capture kept says in the inspector how much of what it kept")]
+    public async Task TheInspectorStatesKeptContent()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows();
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 4),
+        [
+            Content(rows[2], "ping"u8.ToArray(), 4),
+            Content(rows[3], "pong-pong"u8.ToArray(), 4),
+        ]));
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+
+        string ContentOf(int index)
+        {
+            workspace.SelectedRung = workspace.RungRows[index];
+            return workspace.SelectedEvidenceFields.Single(field => field.Label == "Content").Value;
+        }
+
+        Assert.Equal("Kept whole: 4 bytes of an application payload it sent, UTF-8 text.", ContentOf(2));
+        Assert.Equal("Kept in part: the first 4 of 9 bytes of an application payload it received, UTF-8 text; the other 5 "
+            + "were cut by the 4-byte record limit.", ContentOf(3));
+        Assert.StartsWith("None. The kernel's network events", ContentOf(4), StringComparison.Ordinal);
+    }
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

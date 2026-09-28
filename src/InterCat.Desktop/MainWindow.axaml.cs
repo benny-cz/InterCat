@@ -1617,8 +1617,11 @@ public sealed partial class MainWindow : Window, IDisposable
                     + $"was checked against the pseudonyms it issued, and {result.FilesVerified:N0} files were searched "
                     + "for this session's identities and names. None was found."),
                 Paragraph($"Left behind: {result.Source.SourceJournals:N0} original {journals} "
-                    + $"({RecentSessions.Size(result.Source.SourceJournalBytes, CultureInfo.CurrentCulture)}). Opening the package here shows "
-                    + "what a recipient will see."),
+                    + $"({RecentSessions.Size(result.Source.SourceJournalBytes, CultureInfo.CurrentCulture)})"
+                    + (result.Source.SourceContentChunks > 0
+                        ? $", and the message content the capture kept ({RecentSessions.Size(result.Source.SourceContentBytes, CultureInfo.CurrentCulture)})"
+                        : string.Empty)
+                    + ". Opening the package here shows what a recipient will see."),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
             },

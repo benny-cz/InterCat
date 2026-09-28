@@ -780,6 +780,9 @@
         "I2: two rows with one observation identity are refused rather than counted twice"
       ],
       "I21": [
+        "I21: a chunk keeps each record's content with its classification, direction, lengths and how it was cut",
+        "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
+        "I21: a fragment that misstates how it was cut, or breaks record order, is never written",
         "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
       "I22": [
@@ -789,6 +792,7 @@
         "I22: a package refuses an overlapping or existing destination, and a package of a package",
         "I22: a preview measures the package without writing it",
         "I22: a redacted package is refused as a package, not as a legacy session needing a plan",
+        "I22: a redacted package keeps no content and says so; the original package carries it and says how much",
         "I22: a redacted package reproduces its source's graph, processes, coverage and totals",
         "I22: a redaction policy survives reopen, cannot be released, and is carried by a replacement",
         "I22: a redaction policy that claims original sources, or names an unknown member, is refused",

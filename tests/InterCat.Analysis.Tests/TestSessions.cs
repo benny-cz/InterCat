@@ -302,7 +302,8 @@ internal static class TestSessions
         CoverageLedgerV1? coverage = null,
         Func<ObservationRowV1, BodyV1>? bodyForRow = null,
         int journalBatchRecords = 4_096,
-        DateTimeOffset? committedUtc = null)
+        DateTimeOffset? committedUtc = null,
+        (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -353,7 +354,44 @@ internal static class TestSessions
             builder.StageCoverageLedger(coverage);
         }
 
+        if (content is { } kept)
+        {
+            builder.StageContent(kept.Header, kept.Fragments);
+        }
+
         return builder.Complete(committedUtc ?? Committed);
+    }
+
+    /// <summary>A content chunk's header for <see cref="Capture"/>, under a test policy.</summary>
+    public static ContentChunkHeaderV1 ContentHeader(
+        int recordLimit = 64,
+        ContentInspectionV1 inspection = ContentInspectionV1.HexAndText,
+        CaptureId? capture = null) =>
+        new(capture ?? Capture, "test-scoped-content-v1", recordLimit, inspection);
+
+    /// <summary>
+    /// The content of <paramref name="row"/>'s record: its <paramref name="message"/> as an outbound or inbound application
+    /// payload, kept whole or truncated to <paramref name="recordLimit"/>.
+    /// </summary>
+    public static (ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes) Content(
+        ObservationRowV1 row,
+        ReadOnlyMemory<byte> message,
+        int recordLimit = 64,
+        ContentEncodingV1 encoding = ContentEncodingV1.Utf8)
+    {
+        bool truncated = message.Length > recordLimit;
+        ReadOnlyMemory<byte> kept = truncated ? message[..recordLimit] : message;
+        return (new ContentFragmentV1(
+            row.RawStreamId,
+            row.RawSourceEpoch,
+            row.RawRecordOrdinal,
+            ContentClassificationV1.ApplicationPayload,
+            row.Direction is Direction.Outbound or Direction.Inbound ? row.Direction : Direction.UnknownDirection,
+            encoding,
+            truncated ? ContentDispositionV1.TruncatedByRecordLimit : ContentDispositionV1.Whole,
+            0,
+            message.Length,
+            kept.Length), kept);
     }
 
     private static RecordEnvelopeV1 Envelope(ObservationRowV1 row, uint schema, uint policy, CaptureId capture,

@@ -691,10 +691,11 @@ public sealed class SessionStore
                         + "boundary; it cannot silently switch evidence while replacing derived files.");
                 }
 
-                // The admitted evidence - every journal chunk - and the plan, optional coverage ledger, finalization
-                // marker and redaction policy that describe the capture are not derivations of it, so replacement carries
-                // them unchanged. Carrying every journal means no chunk's evidence is ever dropped by replacing the rows
-                // derived from it, and carrying a redaction policy means a package never loses its provenance (I22).
+                // The admitted evidence - every journal chunk and the content kept beside it - and the plan, optional
+                // coverage ledger, finalization marker and redaction policy that describe the capture are not derivations
+                // of it, so replacement carries them unchanged. Carrying every journal means no chunk's evidence is ever
+                // dropped by replacing the rows derived from it, and carrying a redaction policy means a package never
+                // loses its provenance (I22).
                 carried =
                 [
                     .. previous.Dependencies.Where(dependency =>
@@ -702,7 +703,8 @@ public sealed class SessionStore
                             or StoreDependencyKind.CoverageLedger
                             or StoreDependencyKind.CaptureFinalization
                             or StoreDependencyKind.RedactionPolicy
-                            or StoreDependencyKind.Journal),
+                            or StoreDependencyKind.Journal
+                            or StoreDependencyKind.Content),
                 ];
                 if (!carried.Any(dependency => dependency.Kind == StoreDependencyKind.Journal
                         && dependency.Name.Equals(boundary.JournalName, StringComparison.OrdinalIgnoreCase))
@@ -943,12 +945,13 @@ public sealed class SessionStore
     /// <summary>
     /// Whether a dependency's readers check every byte they interpret against checksums the file carries, so it can be
     /// read before its file is hashed: a segment (segment-v1 §9), a dictionary, whose decoder checks its own digest,
-    /// a journal, whose frames and records carry theirs (journal-v1), and an index, which its reader hashes against the
-    /// digest its generation records before interpreting a byte (derivation-checkpoint-v1 §4).
+    /// a journal, whose frames and records carry theirs (journal-v1), an index, which its reader hashes against the
+    /// digest its generation records before interpreting a byte (derivation-checkpoint-v1 §4), and a content chunk, whose
+    /// header and fragments carry theirs (content-v1 §2).
     /// </summary>
     private static bool ChecksItself(StoreDependencyKind kind) =>
         kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Journal
-            or StoreDependencyKind.Index;
+            or StoreDependencyKind.Index or StoreDependencyKind.Content;
 
     /// <summary>Why a dependency's bytes are not the ones its generation recorded, or null when they are.</summary>
     private static string? DigestProblem(
@@ -1067,6 +1070,14 @@ public sealed class SessionStore
                         nameof(names));
                 }
 
+                if (dependency.Kind == StoreDependencyKind.Content)
+                {
+                    throw new ArgumentException(
+                        "Kept content is evidence, not a rebuildable derived file: it goes with the journal chunk whose "
+                        + "records it belongs to, through the journal retention path (content-v1 §2).",
+                        nameof(names));
+                }
+
                 released.Add(dependency);
             }
 
@@ -1115,6 +1126,14 @@ public sealed class SessionStore
             RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
+            {
+                throw new InvalidOperationException(
+                    "This session keeps content beside its journal. Rewriting the journal's prefix would leave content "
+                    + "whose records it no longer holds, so its content goes only with whole recording chunks "
+                    + "(content-v1 §2). Nothing was published.");
+            }
+
             StoreDependency previous = manifest.Dependencies.FirstOrDefault(dependency =>
                 dependency.Kind == StoreDependencyKind.Journal
                 && record.ReleasedFiles.Contains(dependency.Name, StringComparer.OrdinalIgnoreCase))
@@ -1220,21 +1239,31 @@ public sealed class SessionStore
                     nameof(chunks));
             }
 
+            // A chunk's kept content goes with it: the content chunk its generation published holds content of its records
+            // only (content-v1 §2).
+            HashSet<long> releasedGenerations = [.. released.Select(dependency => SegmentFormatV1.GenerationOfJournal(dependency.Name)
+                ?? throw new InvalidOperationException($"'{dependency.Name}' is not named as a journal chunk is."))];
+            StoreDependency[] releasedContent =
+            [
+                .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content
+                    && ContentChunkV1.GenerationOf(dependency.Name) is { } generation && releasedGenerations.Contains(generation)),
+            ];
+            StoreDependency[] releasedFiles = [.. released, .. releasedContent];
             var record = new RetentionRecord(
                 RetentionExtentKind.JournalPrefix,
                 now,
                 reason,
-                [.. released.Select(dependency => dependency.Name)],
-                released.Sum(dependency => dependency.LengthBytes),
+                [.. releasedFiles.Select(dependency => dependency.Name)],
+                releasedFiles.Sum(dependency => dependency.LengthBytes),
                 releasedRecords,
-                ChunkSourceDigest(released));
+                ChunkSourceDigest(releasedFiles));
             return Publish(
                 manifest,
-                [.. manifest.Dependencies.Except(released)],
+                [.. manifest.Dependencies.Except(releasedFiles)],
                 manifest.Boundary,
                 record,
                 committedUtc,
-                [.. released],
+                [.. releasedFiles],
                 now);
         }
     }

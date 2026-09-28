@@ -41,6 +41,13 @@ public enum StoreDependencyKind
     /// kept, pseudonymized, redacted and left out, and that its journal holds synthetic records. Never released.
     /// </summary>
     RedactionPolicy = 8,
+
+    /// <summary>
+    /// Restricted evidence beside the journal: the content a capture kept of one journal chunk's records
+    /// (`contracts/content-v1.md`, ADR-036). Released only with that journal chunk, never read by anything that reads
+    /// metadata, and never in a redacted package (I22).
+    /// </summary>
+    Content = 9,
 }
 
 /// <summary>

@@ -428,6 +428,18 @@ public static class SegmentFormatV1
             ? throw new ArgumentOutOfRangeException(nameof(generation), generation, "A generation is 1..9,999,999,999.")
             : string.Create(CultureInfo.InvariantCulture, $"journal-{generation:D10}.icatj");
 
+    /// <summary>The generation a journal's published name carries, or null for a name <see cref="JournalFileName"/> did not make.</summary>
+    public static long? GenerationOfJournal(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return name.Length == "journal-".Length + 10 + ".icatj".Length
+            && name.StartsWith("journal-", StringComparison.OrdinalIgnoreCase)
+            && name.EndsWith(".icatj", StringComparison.OrdinalIgnoreCase)
+            && long.TryParse(name.AsSpan("journal-".Length, 10), NumberStyles.None, CultureInfo.InvariantCulture, out long generation)
+            ? generation
+            : null;
+    }
+
     /// <summary>The canonical text one schema dictionary entry holds.</summary>
     public static string SchemaEntry(Guid providerId, ushort eventId, byte version, string fingerprint)
     {

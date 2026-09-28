@@ -279,6 +279,13 @@ internal static class PackageCommand
                 $"{ConsoleUi.Count(source.SourceJournals)} original journal {(source.SourceJournals == 1 ? "file" : "files")} "
                 + $"({ConsoleUi.Bytes(source.SourceJournalBytes)}) with any body and extended bytes"),
         };
+        if (source.SourceContentChunks > 0)
+        {
+            parts.Add(string.Create(CultureInfo.CurrentCulture,
+                $"the message content the capture kept ({ConsoleUi.Count(source.SourceContentChunks)} content "
+                + $"{(source.SourceContentChunks == 1 ? "file" : "files")}, {ConsoleUi.Bytes(source.SourceContentBytes)})"));
+        }
+
         if (source.NormalizerPlan) parts.Add("the normalizer plan");
         if (source.CaptureFinalization) parts.Add("the capture finalization marker");
         parts.Add("original identities, locators and absolute clock readings");

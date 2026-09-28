@@ -25,7 +25,20 @@ public sealed record SessionEvidenceRecord(
     string SegmentName,
     int SegmentRow,
     ObservationRowV1 Observation,
-    SessionEvidenceOwner? Owner = null);
+    SessionEvidenceOwner? Owner = null)
+{
+    /// <summary>
+    /// The content kept of this record, which only a page for a person carries (`contracts/content-v1.md`); null when the
+    /// generation keeps none of it, and on a whole-scope read, which an export makes and content never reaches. Never
+    /// serialized: a page's JSON is read by programs, and content stays with the person's own record readers (ADR-036).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SessionContentEntry? Content { get; init; }
+
+    /// <summary>Why kept content could not all be read, so a record without any may still have had some; null otherwise.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ContentProblem { get; init; }
+}
 
 /// <summary>
 /// A bounded exact-row page in the canonical row order of <c>segment-v1</c> §4. A cursor names the last row it
@@ -98,7 +111,7 @@ public static class SessionEvidenceQuery
             ownerProcesses ?? (ownerProcessScope is { } single ? [single] : null));
         RequireOneScope(channelKey, owners, rpcKey);
         return ReadCore(store, channelKey, interval, owners, policy, pageSize, ParseCursor(cursor), resolveOwners,
-            rpcKey, cancellationToken);
+            rpcKey, withContent: true, cancellationToken);
     }
 
     /// <summary>
@@ -121,7 +134,8 @@ public static class SessionEvidenceQuery
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         ProcessInstanceId[] owners = Owners(channelKey, policy, ownerProcesses);
         RequireOneScope(channelKey, owners, rpcKey);
-        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, rpcKey, cancellationToken);
+        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, rpcKey, withContent: false,
+            cancellationToken);
     }
 
     /// <summary>An RPC scope names its own records, so it is never combined with a channel or an owner scope.</summary>
@@ -163,11 +177,17 @@ public static class SessionEvidenceQuery
         EvidenceCursor? position,
         bool resolveOwners,
         string? rpcKey,
+        bool withContent,
         CancellationToken cancellationToken)
     {
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         string[] names = [.. SessionSegments.Names(manifest)];
+
+        // A page for a person states each record's kept content; a whole-scope read, which an export makes, never reads it.
+        SessionContentIndex content = withContent && manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
+            ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
+            : SessionContentIndex.Empty;
         SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
         string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, rpcKey);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
@@ -302,7 +322,11 @@ public static class SessionEvidenceQuery
 
             ObservationRowV1 observation = segment.Reader.Row(row);
             records.Add(new(observation.ObservationIdIn(segment.Reader.CaptureId, segment.Reader.Derivation),
-                segment.Name, row, observation, binding is { } owner ? Owner(owner, processes!, policy) : null));
+                segment.Name, row, observation, binding is { } owner ? Owner(owner, processes!, policy) : null)
+            {
+                Content = content.Find(segment.Reader.CaptureId, observation),
+                ContentProblem = content.Problem,
+            });
             lastReturned = key;
         }
 

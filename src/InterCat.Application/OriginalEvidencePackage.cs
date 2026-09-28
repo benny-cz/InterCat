@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using InterCat.Domain;
@@ -42,6 +43,13 @@ public sealed record OriginalEvidencePackagePreview(
         [.. Files.Where(file => file.Kind == StoreDependencyKind.Journal)];
 
     public bool CoverageLedger => Files.Any(file => file.Kind == StoreDependencyKind.CoverageLedger);
+
+    /// <summary>The content chunks: the message bytes the capture kept of its records (`contracts/content-v1.md`).</summary>
+    public IReadOnlyList<OriginalEvidenceFile> ContentChunks =>
+        [.. Files.Where(file => file.Kind == StoreDependencyKind.Content)];
+
+    /// <summary>How many records' content the content chunks hold, as their headers declare it.</summary>
+    public long ContentFragments { get; init; }
 }
 
 /// <summary>A published, verified original evidence package: where it is, and what its verification covered.</summary>
@@ -83,11 +91,27 @@ public static class OriginalEvidencePackage
         + "is: pseudonymous names, process and thread IDs, addresses, ports and identifiers, synthetic metadata records and "
         + "relative times, never the original values. InterCat records metadata only, so no message content is included.";
 
-    /// <summary>What a copy of this session holds: <see cref="Contents"/>, or a redacted package's own.</summary>
+    /// <summary>
+    /// What a copy of this session holds: <see cref="Contents"/>, a redacted package's own, or, for a capture that kept
+    /// content, the metadata and the message content it kept, said before anything is saved (ADR-036).
+    /// </summary>
     public static string ContentsFor(OriginalEvidencePackagePreview preview)
     {
         ArgumentNullException.ThrowIfNull(preview);
-        return preview.Redacted ? RedactedContents : Contents;
+        if (preview.Redacted)
+        {
+            return RedactedContents;
+        }
+
+        IReadOnlyList<OriginalEvidenceFile> content = preview.ContentChunks;
+        return content.Count == 0
+            ? Contents
+            : Contents[..Contents.IndexOf(" InterCat records metadata only", StringComparison.Ordinal)]
+                + string.Create(CultureInfo.CurrentCulture,
+                    $" It also holds the message content this capture kept: the bytes of {preview.ContentFragments:N0} ")
+                + string.Create(CultureInfo.CurrentCulture,
+                    $"{(preview.ContentFragments == 1 ? "record" : "records")}, {content.Sum(file => file.LengthBytes):N0} bytes ")
+                + "in all, as sensitive as the messages they came from.";
     }
 
     /// <summary>
@@ -193,7 +217,16 @@ public static class OriginalEvidencePackage
             rows,
             fields,
             SessionSegments.SourceClock(root, manifest)?.HostId.Value,
-            manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy));
+            manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy))
+        {
+            ContentFragments = manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content)
+                .Sum(dependency =>
+                {
+                    using FileStream stream = root.OpenOwnedFile(
+                        dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.None);
+                    return (long)ContentChunkV1.ReadHeader(stream).Fragments;
+                }),
+        };
     }
 
     /// <summary>

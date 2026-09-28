@@ -101,6 +101,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool ledgerStaged;
     private bool finalizationStaged;
     private bool redactionPolicyStaged;
+    private bool contentStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -263,6 +264,41 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
     /// <summary>The published name of a generation's capture finalization marker.</summary>
     public static string CaptureFinalizationFileName(long generation) => $"capture-finalization-{generation:D10}.json";
+
+    /// <summary>
+    /// Stages the content a capture kept of this generation's journal records (`contracts/content-v1.md`, ADR-036):
+    /// restricted evidence beside the journal, under this generation's number, so that releasing the journal chunk
+    /// releases it too. Only a generation that writes its own journal keeps content, and it keeps one chunk.
+    /// </summary>
+    public void StageContent(
+        ContentChunkHeaderV1 header,
+        IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> fragments)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        ArgumentNullException.ThrowIfNull(fragments);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || contentStaged)
+        {
+            throw new InvalidOperationException("A generation stages its content once, before publication.");
+        }
+
+        if (journal is null)
+        {
+            throw new InvalidOperationException(
+                "Content is kept beside the journal chunk its records are in, and this generation writes none.");
+        }
+
+        if (header.CaptureId != identity.CaptureId)
+        {
+            throw new ArgumentException("Content is kept only for this generation's own capture.", nameof(header));
+        }
+
+        StoreStagingFile file = store.Stage(ContentChunkV1.FileName(generation), StoreDependencyKind.Content);
+        staged.Add(file);
+        ContentChunkV1.Write(file.Content, header, fragments);
+        _ = file.Complete();
+        contentStaged = true;
+    }
 
     /// <summary>
     /// Begins a generation. The journal is staged immediately, because §20.1's first step is making the

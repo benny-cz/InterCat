@@ -31,10 +31,14 @@ public sealed record SessionRawRecordDetail(
     bool BodyPreviewTruncated)
 {
     /// <summary>
-    /// What the record holds of the message it describes, from its normalized row: never the retained body above, which
-    /// is the event's own fields (§3.7, §11).
+    /// What the record holds of the message it describes: never the retained body above, which is the event's own fields
+    /// (§3.7, §11).
     /// </summary>
     public RecordContent? Content { get; init; }
+
+    /// <summary>The content the capture kept of the record, when it kept any (`contracts/content-v1.md`); never its bytes.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SessionContentEntry? KeptContent { get; init; }
 }
 
 public sealed record RawExtendedItemSummary(ushort Type, ushort Flags, int OriginalLength, int RetainedLength);
@@ -161,6 +165,12 @@ public static class SessionRawRecordQuery
         CancellationToken cancellationToken)
     {
         ObservationRowV1 expected = selected.Observation;
+
+        // What the record holds of its message is kept beside the journal, so it is stated with or without the journal.
+        SessionContentIndex content = manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
+            ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
+            : SessionContentIndex.Empty;
+        SessionContentEntry? keptContent = content.Find(selected.ObservationId.RawRecordId);
         StoreDependency[] journals = [.. manifest.Dependencies
             .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
         if (journals.Length == 0)
@@ -220,7 +230,8 @@ public static class SessionRawRecordQuery
                 envelope.OmittedExtendedItemCount,
                 preview, revealBodyBytes && previewLength < kept)
             {
-                Content = RecordContent.Of(expected, synthetic: policyId == RedactedSessionPackage.Policy),
+                Content = RecordContent.Of(expected, synthetic: policyId == RedactedSessionPackage.Policy, keptContent, content.Problem),
+                KeptContent = keptContent,
             };
         }
 
@@ -230,7 +241,8 @@ public static class SessionRawRecordQuery
             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
             [], null, null, false)
         {
-            Content = RecordContent.Of(expected),
+            Content = RecordContent.Of(expected, kept: keptContent, problem: content.Problem),
+            KeptContent = keptContent,
         };
     }
 }

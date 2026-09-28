@@ -409,6 +409,15 @@ public sealed class LiveSessionFollower
                 $"Generation {source.Generation} already has derived rows, so it is an ordinary session rather than "
                 + "evidence to follow. Open it directly.");
         }
+
+        // A follower mirrors journal chunks under its own generations; kept content, paired with its chunk's generation,
+        // is not mirrored yet, and following without it would drop evidence (content-v1 §2).
+        if (source.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
+        {
+            throw new InvalidOperationException(
+                $"Generation {source.Generation} keeps message content beside its journal, which a follower does not "
+                + "mirror yet. Nothing was followed.");
+        }
     }
 
     /// <summary>

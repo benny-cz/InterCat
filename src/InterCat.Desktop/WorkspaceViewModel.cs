@@ -4163,7 +4163,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 fields.Add(new("Size", size + (row.ByteDomain is { } domain ? $" · {domain}" : string.Empty)));
 
             // Whether the bytes or arguments themselves were kept, and why not: the question a transfer's size raises (§3.7).
-            fields.Add(new("Content", RecordContent.Of(row, synthetic: wholeSnapshot.Redaction is not null).Describe()));
+            fields.Add(new("Content", RecordContent.Of(row, synthetic: wholeSnapshot.Redaction is not null, record.Content,
+                record.ContentProblem).Describe()));
             fields.Add(new("Source", string.Create(CultureInfo.InvariantCulture,
                 $"{EvidenceRowText.ProviderName(row.ProviderId, wholeSnapshot.Redaction is not null)} · event {row.EventId} v{row.DescriptorVersion}")));
             fields.Add(new("Quality", EvidenceRowText.Quality(row)));

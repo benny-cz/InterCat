@@ -49,7 +49,9 @@ written:
 - that it is unredacted: process and executable names and image paths; process, thread and session IDs; parent links,
   start and exit times; local and remote addresses and ports; resource names, kernel object values and RPC procedures;
   timestamps as recorded, with the capture's clock and host identities; and every admitted record;
-- that InterCat records metadata only, so no message content is included;
+- that InterCat records metadata only, so no message content is included; or, for a capture that kept content
+  (`contracts/content-v1.md`, revision 234), that the package holds the message content it kept, how many records' bytes
+  and how many bytes in all, as sensitive as the messages they came from;
 - the host identity the journal names.
 
 A session that is itself a redacted package (`contracts/redacted-session-v1.md`) is copied the same way, and its copy is

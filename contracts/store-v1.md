@@ -55,8 +55,9 @@ is no directory flush, so a rename proves nothing about the bytes behind the nam
 A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` (code 4, `contracts/derivation-checkpoint-v1.md` since
 revision 162), `DerivationPlan` (code 5,
 `contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`),
-`CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`) or `RedactionPolicy` (code 8,
-`contracts/redacted-session-v1.md`). An unknown kind, an unreadable
+`CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`), `RedactionPolicy` (code 8,
+`contracts/redacted-session-v1.md`) or `Content` (code 9, `contracts/content-v1.md`, revision 234). An unknown kind,
+an unreadable
 format version, a generation outside `1..9,999,999,999`, a previous generation that is not earlier, a
 duplicate dependency, or a dependency name that is not an owned file name are each refused — the
 manifest is not read at a guessed layout.
@@ -110,7 +111,8 @@ control file, not evidence or an orphan. It serializes independently opened writ
 threads within one store instance. A reader does not need that lock.
 
 A normal additive generation includes its predecessor's dependencies, except an index (revision 162, below). A
-journal re-derivation is the exception: it carries every journal - one, or a live recording's chunks - with the retained descriptor plan, the
+journal re-derivation is the exception: it carries every journal - one, or a live recording's chunks - and the
+content kept beside them, with the retained descriptor plan, the
 capture coverage ledger if published, the capture-finalization marker if present, and a redaction policy if present
 (a redacted package itself is refused before replay, because it has no plan); it stages a replacement set of
 segments and dictionaries and publishes it as the next generation. Carrying the earlier segments would count the same capture twice. The earlier manifest and
@@ -150,12 +152,14 @@ present with the recorded length and digest.
 
 **A viewer opens without hashing what checks itself.** Hashing every dependency makes opening cost every byte of
 the session, which §12.1's S1 forbids at scale: a million-row session is 309 MiB, and hashing it took 210 ms of a
-fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary`, `Journal` or
-`Index` dependency present with its recorded length is taken from one directory listing, without being hashed:
+fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary`, `Journal`,
+`Index` or `Content` dependency present with its recorded length is taken from one directory listing, without being
+hashed:
 
 - a segment reader checks every byte it interprets against the segment's own checksums (`segment-v1` §9);
 - a dictionary's decoder checks its own digest;
 - a journal's frames and records carry their own checksums (`journal-v1`);
+- a content chunk's header and every fragment carry theirs (`content-v1` §2), revision 234;
 - an index is read whole and hashed against its recorded digest before a byte of it is interpreted
   (`derivation-checkpoint-v1` §4). Revision 162 added it: a checkpoint can be tens of megabytes for a session of many
   connections, and hashing it at open would read it twice.
@@ -216,6 +220,7 @@ sequence requires, under names that carry the generation:
 | `normalizer-plan-<generation:D10>.json` | `DerivationPlan` — the retained compiled interpretation of admitted descriptors |
 | `coverage-<generation:D10>.json` | `CoverageLedger` — delivered, omitted, undecodable and reported-loss facts about the capture, not reconstructible from its admitted journal |
 | `capture-finalization-<generation:D10>.json` | `CaptureFinalization` — last-publication and stop-milestone evidence, present only after a live capture stops |
+| `content-<generation:D10>.icatc` | `Content` — the message content a capture kept of this generation's journal records, restricted evidence beside the journal, present only when it kept any (`contracts/content-v1.md`) |
 | `dict-<generation:D10>-<dictionaryId:D4>.icatd` | `Dictionary` |
 | `seg-<generation:D10>-<ordinal:D4>.icats` | `Segment` |
 
@@ -348,13 +353,18 @@ journal's batch size, which a capture or an import declares.
 A release that would leave no admitted evidence at all is refused. ADR-010 keeps a journal by default, and a
 session with no journal cannot re-derive anything.
 
+**Kept content goes only with its journal chunk** (`contracts/content-v1.md` §2, revision 234). A content chunk is
+evidence, not a derived file, so releasing it by name is refused. Rewriting one journal's prefix is refused while any
+content is kept, since it would leave content whose records the retained journal no longer holds.
+
 **A live recording is released a chunk at a time** (ADR-024). A boundary counts records in stored order across the
 chunks the generation names, and releases each chunk that ends at or before it. Only a leading run of chunks is
 released, never the chunk the boundary names. Nothing is rewritten: the retention generation stops naming the
 released chunks and keeps its committed boundary. Rewriting part of a chunk would publish it under the new
-generation's name, which sorts after every chunk and would put its records out of order. The retention record lists
-every released chunk, oldest first. Its source digest is the digest of their dependency lines, `name|length|digest`
-joined by a line feed, exactly as the superseded manifest held them.
+generation's name, which sorts after every chunk and would put its records out of order. A released chunk's kept
+content, the content chunk of its generation, is released with it. The retention record lists every released chunk,
+oldest first, then their content chunks. Its source digest is the digest of their dependency lines,
+`name|length|digest` joined by a line feed, exactly as the superseded manifest held them.
 
 **Released records cannot be re-derived, and neither can their rows be re-derived away.** A release keeps every
 derived row, including the released records' rows. A re-derivation replaces every row with rows derived from the

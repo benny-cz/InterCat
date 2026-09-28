@@ -110,6 +110,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private OverviewCounts? overview;
     private bool overviewRead;
     private string? overviewProblem;
+    private SessionContentIndex? content;
 
     /// <summary>The generation these derivations are of.</summary>
     public SessionManifestV1 Manifest { get; } = manifest;
@@ -270,6 +271,25 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             RpcCallIndex paired = RpcCallIndex.Derive(segments, fields, instances, clock, cancellationToken);
             Volatile.Write(ref rpcCalls, paired);
             return paired;
+        }
+    }
+
+    /// <summary>
+    /// The content the generation keeps (`contracts/content-v1.md`), read and checked once on first use; empty when it names
+    /// no content chunk. Its chunks are immutable and pinned by the manifest's digest like every other dependency.
+    /// </summary>
+    public SessionContentIndex Content(IOwnedDirectory directory, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (content is { } known)
+            {
+                return known;
+            }
+
+            SessionContentIndex read = SessionContentIndex.Read(directory, Manifest, cancellationToken);
+            Volatile.Write(ref content, read);
+            return read;
         }
     }
 
