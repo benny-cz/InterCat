@@ -15,6 +15,7 @@ internal static class TestSessions
     public static readonly Guid NetworkProvider = Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
     public static readonly Guid ProcessProvider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
     public static readonly Guid RpcProvider = Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39");
+    public static readonly Guid AlpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
     public static SourceClockDescriptor TestClock { get; } = ClockFor(Clock, "session-metrics-tests");
@@ -203,6 +204,37 @@ internal static class TestSessions
         StatusAvailability = kind == ObservationKind.RequestEnd && status is not null
             ? FieldAvailability.Present
             : FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// An ALPC send or receive the thread <paramref name="thread"/> of <paramref name="process"/> made, as a classic kernel
+    /// record names it: ALPC's class, id 0, version 2 and its opcode (ADR-035). Its message id is a source field.
+    /// </summary>
+    public static ObservationRowV1 Alpc(long ticks, ObservationKind kind, int process, int thread, ulong ordinal) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create("alpc-message"),
+        ProviderId = AlpcClass,
+        EventId = 0,
+        DescriptorVersion = 2,
+        SchemaFingerprint = "sha256:" + new string('a', 64),
+        Opcode = kind == ObservationKind.Send ? (byte)33 : (byte)34,
+        NativeTicks = ticks,
+        HeaderProcessId = process,
+        HeaderThreadId = thread,
+        ProcessorNumber = 0,
+        Mechanism = Mechanism.Alpc,
+        Layer = ObservationLayer.Transport,
+        Kind = kind,
+        Direction = kind == ObservationKind.Send ? Direction.Outbound : Direction.Inbound,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,

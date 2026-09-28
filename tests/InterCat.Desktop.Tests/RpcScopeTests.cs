@@ -60,6 +60,41 @@ public sealed class RpcScopeTests
         Assert.Equal(3, workspace.RungRows.Count);
     });
 
+    [Fact(DisplayName = "§7.4: an RPC channel's row names who served its calls, and each call's row its other end")]
+    public void RpcRowsNameTheirOtherEnd() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        Assert.Equal(
+            $"RPC client · 3 calls · 1 failed · median {Median(2_000)} · served by services.exe · 1960 (2 of 3)",
+            Scm(workspace).Detail);
+
+        // Each call says who served it, or why no one is known to have.
+        workspace.SelectedRung = Scm(workspace);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Assert.Equal(
+            [
+                "served by services.exe · 1960",
+                "other end unresolved: no ALPC send on its thread during the call",
+                "served by services.exe · 1960",
+            ],
+            workspace.RungRows.Select(row => row.Detail.Split(" · ", 3)[2]));
+        Assert.Contains("served by services.exe · 1960", workspace.RungRows[0].SpokenName, StringComparison.Ordinal);
+    });
+
     /// <summary>The process's service-control-manager channel as the rail shows it.</summary>
     private static RungRow Scm(WorkspaceViewModel workspace) =>
         workspace.RungRows.Single(row => row.Label.StartsWith("svcctl", StringComparison.Ordinal));
@@ -86,6 +121,32 @@ public sealed class RpcScopeTests
         Timed(RpcCall(305, ObservationKind.RequestStart, Direction.Inbound, 1_960, 54, Activity(13), ServiceControl)),
         Timed(RpcCall(330, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 55, Activity(13), status: 5)),
     ];
+
+    /// <summary>
+    /// <see cref="Calls"/> with each call's procedure, and ALPC messages that link the first and third calls to the calls
+    /// that served them: each sent on the caller's thread and received on the thread that began the server call (ADR-034).
+    /// </summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls()
+    {
+        ObservationRowV1[] messages =
+        [
+            Timed(Alpc(102, ObservationKind.Send, 400, 401, 60)),
+            Timed(Alpc(103, ObservationKind.Receive, 1_960, 1_961, 61)),
+            Timed(Alpc(302, ObservationKind.Send, 400, 401, 62)),
+            Timed(Alpc(303, ObservationKind.Receive, 1_960, 1_961, 63)),
+        ];
+        ObservationRowV1[] rows = [.. Calls(), .. messages];
+        return (
+            rows,
+            [
+                .. rows.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
+                    .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
+                Field(messages[0], SourceField.AlpcMessageId, 21),
+                Field(messages[1], SourceField.AlpcMessageId, 21),
+                Field(messages[2], SourceField.AlpcMessageId, 22),
+                Field(messages[3], SourceField.AlpcMessageId, 22),
+            ]);
+    }
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 

@@ -289,6 +289,63 @@ public sealed class SessionRpcCallsTests
         }
     }
 
+    [Fact(DisplayName = "§7.4: a channel names who served its calls, and a call its other end and the key of the call there")]
+    public void ChannelsAndCallsNameTheirOtherEnd()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] messages =
+        [
+            Alpc(102, ObservationKind.Send, 400, 401, 60),
+            Alpc(103, ObservationKind.Receive, 1_960, 1_961, 61),
+            Alpc(302, ObservationKind.Send, 400, 401, 62),
+            Alpc(303, ObservationKind.Receive, 1_960, 1_961, 63),
+        ];
+        ObservationRowV1[] rows = [.. Calls(), .. messages];
+        Publish(session.Store, rows, fields:
+        [
+            .. rows.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
+                .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
+            .. messages.Select((message, index) => Field(message, SourceField.AlpcMessageId, 21 + (index / 2))),
+        ]);
+        (ProcessInstanceId client, ProcessInstanceId host) = Instances(session.Store);
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        // The first and third calls reached the host's; the second sent no message; the call that never ended has no window.
+        RpcChannelList channels = SessionRpcCalls.Channels(session.Store, client);
+        RpcChannelPeers scm = channels.Channels[0].Peers!;
+        Assert.Equal((2L, 1L), (scm.Linked, scm.Unresolved[RpcPeerState.NoSend]));
+        Assert.Equal((1_960, (ProcessInstanceId?)host, 2L), (scm.Processes[0].ProcessId, scm.Processes[0].Instance, scm.Processes[0].Calls));
+        Assert.Equal("served by PID 1960 (2 of 3)", scm.Describe(RpcCallSide.Client, 3, culture));
+        Assert.Equal(
+            "other end unresolved: not completed, so no window to follow",
+            channels.Channels[1].Peers!.Describe(RpcCallSide.Client, 1, culture));
+        RpcChannelSummary served = Assert.Single(SessionRpcCalls.Channels(session.Store, host).Channels);
+        Assert.Equal("called by PID 400 (2 of 3)", served.Peers!.Describe(RpcCallSide.Server, 3, culture));
+
+        // A call's row names its other end and the key of the call there, which opens that call on its own channel.
+        string channel = RpcChannelKeys.Channel(client, RpcCallSide.Client, ServiceControl);
+        RpcCallPage page = SessionRpcCalls.Calls(session.Store, channel);
+        Assert.Equal([1_960, (int?)null, 1_960], page.Calls.Select(row => row.OtherEnd?.Process?.ProcessId));
+        Assert.Equal(RpcPeerState.NoSend, page.Calls[1].OtherEnd!.Unresolved);
+        Assert.True(RpcChannelKeys.TryParseCall(page.Calls[0].OtherEnd!.CallKey!, out string otherChannel, out var otherCall));
+        Assert.Equal((RpcChannelKeys.Channel(host, RpcCallSide.Server, ServiceControl), 50UL), (otherChannel, otherCall.Ordinal));
+        RpcCallRow reached = Assert.Single(
+            SessionRpcCalls.Calls(session.Store, otherChannel).Calls,
+            row => row.Key == page.Calls[0].OtherEnd!.CallKey);
+        Assert.Equal((400, page.Calls[0].Key), (reached.OtherEnd!.Process!.ProcessId, reached.OtherEnd.CallKey));
+
+        // Under a brush holding only the first call, the channel counts only its link.
+        RpcChannelPeers scoped = SessionRpcCalls.Channels(session.Store, client, new TimeRange(0, 150)).Channels
+            .Single(summary => summary.Interface == ServiceControl).Peers!;
+        Assert.Equal((1L, 0), (scoped.Linked, scoped.Unresolved.Count));
+
+        // A capture that collected no ALPC names no other end at all, rather than an unresolved one for every call.
+        using var plain = new TemporarySession();
+        Publish(plain.Store, Calls());
+        (ProcessInstanceId plainClient, _) = Instances(plain.Store);
+        Assert.All(SessionRpcCalls.Channels(plain.Store, plainClient).Channels, summary => Assert.Null(summary.Peers));
+    }
+
     private static ObservationRowV1[] Calls() =>
     [
         Lifecycle(1, ObservationKind.Create, 400, 1),

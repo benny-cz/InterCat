@@ -147,6 +147,12 @@ Every other shape leaves the call's other end unresolved, with its reason:
   A server call reached by no client call is unresolved, and has no reason of its own: its client may be remote, may
   not use ALPC, or may not be in the capture.
 
+Revision 226: a reader of §5a's channels also names who is at the other end of a channel's calls - for a client
+channel the processes that served them, the most first, and why the rest are unresolved; for a server channel the
+processes whose calls it served - over the whole capture or over the calls an interval holds by §5b's rule. A call
+names its other end's process and the key of the call there, which opens that call on its own channel. A generation
+that holds no ALPC record names no other end at all, rather than an unresolved one for every call.
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as

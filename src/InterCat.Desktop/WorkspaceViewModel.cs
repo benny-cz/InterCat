@@ -4686,6 +4686,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string label = channel.Interface is null ? "Calls whose start was not seen" : RpcInterfaceNames.Describe(channel.Interface);
         string detail = (channel.Side == RpcCallSide.Client ? "RPC client · " : "RPC server · ")
             + channel.Outcome(CultureInfo.CurrentCulture);
+
+        // Who is at the other end, once the capture collected ALPC to follow each call's message (ADR-034).
+        if (channel.Peers?.Describe(channel.Side, channel.Counts.Calls, CultureInfo.CurrentCulture) is { } peers)
+        {
+            detail += " · " + peers;
+        }
         LadderRow source = RpcChannelRow(channel.Key, channel.Name, detail, channel.Records);
         return new(channel.Key, label, detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
@@ -4713,7 +4719,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string status = call.Status is { } code
             ? code == 0 ? "succeeded" : string.Create(CultureInfo.CurrentCulture, $"failed, status {code:N0}")
             : "no status";
-        string detail = $"{when} · {status}";
+        string? otherEnd = row.OtherEnd?.Describe(call.Side);
+        string detail = otherEnd is null ? $"{when} · {status}" : $"{when} · {status} · {otherEnd}";
         long records = (call.Start is null ? 0 : 1) + (call.Stop is null ? 0 : 1);
         var source = new LadderRow(row.Key, $"RPC call at {when}", detail, records, null, Mechanism.Rpc,
             CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner);
@@ -4721,7 +4728,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
             NavigationState.Name(DetailLevel.Evidence), source)
         {
-            SpokenName = $"RPC call at {when}, {label}, {status}, {channel.Name}. Press Enter to open its records.",
+            SpokenName = $"RPC call at {when}, {label}, {status}{(otherEnd is null ? string.Empty : ", " + otherEnd)}, "
+                + $"{channel.Name}. Press Enter to open its records.",
         };
     }
 

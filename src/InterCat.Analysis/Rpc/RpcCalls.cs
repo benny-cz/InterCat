@@ -444,6 +444,20 @@ public sealed class RpcCallIndex
     /// <summary>The interface one call's start named; null without a start or where it named none.</summary>
     internal Guid? InterfaceOf(int call) => entries[call].Interface < 0 ? null : interfaces[entries[call].Interface];
 
+    /// <summary>The group a call belongs to, and its place in the group's reading order.</summary>
+    internal (RpcCallGroup Group, int Position) GroupAt(int call)
+    {
+        foreach (RpcCallGroup group in Groups)
+        {
+            if (call >= group.First && call < group.First + group.Counts.Calls)
+            {
+                return (group, call - group.First);
+            }
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(call), call, "No group of the index holds this call.");
+    }
+
     /// <summary>One call described from the segments it was paired from.</summary>
     internal RpcCall DescribeAt(int call, IReadOnlyList<SegmentReaderV1> segments)
     {

@@ -19,6 +19,9 @@ public sealed record RpcChannelSummary(
     RpcCallDurations? Durations,
     long Records)
 {
+    /// <summary>Who is at the other end of the channel's calls; null when the capture collected no ALPC.</summary>
+    public RpcChannelPeers? Peers { get; init; }
+
     /// <summary>The channel in words: which side's calls, and to what.</summary>
     public string Name => (Side == RpcCallSide.Client ? "RPC calls to " : "RPC calls served on ") + RpcInterfaceNames.Describe(Interface);
 
@@ -43,7 +46,61 @@ public sealed record RpcChannelSummary(
 public sealed record RpcChannelList(Guid SessionId, long Generation, IReadOnlyList<RpcChannelSummary> Channels);
 
 /// <summary>One call of a channel, with the key that names it in every generation holding it.</summary>
-public sealed record RpcCallRow(string Key, RpcCall Call);
+public sealed record RpcCallRow(string Key, RpcCall Call)
+{
+    /// <summary>The call's other end, or why none is known; null when the capture collected no ALPC.</summary>
+    public RpcCallPeerView? OtherEnd { get; init; }
+}
+
+/// <summary>A process at the other end of RPC calls, and how many of them reached it (`contracts/operations-v1.md` §5c).</summary>
+public sealed record RpcChannelPeer(int ProcessId, ProcessInstanceId? Instance, string? Image, Guid? Interface, long Calls)
+{
+    /// <summary>The process as a row names it: its image and PID, or its PID alone where no executable was witnessed.</summary>
+    public string Name => Image is { } image
+        ? string.Create(CultureInfo.InvariantCulture, $"{image} · {ProcessId}")
+        : string.Create(CultureInfo.InvariantCulture, $"PID {ProcessId}");
+}
+
+/// <summary>
+/// Who is at the other end of an RPC channel's calls: for a client channel the processes that served them and why the
+/// rest are unresolved, for a server channel the processes whose calls it served (`contracts/operations-v1.md` §5c).
+/// </summary>
+public sealed record RpcChannelPeers(
+    long Linked,
+    IReadOnlyDictionary<RpcPeerState, long> Unresolved,
+    IReadOnlyList<RpcChannelPeer> Processes)
+{
+    /// <summary>
+    /// The other end in one phrase - "served by services.exe · 1960 (1,499 of 1,500)" - or null when nothing is known of
+    /// it, as for a server channel no linked call reached.
+    /// </summary>
+    public string? Describe(RpcCallSide side, long calls, IFormatProvider? culture = null)
+    {
+        IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
+        if (Processes.Count == 0)
+        {
+            return side == RpcCallSide.Client && Unresolved.Count > 0
+                ? "other end unresolved: " + OperationText.PeerState(Unresolved.MaxBy(entry => entry.Value).Key)
+                : null;
+        }
+
+        string others = Processes.Count > 1 ? string.Create(format, $" and {Processes.Count - 1:N0} more") : string.Empty;
+        string verb = side == RpcCallSide.Client ? "served by" : "called by";
+        return string.Create(format, $"{verb} {Processes[0].Name}{others} ({Linked:N0} of {calls:N0})");
+    }
+}
+
+/// <summary>
+/// One call's other end: the process of the call that served it, or of the client call it served, with that call's key;
+/// or why none is known (`contracts/operations-v1.md` §5c).
+/// </summary>
+public sealed record RpcCallPeerView(RpcPeerState? Unresolved, RpcChannelPeer? Process, string? CallKey)
+{
+    /// <summary>The other end in one phrase, or null for a server call no client call is known to have made.</summary>
+    public string? Describe(RpcCallSide side) => Process is { } peer
+        ? (side == RpcCallSide.Client ? "served by " : "called by ") + peer.Name
+        : Unresolved is { } state ? "other end unresolved: " + OperationText.PeerState(state) : null;
+}
 
 /// <summary>
 /// A page of one channel's calls in reading order. A channel this generation no longer holds is a problem stated, not an
@@ -261,11 +318,14 @@ public static class SessionRpcCalls
         }
 
         TimeRange? native = Native(store, manifest, interval);
+        RpcPeerIndex peers = Peers(store, manifest, Segments(store, manifest, calls), cancellationToken);
         return new(manifest.SessionId, manifest.Generation,
         [
             .. calls.Groups
                 .Where(group => group.Process.IsAdmittedUnder(policy) && calls.Processes.Instances[group.Process.Instance].Id == instance)
-                .Select(group => interval is null ? Summary(calls, group, instance) : ScopedSummary(calls, group, instance, native))
+                .Select(group => interval is null
+                    ? Summary(calls, peers, group, instance, policy)
+                    : ScopedSummary(calls, peers, group, instance, native, policy))
                 .OrderByDescending(channel => channel.Records)
                 .ThenBy(channel => channel.Key, StringComparer.Ordinal),
         ]);
@@ -323,6 +383,7 @@ public static class SessionRpcCalls
         }
 
         SegmentReaderV1[] segments = Segments(store, manifest, calls);
+        RpcPeerIndex peers = Peers(store, manifest, segments, cancellationToken);
         if (interval is not null)
         {
             TimeRange? native = Native(store, manifest, interval);
@@ -330,13 +391,14 @@ public static class SessionRpcCalls
                 ? [.. calls.OutcomesOf(group).Select((call, position) => (call, position))
                     .Where(entry => CountedWithin(entry.call, range)).Select(entry => entry.position)]
                 : [];
-            IReadOnlyList<RpcCall> scoped = calls.CallsAt(group, segments, [.. held.Skip(offset).Take(pageSize)]);
+            int[] shown = [.. held.Skip(offset).Take(pageSize)];
+            IReadOnlyList<RpcCall> scoped = calls.CallsAt(group, segments, shown);
             return new(
                 manifest.SessionId,
                 manifest.Generation,
-                ScopedSummary(calls, group, instance, native),
+                ScopedSummary(calls, peers, group, instance, native, policy),
                 offset,
-                [.. scoped.Select(call => new RpcCallRow(CallKey(channelKey, call), call))],
+                [.. scoped.Select((call, index) => Row(channelKey, call, calls, peers, group, shown[index], segments, policy))],
                 (long)offset + scoped.Count < held.Length,
                 null);
         }
@@ -345,11 +407,77 @@ public static class SessionRpcCalls
         return new(
             manifest.SessionId,
             manifest.Generation,
-            Summary(calls, group, instance),
+            Summary(calls, peers, group, instance, policy),
             offset,
-            [.. page.Select(call => new RpcCallRow(CallKey(channelKey, call), call))],
+            [.. page.Select((call, index) => Row(channelKey, call, calls, peers, group, offset + index, segments, policy))],
             (long)offset + page.Count < group.Counts.Calls,
             null);
+    }
+
+    /// <summary>One call's row, with its other end when the capture collected ALPC.</summary>
+    private static RpcCallRow Row(
+        string channelKey,
+        RpcCall call,
+        RpcCallIndex calls,
+        RpcPeerIndex peers,
+        RpcCallGroup group,
+        int position,
+        IReadOnlyList<SegmentReaderV1> segments,
+        EvidencePolicy policy)
+    {
+        var row = new RpcCallRow(CallKey(channelKey, call), call);
+        if (!peers.CollectedAlpc)
+        {
+            return row;
+        }
+
+        (RpcPeerState state, RpcCall? other) = peers.PeerOf(group, position, segments);
+        if (other is null)
+        {
+            return state == default ? row : row with { OtherEnd = new(state, null, null) };
+        }
+
+        // The other call's key names it on its own channel, so a reader can open the call at the other end.
+        RpcCallGroup otherGroup = peers.OtherCallOf(group, position)!.Value.Group;
+        RpcChannelPeer process = Peer(calls, other.ProcessId, other.Process, otherGroup.Interface, 1, policy);
+        string? key = process.Instance is { } instance
+            ? CallKey(RpcChannelKeys.Channel(instance, otherGroup.Side, otherGroup.Interface), other)
+            : null;
+        return row with { OtherEnd = new(null, process, key) };
+    }
+
+    /// <summary>Who is at the other end of a channel's calls, or of those at <paramref name="positions"/>.</summary>
+    private static RpcChannelPeers? PeersOf(
+        RpcCallIndex calls,
+        RpcPeerIndex peers,
+        RpcCallGroup group,
+        IReadOnlyList<int>? positions,
+        EvidencePolicy policy)
+    {
+        if (!peers.CollectedAlpc)
+        {
+            return null;
+        }
+
+        RpcPeerCounts counts = peers.CountsOf(group, positions);
+        IReadOnlyList<RpcPeerTally> tallies = peers.PeersOf(group, positions);
+        return new(
+            group.Side == RpcCallSide.Client ? counts.Served : tallies.Sum(tally => tally.Calls),
+            counts.Unresolved,
+            [.. tallies.Select(tally => Peer(calls, tally.ProcessId, tally.Process, tally.Interface, tally.Calls, policy))]);
+    }
+
+    /// <summary>A process at the other end, named by its instance where the evidence policy admits its binding.</summary>
+    private static RpcChannelPeer Peer(
+        RpcCallIndex calls,
+        int processId,
+        ProcessBinding binding,
+        Guid? rpcInterface,
+        long count,
+        EvidencePolicy policy)
+    {
+        ProcessInstance? instance = binding.IsAdmittedUnder(policy) ? calls.Processes.Instances[binding.Instance] : null;
+        return new(processId, instance?.Id, instance?.ImageName, rpcInterface, count);
     }
 
     /// <summary>The key of one call on a channel: its first record's raw locator and fact key.</summary>
@@ -408,18 +536,28 @@ public static class SessionRpcCalls
     /// A channel's summary within an interval: the calls it holds by the record that counts each, their durations when
     /// completed, and the call records read within it. An interval no reading falls in holds none of either.
     /// </summary>
-    private static RpcChannelSummary ScopedSummary(RpcCallIndex calls, RpcCallGroup group, ProcessInstanceId instance, TimeRange? native)
+    private static RpcChannelSummary ScopedSummary(
+        RpcCallIndex calls,
+        RpcPeerIndex peers,
+        RpcCallGroup group,
+        ProcessInstanceId instance,
+        TimeRange? native,
+        EvidencePolicy policy)
     {
         long all = 0, started = 0, completed = 0, failed = 0, open = 0, notObserved = 0, noActivity = 0, ambiguous = 0, records = 0;
         var durations = new List<long>();
+        var held = new List<int>();
+        int position = -1;
         using IEnumerator<RpcCallSpan> spans = calls.SpansOf(group).GetEnumerator();
         foreach (RpcCallOutcome call in calls.OutcomesOf(group))
         {
             spans.MoveNext();
+            position++;
             if (native is not { } range) continue;
             records += (call.Start is { } start && range.Contains(start.NativeTicks) ? 1 : 0)
                 + (call.Stop is { } stop && range.Contains(stop.NativeTicks) ? 1 : 0);
             if (!CountedWithin(call, range)) continue;
+            held.Add(position);
             all++;
             started += call.Start is null ? 0 : 1;
             switch (call.State)
@@ -461,7 +599,10 @@ public static class SessionRpcCalls
                 Ambiguous = ambiguous,
             },
             RpcCallDurations.Of(durations),
-            records);
+            records)
+        {
+            Peers = PeersOf(calls, peers, group, held, policy),
+        };
     }
 
     /// <summary>A presentation interval on the generation's source clock; null when it names none or no reading can fall in it.</summary>
@@ -470,14 +611,22 @@ public static class SessionRpcCalls
             ? RankingScope.NativeInterval(clock, presentation)
             : null;
 
-    private static RpcChannelSummary Summary(RpcCallIndex calls, RpcCallGroup group, ProcessInstanceId instance) => new(
+    private static RpcChannelSummary Summary(
+        RpcCallIndex calls,
+        RpcPeerIndex peers,
+        RpcCallGroup group,
+        ProcessInstanceId instance,
+        EvidencePolicy policy) => new(
         RpcChannelKeys.Channel(instance, group.Side, group.Interface),
         instance,
         group.Side,
         group.Interface,
         group.Counts,
         group.Durations,
-        calls.RecordsOf(group).LongCount());
+        calls.RecordsOf(group).LongCount())
+    {
+        Peers = PeersOf(calls, peers, group, null, policy),
+    };
 
     private static (SessionManifestV1 Manifest, RpcCallIndex? Calls) Derive(
         SessionStore store,
@@ -501,6 +650,19 @@ public static class SessionRpcCalls
             ?? throw new InvalidDataException("This generation has no source clock for process binding.");
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         return SessionDerivationCache.For(manifest).RpcCalls(store.Root, segments, clock, fields, cancellationToken);
+    }
+
+    /// <summary>The generation's call other ends, followed once over its calls from the same segments.</summary>
+    private static RpcPeerIndex Peers(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        IReadOnlyList<SegmentReaderV1> segments,
+        CancellationToken cancellationToken)
+    {
+        SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
+            ?? throw new InvalidDataException("This generation has no source clock for process binding.");
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        return SessionDerivationCache.For(manifest).RpcPeers(store.Root, segments, clock, fields, cancellationToken);
     }
 
     /// <summary>The generation's segments in the order the calls were paired from.</summary>

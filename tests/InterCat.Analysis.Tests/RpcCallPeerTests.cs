@@ -12,7 +12,7 @@ namespace InterCat.Analysis.Tests;
 /// </summary>
 public sealed class RpcCallPeerTests
 {
-    private static readonly Guid AlpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+
     private static readonly Guid ServiceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
 
     /// <summary>The client processes of the unresolved shapes, in the order they are built.</summary>
@@ -184,32 +184,7 @@ public sealed class RpcCallPeerTests
         public void Message(long ticks, ObservationKind kind, int process, int thread, long? message)
         {
             Exists(process);
-            ObservationRowV1 row = new()
-            {
-                RawStreamId = 1,
-                RawSourceEpoch = 1,
-                RawRecordOrdinal = ++ordinal,
-                FactKey = FactKey.Create("alpc-message"),
-                ProviderId = AlpcClass,
-                EventId = 0,
-                DescriptorVersion = 2,
-                SchemaFingerprint = "sha256:" + new string('a', 64),
-                Opcode = kind == ObservationKind.Send ? (byte)33 : (byte)34,
-                NativeTicks = ticks,
-                HeaderProcessId = process,
-                HeaderThreadId = thread,
-                ProcessorNumber = 0,
-                Mechanism = Mechanism.Alpc,
-                Layer = ObservationLayer.Transport,
-                Kind = kind,
-                Direction = kind == ObservationKind.Send ? Direction.Outbound : Direction.Inbound,
-                ByteAvailability = FieldAvailability.NotApplicable,
-                StatusAvailability = FieldAvailability.NotApplicable,
-                AttributionQuality = QualityLevel.UnknownQuality,
-                CorrelationQuality = QualityLevel.UnknownQuality,
-                MeasurementQuality = QualityLevel.UnknownQuality,
-                TimingQuality = QualityLevel.Proven,
-            };
+            ObservationRowV1 row = Alpc(ticks, kind, process, thread, ++ordinal);
             rows.Add(row);
             if (message is { } id)
             {

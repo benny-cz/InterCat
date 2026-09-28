@@ -91,6 +91,9 @@ public sealed class RpcPeerIndex
 
     public long AlpcReceives { get; }
 
+    /// <summary>Whether the generation holds any ALPC send or receive: without one, no call's other end is resolved.</summary>
+    public bool CollectedAlpc => AlpcSends + AlpcReceives > 0;
+
     /// <summary>
     /// Links every completed client call of <paramref name="calls"/> to the server call that served it, from the ALPC
     /// records of <paramref name="segments"/> - the segments the calls were paired from, in the same order - and the
@@ -185,14 +188,18 @@ public sealed class RpcPeerIndex
         return new(calls, states, peers, sends.Count, receives.Count);
     }
 
-    /// <summary>The group's client calls by what their other end is. A server group's calls have none of their own.</summary>
-    public RpcPeerCounts CountsOf(RpcCallGroup group)
+    /// <summary>
+    /// The group's client calls by what their other end is, or only those at <paramref name="positions"/> in its reading
+    /// order. A server group's calls have none of their own.
+    /// </summary>
+    public RpcPeerCounts CountsOf(RpcCallGroup group, IEnumerable<int>? positions = null)
     {
-        (int first, int count) = calls.RangeOf(group);
         long served = 0;
+        long counted = 0;
         var unresolved = new Dictionary<RpcPeerState, long>();
-        for (int call = first; call < first + count; call++)
+        foreach (int call in CallsOf(group, positions))
         {
+            counted++;
             if (states[call] == RpcPeerState.Served)
             {
                 served++;
@@ -203,20 +210,20 @@ public sealed class RpcPeerIndex
             }
         }
 
-        return new() { Calls = count, Served = served, Unresolved = unresolved };
+        return new() { Calls = counted, Served = served, Unresolved = unresolved };
     }
 
     /// <summary>
-    /// The server calls <paramref name="group"/>'s calls reached, by the server's process and interface, the most first:
-    /// for a client group, who served it; for a server group, who it served.
+    /// The calls at the other end of <paramref name="group"/>'s calls, or of those at <paramref name="positions"/>, by
+    /// their process and interface, the most first: for a client group, who served it; for a server group, who called it.
     /// </summary>
-    public IReadOnlyList<RpcPeerTally> PeersOf(RpcCallGroup group)
+    public IReadOnlyList<RpcPeerTally> PeersOf(RpcCallGroup group, IEnumerable<int>? positions = null)
     {
-        (int first, int count) = calls.RangeOf(group);
         var tally = new Dictionary<(int ProcessId, ProcessBinding Process, Guid? Interface), long>();
-        for (int call = first; call < first + count; call++)
+        foreach (int call in CallsOf(group, positions))
         {
-            if (peers[call] >= 0 && (states[call] == RpcPeerState.Served || calls.FactsOf(call).Side == RpcCallSide.Server))
+            // Only a served client call and the server call it reached hold each other.
+            if (peers[call] >= 0)
             {
                 RpcCallIndex.PeerFacts other = calls.FactsOf(peers[call]);
                 (int, ProcessBinding, Guid?) key = (other.ProcessId, other.Process, calls.InterfaceOf(peers[call]));
@@ -233,14 +240,42 @@ public sealed class RpcPeerIndex
         ];
     }
 
-    /// <summary>What the call at <paramref name="position"/> in <paramref name="group"/> reached, and its other call.</summary>
+    /// <summary>
+    /// What the call at <paramref name="position"/> in <paramref name="group"/> reached, and its other call. A server call
+    /// has no state of its own; its other call is the client call that reached it, when one did.
+    /// </summary>
     public (RpcPeerState State, RpcCall? Other) PeerOf(RpcCallGroup group, int position, IReadOnlyList<SegmentReaderV1> segments)
+    {
+        int call = At(group, position);
+        return (states[call], peers[call] < 0 ? null : calls.DescribeAt(peers[call], segments));
+    }
+
+    /// <summary>Where the other call of the call at <paramref name="position"/> is: its group and place; null when unlinked.</summary>
+    public (RpcCallGroup Group, int Position)? OtherCallOf(RpcCallGroup group, int position)
+    {
+        int call = At(group, position);
+        return peers[call] < 0 ? null : calls.GroupAt(peers[call]);
+    }
+
+    private int At(RpcCallGroup group, int position)
     {
         (int first, int count) = calls.RangeOf(group);
         ArgumentOutOfRangeException.ThrowIfNegative(position);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(position, count);
-        int call = first + position;
-        return (states[call], peers[call] < 0 ? null : calls.DescribeAt(peers[call], segments));
+        return first + position;
+    }
+
+    private IEnumerable<int> CallsOf(RpcCallGroup group, IEnumerable<int>? positions)
+    {
+        (int first, int count) = calls.RangeOf(group);
+        if (positions is null)
+        {
+            return Enumerable.Range(first, count);
+        }
+
+        return positions.Select(position => position >= 0 && position < count
+            ? first + position
+            : throw new ArgumentOutOfRangeException(nameof(positions), position, "No call of the group is at this position."));
     }
 
     private static (RpcPeerState State, int Server) Resolve(
