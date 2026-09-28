@@ -40,7 +40,7 @@ public sealed class WinInetCaptureAdmissionTests
 
     private static WindowsSourceDefinition Source => WindowsSourceCatalog.Find(WindowsSourceCatalog.WinInetCaptureSourceId)!;
 
-    [Fact(DisplayName = "ADR-037: WinINet's capture events are HTTP messages: exchange, buffer order and ends kept, length measured")]
+    [Fact(DisplayName = "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them")]
     public void TheCaptureEventsAreHttpMessages()
     {
         // A Windows capability, reported with the machine's sources, and scoped to the processes a capture names.
@@ -79,7 +79,7 @@ public sealed class WinInetCaptureAdmissionTests
         Assert.True(RecordAttribution.RaisedByTheirProcess(Mechanism.Http));
     }
 
-    [Fact(DisplayName = "ADR-036: a scoped content policy keeps the content of the sources it names, and of no other")]
+    [Fact(DisplayName = "P15: a scoped content policy keeps the content of the sources it names, and of no other")]
     public void AContentPolicyKeepsOnlyTheSourcesItNames()
     {
         // The fixture's policy names the fixture: compiled for WinINet's source, it keeps that source's metadata only.
@@ -109,7 +109,7 @@ public sealed class WinInetCaptureAdmissionTests
             CaptureBodyAdmissionPolicies.MetadataOnly with { ContentSourceIds = [WindowsSourceCatalog.ContentFixtureSourceId] }));
     }
 
-    [Fact(DisplayName = "ADR-037: a content request for WinINet's capture is admitted held to its processes, and naming every channel")]
+    [Fact(DisplayName = "R17: a content request is admitted only with a scope that holds before persistence: its processes, every channel named")]
     public void AContentRequestIsAdmittedOnlyWithItsScope()
     {
         ContentCaptureDecision decision = ContentCapturePolicyCompiler.Compile(Request(["*"]));
@@ -136,9 +136,13 @@ public sealed class WinInetCaptureAdmissionTests
             policy with { ContentSourceIds = [WindowsSourceCatalog.RpcSourceId] }));
     }
 
-    [Fact(DisplayName = "ADR-037: an admitted content request compiles a capture that keeps WinINet's bytes from its processes alone")]
+    [Fact(DisplayName = "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone")]
     public void AnAdmittedRequestCompilesAScopedCapture()
     {
+        // No profile of the catalog enables the source by default: only a request that names it and its processes does.
+        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures), profile =>
+            profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.WinInetCaptureSourceId));
+
         ContentCaptureRequest request = Request(["*"]);
         CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentRequest(ContentCapturePolicyCompiler.Compile(request));
         SourceAdmissionPlan http = AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(Manifest), 1, bodyPolicy: policy);

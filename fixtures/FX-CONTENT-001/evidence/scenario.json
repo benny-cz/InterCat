@@ -1,0 +1,14 @@
+{
+  "scenarioId": "FX-CONTENT-001",
+  "provider": "InterCat-Fixture-Content",
+  "providerGuid": "22f47a10-5a4c-5c08-9600-f69a24d5bfdd",
+  "processId": 87128,
+  "seed": 20260928,
+  "messages": 24,
+  "sent": 12,
+  "received": 12,
+  "bytes": 22236,
+  "maximumMessageBytes": 6000,
+  "listened": true,
+  "note": "Each message is one fixture event; the truth log names its length and SHA-256, never its bytes."
+}

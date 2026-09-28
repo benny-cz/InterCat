@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 240 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 241 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 241 — M3's content fixtures in the traceability matrix (§13.5):**
+  - FX-CONTENT-001 and FX-HTTP-001 join `fixtures/index.json` with committed evidence: truth logs of lengths and
+    SHA-256, never bytes, and a fresh `icat record` measurement of each, counters only.
+  - The WinINet tests now carry the contract items they assert - R17, P15, P28 - and a recording test keeps HTTP
+    buffers with their exchange, place and ends (I21). P15 and P28, uncovered until now, are covered.
 
 - **Revision 240 — a covered capture's quiet interval reads as quiet (R21, §6.6):**
   - The machine timeline, a focus's timeline and the overview judged a bucket with nothing observed as unknown, so a
@@ -2105,9 +2111,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7); revision 237
      measures M3's content-capable source, WinINet's capture provider (ADR-037); revision 238 puts it in the catalog and
      binds its records to their client (`process-binding-v4`); revision 239 admits it under a Content request, through
-     `icat record`, scoped to named processes. Next: FX-HTTP-001 and FX-CONTENT-001 in the fixture index, and a part
-     reassembled from its buffers for a person (M8). Later: HTTPS and HTTP/2 through it; a follower that mirrors content,
-     so a broker capture could keep it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+     `icat record`, scoped to named processes; revision 241 puts FX-HTTP-001 and FX-CONTENT-001 in the fixture index.
+     Next: a part reassembled from its buffers for a person (M8). Later: HTTPS and HTTP/2 through it; a follower that
+     mirrors content, so a broker capture could keep it; releasing content alone; and a fixture decoder (§11.2's
+     `DecodedFields`).
 
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -2161,6 +2168,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 241 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,382 tests: 1,378
+  passed, 4 skipped**, zero failures. Both fixtures were recorded again with `icat record` from the elevated shell into
+  scratch: FX-CONTENT-001's 24 messages matched the truth (23 whole by SHA-256, one cut), and FX-HTTP-001's 128 parts
+  matched the wire, nothing lost. Only truth logs and counters are committed; the captures were deleted.
 - Revision 240 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,381 tests: 1,377
   passed, 4 skipped**, zero failures; two tests that pinned the old reading now assert the capture's. Live, a 12-second
   content-fixture capture opened in the Release window: the process's evidence rung drew no gap, and its status read

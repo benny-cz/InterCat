@@ -1,0 +1,27 @@
+{
+  "workload": "FX-CONTENT-001",
+  "truthMessages": 24,
+  "fixtureRecords": 24,
+  "recordsWithContent": 24,
+  "lengthsMatchingTheTruth": 24,
+  "directionsMatchingTheTruth": 24,
+  "keptWhole": 23,
+  "wholeMatchingTheTruthHash": 23,
+  "cutToTheRecordLimit": 1,
+  "omittedAtTheSessionLimit": 0,
+  "ownerNamedByPayloadEqualsHeaderProcess": 24,
+  "sessionGeneration": 3,
+  "contentChunks": 1,
+  "capture": {
+    "lost": "nothing reported",
+    "recordLimitBytes": 4096,
+    "journaledRecords": 437,
+    "contentKeptBytes": 20332,
+    "command": "icat record --profile content-fixture --duration 12, beside InterCat.TestWorkloads content-fixture",
+    "policy": "scoped-content-fixture-v1",
+    "sessionLimitBytes": 16777216,
+    "deliveredRecords": 437
+  },
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-09-28"
+}

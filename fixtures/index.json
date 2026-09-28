@@ -568,6 +568,107 @@
         "I16: every answer names the identity of the specification and snapshot it answers",
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query"
       ]
+    },
+    {
+      "id": "FX-CONTENT-001",
+      "title": "InterCat's own content fixture, kept whole, cut and at its limit",
+      "scenario": "Section 11's controlled fixture path (ADR-036): a workload raises InterCat's own content provider with 24 seeded messages, text and bytes, one empty and one past the record limit; a capture keeps each beside its journal chunk under scoped-content-fixture-v1.",
+      "milestone": "M3",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R17"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": [
+          "P2",
+          "P15"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads content-fixture",
+        "seed": 20260928,
+        "log": "fixtures/FX-CONTENT-001/evidence/truth-content.jsonl",
+        "independence": "The workload logs each message it raises by conversation, direction, length and SHA-256 as it raises it; it never reads InterCat state, and the log holds no byte of a message."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-CONTENT-001/evidence/measurement.json",
+        "note": "24 of 24 messages kept with the truth's length and direction; 23 kept whole, each matching the truth's SHA-256; one cut to the 4,096-byte record limit with its original length stated; no message omitted below the 16 MiB session limit. Every record's owner is the process its payload names, which is the process that raised it."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-09-28",
+          "result": "Recorded by icat record --profile content-fixture from the elevated shell: 437 records delivered and journaled, 20,332 bytes of content kept, nothing lost. Revision 235 also drove 8,000 unpaced messages to the session limit: 2,151 whole, 3,015 cut and 2,834 omitted with their lengths, the capture stopped, and every length and whole message's hash matched."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The workload's truth log and scenario - lengths, directions and SHA-256 of synthetic messages, never their bytes - and the measurement's counters. The capture itself, which holds this machine's process names, is not kept."
+      },
+      "tests": [
+        "I21: a recording keeps each fixture message's bytes beside its journal chunk, and stops at its content limit",
+        "P15: a scoped content policy keeps the content of the sources it names, and of no other"
+      ]
+    },
+    {
+      "id": "FX-HTTP-001",
+      "title": "HTTP exchanges through WinINet to a loopback server",
+      "scenario": "M3's content-capable source (ADR-037): a WinINet client posts 32 seeded HTTP/1.1 requests, bodies from empty to 256 KiB both ways, to a server the workload runs on loopback; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R17",
+          "R22"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": [
+          "P15",
+          "P28"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-001/evidence/truth-http-server.jsonl",
+        "independence": "The loopback server is the wire-level witness: it logs the exact bytes of every request head and body it received and every response head and body it sent, by length and SHA-256, never the bytes. The client logs what it sent and read. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-001/evidence/measurement.json",
+        "note": "229 buffers of 32 exchanges kept whole under scoped-content-request-v1; regrouped by exchange id and sequence number, 128 of 128 parts matched the wire's SHA-256; every part's buffers were numbered from 0 and flagged first and last; every record was raised by the workload and bound to it under process-binding-v4. Tier ExperimentalEvidence: HTTPS, HTTP/2 and asynchronous WinINet are unmeasured (ADR-037)."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-09-28",
+          "result": "Recorded by icat record --profile content scoped to the workload's process: 848 records delivered and journaled, 1,774,586 bytes of content kept, nothing lost. The lab probe's four runs (revision 237) matched every part of 16 and 64 exchanges, and a decoy running outside the process filter left no record; capture impact measured Low (revision 239)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario - ports, lengths and SHA-256 of synthetic requests and responses, never their bytes - and the measurement's counters. The capture itself is not kept."
+      },
+      "tests": [
+        "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them",
+        "R17: a content request is admitted only with a scope that holds before persistence: its processes, every channel named",
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone",
+        "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends"
+      ]
     }
   ],
   "contractCoverage": {
@@ -783,6 +884,7 @@
         "I21: a chunk keeps each record's content with its classification, direction, lengths and how it was cut",
         "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
         "I21: a fragment that misstates how it was cut, or breaks record order, is never written",
+        "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "I21: a recording keeps each fixture message's bytes beside its journal chunk, and stops at its content limit",
         "I21: an over-long extended item keeps its original length and a truncation flag"
       ],
@@ -884,6 +986,9 @@
         "P14: an ETL capture stops and disposes only its exact owned session",
         "P14: failed ETL provider setup cleans up the exact session it created"
       ],
+      "P15": [
+        "P15: a scoped content policy keeps the content of the sources it names, and of no other"
+      ],
       "P16": [
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
         "P16: starting a journal never replaces evidence that is already there"
@@ -929,6 +1034,9 @@
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence"
+      ],
+      "P28": [
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
       ],
       "P3": [
         "P3: 21.1 scenario 2 - requested and completed bytes stay different quantities",
@@ -1124,6 +1232,8 @@
         "R16: unelevated ETL capture creates no session and explains the refusal"
       ],
       "R17": [
+        "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them",
+        "R17: a content request is admitted only with a scope that holds before persistence: its processes, every channel named",
         "R17: an extended item the policy denies keeps its type and loses its bytes",
         "R17: metadata-only admission persists no body for an unknown or content schema"
       ],
@@ -1384,10 +1494,6 @@
         "reason": "Coverage epochs on a provider change arrive with IC-009.",
         "plannedBy": "IC-009"
       },
-      "P15": {
-        "reason": "View-filter substitution for retention is asserted with IC-012.",
-        "plannedBy": "IC-012"
-      },
       "P18": {
         "reason": "Broker isolation is asserted with IC-014.",
         "plannedBy": "IC-014"
@@ -1403,10 +1509,6 @@
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",
         "plannedBy": "M2"
-      },
-      "P28": {
-        "reason": "The catalog denies payload-producing descriptors; a fixture asserting it arrives with IC-006.",
-        "plannedBy": "IC-006"
       },
       "P5": {
         "reason": "Retransmit folding is asserted with the transport correlators of IC-006.",
