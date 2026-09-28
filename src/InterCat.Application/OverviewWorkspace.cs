@@ -15,6 +15,25 @@ public static class OverviewWorkspace
         + "rung. Source records are one step (E) from every rung, and Enter on a record opens its original journal "
         + "entry. Byte previews stay hidden until requested.";
 
+    /// <summary>
+    /// What a view of a session whose capture collected ALPC says instead of <see cref="SessionDisclosure"/>: its graph
+    /// also joins processes by RPC calls linked through ALPC to the calls that served them (`contracts/operations-v1.md`
+    /// §5c).
+    /// </summary>
+    public const string LinkedCallsDisclosure =
+        "The graph shows admitted paired TCP and RPC calls linked through ALPC to the processes that served them; a "
+        + "process's rung lists its RPC calls by interface, call by call, with who served each. The timeline includes "
+        + "every observed row. TCP and UDP records are completed transfers with no operation rung. Source records are one "
+        + "step (E) from every rung, and Enter on a record opens its original journal entry. Byte previews stay hidden "
+        + "until requested.";
+
+    /// <summary>The disclosure a view of <paramref name="snapshot"/> states: which relationships its graph draws.</summary>
+    public static string DisclosureFor(WorkspaceSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc) ? LinkedCallsDisclosure : SessionDisclosure;
+    }
+
     public static WorkspaceSnapshot Empty() => new(
         "Start exploring", new TimeRange(0, 1), [], [], [], [], [], [], []);
 

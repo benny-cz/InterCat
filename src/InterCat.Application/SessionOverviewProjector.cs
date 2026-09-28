@@ -150,6 +150,14 @@ public static class SessionOverviewProjector
                 null,
                 group.Max(relation => relation.Strength)))];
 
+        // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
+        // §5c). A session without ALPC reads nothing here, so its first view opens no segment on their account.
+        RpcPeerEdge[] rpc = RpcPeerEdges.Collected(coverage)
+            ? [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)]
+            : [];
+        edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
+            edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength))];
+
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
                 + $"{maximumChannels:N0}-channel overview bound. The graph and timeline remain available; "
@@ -170,7 +178,7 @@ public static class SessionOverviewProjector
 
         // What the graph draws is counted from the relations themselves: a relation holds exactly the records at its two
         // ends, and every record of an incarnation has that incarnation's other end, so no row is looked up again here.
-        long graphRows = admitted.Sum(relation => relation.Records);
+        long graphRows = admitted.Sum(relation => relation.Records) + rpc.Sum(edge => edge.Records);
         long graphWithoutTime = admitted.Sum(relation => relation.RecordsWithoutSessionTime);
         long unresolved = relations.RecordsWithoutAdmittedPeer(Mechanism.Tcp, policy);
         (TimeRange? extent, TimelineBucket[] timeline, MechanismTimelineLane[] lanes, SessionMinimap? minimap,
@@ -179,6 +187,12 @@ public static class SessionOverviewProjector
         [
             "Graph edges show paired TCP connection incarnations whose two process instances are admitted. "
                 + "One-sided, ambiguous and unsupported relationships are not rendered as guessed edges.",
+            .. (rpc.Length == 0 ? [] : new[]
+            {
+                "RPC edges join a process and the process that served its calls, each call linked through its one ALPC "
+                    + "message (rpc-call-peer-v1). An edge counts the call records at its two ends; the ALPC records that "
+                    + "link them are its evidence, not a second count.",
+            }),
             "Edge direction is a stable display order, not a claim about which process initiated or sent data. "
                 + "Edge record counts include observations from both ends and are not whole-session totals.",
             coverage is null

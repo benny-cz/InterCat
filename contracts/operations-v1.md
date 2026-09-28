@@ -153,6 +153,12 @@ processes whose calls it served - over the whole capture or over the calls an in
 names its other end's process and the key of the call there, which opens that call on its own channel. A generation
 that holds no ALPC record names no other end at all, rather than an unresolved one for every call.
 
+Revision 227: the overview's graph joins two process instances by an RPC edge when a served call joins them and the
+evidence policy admits both calls' bindings. The edge is correlated at best, as weak as the weaker binding, and counts
+the call records at its two ends - a client call's start and stop, and the server call's start and stop when it has
+one - never the ALPC records that link them. Under an interval it counts those its readings fall in. A generation
+whose coverage ledger names no collected ALPC descriptor draws none and reads nothing for them.
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as

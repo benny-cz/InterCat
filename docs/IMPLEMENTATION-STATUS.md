@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 226 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 227 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 227 — RPC peers in the graph (M3's exit gate):**
+  - When the capture collected ALPC, an RPC edge joins a process and the process that served its calls, counting the
+    call records at both ends and never the ALPC records that link them; a brush counts those it holds.
+  - Its hover reads as linked call records with no size; a channel's rail row leads with who served it; the view's
+    disclosure names the linked calls. A session without ALPC reads nothing for them.
 
 - **Revision 226 — a call's other end on the RPC rung:**
   - A client channel's row says who served its calls and how many; a server channel's, whom it served; both follow
@@ -2003,9 +2009,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         that admits them and the ALPC record's normalization, with a ledger that names a classic descriptor by opcode;
         done in revision 224, its cost through the product, which states its sources' Moderate; done in revision 225,
         the relation rule (`rpc-call-peer-v1`, operations-v1 §5c) in `icat operations`; done in revision 226, other ends
-        on the RPC rung; next, RPC edges in the graph, read after the overview so opening a session pays nothing for
-        them, ALPC as transport evidence beneath a call and never a second count (§5.1, M3's exit gate), and peers
-        counted from the links (metrics-v1).
+        on the RPC rung; done in revision 227, RPC edges in the graph for a session that collected ALPC, counting call
+        records and never ALPC's (§5.1, M3's exit gate); next, the links persisted in the derivation checkpoint, so an
+        RPC peers session's first view opens no segment either, and peers counted from the links (metrics-v1).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
@@ -2063,6 +2069,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 227 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,345 tests: 1,341
+  passed, 4 skipped**, zero failures; three of them hold the edge, its interval count, its absence without ALPC, and
+  its hover. A real elevated `icat record --profile rpc-peers` session was opened in the Release Desktop and driven
+  through UI Automation and posted keys: its graph, the workload's RPC rung and its calls were read and captured, then
+  deleted.
 - Revision 226 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,342 tests: 1,338
   passed, 4 skipped**, zero failures; two of them hold a channel's and a call's other end through the query and on
   the rung.

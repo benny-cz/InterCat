@@ -55,6 +55,33 @@ public sealed record RpcPeerCounts
     public required IReadOnlyDictionary<RpcPeerState, long> Unresolved { get; init; }
 }
 
+/// <summary>
+/// One served call and the server call that served it: each end's process and binding, and the native readings of the
+/// records at both ends (`contracts/operations-v1.md` §5c). A server call still open at capture end has no stop.
+/// </summary>
+public readonly record struct RpcCallLink(
+    int ClientProcessId,
+    ProcessBinding Client,
+    long ClientStart,
+    long ClientStop,
+    int ServerProcessId,
+    ProcessBinding Server,
+    long ServerStart,
+    long? ServerStop)
+{
+    /// <summary>The call records at both ends whose reading <paramref name="within"/> holds; every one without it.</summary>
+    public int Records(TimeRange? within = null)
+    {
+        if (within is not { } range)
+        {
+            return ServerStop is null ? 3 : 4;
+        }
+
+        return (range.Contains(ClientStart) ? 1 : 0) + (range.Contains(ClientStop) ? 1 : 0)
+            + (range.Contains(ServerStart) ? 1 : 0) + (ServerStop is { } stop && range.Contains(stop) ? 1 : 0);
+    }
+}
+
 /// <summary>The calls at the other end of one group's calls, by their process binding and interface, with how many.</summary>
 public sealed record RpcPeerTally(int ProcessId, ProcessBinding Process, Guid? Interface, long Calls);
 
@@ -248,6 +275,30 @@ public sealed class RpcPeerIndex
     {
         int call = At(group, position);
         return (states[call], peers[call] < 0 ? null : calls.DescribeAt(peers[call], segments));
+    }
+
+    /// <summary>Every served call with the call that served it, in the index's call order.</summary>
+    public IEnumerable<RpcCallLink> Links()
+    {
+        for (int call = 0; call < states.Length; call++)
+        {
+            if (states[call] != RpcPeerState.Served)
+            {
+                continue;
+            }
+
+            RpcCallIndex.PeerFacts client = calls.FactsOf(call);
+            RpcCallIndex.PeerFacts server = calls.FactsOf(peers[call]);
+            yield return new(
+                client.ProcessId,
+                client.Process,
+                client.StartTicks,
+                client.StopTicks,
+                server.ProcessId,
+                server.Process,
+                server.StartTicks,
+                server.HasStop ? server.StopTicks : null);
+        }
     }
 
     /// <summary>Where the other call of the call at <paramref name="position"/> is: its group and place; null when unlinked.</summary>

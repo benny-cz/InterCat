@@ -121,7 +121,22 @@ public static class SessionIntervalQuery
         // An interval no source reading falls in has no coverage to judge.
         CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
         TimeRange? native = RankingScope.NativeInterval(clock, interval);
-        return new(manifest.SessionId, manifest.Generation, interval, edgeRecords, channelRecords, total.Observed, total.Graph)
+
+        // An RPC edge counts its links' call records the interval holds, as the overview draws it (operations-v1 §5c).
+        long rpcRecords = 0;
+        if (native is { } range && RpcPeerEdges.Collected(ledger))
+        {
+            foreach (RpcPeerEdge edge in RpcPeerEdges.Of(derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken), policy, range))
+            {
+                if (edge.Records > 0)
+                {
+                    edgeRecords[edge.Key] = edge.Records;
+                    rpcRecords += edge.Records;
+                }
+            }
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, edgeRecords, channelRecords, total.Observed, total.Graph + rpcRecords)
         {
             ProcessRecords = processRecords,
             CaptureCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.CaptureStates(ledger, [native])[0],

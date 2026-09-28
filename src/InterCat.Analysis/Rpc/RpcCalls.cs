@@ -438,7 +438,8 @@ public sealed class RpcCallIndex
             entry.StartTicks,
             entry.StartSegment,
             entry.StartRow,
-            entry.StopTicks);
+            entry.StopTicks,
+            entry.StopSegment >= 0);
     }
 
     /// <summary>The interface one call's start named; null without a start or where it named none.</summary>
@@ -479,7 +480,8 @@ public sealed class RpcCallIndex
         long StartTicks,
         int StartSegment,
         int StartRow,
-        long StopTicks);
+        long StopTicks,
+        bool HasStop);
 
     /// <summary>
     /// Pairs the call records of <paramref name="segments"/>, whose process instances are <paramref name="processes"/>,

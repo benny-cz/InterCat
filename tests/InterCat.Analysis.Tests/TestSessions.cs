@@ -241,6 +241,42 @@ internal static class TestSessions
         TimingQuality = QualityLevel.Proven,
     };
 
+    /// <summary>
+    /// An import's one-epoch ledger that collected RPC's call start, and ALPC's send when <paramref name="alpc"/> says so:
+    /// what decides whether a generation's RPC calls are followed to their other ends (ADR-034).
+    /// </summary>
+    public static CoverageLedgerV1 RpcLedger(bool alpc) => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs =
+        [
+            new CoverageEpochV1
+            {
+                Epoch = 1,
+                Acquisition = CoverageAcquisition.EtlImport,
+                Collected =
+                [
+                    new CoverageCollectedV1
+                    {
+                        ProviderId = RpcProvider, ProviderName = "Microsoft-Windows-RPC", EventId = 5, Version = 1, Mechanism = Mechanism.Rpc,
+                    },
+                    .. alpc
+                        ? new[]
+                        {
+                            new CoverageCollectedV1
+                            {
+                                ProviderId = AlpcClass, ProviderName = "Kernel ALPC", EventId = 0, Version = 2, Opcode = 33,
+                                Mechanism = Mechanism.Alpc,
+                            },
+                        }
+                        : [],
+                ],
+                Deliveries = [],
+                Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 }],
+            },
+        ],
+    };
+
     /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
     public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
     {

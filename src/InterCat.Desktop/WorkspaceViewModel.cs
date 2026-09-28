@@ -271,8 +271,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
                 : snapshot.Redaction is null
-                    ? OverviewWorkspace.SessionDisclosure
-                    : OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.SessionDisclosure;
+                    ? OverviewWorkspace.DisclosureFor(snapshot)
+                    : OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.DisclosureFor(snapshot);
         // The drawn graph is projected from the whole session, so a brush re-counts it without re-clustering it (§6.4).
         this.graphIdentity = graphIdentity;
         relatedProcesses = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
@@ -2970,8 +2970,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public HoverCard? DescribeGraphHover(string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        string metric = realOverview ? "Paired TCP observations" : "Observations";
-        string semantics = realOverview
+        bool linkedCalls = realOverview && Snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
+        string metric = linkedCalls ? "Paired TCP observations and linked RPC call records"
+            : realOverview ? "Paired TCP observations" : "Observations";
+        string semantics = linkedCalls
+            ? "Basis: source observations · unit: records · domain: paired TCP transport evidence and RPC calls linked through ALPC · accounting: not applicable to a count; both ends contribute"
+            : realOverview
             ? "Basis: source observations · unit: observations · domain: paired TCP transport evidence · accounting: not applicable to a count; both witnessed endpoints contribute"
             : "Basis: source observations · unit: observations · domain: relationship evidence · accounting: not applicable to a count";
         string scope = appliedInterval is { } interval
@@ -3004,8 +3008,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 scope,
                 semantics,
                 string.Create(CultureInfo.CurrentCulture, $"{metric} on its relationships: {node.Observations:N0}"),
-                HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => members.Contains(edge.SourceId) || members.Contains(edge.TargetId))),
-                    node.Observations),
+                // An RPC edge's calls carry no size: its records are neither measured bytes nor unknown ones.
+                HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => edge.Mechanism != Mechanism.Rpc
+                        && (members.Contains(edge.SourceId) || members.Contains(edge.TargetId)))),
+                    node.Observations - Snapshot.Edges
+                        .Where(edge => edge.Mechanism == Mechanism.Rpc && (members.Contains(edge.SourceId) || members.Contains(edge.TargetId)))
+                        .Sum(edge => edge.ObservationCount)),
                 "Coverage: " + DescribeCoverage(coverage),
                 node.Kind == GraphNodeKind.Context
                     ? "Size: fixed; the rest of the machine is not read on this focus's scale"
@@ -3042,6 +3050,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         long edgeScale = GraphEncoding.EdgeScale(drawnDisplay);
         HashSet<string> relationships = [.. drawn.Relationships];
         Channel[] channels = [.. Snapshot.Channels.Where(channel => relationships.Contains(channel.EdgeKey))];
+        if (drawn.Mechanism == Mechanism.Rpc)
+        {
+            // An RPC edge is calls linked through ALPC, not a transport: it counts call records and carries no size.
+            metric = "Linked RPC call records";
+            semantics = "Basis: source observations · unit: records · domain: RPC calls linked to the calls that served them "
+                + "through ALPC (rpc-call-peer-v1) · accounting: both ends' call records; the ALPC records are the link's "
+                + "evidence, not counted";
+        }
         var lines = new List<string>
         {
             $"{ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(drawn.Mechanism)).Label} · {DescribeStrength(drawn.Strength)} evidence · "
@@ -3054,14 +3070,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + (drawn.ObservationCount == 0 && appliedInterval is not null
                     ? " · none in this interval; the relationship exists in the session"
                     : string.Empty),
-            HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))), drawn.ObservationCount),
+            drawn.Mechanism == Mechanism.Rpc
+                ? "Bytes: none · an RPC call carries no size"
+                : HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))), drawn.ObservationCount),
         };
         if (realOverview)
         {
-            lines.Add("Direction: display order only, not who initiated or sent");
+            lines.Add(drawn.Mechanism == Mechanism.Rpc
+                ? "Direction: display order only; each end's RPC rows say which calls and which served"
+                : "Direction: display order only, not who initiated or sent");
         }
 
-        lines.Add("Coverage: " + DescribeCoverage(channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
+        lines.Add("Coverage: " + DescribeCoverage(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
+            : channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
         lines.Add(drawn.Unmeasured
             ? "Thickness: none · its sends recorded no size, so it is drawn as an open cross-hatched band, unknown rather than zero"
             : magnitude == "records"
@@ -3073,6 +3094,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             lines.Add(channels.Length switch
             {
                 1 => "Double-click opens its channel",
+                0 when drawn.Mechanism == Mechanism.Rpc => "Double-click opens its source process, whose rows list its RPC channels",
                 0 => "Double-click opens its source process",
                 _ => string.Create(CultureInfo.CurrentCulture,
                     $"Double-click opens its source process, whose rows list its {channels.Length:N0} channels"),
@@ -3082,6 +3104,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string source = graphDisplay.Node(drawn.SourceKey)?.Label ?? drawn.SourceKey;
         string target = graphDisplay.Node(drawn.TargetKey)?.Label ?? drawn.TargetKey;
         return new($"{source} ↔ {target}", lines);
+    }
+
+    /// <summary>
+    /// An RPC edge's coverage: the worst of the RPC and ALPC lanes over the drawn session, since a link needs both; unknown
+    /// where the timeline holds neither lane.
+    /// </summary>
+    private CoverageState RpcEdgeCoverage()
+    {
+        CoverageState[] states = [.. Snapshot.MechanismLanes
+            .Where(lane => lane.Mechanism is Mechanism.Rpc or Mechanism.Alpc)
+            .SelectMany(lane => lane.Buckets)
+            .Select(bucket => bucket.Coverage)];
+        return states.Length == 0 ? CoverageState.UnknownCoverage : Worst(states);
     }
 
     /// <summary>
@@ -3443,9 +3478,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (SelectedCluster is { } cluster)
             {
+                string counted = Snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc)
+                    ? "paired TCP and linked RPC call records"
+                    : "paired TCP observations";
                 return cluster.Relationships == 0
                     ? "No admitted paired TCP relationship among these processes. Other activity may be present."
-                    : string.Create(CultureInfo.CurrentCulture, $"{cluster.Observations:N0} paired TCP observations on ")
+                    : string.Create(CultureInfo.CurrentCulture, $"{cluster.Observations:N0} {counted} on ")
                         + Counted(cluster.Relationships, "relationship", "relationships") + " · bytes unknown";
             }
 
@@ -3464,7 +3502,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             CommunicationEdge[] edges = [.. Snapshot.Edges
                 .Where(edge => scope.Contains(edge.SourceId) || scope.Contains(edge.TargetId))];
             long observations = edges.Sum(edge => edge.ObservationCount);
-            string kind = realOverview ? "paired TCP observations" : "observations";
+            string kind = realOverview
+                ? edges.Any(edge => edge.Mechanism == Mechanism.Rpc) ? "paired TCP and linked RPC call records" : "paired TCP observations"
+                : "observations";
             string relationships = edges.Length == 0
                 ? realOverview ? "no admitted paired TCP relationship" : "no relationship"
                 : realOverview && SelectedGroup is null && !HasMultiSelection
@@ -4684,14 +4724,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private static RungRow RpcChannelRungRow(RpcChannelSummary channel, FamilyTokens tokens)
     {
         string label = channel.Interface is null ? "Calls whose start was not seen" : RpcInterfaceNames.Describe(channel.Interface);
+        // Who is at the other end leads, once the capture collected ALPC to follow each call's message (ADR-034): the
+        // rail is narrow, and in such a session that is what a channel's row is read for.
+        string? peers = channel.Peers?.Describe(channel.Side, channel.Counts.Calls, CultureInfo.CurrentCulture);
         string detail = (channel.Side == RpcCallSide.Client ? "RPC client · " : "RPC server · ")
+            + (peers is null ? string.Empty : peers + " · ")
             + channel.Outcome(CultureInfo.CurrentCulture);
-
-        // Who is at the other end, once the capture collected ALPC to follow each call's message (ADR-034).
-        if (channel.Peers?.Describe(channel.Side, channel.Counts.Calls, CultureInfo.CurrentCulture) is { } peers)
-        {
-            detail += " · " + peers;
-        }
         LadderRow source = RpcChannelRow(channel.Key, channel.Name, detail, channel.Records);
         return new(channel.Key, label, detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,

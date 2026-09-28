@@ -78,7 +78,7 @@ public sealed class RpcScopeTests
 
         await workspace.RpcReady;
         Assert.Equal(
-            $"RPC client · 3 calls · 1 failed · median {Median(2_000)} · served by services.exe · 1960 (2 of 3)",
+            $"RPC client · served by services.exe · 1960 (2 of 3) · 3 calls · 1 failed · median {Median(2_000)}",
             Scm(workspace).Detail);
 
         // Each call says who served it, or why no one is known to have.
@@ -94,6 +94,29 @@ public sealed class RpcScopeTests
             workspace.RungRows.Select(row => row.Detail.Split(" · ", 3)[2]));
         Assert.Contains("served by services.exe · 1960", workspace.RungRows[0].SpokenName, StringComparison.Ordinal);
     });
+
+    [Fact(DisplayName = "§7.4: the graph joins a caller and the process that served it by an RPC edge, read as call records with no size")]
+    public void TheGraphDrawsAnRpcEdge()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+
+        GraphDisplayEdge drawn = Assert.Single(workspace.GraphDisplay.Edges, edge => edge.Mechanism == Mechanism.Rpc);
+        HoverCard card = workspace.DescribeGraphHover(drawn.Key)!;
+        Assert.Contains(card.Lines, line => line.StartsWith("Linked RPC call records: 8", StringComparison.Ordinal));
+        Assert.Contains("Bytes: none · an RPC call carries no size", card.Lines);
+        Assert.Contains("Direction: display order only; each end's RPC rows say which calls and which served", card.Lines);
+        Assert.Contains("Double-click opens its source process, whose rows list its RPC channels", card.Lines);
+        Assert.Contains("caller.exe", card.Title, StringComparison.Ordinal);
+        Assert.Contains("services.exe", card.Title, StringComparison.Ordinal);
+
+        // What the view says it draws names the linked calls, not TCP alone.
+        Assert.Equal(OverviewWorkspace.LinkedCallsDisclosure, OverviewWorkspace.DisclosureFor(workspace.Snapshot));
+    }
 
     /// <summary>The process's service-control-manager channel as the rail shows it.</summary>
     private static RungRow Scm(WorkspaceViewModel workspace) =>
