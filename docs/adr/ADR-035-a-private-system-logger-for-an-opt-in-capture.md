@@ -47,9 +47,11 @@ enabled first, then `Microsoft-Windows-Kernel-Network` for TCP, while the TCP an
 5. **Opt-in profiles only.** Collecting ALPC alone measured Moderate (ADR-034's addendum), so it never joins Explore,
    which admits sources measured Low. The profile that admits it states its own measured class.
 6. **Classic events are admitted from the machine's schema too.** A kernel event carries no manifest; its descriptor is
-   the kernel task's GUID and opcode. Admission plans it as it plans a manifest event (ADR-002's fourth decision). TDH
-   decodes the first delivered record of each descriptor, and a layout that disagrees with the plan refuses the
-   descriptor with a reason rather than admitting a guessed field.
+   the kernel task's GUID and opcode. Admission plans it as it plans a manifest event (ADR-002's fourth decision). The
+   machine's schema for it is the class's registration, which TDH resolves from a header alone (revision 220). So the
+   layout is read before capture starts, from a synthetic header with the class, opcode and version, and never decoded
+   from a delivered record in the callback. An opcode TDH cannot describe is refused with a reason rather than admitted
+   with a guessed field.
 7. **What no plan admits is counted, not kept.** A system logger delivers events no profile asked for, kernel header
    records among them. Each is a policy omission, counted as any unadmitted event is (§20.6).
 
