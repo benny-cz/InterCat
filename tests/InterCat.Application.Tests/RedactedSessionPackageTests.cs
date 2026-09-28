@@ -292,6 +292,55 @@ public sealed class RedactedSessionPackageTests
         Assert.NotEqual(1200L, agent);
     }
 
+    [Fact(DisplayName = "I22: each source field joins its own observation, whatever order the fields arrive in")]
+    public void FieldsJoinTheirObservationsInAnyOrder()
+    {
+        using var source = new TemporarySession();
+        ObservationRowV1[] rows = [.. Enumerable.Range(0, 4).Select(index =>
+            Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 100L * (index + 1), 1200, (ulong)(70 + index))
+                .Between("127.0.0.1:50000", "127.0.0.1:8080"))];
+
+        // Fields scattered across their observations, two for one and none for another; a procedure number is kept as is,
+        // so it says which row each field was attached to.
+        SourceFieldRowV1[] fields =
+        [
+            Field(rows[2], SourceField.RpcProcedureNumber, 3),
+            Field(rows[0], SourceField.RpcProcedureNumber, 1),
+            Field(rows[3], SourceField.RpcProcedureNumber, 4),
+            Field(rows[2], SourceField.RpcProtocolSequence, 1),
+            Field(rows[0], SourceField.RpcProtocolSequence, 1),
+        ];
+        Publish(source.Store, rows, rowsPerSegment: 2, fields: fields);
+        using var package = new PackageDirectory();
+        RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+        SessionStore shared = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path));
+
+        Dictionary<ulong, long?> sizeOf = Segments(shared).SelectMany(Rows).ToDictionary(row => row.RawRecordOrdinal, row => row.ByteValue);
+        SourceFieldRowV1[] joined = [.. FieldSegments(shared).SelectMany(FieldRows)];
+        Assert.Equal(fields.Length, joined.Length);
+        Assert.All(joined.Where(field => field.Field == SourceField.RpcProcedureNumber),
+            field => Assert.Equal(field.Value * 100, sizeOf[field.RawRecordOrdinal]));
+        Assert.Equal([100L, 300L], joined.Where(field => field.Field == SourceField.RpcProtocolSequence)
+            .Select(field => sizeOf[field.RawRecordOrdinal]!.Value).Order());
+    }
+
+    [Fact(DisplayName = "I22: a field whose observation the generation does not hold is refused, not attached elsewhere")]
+    public void AFieldWithoutItsObservationIsRefused()
+    {
+        using var source = new TemporarySession();
+        ObservationRowV1 held = Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 100, 1200, 80)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080");
+        ObservationRowV1 missing = Transfer(11, ObservationKind.Send, AccountingSide.SendSide, 200, 1200, 81)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080");
+        Publish(source.Store, [held], fields: [Field(held, SourceField.RpcProcedureNumber, 1), Field(missing, SourceField.RpcProcedureNumber, 2)]);
+        using var package = new PackageDirectory();
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(() =>
+            RedactedSessionPackage.Create(source.Store, package.Path, Committed));
+        Assert.Contains("names an observation this generation does not hold", refused.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(package.Path));
+    }
+
     [Fact(DisplayName = "I22: the coverage ledger keeps its states under pseudonymous providers")]
     public void CoverageLedgerKeepsStates()
     {

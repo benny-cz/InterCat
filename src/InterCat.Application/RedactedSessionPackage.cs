@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Globalization;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -74,7 +75,7 @@ public static class RedactedSessionPackage
     /// The rows one package holds. Pseudonym tables and the source-field join grow with a session's distinct values, so
     /// a larger session is refused with this bound named rather than exhausting memory.
     /// </summary>
-    public const long MaximumRows = 1_000_000;
+    public const long MaximumRows = 10_000_000;
 
     public const string Warning = "Pseudonymized, not anonymous. Relative times, sizes, counts, status codes and the "
         + "shape of the workload can still identify a system or its activity. Review the package before sharing it.";
@@ -93,7 +94,8 @@ public static class RedactedSessionPackage
     {
         ArgumentNullException.ThrowIfNull(source);
         using EvidenceLease lease = source.AcquireLease();
-        SourceScan scan = Inspect(source.Root, lease.Manifest, new RedactedSessionPseudonyms(), progress, cancellationToken);
+        SourceScan scan = Inspect(source.Root, lease.Manifest, new RedactedSessionPseudonyms(), progress, cancellationToken,
+            joinFields: false);
         return scan.Preview;
     }
 
@@ -144,6 +146,7 @@ public static class RedactedSessionPackage
         {
             Written written = Write(source.Root, manifest, scan, pseudonyms, staging, createdUtc, progress,
                 cancellationToken);
+            scan.FieldOwners.Release();
             int files = Verify(staging, written, scan, pseudonyms, identities, names, progress, cancellationToken);
 
             // The package takes its requested name only once a complete, verified generation exists.
@@ -180,7 +183,112 @@ public static class RedactedSessionPackage
     // Inspection: every source value the package will replace, and what the package must reproduce.
     // ---------------------------------------------------------------------------------------------------------------
 
-    private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
+    /// <summary>How many runs of one observation's address the field segments hold, in their order: the join's size.</summary>
+    private static int FieldOwnerRuns(IOwnedDirectory root, SessionManifestV1 manifest, IReadOnlyList<string> fieldNames,
+        CancellationToken cancellationToken)
+    {
+        int runs = 0;
+        RecordAddress? last = null;
+        foreach (string name in fieldNames)
+        {
+            SegmentReaderV1 segment = SessionSegments.Open(root, manifest, name);
+            for (int index = 0; index < segment.RowCount; index++)
+            {
+                if ((index & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                SourceFieldRowV1 field = segment.FieldRow(index);
+                var address = new RecordAddress(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal, field.FactKey);
+                if (last is not { } previous || !previous.Equals(address)) runs = checked(runs + 1);
+                last = address;
+            }
+        }
+
+        return runs;
+    }
+
+    private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey)
+        : IComparable<RecordAddress>
+    {
+        public int CompareTo(RecordAddress other)
+        {
+            int order = Stream.CompareTo(other.Stream);
+            if (order == 0) order = Epoch.CompareTo(other.Epoch);
+            if (order == 0) order = Ordinal.CompareTo(other.Ordinal);
+            if (order == 0) order = FactKey.High.CompareTo(other.FactKey.High);
+            return order != 0 ? order : FactKey.Low.CompareTo(other.FactKey.Low);
+        }
+    }
+
+    /// <summary>
+    /// The observations the source fields belong to, and the package ordinal each is given as it is written: a sorted
+    /// array of their addresses beside an array of ordinals, found by binary search. That is 40 bytes an observation with
+    /// fields, sized by the field rows' count, where a hash set and a map of the same addresses took about a hundred, and
+    /// the join was what a package's memory grew with once most records carry fields.
+    /// </summary>
+    private sealed class FieldOwners
+    {
+        private RecordAddress[] addresses;
+        private ulong[] ordinals;
+
+        private FieldOwners(RecordAddress[] addresses, int count)
+        {
+            this.addresses = addresses;
+            Count = count;
+            ordinals = new ulong[count];
+        }
+
+        /// <summary>The distinct observations with fields.</summary>
+        public int Count { get; private set; }
+
+        /// <summary>
+        /// Builds the join from every field row's address, in any order and with repeats; <paramref name="count"/> of
+        /// <paramref name="seen"/> are filled, and the array is sorted and made distinct in place, never copied.
+        /// </summary>
+        public static FieldOwners From(RecordAddress[] seen, int count)
+        {
+            Array.Sort(seen, 0, count);
+            int distinct = 0;
+            for (int index = 0; index < count; index++)
+            {
+                if (distinct == 0 || !seen[distinct - 1].Equals(seen[index])) seen[distinct++] = seen[index];
+            }
+
+            return new(seen, distinct);
+        }
+
+        private int IndexOf(RecordAddress address) => Array.BinarySearch(addresses, 0, Count, address);
+
+        /// <summary>
+        /// Lets the join go once every field is written. Verification never reads it, and the scan that holds it lives
+        /// on through verification, where the join was the largest thing still held.
+        /// </summary>
+        public void Release()
+        {
+            addresses = [];
+            ordinals = [];
+            Count = 0;
+        }
+
+        /// <summary>
+        /// Gives the observation at <paramref name="address"/> its package ordinal when it has fields. False when it was
+        /// given one already: two rows share one observation identity.
+        /// </summary>
+        public bool TryAssign(RecordAddress address, ulong ordinal)
+        {
+            int index = IndexOf(address);
+            if (index < 0) return true;
+            if (ordinals[index] != 0) return false;
+            ordinals[index] = ordinal;
+            return true;
+        }
+
+        /// <summary>The package ordinal of the observation a field belongs to; false when no written row is it.</summary>
+        public bool TryOwner(RecordAddress address, out ulong ordinal)
+        {
+            int index = IndexOf(address);
+            ordinal = index < 0 ? 0 : ordinals[index];
+            return ordinal != 0;
+        }
+    }
 
     private readonly record struct Descriptor(Guid Provider, ushort EventId, byte Version, string Fingerprint);
 
@@ -227,7 +335,7 @@ public static class RedactedSessionPackage
 
         public required long Rows { get; init; }
 
-        public required HashSet<RecordAddress> FieldAddresses { get; init; }
+        public required FieldOwners FieldOwners { get; init; }
 
         public required IReadOnlyList<Descriptor> Descriptors { get; init; }
 
@@ -257,7 +365,8 @@ public static class RedactedSessionPackage
         SessionManifestV1 manifest,
         RedactedSessionPseudonyms pseudonyms,
         IProgress<RedactedPackageProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool joinFields = true)
     {
         if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy))
         {
@@ -338,7 +447,11 @@ public static class RedactedSessionPackage
             }
         }
 
-        var fieldAddresses = new HashSet<RecordAddress>();
+        // The observations the fields belong to. A segment lists an observation's fields together, so a first pass counts
+        // the runs of one address and the array is sized by owners, not by field rows, then filled once and never grown.
+        // A preview writes nothing and needs no join.
+        var fieldAddresses = joinFields ? new RecordAddress[FieldOwnerRuns(root, manifest, fieldNames, cancellationToken)] : [];
+        int filled = 0;
         long fieldRows = 0;
         long redactedFields = 0;
         foreach (string name in fieldNames)
@@ -350,7 +463,17 @@ public static class RedactedSessionPackage
             {
                 if ((index & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
                 SourceFieldRowV1 field = segment.FieldRow(index);
-                fieldAddresses.Add(new(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal, field.FactKey));
+                var address = new RecordAddress(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal, field.FactKey);
+                if (joinFields && (filled == 0 || !fieldAddresses[filled - 1].Equals(address)))
+                {
+                    if (filled == fieldAddresses.Length)
+                    {
+                        throw new InvalidDataException("The field segments changed while the package read them.");
+                    }
+
+                    fieldAddresses[filled++] = address;
+                }
+
                 fieldRows++;
                 FieldTransform transform = TransformOf(field);
                 switch (transform)
@@ -399,7 +522,7 @@ public static class RedactedSessionPackage
             Segments = segmentNames,
             FieldSegments = fieldNames,
             Rows = rows,
-            FieldAddresses = fieldAddresses,
+            FieldOwners = FieldOwners.From(fieldAddresses, filled),
             Descriptors = [.. descriptors
                 .OrderBy(descriptor => descriptor.Provider)
                 .ThenBy(descriptor => descriptor.EventId)
@@ -554,7 +677,6 @@ public static class RedactedSessionPackage
             uint policy = schemas.InternPolicy(Policy);
             builder.Journal.WriteSchemas(schemas);
 
-            var ordinals = new Dictionary<RecordAddress, ulong>(scan.FieldAddresses.Count);
             ulong ordinal = 0;
             foreach (string name in scan.Segments)
             {
@@ -571,7 +693,7 @@ public static class RedactedSessionPackage
                     ObservationRowV1 row = segment.Row(index);
                     ordinal++;
                     var address = new RecordAddress(row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey);
-                    if (scan.FieldAddresses.Contains(address) && !ordinals.TryAdd(address, ordinal))
+                    if (!scan.FieldOwners.TryAssign(address, ordinal))
                     {
                         throw new InvalidDataException(
                             "Two rows of this generation share one observation identity; the package refuses to guess "
@@ -598,7 +720,7 @@ public static class RedactedSessionPackage
                 {
                     if ((index & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
                     SourceFieldRowV1 field = segment.FieldRow(index);
-                    if (!ordinals.TryGetValue(new(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal,
+                    if (!scan.FieldOwners.TryOwner(new(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal,
                             field.FactKey), out ulong owner))
                     {
                         throw new InvalidDataException(
@@ -901,9 +1023,13 @@ public static class RedactedSessionPackage
             ?? throw new InvalidDataException("The package names no clock.");
         Require(clock == written.Clock, "The package's journal describes another clock than its rows are on.");
 
-        // The journal: synthetic records only, in ordinal order, under the package's schemas and policy.
+        // The journal: synthetic records only, in ordinal order, under the package's schemas and policy. Each record keeps
+        // only its reading and the index of its descriptor among the few the package has, twelve bytes a row with the
+        // flag below: a descriptor per row was 32 bytes, and verification's memory grew with the rows it checks.
         long[] readings = new long[scan.Rows];
-        Descriptor[] descriptors = new Descriptor[scan.Rows];
+        int[] descriptorOf = new int[scan.Rows];
+        var descriptorIndex = new Dictionary<Descriptor, int>();
+        var descriptors = new List<Descriptor>();
         long records = 0;
         using (FileStream stream = reopened.Root.OpenOwnedFile(journals[0].Name, FileMode.Open, FileAccess.Read,
             FileShare.Read, FileOptions.SequentialScan))
@@ -937,7 +1063,15 @@ public static class RedactedSessionPackage
                         "A package journal record is not a synthetic metadata record.");
                     Require(records < scan.Rows, "The package journal holds more records than rows.");
                     readings[records] = record.NativeTicks;
-                    descriptors[records] = new(header.ProviderId, header.EventId, header.Version, schema!.Fingerprint);
+                    var descriptor = new Descriptor(header.ProviderId, header.EventId, header.Version, schema!.Fingerprint);
+                    if (!descriptorIndex.TryGetValue(descriptor, out int index))
+                    {
+                        index = descriptors.Count;
+                        descriptorIndex.Add(descriptor, index);
+                        descriptors.Add(descriptor);
+                    }
+
+                    descriptorOf[records] = index;
                     records++;
                 }
             }, cancellationToken);
@@ -948,12 +1082,14 @@ public static class RedactedSessionPackage
         // The rows: every value a pseudonym, a fixed point or a kept value, reproducing the source's tallies.
         var tally = new PackageTally();
         var packageNames = new HashSet<string>(StringComparer.Ordinal);
-        var seen = new bool[scan.Rows];
+        var seen = new BitArray(checked((int)scan.Rows));
         long read = 0;
         foreach (string name in SessionSegments.Names(manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = SessionSegments.Open(reopened, manifest, name);
+            // Each segment is read on its own, outside the store's reader cache, which keeps every reader until the lease
+            // ends: verification held every column of the package at once, 400 MB at ten million rows.
+            SegmentReaderV1 segment = SessionSegments.Open(reopened.Root, manifest, name);
             RequirePackageSegment(segment, written);
             for (int index = 0; index < segment.RowCount; index++)
             {
@@ -961,10 +1097,10 @@ public static class RedactedSessionPackage
                 read++;
                 ObservationRowV1 row = segment.Row(index);
                 long at = checked((long)row.RawRecordOrdinal - 1);
-                Require(at >= 0 && at < scan.Rows && !seen[at] && row.RawStreamId == 1 && row.RawSourceEpoch == 1
+                Require(at >= 0 && at < scan.Rows && !seen[(int)at] && row.RawStreamId == 1 && row.RawSourceEpoch == 1
                     && row.JournalRecordIndex == row.RawRecordOrdinal - 1 && row.FactKey == SyntheticFact
                     && row.NativeTicks == readings[at]
-                    && descriptors[at] == new Descriptor(row.ProviderId, row.EventId, row.DescriptorVersion,
+                    && descriptors[descriptorOf[at]] == new Descriptor(row.ProviderId, row.EventId, row.DescriptorVersion,
                         row.SchemaFingerprint)
                     && row.ProcessorNumber == 0
                     && pseudonyms.IsIssuedOrFixedNumber(row.HeaderProcessId)
@@ -982,7 +1118,7 @@ public static class RedactedSessionPackage
                     && (row.DestinationEndpointPort is not { } remotePort || pseudonyms.IsIssuedOrFixedPort(remotePort))
                     && (row.Markers & ~SegmentRowMarkers.ResourceNameTruncated) == 0,
                     $"Package row {row.RawRecordOrdinal} carries a value that is not a pseudonym, a fixed point or kept.");
-                seen[at] = true;
+                seen[(int)at] = true;
                 if (row.ResourceName is { } kept) packageNames.Add(kept);
                 tally.Row(row);
             }
@@ -993,7 +1129,7 @@ public static class RedactedSessionPackage
         foreach (string name in SessionSegments.FieldNames(manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SegmentReaderV1 segment = SessionSegments.Open(reopened, manifest, name);
+            SegmentReaderV1 segment = SessionSegments.Open(reopened.Root, manifest, name);
             RequirePackageSegment(segment, written);
             for (int index = 0; index < segment.RowCount; index++)
             {

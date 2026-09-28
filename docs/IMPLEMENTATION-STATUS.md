@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 216 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 217 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -63,10 +63,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open; since revision 189 the machine and group rungs rank by records or by bytes sent or received (§6.1's metric selector), since revision 190 by RPC calls made or served, since revision 196 by bytes sent and received and by RPC errors, since revision 199 by median RPC call and serve time, and since revision 200 by peers, each listed by its basis since revision 201, and read per second over the ranked interval since revision 209; a large group keeps its process lanes when zoomed, counted coarser, since revision 210 | Resource topology once derived. L4 lanes beyond RPC calls (drawn since revision 181), and byte composition once IC-015 derives operations that carry a length. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
-| §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 1,000,000 rows (interval-scoped package or streamed pseudonym tables). |
+| §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 217 — a redacted package holds up to ten million rows (§11.3):**
+  - The source-field join is a sorted address array (40 bytes an observation with fields, was about 100), released
+    once written; verification keeps 12 bytes a row, was 41, and no longer holds every segment in the reader cache.
+  - Ten million rows with a source field each package in 162 s under a 1 GiB heap limit, where the previous code fails;
+    the preview skips the join. `INTERCAT_SCALE_FIELDS` gives the scale generator source fields per row.
 
 - **Revision 216 — an export and a process rung say which one they are (§6.4, §3.2):**
   - An export's suggested file name carries its rung's focus ("intercat-group-worker.exe-b61da093-g6.json"), so a
@@ -1950,13 +1956,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      IPv6 multicast.
    - **IC-016a** waits on a retention that releases observation segments: today only a journal prefix is released, and
      every derived segment, with every identity, stays.
-4. §11.3's redacted packages above 1,000,000 rows (an interval-scoped package or streamed pseudonym tables). All
-   three presets exist since revision 154.
+4. §11.3's redacted packages above 10,000,000 rows: an interval-scoped package, which must keep the lifecycle records
+   of the processes it holds so they keep their names. Revision 217 raised the bound from 1,000,000 by compacting the
+   field join and verification, measured at 10M rows with a field each under a 1 GiB heap. All three presets exist since
+   revision 154.
 5. Interaction follow-ups with no dependents:
    - Per second over a whole session: revision 209 states rates only over a brushed or zoomed interval, because a
-     session states no interval of its own and the span between its first and last record is not one. A capture's
-     coverage ledger does state the intervals it recorded; dividing by their span would give a whole session rates
-     without a brush, once that span is published with the overview.
+     session states no interval of its own and the span between its first and last record is not one. Session time 0
+     is the capture's own epoch reading, but its stop is recorded only as wall-clock provenance
+     (`capture-finalization-v1`), and the coverage ledger's first and last readings are delivered records, not the
+     recording's bounds. A whole-session rate needs the capture to record its stop reading in the source clock, and a
+     rule for records before the epoch or without a time.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -1992,6 +2002,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 217 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,317 tests: 1,313
+  passed, 4 skipped**, zero failures. Heap dumps (`dotnet-dump`) of the CLI packaging synthetic sessions at 1M, 4M and
+  10M rows found the three row-sized holders. Ten million rows with a source field each packaged in 162 s under
+  `DOTNET_GCHeapHardLimit` 1 GiB; the previous code, bound raised, failed there and the new code at 768 MiB. The
+  scratch sessions and packages were deleted afterwards.
 - Revision 216 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,315 tests: 1,311
   passed, 4 skipped**, zero failures. The Release window exported a group's 27 rows and a process's 112 records through
   its native save dialog, driven by window messages into scratch and deleted afterwards. During the work the Release

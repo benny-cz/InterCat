@@ -183,8 +183,10 @@ the source untouched.
 
 ## 9. Limits
 
-- At most 1,000,000 rows. Pseudonym tables and the source-field join grow with a session's distinct values; a larger
-  session is refused with the bound named, before anything is written.
+- At most 10,000,000 rows. Pseudonym tables grow with a session's distinct values. Memory grows with rows in two
+  places: joining each source field to its row (40 bytes an observation with fields, released once written) and
+  verification (12 bytes a row). A package of ten million rows, each with a source field, needs under 1 GiB. A larger
+  session is refused with the bound named, before anything is written. Its preview writes nothing and makes no join.
 - One capture on one clock. A session whose segments name more than one is refused.
 - A package is not built from a package: the second would read as evidence of an unknown source.
 - An IPv6 address loses its scope: a link-local, unique-local or global address all become documentation-prefix

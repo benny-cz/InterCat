@@ -27,6 +27,7 @@ public sealed class ScaleGateFactAttribute : FactAttribute
     public const string Variable = "INTERCAT_SCALE_OUTPUT";
     public const string SessionsVariable = "INTERCAT_SCALE_SESSIONS";
     public const string RowsVariable = "INTERCAT_SCALE_ROWS";
+    public const string FieldsVariable = "INTERCAT_SCALE_FIELDS";
 
     public ScaleGateFactAttribute()
     {
@@ -45,6 +46,14 @@ public sealed class ScaleGateFactAttribute : FactAttribute
         ? [.. sizes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(size => long.Parse(size, NumberStyles.AllowThousands, CultureInfo.InvariantCulture))]
         : [1_000_000, 10_000_000];
+
+    /// <summary>
+    /// Source fields per observation, none by default. A real capture carries about one field row per record, which a
+    /// redacted package must join to its row; a session generated with them measures that join at scale.
+    /// </summary>
+    public static int FieldsPerRow => Environment.GetEnvironmentVariable(FieldsVariable) is { Length: > 0 } fields
+        ? int.Parse(fields, NumberStyles.None, CultureInfo.InvariantCulture)
+        : 0;
 }
 
 /// <summary>
@@ -77,8 +86,11 @@ public sealed class ScaleGateTests
         var sessions = new List<Dictionary<string, object?>>();
         foreach (long rows in ScaleGateFactAttribute.Rows)
         {
-            string path = Path.Combine(sessionsRoot, string.Create(CultureInfo.InvariantCulture, $"scale-{rows}"));
-            double? generatedSeconds = Ensure(path, rows);
+            int fields = ScaleGateFactAttribute.FieldsPerRow;
+            string path = Path.Combine(sessionsRoot, fields == 0
+                ? string.Create(CultureInfo.InvariantCulture, $"scale-{rows}")
+                : string.Create(CultureInfo.InvariantCulture, $"scale-{rows}-f{fields}"));
+            double? generatedSeconds = Ensure(path, rows, fields);
             sessions.Add(await MeasureAsync(path, rows, generatedSeconds));
         }
 
@@ -131,14 +143,16 @@ public sealed class ScaleGateTests
     /// Returns how long generating took, or null when an existing one was reused. A directory holding anything else is
     /// refused rather than overwritten.
     /// </summary>
-    private static double? Ensure(string path, long rows)
+    private static double? Ensure(string path, long rows, int fieldsPerRow)
     {
         string marker = Path.Combine(path, "scale-session.json");
         if (File.Exists(marker))
         {
             using JsonDocument existing = JsonDocument.Parse(File.ReadAllText(marker));
+            int existingFields = existing.RootElement.TryGetProperty("fieldsPerRow", out JsonElement fields) ? fields.GetInt32() : 0;
             if (existing.RootElement.GetProperty("rows").GetInt64() == rows
-                && existing.RootElement.GetProperty("generator").GetString() == Generator)
+                && existing.RootElement.GetProperty("generator").GetString() == Generator
+                && existingFields == fieldsPerRow)
             {
                 return null;
             }
@@ -156,7 +170,8 @@ public sealed class ScaleGateTests
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(path), Guid.NewGuid(), "scale-gates");
         for (long first = 0; first < rows; first += ChunkRows)
         {
-            _ = Publish(store, Rows(first, (int)Math.Min(ChunkRows, rows - first)));
+            ObservationRowV1[] chunk = Rows(first, (int)Math.Min(ChunkRows, rows - first));
+            _ = Publish(store, chunk, fields: fieldsPerRow == 0 ? null : FieldsOf(chunk, fieldsPerRow));
         }
 
         CheckpointPublication checkpoint = SessionCheckpoints.Publish(store, DateTimeOffset.UtcNow);
@@ -165,6 +180,7 @@ public sealed class ScaleGateTests
         {
             ["rows"] = rows,
             ["generator"] = Generator,
+            ["fieldsPerRow"] = fieldsPerRow,
             ["generatedSeconds"] = Math.Round(clock.Elapsed.TotalSeconds, 1),
         }));
         return Math.Round(clock.Elapsed.TotalSeconds, 1);
@@ -353,6 +369,27 @@ public sealed class ScaleGateTests
     /// Rows [first, first + count) of the synthetic capture: the 400 creations first, then each conversation in turn
     /// sending, receiving, answering and receiving over TCP, and sending one UDP datagram off the machine.
     /// </summary>
+    /// <summary>
+    /// Source fields for each row, as a provider's would sit beside its records: a kept procedure number, and a thread
+    /// and a session number a package pseudonymizes or keeps, with values few enough to stay distinct values, not rows.
+    /// </summary>
+    private static SourceFieldRowV1[] FieldsOf(ObservationRowV1[] rows, int fieldsPerRow)
+    {
+        SourceField[] codes = [SourceField.RpcProcedureNumber, SourceField.IssuingThreadId, SourceField.ProcessSessionId];
+        var fields = new SourceFieldRowV1[rows.Length * fieldsPerRow];
+        for (int index = 0; index < rows.Length; index++)
+        {
+            for (int field = 0; field < fieldsPerRow; field++)
+            {
+                SourceField code = codes[field % codes.Length];
+                long value = code == SourceField.IssuingThreadId ? 30_000 + (index % Pairs) : index % 16;
+                fields[(index * fieldsPerRow) + field] = Field(rows[index], code, value);
+            }
+        }
+
+        return fields;
+    }
+
     private static ObservationRowV1[] Rows(long first, int count)
     {
         var rows = new ObservationRowV1[count];
