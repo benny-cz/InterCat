@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 231 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 232 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 232 — the inspector reads a chosen channel or call in full (§6.7):**
+  - A chosen RPC call, RPC channel or channel row, which the rail cuts short, heads the inspector: its name, its
+    whole detail - who served a call, or why no one is known to have - and what Enter and O open.
+  - A process, group or aggregate chosen afterwards takes its place; the process's lineage steps aside meanwhile.
 
 - **Revision 231 — Esc lands on the call it came up from (§3.2):**
   - Climbing from a call's records to its channel reads the channel's calls through the page that holds the call and
@@ -2092,6 +2097,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 232 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,353 tests: 1,349
+  passed, 4 skipped**, zero failures; two of them hold how a chosen channel and call are described, and what replaces
+  them. The Release Desktop's inspector read a client and a served call of a real elevated `icat record --profile
+  rpc-peers` session in full; the session and its renders were then deleted.
 - Revision 231 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,352 tests: 1,348
   passed, 4 skipped**, zero failures; two of them read a channel through a call and land Esc on calls of its first
   and second pages and under a brush. A real elevated `icat record --profile rpc-peers` session was driven in the

@@ -15,9 +15,12 @@ public sealed partial class WorkspaceViewModel
     /// <summary>At most this many children are named; the rest are counted.</summary>
     private const int NamedChildren = 3;
 
-    /// <summary>Whether the inspector states the selected process's lineage: one process of a real session.</summary>
+    /// <summary>
+    /// Whether the inspector states the selected process's lineage: one process of a real session, and no channel or call
+    /// described in its place, whose heading the lineage would seem to belong to.
+    /// </summary>
     public bool ShowsLineage => realOverview && selectedProcess is not null && !HasMultiSelection
-        && SelectedGroup is null && SelectedCluster is null;
+        && SelectedGroup is null && SelectedCluster is null && DescribedRow is null;
 
     /// <summary>The selected process's parent when the capture holds it.</summary>
     private ProcessNode? ParentOfSelected => selectedProcess?.Parent is { } parent

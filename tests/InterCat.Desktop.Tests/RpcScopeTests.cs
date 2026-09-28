@@ -115,6 +115,62 @@ public sealed class RpcScopeTests
         Assert.Equal(first.OtherEndKey, workspace.SelectedRung?.Key);
     });
 
+    [Fact(DisplayName = "§6.7: the inspector describes a chosen RPC channel or call in full, with what its keys do, until a process is chosen")]
+    public void TheInspectorDescribesAChosenCall() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+
+        // A channel's row: its whole name and what it holds, which the rail cuts short; the process's lineage steps aside.
+        workspace.SelectedRung = Scm(workspace);
+        Assert.Equal("RPC calls to svcctl (Service Control Manager)", workspace.SelectionTitle);
+        Assert.Equal(Scm(workspace).Detail, workspace.SelectionSubtitle);
+        Assert.Equal("Enter lists its calls", workspace.SelectionActions);
+        Assert.False(workspace.ShowsLineage);
+
+        // A call's row: how long it took and its procedure, how it ended and who served it, and what O opens.
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        RungRow first = workspace.RungRows[0];
+        workspace.SelectedRung = first;
+        Assert.StartsWith("RPC call at +", workspace.SelectionTitle, StringComparison.Ordinal);
+        Assert.Equal($"{first.Label} · {first.Detail}", workspace.SelectionSubtitle);
+        Assert.EndsWith("served by services.exe · 1960", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Equal("Enter opens its records · O opens the call services.exe · 1960 served", workspace.SelectionActions);
+
+        // A call no link reached says only what Enter does.
+        workspace.SelectedRung = workspace.RungRows[1];
+        Assert.Equal("Enter opens its records", workspace.SelectionActions);
+
+        // Back up from the call at the other end, the served call is described with the call its caller made.
+        workspace.SelectedRung = first;
+        Assert.True(workspace.OpenOtherEnd());
+        await workspace.EvidenceReady;
+        Assert.Null(workspace.DescribedRow);
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        Assert.EndsWith("called by caller.exe · 400", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Equal("Enter opens its records · O opens the call caller.exe · 400 made", workspace.SelectionActions);
+
+        // A process chosen afterwards, as in the graph, is described instead.
+        ProcessNode host = workspace.Snapshot.Processes.Single(node => node.ProcessId == 1_960);
+        workspace.SelectedProcess = host;
+        Assert.Null(workspace.DescribedRow);
+        Assert.Equal((host.Name, string.Empty), (workspace.SelectionTitle, workspace.SelectionActions));
+    });
+
     [Fact(DisplayName = "§3.2: Esc from a call's records lands on that call, however far down its channel's pages, and a brush holding it keeps it")]
     public void EscLandsOnTheCallItLeft() => SingleThreadedContext.Run(async () =>
     {

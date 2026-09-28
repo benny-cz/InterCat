@@ -147,6 +147,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     // While the ladder climbs, the key the rung it left was focused on: a call's, when it left the call's records.
     private string? revealCall;
 
+    // Whether the user chose a ranked row last that is neither a process nor a group, so the inspector describes it.
+    private bool describesRow;
+
     // The RPC channel rung's calls within the drawn viewport, for the timeline's call lane, and the read under way.
     private RpcCallSpanPage? rpcSpans;
     private (string Key, TimeRange Viewport, int Columns)? requestedRpcSpans;
@@ -1753,6 +1756,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenChannelKey = null;
         chosenProcesses.Clear();
         graphSelection = null;
+        describesRow = false;
         if (ladder.Current.Level == DetailLevel.Machine && selectedRung is not null)
         {
             // A machine-rung row is a group; an aggregate spans groups, so no row stands for it.
@@ -1772,6 +1776,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenChannelKey = null;
         chosenProcesses.Clear();
         graphSelection = null;
+        describesRow = false;
         if (syncRow && ladder.Current.Level == DetailLevel.Machine
             && RungRows.FirstOrDefault(row => row.Key == groupKey) is { } row)
         {
@@ -2015,6 +2020,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(SelectedGroup));
         OnPropertyChanged(nameof(SelectionTitle));
         OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(DescribedRow));
+        OnPropertyChanged(nameof(SelectionActions));
+        OnPropertyChanged(nameof(HasSelectionActions));
         OnPropertyChanged(nameof(EvidenceHeading));
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(PinActionLabel));
@@ -2826,6 +2834,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             chosenChannelKey = ladder.Current.Level == DetailLevel.ProcessInstance && value is not null
                 && wholeSnapshot.Channels.Any(channel => string.Equals(channel.Key, value.Key, StringComparison.Ordinal))
                     ? value.Key : null;
+            describesRow = false;
             if (value is not null && TryResolveProcess(value.Key, out ProcessNode? process))
             {
                 SelectedProcess = process;
@@ -2836,10 +2845,60 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 // A machine-rung row is an executable group: the graph rings where its members are drawn.
                 SelectGroup(value.Key, syncRow: false);
             }
+            else
+            {
+                // A channel or a call is no graph node: the inspector describes the row itself, which the rail cuts short.
+                describesRow = value is not null;
+            }
 
             // A channel chosen among a process's rows is highlighted; the process and group paths above already update it.
             UpdateHighlight();
+            RaiseSelectionDescribed();
         }
+    }
+
+    /// <summary>
+    /// The ranked row the inspector describes: the selected row, when it is what the user chose last and neither a process
+    /// nor a group - a channel, an RPC channel or one of its calls - whose name and detail the narrow rail cuts short.
+    /// </summary>
+    public RungRow? DescribedRow => describesRow && !IsEvidenceRung && !HasMultiSelection ? selectedRung : null;
+
+    /// <summary>What the described row's keys do: Enter's step, and O's where its call is linked to one at its other end.</summary>
+    public string SelectionActions
+    {
+        get
+        {
+            if (DescribedRow is not { } row) return string.Empty;
+            string enter = RpcChannelKeys.TryParseChannel(row.Key, out _, out _, out _) ? "Enter lists its calls"
+                : row.Source.DescendsTo switch
+                {
+                    DetailLevel.Evidence => "Enter opens its records",
+                    DetailLevel.Channel => "Enter opens the channel",
+                    DetailLevel.Operation => "Enter opens the operation",
+                    _ => "Enter opens it",
+                };
+            return row.OtherEndCall is { } other ? $"{enter} · O opens {other}" : enter;
+        }
+    }
+
+    public bool HasSelectionActions => SelectionActions.Length > 0;
+
+    /// <summary>A described row in full: its label where the rail shows it by more than its name, then its detail.</summary>
+    private static string DescribeRow(RungRow row)
+    {
+        string lead = row.Source.Label.Contains(row.Label, StringComparison.Ordinal) ? string.Empty : row.Label;
+        string detail = row.DetailLine;
+        return lead.Length == 0 ? detail : detail.Length == 0 ? lead : $"{lead} · {detail}";
+    }
+
+    private void RaiseSelectionDescribed()
+    {
+        OnPropertyChanged(nameof(DescribedRow));
+        OnPropertyChanged(nameof(SelectionTitle));
+        OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(SelectionActions));
+        OnPropertyChanged(nameof(HasSelectionActions));
+        RaiseLineageChanged();
     }
 
     public CrumbRow? SelectedCrumb
@@ -2912,6 +2971,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 chosenChannelKey = null;
                 chosenProcesses.Clear();
                 graphSelection = null;
+                describesRow = false;
             }
 
             OnPropertyChanged();
@@ -2927,12 +2987,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public TimeRange? SelectedInterval => selectedInterval;
 
-    public string SelectionTitle => HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
+    public string SelectionTitle => DescribedRow is { } row ? row.Source.Label
+        : HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
         : SelectedCluster is { } cluster ? cluster.Label
         : SelectedGroup is { } group ? group.Name
         : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
 
-    public string SelectionSubtitle => HasMultiSelection ? DescribeChosen()
+    public string SelectionSubtitle => DescribedRow is { } row ? DescribeRow(row)
+        : HasMultiSelection ? DescribeChosen()
         : SelectedCluster is { } cluster ? DescribeCluster(cluster)
         : SelectedGroup is { } group ? DescribeGroup(group)
         : selectedProcess is null
@@ -4023,6 +4085,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersEvidenceStep));
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         RaiseEvidenceChanged();
+        describesRow = false;
+        RaiseSelectionDescribed();
 
         // A channel rung states its channel's bytes, which are read when no selection has read them yet.
         FollowDescribedBytes();
@@ -4791,6 +4855,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             selectedRung = kept;
             OnPropertyChanged(nameof(SelectedRung));
+
+            // The kept row is read for the new scope: the inspector describes it as it now reads.
+            RaiseSelectionDescribed();
         }
     }
 
@@ -4853,11 +4920,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + (linked is null ? "." : ", or O to open the call at its other end."),
             OtherEndKey = linked?.CallKey,
             OtherEndLabel = linked is null ? null : otherWhen is null ? "RPC call" : $"RPC call at {otherWhen}",
-            OtherEndMenu = linked is null
+            OtherEndCall = linked is null
                 ? null
                 : call.Side == RpcCallSide.Client
-                    ? $"Open the call {linked.Process!.Name} served (O)"
-                    : $"Open the call {linked.Process!.Name} made (O)",
+                    ? $"the call {linked.Process!.Name} served"
+                    : $"the call {linked.Process!.Name} made",
         };
     }
 
@@ -5213,6 +5280,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             chosenChannelKey = null;
             chosenProcesses.Clear();
             graphSelection = null;
+            describesRow = false;
         }
 
         OnPropertyChanged(nameof(SelectedProcess));

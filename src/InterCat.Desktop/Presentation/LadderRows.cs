@@ -48,8 +48,11 @@ public sealed record RungRow(
     /// <summary>The crumb the call at the other end is named by once opened: "RPC call at +4.560896 s".</summary>
     public string? OtherEndLabel { get; init; }
 
+    /// <summary>The call at the other end in words: "the call services.exe · 1960 served"; null for any other row.</summary>
+    public string? OtherEndCall { get; init; }
+
     /// <summary>What the row's menu offers for the other end: "Open the call services.exe · 1960 served (O)".</summary>
-    public string? OtherEndMenu { get; init; }
+    public string? OtherEndMenu => OtherEndCall is { } call ? $"Open {call} (O)" : null;
 
     /// <summary>Whether the row can open the call at its other end.</summary>
     public bool HasOtherEnd => OtherEndKey is not null;
