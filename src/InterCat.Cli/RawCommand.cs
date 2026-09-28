@@ -94,6 +94,11 @@ internal static class RawCommand
         {
             ConsoleUi.Field("Capture", raw.CaptureId.ToString());
         }
+        // What the record holds of its message comes from the normalized row, so it holds with or without the journal.
+        if (detail.Content is { } content)
+        {
+            ConsoleUi.Field("Content", content.Describe());
+        }
         if (!detail.Available)
         {
             ConsoleUi.Warn(detail.UnavailableReason!);

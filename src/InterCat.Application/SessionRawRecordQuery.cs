@@ -28,7 +28,14 @@ public sealed record SessionRawRecordDetail(
     IReadOnlyList<RawExtendedItemSummary> ExtendedItems,
     int? OmittedExtendedItemCount,
     byte[]? BodyPreview,
-    bool BodyPreviewTruncated);
+    bool BodyPreviewTruncated)
+{
+    /// <summary>
+    /// What the record holds of the message it describes, from its normalized row: never the retained body above, which
+    /// is the event's own fields (§3.7, §11).
+    /// </summary>
+    public RecordContent? Content { get; init; }
+}
 
 public sealed record RawExtendedItemSummary(ushort Type, ushort Flags, int OriginalLength, int RetainedLength);
 
@@ -211,12 +218,19 @@ public static class SessionRawRecordQuery
                 body.Classification,
                 body.Disposition, body.OriginalLength, kept, Array.AsReadOnly(extended),
                 envelope.OmittedExtendedItemCount,
-                preview, revealBodyBytes && previewLength < kept);
+                preview, revealBodyBytes && previewLength < kept)
+            {
+                Content = RecordContent.Of(expected, synthetic: policyId == RedactedSessionPackage.Policy),
+            };
         }
 
+        // Without its journal the record still says what its source carries: the normalized row names the source.
         SessionRawRecordDetail Unavailable(string reason) => new(
             manifest.SessionId, manifest.Generation, selected.ObservationId, null, false, reason,
             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            [], null, null, false);
+            [], null, null, false)
+        {
+            Content = RecordContent.Of(expected),
+        };
     }
 }

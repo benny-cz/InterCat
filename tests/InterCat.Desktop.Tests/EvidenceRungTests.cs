@@ -52,6 +52,10 @@ public sealed class EvidenceRungTests
         Assert.Equal(workspace.EvidenceMarkTicks[5], workspace.SelectedEvidenceTick);
         Assert.Contains(workspace.SelectedEvidenceFields, field => field.Label == "When");
         Assert.Contains(workspace.SelectedEvidenceFields, field => field.Label == "Owner");
+
+        // A transfer's record says its bytes were never recorded, and why (§3.7).
+        Assert.Equal(RecordContent.Of(workspace.SelectedEvidence!.Observation).Describe(),
+            workspace.SelectedEvidenceFields.Single(field => field.Label == "Content").Value);
         Assert.Contains("Press Enter to open the original record", workspace.RungRows[5].AccessibleName,
             StringComparison.Ordinal);
 

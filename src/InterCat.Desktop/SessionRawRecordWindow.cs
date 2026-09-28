@@ -172,6 +172,9 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             $"Body: {Words(result.BodyClassification)}, {Words(result.BodyDisposition)} · original {result.OriginalBodyLength:N0} bytes · retained {result.RetainedBodyLength:N0} bytes",
             $"Extended items retained {result.ExtendedItems.Count:N0} · omitted {result.OmittedExtendedItemCount:N0}",
         };
+
+        // The body is the event's own fields; whether the message itself was kept is a separate statement (§3.7).
+        if (result.Content is { } content) lines.Insert(8, "Content: " + content.Describe());
         foreach (RawExtendedItemSummary item in result.ExtendedItems)
             lines.Add($"  item type {item.Type}, flags {item.Flags}: original {item.OriginalLength:N0}, retained {item.RetainedLength:N0} bytes");
         if (result.BodyPreview is { } bytes)

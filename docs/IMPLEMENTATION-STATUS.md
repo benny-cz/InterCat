@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 232 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 233 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 233 — a record says why it holds no content (§3.7, §11):**
+  - The evidence inspector, the original record's window and `icat raw` say what a record holds of its message: none,
+    since its source carries endpoints and a size, a call's interface and procedure, or a message id; and which
+    source could hold the bytes when one is known ("A packet capture could hold them").
+  - The statement stands apart from the retained event body, which is the event's own fields, not the message.
 
 - **Revision 232 — the inspector reads a chosen channel or call in full (§6.7):**
   - A chosen RPC call, RPC channel or channel row, which the rail cuts short, heads the inspector: its name, its
@@ -2045,6 +2051,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         for them needs another source of truth than a guess.
      5. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
         §6.2 density regime remains (item 5).
+   - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could. Next, in order:
+     §11.2's content contract (classification, per-record and per-session caps, truncation, missing ranges and a
+     fragment's link to its record); a controlled fixture path, a test provider's bytes through a scoped content
+     profile; the bounded hex and text viewer (§3.7); then one validated content-capable source or import path.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2097,6 +2107,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 233 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,355 tests: 1,351
+  passed, 4 skipped**, zero failures; three of them hold each source's statement, the original record's and the
+  inspector's. `icat raw` stated it for a lifecycle and a TCP record of a scratch import of the sparse ETL, deleted.
 - Revision 232 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,353 tests: 1,349
   passed, 4 skipped**, zero failures; two of them hold how a chosen channel and call are described, and what replaces
   them. The Release Desktop's inspector read a client and a served call of a real elevated `icat record --profile
