@@ -93,6 +93,82 @@ public sealed class OwnedCaptureSessionTests
         };
     }
 
+    /// <summary>The sample plan with ALPC's kernel flag group beside it, as a profile for RPC peers would compile.</summary>
+    private static OwnedSessionPlan BuildPlanWithAlpc()
+    {
+        OwnedSessionPlan plan = BuildPlan();
+        var alpc = new SourceAdmissionPlan
+        {
+            SourceId = WindowsSourceCatalog.KernelAlpcSourceId,
+            ProviderGuid = WindowsSourceCatalog.AlpcEventClass,
+            SourceIndex = 1,
+            Events = [],
+            Diagnostics = [],
+        };
+        return plan with { Sources = [.. plan.Sources, alpc] };
+    }
+
+    [Fact(DisplayName = "§9.2: a plan with a kernel flag group enables its kernel flags first, then its manifest providers")]
+    public async Task KernelFlagsAreTheFirstEnablement()
+    {
+        var host = new FakeEtwSessionHost();
+        OwnedSessionPlan plan = BuildPlanWithAlpc();
+        Assert.Equal(WindowsSourceCatalog.AlpcKernelFlag, plan.KernelFlags);
+        Assert.Equal(WindowsSourceCatalog.KernelAlpcSourceId, plan.KernelFlagSources);
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        CaptureStartResult start = await session.StartAsync(CancellationToken.None);
+
+        Assert.True(start.Started);
+        Assert.Equal(["kernel:0x100000", "etw/manifest/Sample"], host.Enablements);
+        Assert.Contains(start.Providers, result => result.SourceId == WindowsSourceCatalog.KernelAlpcSourceId && result.Enabled);
+        await session.StopAsync(CancellationToken.None);
+    }
+
+    [Fact(DisplayName = "§9.2: refused kernel flags refuse the capture before any manifest provider, and stop only the session it made")]
+    public async Task RefusedKernelFlagsRefuseTheCapture()
+    {
+        var host = new FakeEtwSessionHost("Some-Other-Tool-Session") { RefuseKernelFlags = true };
+        OwnedSessionPlan plan = BuildPlanWithAlpc();
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        CaptureStartResult start = await session.StartAsync(CancellationToken.None);
+
+        Assert.False(start.Started);
+        Assert.Contains("eight system loggers", start.FailureReason, StringComparison.Ordinal);
+        Assert.Equal(["kernel:0x100000"], host.Enablements);
+        Assert.Equal(plan.Identity.SessionName, Assert.Single(host.StoppedSessions));
+        Assert.Equal(CaptureLifecycle.Closed, session.State);
+    }
+
+    [Fact(DisplayName = "§9.2: a plan without a kernel flag group enables only its manifest providers, and no kernel provider")]
+    public async Task APlanWithoutKernelFlagsEnablesOnlyItsProviders()
+    {
+        var host = new FakeEtwSessionHost();
+        OwnedSessionPlan plan = BuildPlan();
+        Assert.Equal(0UL, plan.KernelFlags);
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        Assert.True((await session.StartAsync(CancellationToken.None)).Started);
+        Assert.Equal(["etw/manifest/Sample"], host.Enablements);
+        await session.StopAsync(CancellationToken.None);
+    }
+
+    [Fact(DisplayName = "§9.2: a kernel flag group compiles to no manifest provider request")]
+    public void AKernelFlagGroupIsNoManifestProvider()
+    {
+        OwnedSessionPlan plan = BuildPlanWithAlpc();
+        SourceAdmissionPlan sample = plan.Sources[0] with
+        {
+            SourceId = WindowsSourceCatalog.KernelProcessSourceId,
+            Events = [plan.Sources[0].Events[0] with { EventId = 1 }],
+        };
+
+        IReadOnlyList<ProviderEnablementRequest> requests = ProviderEnablementCompiler.Compile([sample, plan.Sources[1]]);
+
+        Assert.Equal(WindowsSourceCatalog.KernelProcessSourceId, Assert.Single(requests).SourceId);
+    }
+
     [Fact(DisplayName = "R8: a capture moves Idle to Recording to Closed and reports its own counters")]
     public async Task LifecycleReachesRecordingAndCloses()
     {

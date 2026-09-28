@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 221 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 222 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 222 — the owned session takes kernel flags first (ADR-035):**
+  - A plan's kernel flag groups give it kernel flags, enabled in one call before any manifest provider, which makes the
+    session a private system logger; refused (as at the limit of eight), they refuse the capture and stop only its own
+    session.
+  - A kernel flag group compiles to no manifest provider request; a plan without kernel flags enables what it did.
 
 - **Revision 221 — ALPC's send and receive admitted by opcode (ADR-035):**
   - The ALPC source compiles from its class's registration into two plans told apart only by opcode, each admitting a
@@ -1965,9 +1971,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      3. Resolve an RPC call's other end through ALPC (ADR-034) as an opt-in profile - collection alone measured Moderate
         in revision 188, so never Explore - in order: done in revision 218, ADR-035 for a private, uniquely named, owned
         system logger in the capture's one session, checked in the product's session conditions; done in revisions
-        220 and 221, admission for ALPC's classic send and receive by opcode, from the class's registered layout; next,
-        the owned session's kernel flags (first in its plan), a profile that admits them, and its measured class
-        through the product path; the relation
+        220 and 221, admission for ALPC's classic send and receive by opcode, from the class's registered layout; done
+        in revision 222, the owned session's kernel flags, first; next, a profile that admits them, the ALPC record's
+        normalization, and its measured class through the product path; the relation
         rule implementing ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence
         beneath a call and never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
@@ -2027,6 +2033,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 222 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,328 tests: 1,324
+  passed, 4 skipped**, zero failures; four of them hold kernel flags first, a refusal's cleanup, plans without them
+  unchanged, and no manifest request for a kernel flag group. No real session was started: no profile enables them yet.
 - Revision 221 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,324 tests: 1,320
   passed, 4 skipped**, zero failures, four of them taking ALPC's send and receive from a class layout to the journal
   and a replay's plan selection.

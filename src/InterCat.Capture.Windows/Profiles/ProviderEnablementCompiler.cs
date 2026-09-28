@@ -1,3 +1,5 @@
+using InterCat.Domain;
+
 namespace InterCat.Capture.Windows;
 
 /// <summary>
@@ -19,6 +21,16 @@ public static class ProviderEnablementCompiler
             WindowsSourceDefinition definition = WindowsSourceCatalog.Find(plan.SourceId)
                 ?? throw new InvalidOperationException(
                     $"Admission plan '{plan.SourceId}' has no source-catalog definition.");
+            if (definition.Kind == SourceKind.KernelFlagGroup)
+            {
+                // Its kernel flags start the session as a system logger, the first enablement (ADR-035).
+                if (processFilters?.ContainsKey(plan.SourceId) == true)
+                {
+                    throw new InvalidOperationException($"Source '{plan.SourceId}' cannot enforce a capture-side process filter.");
+                }
+
+                continue;
+            }
 
             IReadOnlyList<int> processIds = [];
             if (processFilters?.TryGetValue(plan.SourceId, out IReadOnlyList<int>? requestedIds) == true)

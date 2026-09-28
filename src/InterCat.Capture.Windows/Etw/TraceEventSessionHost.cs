@@ -153,6 +153,21 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
         public ProviderEnablementResult Enable(ProviderEnablementRequest request) =>
             TraceEventProviderControl.Enable(session, request);
 
+        public ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags)
+        {
+            try
+            {
+                session.EnableKernelProvider((Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords)flags);
+                return new(sourceId, true, null);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                return new(sourceId, false,
+                    $"The kernel flags could not start a private system logger: {exception.Message} A machine runs at "
+                    + "most eight system loggers, and this capture never stops another to make room (ADR-035).");
+            }
+        }
+
         public bool TryFlushDelivery()
         {
             if (stopped)

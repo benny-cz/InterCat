@@ -212,9 +212,23 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
 
         session = created;
-        var providerResults = new List<ProviderEnablementResult>(plan.Providers.Count);
+        var providerResults = new List<ProviderEnablementResult>(plan.Providers.Count + 1);
         try
         {
+            // A private system logger's kernel flags must be its first enablement: after any manifest provider the
+            // session has started ordinary, and TraceEvent refuses them (ADR-035). A profile that needs them cannot do
+            // its work without them, so their refusal is the capture's.
+            if (plan.KernelFlags != 0)
+            {
+                ProviderEnablementResult kernel = created.EnableKernelFlags(plan.KernelFlagSources, plan.KernelFlags);
+                providerResults.Add(kernel);
+                if (!kernel.Enabled)
+                {
+                    await CleanUpCreatedResourcesAsync().ConfigureAwait(false);
+                    return Fail($"{kernel.SourceId}: {kernel.FailureReason ?? "the kernel flags were refused."}", providerResults);
+                }
+            }
+
             foreach (ProviderEnablementRequest request in plan.Providers)
             {
                 cancellationToken.ThrowIfCancellationRequested();

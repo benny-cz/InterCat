@@ -183,4 +183,15 @@ public sealed record OwnedSessionPlan
     /// envelope candidate turns it on (section 18.1).
     /// </summary>
     public bool PreserveExtendedData { get; init; }
+
+    /// <summary>
+    /// The kernel flags the plan's kernel flag groups need, 0 when it has none. Non-zero makes the session a private
+    /// system logger, which only a first enablement of the kernel flags can make it (ADR-035).
+    /// </summary>
+    public ulong KernelFlags => Sources.Aggregate(0UL, (flags, source) => flags | (WindowsSourceCatalog.Find(source.SourceId)?.KernelFlags ?? 0));
+
+    /// <summary>The kernel flag groups among the plan's sources, named together in the one enablement they share.</summary>
+    public string KernelFlagSources => string.Join(", ", Sources
+        .Where(source => WindowsSourceCatalog.Find(source.SourceId) is { Kind: SourceKind.KernelFlagGroup, KernelFlags: > 0 })
+        .Select(source => source.SourceId));
 }

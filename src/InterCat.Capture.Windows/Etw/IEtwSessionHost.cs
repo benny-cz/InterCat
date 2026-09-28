@@ -83,6 +83,13 @@ public interface IOwnedEtwSession : IDisposable
 
     ProviderEnablementResult Enable(ProviderEnablementRequest request);
 
+    /// <summary>
+    /// Enables kernel flag groups, which makes the session a private system logger. It must be the session's first
+    /// enablement and its only one of kernel flags (ADR-035).
+    /// </summary>
+    ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags) =>
+        new(sourceId, false, "This session host cannot enable kernel flags.");
+
     /// <summary>Requests a provider state rundown after delivery has started (section 18.5).</summary>
     bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason);
 
