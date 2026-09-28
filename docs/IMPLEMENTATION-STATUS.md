@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 211 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 212 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 212 — the channel browser reads by process and opens on Enter (§3.2, R15):**
+  - A row names the processes at its two ends, then its endpoints and records ("queue.exe · PID 84016 ↔ worker.exe
+    · PID 90512 · :15624 ↔ :15647 on 127.0.0.1 · 125 records"), from the workspace (`Channel.SecondHolder`).
+  - Enter opens the selected channel's records; the list has an accessible name; the detail says where bytes are stated.
 
 - **Revision 211 — a process's parent and children in the inspector (ntities-v1 §3):**
   - "Started by" names the parent and how it is linked (start key, or PID and start time), a parent outside the
@@ -1951,6 +1956,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 212 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,306 tests: 1,302
+  passed, 4 skipped**, zero failures. In the Release window on a 20-second dense capture the browser listed its 112
+  channels by process, and Enter posted to it opened the first one's records; the capture was deleted afterwards.
 - Revision 211 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,305 tests: 1,301
   passed, 4 skipped**, zero failures. A live pass on a 20-second dense capture followed a worker to the PowerShell that
   started it and on to that shell's 66 children, in the Release window; the capture was deleted afterwards.

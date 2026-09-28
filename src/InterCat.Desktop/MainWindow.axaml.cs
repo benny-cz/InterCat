@@ -581,7 +581,9 @@ public sealed partial class MainWindow : Window, IDisposable
             || displayedGeneration < 1) return;
         if (workspace.IsEvidenceRung) return;
         ProcessInstanceId? processScope = ChannelDiscoveryScope(workspace.CaptureNavigation());
-        using var browser = new SessionChannelWindow(currentSessionPath, sessionId, displayedGeneration, processScope);
+        WorkspaceSnapshot processes = workspace.WholeSnapshot;
+        using var browser = new SessionChannelWindow(currentSessionPath, sessionId, displayedGeneration, processScope,
+            id => processes.Processes.FirstOrDefault(process => process.Id == id)?.NameWithPid);
         try
         {
             // A chosen channel opens at the evidence rung of this workspace, so its records sit in the ladder with

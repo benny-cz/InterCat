@@ -365,6 +365,7 @@ public static class SessionOverviewProjector
         coverage)
     {
         FirstHolder = relation.First.Id,
+        SecondHolder = relation.Second.Id,
     };
 
     /// <summary>

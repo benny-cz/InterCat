@@ -1,5 +1,8 @@
+using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
@@ -26,19 +29,25 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     private readonly TextBlock selectedDetail = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button inspect = new() { Content = "Show this channel's source records", IsEnabled = false };
     private readonly Button next = new() { Content = "Next 100 channels", IsEnabled = false };
+    private readonly Func<ProcessInstanceId, string?> processName;
     private IReadOnlyList<Channel> currentChannels = [];
     private string? nextCursor;
     private bool loading;
     private bool closed;
     private bool disposed;
 
+    /// <param name="processName">
+    /// Names a process instance as the workspace names it, by name and PID, so a channel reads by the processes it joins
+    /// rather than by endpoints alone; null for one the workspace does not hold.
+    /// </param>
     public SessionChannelWindow(string path, Guid expectedSessionId, long expectedGeneration,
-        ProcessInstanceId? processScope)
+        ProcessInstanceId? processScope, Func<ProcessInstanceId, string?>? processName = null)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.processScope = processScope;
+        this.processName = processName ?? (_ => null);
         Title = "InterCat · Paired TCP channels";
         Width = 880;
         Height = 650;
@@ -59,6 +68,17 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         caveat.Text = "This list is paired TCP only. One-sided and ambiguous observations remain in "
             + "whole-session source rows. Counts are observed records, not bytes or logical operations.";
         rows.SelectionChanged += (_, _) => UpdateSelection();
+
+        // Enter opens the selected channel, as it opens a ranked row in the workspace; a double click does too.
+        AutomationProperties.SetName(rows, "Paired TCP channels. Enter shows the selected channel's source records.");
+        rows.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Enter)
+            {
+                ChooseSelected();
+                key.Handled = true;
+            }
+        };
         next.Click += (_, _) =>
         {
             if (nextCursor is { } cursor) _ = LoadPageAsync(cursor);
@@ -142,8 +162,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             }
 
             currentChannels = page.Channels;
-            rows.ItemsSource = currentChannels.Select(channel =>
-                $"{channel.Name} · {channel.ObservationCount:N0} observed records").ToArray();
+            rows.ItemsSource = currentChannels.Select(Describe).ToArray();
             rows.SelectedIndex = currentChannels.Count > 0 ? 0 : -1;
             caveat.Text = page.Caveat;
             nextCursor = page.NextCursor;
@@ -176,10 +195,22 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         bool selected = index >= 0 && index < currentChannels.Count;
         inspect.IsEnabled = selected && !loading;
         selectedDetail.Text = selected
-            ? $"Stable channel key: {currentChannels[index].Key}\n"
-                + $"Observed records: {currentChannels[index].ObservationCount:N0}. "
-                + "Direction, byte total and complete capture coverage are not established."
+            ? $"{currentChannels[index].Name} · {currentChannels[index].ObservationCount:N0} records at its two ends\n"
+                + "Enter shows its source records. Its channel rung, one step below either process's, states what was "
+                + $"sent across it and each end's records by direction.\nStable channel key: {currentChannels[index].Key}"
             : string.Empty;
+    }
+
+    /// <summary>
+    /// A channel as the list reads it: the processes at its two ends, first end first, then its endpoints compacted and
+    /// its records - "queue.exe · PID 29632 ↔ worker.exe · PID 66820 · :2711 ↔ :2756 on 127.0.0.1 · 128 records".
+    /// </summary>
+    private string Describe(Channel channel)
+    {
+        string first = channel.FirstHolder is { } firstHolder ? processName(firstHolder) ?? "an unlisted process" : "an unknown process";
+        string second = channel.SecondHolder is { } secondHolder ? processName(secondHolder) ?? "an unlisted process" : "an unknown process";
+        return string.Create(CultureInfo.CurrentCulture,
+            $"{first} ↔ {second} · {ChannelNames.Compact(channel.Name)} · {channel.ObservationCount:N0} records");
     }
 
     /// <summary>The channel the user chose, which the workspace opens at its evidence rung.</summary>

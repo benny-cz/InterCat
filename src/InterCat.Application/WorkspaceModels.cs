@@ -133,6 +133,9 @@ public sealed record Channel(
     /// end first needs to know whose each is.
     /// </summary>
     public ProcessInstanceId? FirstHolder { get; init; }
+
+    /// <summary>The process holding the second endpoint of <see cref="Name"/>, when known; the first's for a process connected to itself.</summary>
+    public ProcessInstanceId? SecondHolder { get; init; }
 }
 
 /// <summary>
