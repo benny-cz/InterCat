@@ -107,11 +107,61 @@ public sealed class RpcScopeTests
         Assert.Contains("services.exe", crumbs, StringComparison.Ordinal);
         Assert.Contains("RPC calls served on svcctl", crumbs, StringComparison.Ordinal);
 
-        // Esc climbs to the host's channel, whose served calls name the caller as theirs.
+        // Esc climbs to the host's channel, whose served calls name the caller as theirs, on the call it came up from.
         Assert.True(workspace.Ascend());
         await workspace.RpcReady;
         Assert.Equal(3, workspace.RungRows.Count);
         Assert.Contains(workspace.RungRows, row => row.Detail.EndsWith("called by caller.exe · 400", StringComparison.Ordinal));
+        Assert.Equal(first.OtherEndKey, workspace.SelectedRung?.Key);
+    });
+
+    [Fact(DisplayName = "§3.2: Esc from a call's records lands on that call, however far down its channel's pages, and a brush holding it keeps it")]
+    public void EscLandsOnTheCallItLeft() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ManyCalls(250));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = Scm(workspace);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Assert.Equal(SessionRpcCalls.DefaultPageSize, workspace.RungRows.Count);
+
+        // A call on the first page: its records, then Esc, and it is selected again.
+        RungRow early = workspace.RungRows[5];
+        workspace.SelectedRung = early;
+        Assert.True(workspace.Descend());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        Assert.Equal((100, early.Key), (workspace.RungRows.Count, workspace.SelectedRung?.Key));
+
+        // A call on the second page: the channel is read again through that page, and the call is selected.
+        await workspace.LoadMoreAsync();
+        RungRow later = workspace.RungRows[130];
+        workspace.SelectedRung = later;
+        Assert.True(workspace.Descend());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        Assert.Equal((200, later.Key), (workspace.RungRows.Count, workspace.SelectedRung?.Key));
+        Assert.True(workspace.CanLoadMore);
+
+        // A brush holding the first 181 calls lists them all, through the selected one's page, and keeps it selected.
+        workspace.SelectInterval(new TimeRange(0, 1_005 + (180 * 10) + 1));
+        await workspace.IntervalReady;
+        await workspace.RpcReady;
+        Assert.Equal((181, later.Key), (workspace.RungRows.Count, workspace.SelectedRung?.Key));
+        Assert.False(workspace.CanLoadMore);
     });
 
     [Fact(DisplayName = "§7.4: the graph joins a caller and the process that served it by an RPC edge, read as call records with no size")]
@@ -189,6 +239,19 @@ public sealed class RpcScopeTests
                 Field(messages[3], SourceField.AlpcMessageId, 22),
             ]);
     }
+
+    /// <summary>PID 400 calls the service control manager <paramref name="count"/> times, each 5 ticks long, 10 apart from 1,000.</summary>
+    private static ObservationRowV1[] ManyCalls(int count) =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\caller.exe" }),
+        .. Enumerable.Range(0, count).SelectMany(index => new[]
+        {
+            Timed(RpcCall(1_000 + (index * 10), ObservationKind.RequestStart, Direction.Outbound, 400, (ulong)(100 + (index * 2)),
+                Activity(1_000 + index), ServiceControl)),
+            Timed(RpcCall(1_005 + (index * 10), ObservationKind.RequestEnd, Direction.Outbound, 400, (ulong)(101 + (index * 2)),
+                Activity(1_000 + index), status: 0)),
+        }),
+    ];
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 

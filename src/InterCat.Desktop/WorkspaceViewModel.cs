@@ -144,6 +144,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<RungRow> rpcChannelRows = [];
     private IReadOnlyList<RungRow> rpcCallRows = [];
 
+    // While the ladder climbs, the key the rung it left was focused on: a call's, when it left the call's records.
+    private string? revealCall;
+
     // The RPC channel rung's calls within the drawn viewport, for the timeline's call lane, and the read under way.
     private RpcCallSpanPage? rpcSpans;
     private (string Key, TimeRange Viewport, int Columns)? requestedRpcSpans;
@@ -3842,7 +3845,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         ResumeIntervalOf(restored);
-        AfterNavigation();
+        ArriveFrom(left);
 
         // The row the rung was opened from is selected again, so the way back lands where the way down began and the
         // keyboard can take the next row from there (§3.2).
@@ -3859,10 +3862,29 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public void ReturnTo(int depth)
     {
         ladder.RecordInterval(selectedInterval);
+        NavigationState left = ladder.Current;
         if (ladder.TryReturnTo(depth, out NavigationState restored))
         {
             ResumeIntervalOf(restored);
+            ArriveFrom(left);
+        }
+    }
+
+    /// <summary>
+    /// Shows the rung the ladder climbed to from <paramref name="left"/>. Climbing from a call's records to its channel,
+    /// the channel's calls are read through that call, which is selected once read, however far down the channel's pages
+    /// it lies: its rows arrive after this returns, where a rung's other rows are here now (§3.2).
+    /// </summary>
+    private void ArriveFrom(NavigationState left)
+    {
+        revealCall = left.Focus?.Key;
+        try
+        {
             AfterNavigation();
+        }
+        finally
+        {
+            revealCall = null;
         }
     }
 
@@ -4569,6 +4591,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + " · paired start to stop by activity id; E shows the records";
     }
 
+    /// <summary>The key when it names a call on <paramref name="channelKey"/>; null for any other key.</summary>
+    private static string? CallOn(string channelKey, string? key) =>
+        RpcChannelKeys.TryParseCall(key, out string channel, out _) && string.Equals(channel, channelKey, StringComparison.Ordinal)
+            ? key
+            : null;
+
     /// <summary>A row for an RPC channel: one process's calls on one side to one interface, counted in call records.</summary>
     private static LadderRow RpcChannelRow(string key, string label, string detail, long records) =>
         new(key, label, detail, records, null, Mechanism.Rpc, CoverageState.UnknownCoverage, DetailLevel.Channel,
@@ -4590,7 +4618,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             CancelRpcCalls();
-            var calls = new RpcCallsLoad(key, CountedScope);
+            var calls = new RpcCallsLoad(key, CountedScope) { Reveal = CallOn(key, revealCall) };
             rpcCalls = calls;
             RpcReady = LoadRpcCallsAsync(calls);
             RequestRpcSpans(drawnTimeline?.Viewport ?? ladder.Current.Viewport);
@@ -4634,7 +4662,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         if (IsRpcChannelRung && rpcCalls is { } calls && calls.Scope != CountedScope)
         {
-            var reload = new RpcCallsLoad(calls.ChannelKey, CountedScope) { Channel = calls.Channel, ReplaceOnFirstPage = true };
+            // The selected call stays listed, and selected, when the new scope holds it, however far down it is.
+            var reload = new RpcCallsLoad(calls.ChannelKey, CountedScope)
+            {
+                Channel = calls.Channel,
+                ReplaceOnFirstPage = true,
+                Reveal = CallOn(calls.ChannelKey, selectedRung?.Key),
+            };
             reload.Calls.AddRange(calls.Calls);
             calls.Cancellation.Cancel();
             calls.Cancellation.Dispose();
@@ -4681,10 +4715,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         load.Loading = true;
         RaiseRpcChanged();
+        int offset = load.ReplaceOnFirstPage ? 0 : load.Calls.Count;
+        string? reveal = offset == 0 ? load.Reveal : null;
+        load.Reveal = null;
         try
         {
-            int offset = load.ReplaceOnFirstPage ? 0 : load.Calls.Count;
-            RpcCallPage page = await evidenceSource!.RpcCallsAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token);
+            RpcCallPage page = reveal is null
+                ? await evidenceSource!.RpcCallsAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token)
+                : await evidenceSource!.RpcCallsThroughAsync(reveal, load.Scope, load.Cancellation.Token);
             if (disposed || !ReferenceEquals(rpcCalls, load)) return;
             if (page.Problem is not null)
             {
@@ -4721,6 +4759,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         RebuildRpcRows();
+
+        // The call the user came back up from is selected once listed, so the way back lands where the way down began
+        // (§3.2); a row the user selected meanwhile stays selected.
+        if (reveal is not null && selectedRung is null
+            && RungRows.FirstOrDefault(row => string.Equals(row.Key, reveal, StringComparison.Ordinal)) is { } revealed)
+        {
+            SelectedRung = revealed;
+        }
     }
 
     /// <summary>Rebuilds the rows the RPC reads supply, keeping the selected row when it is still listed.</summary>
@@ -4896,6 +4942,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         /// <summary>Whether the calls shown are the previous scope's, which this scope's first page replaces.</summary>
         public bool ReplaceOnFirstPage { get; set; }
+
+        /// <summary>
+        /// The call the first read lists the calls through, and selects when nothing else is: the one the user came back
+        /// up from, or the one selected when the scope changed.
+        /// </summary>
+        public string? Reveal { get; set; }
 
         public RpcChannelSummary? Channel { get; set; }
 

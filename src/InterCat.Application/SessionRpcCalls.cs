@@ -195,6 +195,9 @@ public static class SessionRpcCalls
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 500;
 
+    /// <summary>The most calls <see cref="CallsThrough"/> lists to reach the one it names; past them it reads the first page.</summary>
+    public const int MaximumListedThrough = 5_000;
+
     /// <summary>The most calls one timeline read returns one by one; a denser interval is read as density columns.</summary>
     public const int MaximumSpans = 4_000;
 
@@ -370,11 +373,64 @@ public static class SessionRpcCalls
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
-        if (!RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface))
+        if (!RpcChannelKeys.TryParseChannel(channelKey, out _, out _, out _))
         {
             throw new ArgumentException("This key names no RPC channel.", nameof(channelKey));
         }
 
+        return Page(store, channelKey, offset, (_, _, _) => pageSize, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
+    /// One channel's calls in reading order from the first, through the call <paramref name="callKey"/> names and to the
+    /// end of the page of <paramref name="pageSize"/> that holds it, so a list the user returns to lands on the call they
+    /// left it for, however far down its pages (§3.2). A call the scope does not list, or one past the first
+    /// <paramref name="maximum"/> calls it lists, reads the first page alone, as <see cref="Calls"/> does.
+    /// </summary>
+    public static RpcCallPage CallsThrough(
+        SessionStore store,
+        string callKey,
+        int pageSize = DefaultPageSize,
+        int maximum = MaximumListedThrough,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        if (maximum is < 1 or > MaximumListedThrough) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!RpcChannelKeys.TryParseCall(callKey, out string channelKey, out var first))
+        {
+            throw new ArgumentException("This key names no RPC call.", nameof(callKey));
+        }
+
+        return Page(store, channelKey, 0, (calls, group, held) =>
+        {
+            // Where the call is listed: its place in the channel, or among the calls the interval holds.
+            int? position = calls.PositionOf(group, first.Stream, first.Epoch, first.Ordinal, first.FactKey);
+            int? listed = position is not { } place ? null
+                : held is null ? place
+                : Array.BinarySearch(held, place) is var index and >= 0 ? index : null;
+            return listed is { } at && at < maximum ? (int)Math.Min(((long)at / pageSize + 1) * pageSize, maximum) : pageSize;
+        }, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
+    /// The calls of one channel from <paramref name="offset"/> in the order a scope lists them - every call, or those
+    /// <paramref name="interval"/> holds - as many as <paramref name="count"/> says for that listing: given the index, the
+    /// channel's group and, within an interval, the ascending positions it holds.
+    /// </summary>
+    private static RpcCallPage Page(
+        SessionStore store,
+        string channelKey,
+        int offset,
+        Func<RpcCallIndex, RpcCallGroup, int[]?, int> count,
+        TimeRange? interval,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        _ = RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface);
         using EvidenceLease lease = store.AcquireLease();
         (SessionManifestV1 manifest, RpcCallIndex? calls) = Derive(store, lease, cancellationToken);
         RpcCallGroup? group = calls?.GroupOf(instance, side, rpcInterface);
@@ -394,7 +450,7 @@ public static class SessionRpcCalls
                 ? [.. calls.OutcomesOf(group).Select((call, position) => (call, position))
                     .Where(entry => CountedWithin(entry.call, range)).Select(entry => entry.position)]
                 : [];
-            int[] shown = [.. held.Skip(offset).Take(pageSize)];
+            int[] shown = [.. held.Skip(offset).Take(count(calls, group, held))];
             IReadOnlyList<RpcCall> scoped = calls.CallsAt(group, segments, shown);
             return new(
                 manifest.SessionId,
@@ -406,7 +462,7 @@ public static class SessionRpcCalls
                 null);
         }
 
-        IReadOnlyList<RpcCall> page = calls.CallsOf(group, segments, offset, pageSize);
+        IReadOnlyList<RpcCall> page = calls.CallsOf(group, segments, offset, count(calls, group, null));
         return new(
             manifest.SessionId,
             manifest.Generation,

@@ -69,6 +69,43 @@ public sealed class SessionRpcCallsTests
         Assert.Empty(missing.Calls);
     }
 
+    [Fact(DisplayName = "§3.2: a channel read through one of its calls lists every call up to the end of the page that holds it")]
+    public void ChannelCallsReadThroughACall()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        (ProcessInstanceId client, _) = Instances(session.Store);
+        string channel = RpcChannelKeys.Channel(client, RpcCallSide.Client, ServiceControl);
+        string[] keys = [.. SessionRpcCalls.Calls(session.Store, channel).Calls.Select(row => row.Key)];
+        static IEnumerable<long> Starts(RpcCallPage page) => page.Calls.Select(row => row.Call.Start!.NativeTicks);
+
+        // Pages of one: through the second call, then the third, which ends the channel.
+        RpcCallPage second = SessionRpcCalls.CallsThrough(session.Store, keys[1], pageSize: 1);
+        Assert.Equal([100L, 200L], Starts(second));
+        Assert.Equal((true, 0), (second.More, second.Offset));
+        RpcCallPage third = SessionRpcCalls.CallsThrough(session.Store, keys[2], pageSize: 1);
+        Assert.Equal([100L, 200L, 300L], Starts(third));
+        Assert.False(third.More);
+
+        // Pages of two: the second call's page ends with it, the third's would hold a fourth the channel lacks.
+        Assert.Equal([100L, 200L], Starts(SessionRpcCalls.CallsThrough(session.Store, keys[1], pageSize: 2)));
+        Assert.Equal([100L, 200L, 300L], Starts(SessionRpcCalls.CallsThrough(session.Store, keys[2], pageSize: 2)));
+
+        // A call past the most it lists reads the first page alone, as a plain read does.
+        RpcCallPage far = SessionRpcCalls.CallsThrough(session.Store, keys[2], pageSize: 1, maximum: 2);
+        Assert.Equal([100L], Starts(far));
+        Assert.True(far.More);
+
+        // Within [110, 250) the channel lists its first two calls: the second is listed there, the third is not.
+        var early = new TimeRange(110, 250);
+        Assert.Equal([100L, 200L], Starts(SessionRpcCalls.CallsThrough(session.Store, keys[1], pageSize: 1, interval: early)));
+        Assert.Equal([100L], Starts(SessionRpcCalls.CallsThrough(session.Store, keys[2], pageSize: 1, interval: early)));
+
+        _ = Assert.Throws<ArgumentException>(() => SessionRpcCalls.CallsThrough(session.Store, channel));
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() => SessionRpcCalls.CallsThrough(
+            session.Store, keys[0], maximum: SessionRpcCalls.MaximumListedThrough + 1));
+    }
+
     [Fact(DisplayName = "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop")]
     public void EvidenceOfAChannelAndACallIsTheirRecords()
     {

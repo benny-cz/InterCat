@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 230 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 231 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -52,7 +52,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | Item | Current state | Remaining acceptance gap |
 |---|---|---|
 | IC-001–004, 007–010a (M0) | Complete for measured M0 scope | Qualify other supported retail builds and mechanisms as their gates require. |
-| IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence`; since revision 187, ALPC measured in the lab through a private system logger, linking RPC client calls to the calls that served them (ADR-034) | ALPC capture in the product, and sections and wider mechanisms, are unqualified; no inferred peer or RPC byte claims. |
+| IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence`; since revision 187, ALPC measured in the lab through a private system logger, linking RPC client calls to the calls that served them (ADR-034); since revision 223 captured by the product's opt-in RPC peers profile (ADR-035), whose links name each call's other end (revision 225) and draw RPC peers (revision 227) | Sections and wider mechanisms are unqualified; ALPC stays opt-in (Moderate), and no RPC byte claims. |
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
 | IC-012 profiles | Metadata Explore and Focused TCP enforceable; Content request preview refuses start | Payload-specific scope, body policy and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 231 — Esc lands on the call it came up from (§3.2):**
+  - Climbing from a call's records to its channel reads the channel's calls through the page that holds the call and
+    selects it, up to the 5,000th call; before, the channel came back at its first page with nothing selected.
+  - A brush that still holds the selected call keeps it listed and selected. Live, O and a served call's menu went
+    from a client call to the call that served it and back, each Esc landing on the call it left.
 
 - **Revision 230 — open the call at an RPC call's other end:**
   - On a channel's rung, O or a linked call's row menu opens the call its link names: the ladder runs through that
@@ -2086,6 +2092,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 231 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,352 tests: 1,348
+  passed, 4 skipped**, zero failures; two of them read a channel through a call and land Esc on calls of its first
+  and second pages and under a brush. A real elevated `icat record --profile rpc-peers` session was driven in the
+  Release Desktop with posted keys and clicks: O, Esc, a served call's menu and Esc each landed on the call named.
 - Revision 230 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,350 tests: 1,346
   passed, 4 skipped**, zero failures; one of them opens a linked call's other end, reads its records, and climbs to
   the host's channel, whose calls name their caller.

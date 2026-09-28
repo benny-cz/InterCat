@@ -100,6 +100,14 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, interval: interval, cancellationToken: cancellationToken),
             cancellationToken);
 
+    /// <summary>
+    /// A call's channel's calls in reading order from the first through the page that holds the call, within
+    /// <paramref name="interval"/> if given; the first page alone when the call is not listed there or lies too far down.
+    /// </summary>
+    public Task<RpcCallPage> RpcCallsThroughAsync(string callKey, TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionRpcCalls.CallsThrough(Store(), callKey, interval: interval, cancellationToken: cancellationToken),
+            cancellationToken);
+
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
     public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(
