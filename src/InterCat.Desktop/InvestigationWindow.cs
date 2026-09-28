@@ -46,6 +46,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
     };
     private readonly TextBlock candidateNotes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
     private readonly Button find = new() { Content = "Find candidate joins" };
+    private readonly Button acceptJoin = new() { Content = "Accept as one connection", IsEnabled = false };
+    private readonly Button rejectJoin = new() { Content = "Reject", IsEnabled = false };
+    private readonly Button withdrawJoin = new() { Content = "Withdraw decision", IsEnabled = false };
     private readonly TabControl tabs = new();
     private bool loading;
     private bool finding;
@@ -75,6 +78,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
+        AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
+        AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
+        AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
         AccessibleItems.Name(members);
         AccessibleItems.Name(candidates);
         members.ItemTemplate = new FuncDataTemplate<InvestigationMemberRow>((row, _) => new StackPanel
@@ -124,6 +130,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
         add.Click += (_, _) => _ = PickAddAsync();
         refresh.Click += (_, _) => _ = RefreshAsync();
         find.Click += (_, _) => _ = FindCandidatesAsync();
+        acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
+        rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
+        withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
+        candidates.SelectionChanged += (_, _) => ShowSelectedCandidate();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the investigation window");
         close.Click += (_, _) => Close();
@@ -157,12 +167,21 @@ internal sealed class InvestigationWindow : Window, IDisposable
         candidatesHeader.Children.Add(candidateSummary);
         candidatesHeader.Children.Add(find);
         var candidatesList = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = candidates, Padding = new Thickness(2) };
-        var candidatesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8 };
+        var decisions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (Button button in new[] { acceptJoin, rejectJoin, withdrawJoin })
+        {
+            button.Margin = new Thickness(8, 0, 0, 0);
+            decisions.Children.Add(button);
+        }
+
+        var candidatesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
         Grid.SetRow(candidatesHeader, 0);
         Grid.SetRow(candidatesList, 1);
-        Grid.SetRow(candidateNotes, 2);
+        Grid.SetRow(decisions, 2);
+        Grid.SetRow(candidateNotes, 3);
         candidatesPage.Children.Add(candidatesHeader);
         candidatesPage.Children.Add(candidatesList);
+        candidatesPage.Children.Add(decisions);
         candidatesPage.Children.Add(candidateNotes);
 
         tabs.ItemsSource = new[]
@@ -268,10 +287,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
             CancellationToken token = lifetime.Token;
             InvestigationCandidates found = await Task.Run(() => InvestigationRows.Candidates(path, CultureInfo.CurrentCulture, token), token);
             if (closed) return;
+            int selected = candidates.SelectedIndex;
             Candidates = found;
             candidates.ItemsSource = found.Rows;
+            candidates.SelectedIndex = selected >= 0 && selected < found.Rows.Count ? selected : -1;
             candidateSummary.Text = found.Summary;
             candidateNotes.Text = string.Join(" ", found.Notes);
+            ShowSelectedCandidate();
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -286,6 +308,36 @@ internal sealed class InvestigationWindow : Window, IDisposable
             finding = false;
             find.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// Records your decision about the selected candidate - accepted as one connection, rejected, or withdrawn - as a kept
+    /// revision of the investigation, and finds the candidates again to show it.
+    /// </summary>
+    internal async Task DecideSelectedAsync(WorkspaceJoinDecision decision)
+    {
+        if (candidates.SelectedItem is not InvestigationCandidateRow { FirstEnd: { } first, SecondEnd: { } second }) return;
+        try
+        {
+            _ = await Task.Run(() => InvestigationWorkspace.Decide(path, first, second, decision, null, DateTimeOffset.UtcNow));
+            await FindCandidatesAsync();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed) candidateSummary.Text = exception.Message;
+        }
+    }
+
+    /// <summary>Selects a candidate, as choosing its row does; a test uses it.</summary>
+    internal void SelectCandidate(int index) => candidates.SelectedIndex = index;
+
+    private void ShowSelectedCandidate()
+    {
+        InvestigationCandidateRow? row = candidates.SelectedItem as InvestigationCandidateRow;
+        acceptJoin.IsEnabled = row is not null && row.Decision != WorkspaceJoinDecision.Accepted;
+        rejectJoin.IsEnabled = row is not null && row.Decision != WorkspaceJoinDecision.Rejected;
+        withdrawJoin.IsEnabled = row?.Decision is not null;
     }
 
     /// <summary>Adds sessions by their folders, then shows the investigation again with what each addition did.</summary>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -93,6 +94,81 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         WorkspaceCorrelationResult local = WorkspaceCorrelation.Candidates(sameHost);
         Assert.Equal(0, local.LoopbackAcrossHosts);
         Assert.Contains(local.Candidates, candidate => candidate.First.Connection.Summary.LocalEndpoint == "127.0.0.1:6000");
+    }
+
+    [Fact(DisplayName = "R22: a person accepts or rejects a candidate join as a kept revision, and re-aligning flags it for review")]
+    public void APersonDecidesACandidate()
+    {
+        string workspace = Workspace();
+        Guid a = InvestigationWorkspace.Add(workspace, Session("client", "lab-1", ClientRows(1_000)), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("server", "lab-2", ServerRows(5_000)), Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 500_000, a, 100_000, 1_000, 10, null, Now);
+        (WorkspaceJoinEnd first, WorkspaceJoinEnd second) = Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates).Ends;
+
+        // Accepted, under the alignments now in force: a person's join, said as one, never as evidence.
+        WorkspaceJoin accepted = InvestigationWorkspace.Decide(workspace, first, second, WorkspaceJoinDecision.Accepted, " the handshake matches ", Now);
+        Assert.Equal((1, "the handshake matches"), (accepted.Revision, accepted.Note));
+        Assert.Equal([new WorkspaceAlignmentInForce(a, 0), new WorkspaceAlignmentInForce(b, 1)], accepted.DecidedUnder);
+        ConnectionCandidate decided = Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates);
+        Assert.Equal((WorkspaceJoinDecision.Accepted, true), (decided.Decision!.Decision, decided.DecisionCurrent));
+        Assert.Equal("Accepted as one connection by a person (join revision 1).", decided.Evidence[^1]);
+
+        // Re-aligned, its timing may no longer hold: it reads as one to review.
+        InvestigationWorkspace.Align(workspace, b, 500_000, a, 100_200, 1_000, 10, null, Now);
+        decided = Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates);
+        Assert.False(decided.DecisionCurrent);
+        Assert.EndsWith("under alignments since changed: review it.", decided.Evidence[^1], StringComparison.Ordinal);
+
+        // Rejected replaces it; withdrawn, the pair is undecided; every revision is kept, and nothing is left to withdraw.
+        _ = InvestigationWorkspace.Decide(workspace, second, first, WorkspaceJoinDecision.Rejected, null, Now);
+        Assert.Equal(WorkspaceJoinDecision.Rejected, Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates).Decision!.Decision);
+        _ = InvestigationWorkspace.Decide(workspace, first, second, WorkspaceJoinDecision.Withdrawn, null, Now);
+        Assert.Null(Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates).Decision);
+        Assert.Equal(3, InvestigationWorkspace.Read(workspace).Joins.Count);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Decide(workspace, first, second, WorkspaceJoinDecision.Withdrawn, null, Now));
+
+        // A decision whose pair moves apart is said, never lost.
+        _ = InvestigationWorkspace.Decide(workspace, first, second, WorkspaceJoinDecision.Accepted, null, Now);
+        InvestigationWorkspace.Align(workspace, b, 500_000, a, 10_000_000_000, 1_000, 10, null, Now);
+        WorkspaceCorrelationResult apart = WorkspaceCorrelation.Candidates(workspace);
+        Assert.Empty(apart.Candidates);
+        Assert.Contains("not a candidate now", Assert.Single(apart.DecidedElsewhere!).Why, StringComparison.Ordinal);
+
+        // Nothing else is a join: one session's own connections, a key that names none, or a join in an earlier version.
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Decide(workspace, first, first with { Key = TransportConnection.KeyPrefix + "x" }, WorkspaceJoinDecision.Accepted, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Decide(workspace, first with { Key = "channel:1" }, second, WorkspaceJoinDecision.Accepted, null, Now));
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace("\"workspace-v4\"", "\"workspace-v3\"", StringComparison.Ordinal));
+        Assert.Contains("holds no join decision", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: host B receiving 0.2 ms before host A sends, within 3 ms, is no order and no latency, and no local span changes")]
+    public void AReceiveBeforeItsSendWithinTheUncertaintyIsNoOrder()
+    {
+        // §21.1: host A sends at its 1,000,100 ns; host B receives at its 500,100 ns, which its alignment - within 3 ms, its
+        // anchor on that receive - places 0.2 ms before the send.
+        string workspace = Workspace();
+        string client = Session("client", "lab-1", ClientRows(10_000));
+        string server = Session("server", "lab-2", ServerRows(5_000));
+        Guid a = InvestigationWorkspace.Add(workspace, client, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, server, Now).SessionId;
+        HeldConnection before = Assert.Single(SessionConnections.All(SessionStore.OpenExisting(LocalOwnedDirectory.Open(server))).Connections,
+            connection => connection.Summary.RemoteEndpoint == Client);
+        InvestigationWorkspace.Align(workspace, b, 500_100, a, 800_100, 3_000_000, 0, "B's receive of A's first send", Now);
+
+        WorkspaceComparison comparison = InvestigationWorkspace.Compare(InvestigationWorkspace.Read(workspace), a, 1_000_100, b, 500_100);
+        Assert.Equal((TimeOrder.Ambiguous, -200_000L, 3_000_000.0),
+            (comparison.Result.Order, comparison.Result.DifferenceNanoseconds!.Value, comparison.Result.Uncertainty!.Value.HalfWidthNanoseconds));
+        string statement = comparison.Statement(CultureInfo.InvariantCulture);
+        Assert.Equal("Their order is ambiguous: they are 200 µs apart, within their combined uncertainty of ±3.0 ms.", statement);
+        Assert.DoesNotContain("latency", statement, StringComparison.OrdinalIgnoreCase);
+
+        // The exchange is still a candidate - its lifetimes overlap within the uncertainty - and B's own span is its own.
+        Assert.Equal(CandidateTiming.Overlapping, Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates).Timing);
+        HeldConnection after = Assert.Single(SessionConnections.All(SessionStore.OpenExisting(LocalOwnedDirectory.Open(server))).Connections,
+            connection => connection.Summary.RemoteEndpoint == Client);
+        Assert.Equal((before.FirstNanoseconds, before.LastNanoseconds), (after.FirstNanoseconds, after.LastNanoseconds));
+        Assert.Equal((500_000L, 500_400L), (after.FirstNanoseconds, after.LastNanoseconds));
     }
 
     private string Workspace(string folder = "")

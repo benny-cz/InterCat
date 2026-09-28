@@ -225,7 +225,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         string[] refused =
         [
-            text.Replace("\"workspace-v3\"", "\"workspace-v9\"", StringComparison.Ordinal),
+            text.Replace("\"workspace-v4\"", "\"workspace-v9\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\"", "\"notes\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": null", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": [{ \"hostId\": \"" + Guid.NewGuid() + "\", \"alias\": \" \" }]", StringComparison.Ordinal),
@@ -347,19 +347,19 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string aligned = File.ReadAllText(workspace);
 
         // Revision 253's files, which hold no time, are read, and written as the current version.
-        File.WriteAllText(workspace, members.Replace("\"workspace-v3\"", "\"workspace-v1\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, members.Replace("\"workspace-v4\"", "\"workspace-v1\"", StringComparison.Ordinal));
         Assert.Equal(3, InvestigationWorkspace.Read(workspace).Members.Count);
         InvestigationWorkspace.Alias(workspace, InvestigationWorkspace.Read(workspace).Members[0].HostId, "lab", Now);
         Assert.Equal(InvestigationWorkspace.Contract, InvestigationWorkspace.Read(workspace).Contract);
 
         // Revision 254's files hold manual alignments, and are read.
-        File.WriteAllText(workspace, aligned.Replace("\"workspace-v3\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, aligned.Replace("\"workspace-v4\"", "\"workspace-v2\"", StringComparison.Ordinal));
         Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
 
         // A file whose time contradicts itself is refused whole.
         string[] refused =
         [
-            aligned.Replace("\"workspace-v3\"", "\"workspace-v1\"", StringComparison.Ordinal),
+            aligned.Replace("\"workspace-v4\"", "\"workspace-v1\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{c}\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{Guid.NewGuid()}\"", StringComparison.Ordinal),
             aligned.Replace("\"withinNanoseconds\": 1000", "\"withinNanoseconds\": -1", StringComparison.Ordinal),
@@ -406,7 +406,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version 2 file holds manual alignments only.
         string text = File.ReadAllText(workspace);
-        File.WriteAllText(workspace, text.Replace("\"workspace-v3\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, text.Replace("\"workspace-v4\"", "\"workspace-v2\"", StringComparison.Ordinal));
         Assert.Contains("holds only manual alignments", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 

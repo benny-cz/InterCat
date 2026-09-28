@@ -28,23 +28,33 @@ public sealed record ConnectionCandidate(
     WorkspaceConnection Second,
     CandidateTiming Timing,
     int Alternatives,
-    IReadOnlyList<string> Evidence)
+    IReadOnlyList<string> Evidence,
+    WorkspaceJoin? Decision = null,
+    bool DecisionCurrent = true)
 {
     /// <summary>Whether either connection has another candidate too, so this one is not the only match of it.</summary>
     public bool Ambiguous => Alternatives > 0;
+
+    /// <summary>The two ends as a join names them.</summary>
+    public (WorkspaceJoinEnd First, WorkspaceJoinEnd Second) Ends =>
+        (new(First.SessionId, First.Connection.Summary.Key), new(Second.SessionId, Second.Connection.Summary.Key));
 }
+
+/// <summary>A person's decision in force whose two connections are not a candidate now, and why.</summary>
+public sealed record UnmatchedDecision(WorkspaceJoin Join, string Why);
 
 /// <summary>A member an investigation could not compare, and why.</summary>
 public sealed record UnreadMember(Guid SessionId, string Reason);
 
-/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v3.md` §6).</summary>
+/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v4.md` §6).</summary>
 public sealed record WorkspaceCorrelationResult(
     string Rule,
     IReadOnlyList<ConnectionCandidate> Candidates,
     int DisjointMirrors,
     int LoopbackAcrossHosts,
     IReadOnlyList<UnreadMember> Unread,
-    IReadOnlyList<string> Caveats);
+    IReadOnlyList<string> Caveats,
+    IReadOnlyList<UnmatchedDecision>? DecidedElsewhere = null);
 
 /// <summary>
 /// Proposes candidate joins between an investigation's captures (§8.3, M4): a connection one capture holds only one end of
@@ -134,15 +144,36 @@ public static class WorkspaceCorrelation
 
         ConnectionCandidate[] candidates =
         [
-            .. found.Select(pair => new ConnectionCandidate(
-                    pair.First,
-                    pair.Second,
-                    pair.Timing,
-                    uses[(pair.First.SessionId, pair.First.Connection.Summary.Key)] - 1 + uses[(pair.Second.SessionId, pair.Second.Connection.Summary.Key)] - 1,
-                    Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why)))
+            .. found.Select(pair =>
+                {
+                    WorkspaceJoin? decision = InvestigationWorkspace.DecisionFor(workspace,
+                        new(pair.First.SessionId, pair.First.Connection.Summary.Key), new(pair.Second.SessionId, pair.Second.Connection.Summary.Key));
+                    bool current = decision is null || InvestigationWorkspace.DecidedUnderCurrentTime(workspace, decision);
+                    return new ConnectionCandidate(
+                        pair.First,
+                        pair.Second,
+                        pair.Timing,
+                        uses[(pair.First.SessionId, pair.First.Connection.Summary.Key)] - 1 + uses[(pair.Second.SessionId, pair.Second.Connection.Summary.Key)] - 1,
+                        [.. Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why), .. Decided(decision, current)],
+                        decision,
+                        current);
+                })
                 .OrderBy(candidate => candidate.Timing)
                 .ThenBy(candidate => candidate.Ambiguous)
                 .ThenByDescending(candidate => candidate.First.Connection.Summary.Records + candidate.Second.Connection.Summary.Records),
+        ];
+
+        // A decision whose pair is no candidate now - its lifetimes moved apart, a session is not read - is said, not lost.
+        HashSet<(Guid, string, Guid, string)> proposed = [.. candidates.Select(candidate => Key(candidate.Ends.First, candidate.Ends.Second))];
+        HashSet<Guid> read = [.. members.Select(member => member.Member.SessionId)];
+        UnmatchedDecision[] elsewhere =
+        [
+            .. InvestigationWorkspace.DecisionsInForce(workspace)
+                .Where(join => !proposed.Contains(Key(join.First, join.Second)))
+                .Select(join => new UnmatchedDecision(join,
+                    !read.Contains(join.First.SessionId) || !read.Contains(join.Second.SessionId)
+                        ? "a session of it was not compared"
+                        : "its two connections are not a candidate now: their lifetimes lie apart, or one of them is gone")),
         ];
         return new(Rule, candidates, disjoint, loopback, unread,
         [
@@ -152,8 +183,21 @@ public static class WorkspaceCorrelation
                 + "holds is that capture's own channel.",
             "Lifetimes are where each capture saw the connection, from its first record to its last, compared in the "
                 + "investigation's time within their alignment's uncertainty; without an alignment they cannot be compared.",
-        ]);
+        ], elsewhere);
     }
+
+    /// <summary>What a person decided of a candidate, in words, and whether the investigation's time has changed since.</summary>
+    private static string[] Decided(WorkspaceJoin? decision, bool current) => decision is null
+        ? []
+        :
+        [
+            (decision.Decision == WorkspaceJoinDecision.Accepted ? "Accepted as one connection by a person" : "Rejected by a person")
+                + string.Create(CultureInfo.CurrentCulture, $" (join revision {decision.Revision})")
+                + (current ? "." : ", under alignments since changed: review it."),
+        ];
+
+    private static (Guid, string, Guid, string) Key(WorkspaceJoinEnd a, WorkspaceJoinEnd b) =>
+        (a.SessionId, a.Key).CompareTo((b.SessionId, b.Key)) <= 0 ? (a.SessionId, a.Key, b.SessionId, b.Key) : (b.SessionId, b.Key, a.SessionId, a.Key);
 
     /// <summary>
     /// Where two lifetimes stand: overlapping once each end is widened by its uncertainty, unknown when an end has no time

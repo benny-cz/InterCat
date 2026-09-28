@@ -2,7 +2,7 @@
 
 - Status: accepted; revision 254, recorded evidence revision 256
 - Date: 2026-09-28
-- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v3.md`
+- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v4.md`
 
 ## Context
 

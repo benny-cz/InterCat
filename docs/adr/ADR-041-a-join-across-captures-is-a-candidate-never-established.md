@@ -1,8 +1,8 @@
 # ADR-041: A join across captures is a candidate, never established
 
-- Status: accepted; revision 258
+- Status: accepted; revision 258, decisions revision 260
 - Date: 2026-09-28
-- Relates to: §7.4, §8.3, M4, P6, P7, R22, ADR-038, ADR-039, `contracts/workspace-v3.md`, `contracts/relations-v1.md`
+- Relates to: §7.4, §8.3, M4, P6, P7, R22, ADR-038, ADR-039, `contracts/workspace-v4.md`, `contracts/relations-v1.md`
 
 ## Context
 
@@ -30,6 +30,11 @@ and alternatives, to keep a person's accepted joins as manual, and never to pair
    connection has another candidate, it says how many, so a match that is not the only one reads as ambiguous.
 5. **Only one-sided connections are compared.** A connection both of whose ends one capture holds is that capture's own
    channel, and no other capture's record joins it.
+6. **A person's decision is a revision, and never evidence** (revision 260). Accepting a candidate as one connection, or
+   rejecting it, is recorded as a revision of the investigation with the alignments in force for its two sessions, and
+   kept when replaced or withdrawn. A candidate says what a person decided of it; when either session's alignment has
+   changed since, it says the decision was made under alignments since changed, to review, because the timing it was
+   decided on may no longer hold (§8.3). A decision whose pair is no candidate now is said, never dropped.
 
 ## Consequences
 
@@ -40,5 +45,5 @@ and alternatives, to keep a person's accepted joins as manual, and never to pair
   synthetic sessions, and live only in proposing nothing on two real captures of one machine. A known two-host exchange,
   M4's exit gate, needs a second host.
 - Revision 259 lists the candidates in the Desktop's investigation window, each with its evidence and named for a screen
-  reader as a sentence. Accepting or rejecting a candidate as a versioned revision of the investigation, and known
-  address translations, follow.
+  reader as a sentence. Revision 260 records a person's decisions (`workspace-v4`, `icat workspace join`, and Accept,
+  Reject and Withdraw decision in the window). Known address translations follow.

@@ -35,7 +35,10 @@ public sealed record InvestigationCandidateRow(
     string First,
     string Second,
     string Evidence,
-    bool Ambiguous) : IAccessibleRow
+    bool Ambiguous,
+    WorkspaceJoinEnd? FirstEnd = null,
+    WorkspaceJoinEnd? SecondEnd = null,
+    WorkspaceJoinDecision? Decision = null) : IAccessibleRow
 {
     public string AccessibleName => $"Candidate join: {Title}. {First}. {Second}. {Evidence}";
 }
@@ -118,17 +121,30 @@ public static class InvestigationRows
                 string alternatives = candidate.Alternatives == 0
                     ? string.Empty
                     : string.Create(culture, $" · not the only match: {candidate.Alternatives:N0} other {(candidate.Alternatives == 1 ? "candidate" : "candidates")}");
+                string decided = candidate.Decision?.Decision switch
+                {
+                    WorkspaceJoinDecision.Accepted => " · accepted by a person",
+                    WorkspaceJoinDecision.Rejected => " · rejected by a person",
+                    _ => string.Empty,
+                } + (candidate.Decision is not null && !candidate.DecisionCurrent ? ", to review" : string.Empty);
                 return new InvestigationCandidateRow(
-                    $"{protocol} {first.LocalEndpoint} ⇄ {first.RemoteEndpoint} · {timing}{alternatives}",
+                    $"{protocol} {first.LocalEndpoint} ⇄ {first.RemoteEndpoint} · {timing}{alternatives}{decided}",
                     End(candidate.First, culture),
                     End(candidate.Second, culture),
                     string.Join(" ", candidate.Evidence),
-                    candidate.Ambiguous);
+                    candidate.Ambiguous,
+                    candidate.Ends.First,
+                    candidate.Ends.Second,
+                    candidate.Decision?.Decision);
             }),
         ];
         string summary = rows.Length == 0
             ? "No candidate join: no connection one session holds one end of has its mirrored end in another."
-            : string.Create(culture, $"{rows.Length:N0} candidate {(rows.Length == 1 ? "join" : "joins")}, none established; ")
+            : string.Create(culture, $"{rows.Length:N0} candidate {(rows.Length == 1 ? "join" : "joins")}, none established by evidence; ")
+                + (rows.Any(row => row.Decision is not null)
+                    ? string.Create(culture, $"{rows.Count(row => row.Decision == WorkspaceJoinDecision.Accepted):N0} accepted and ")
+                        + string.Create(culture, $"{rows.Count(row => row.Decision == WorkspaceJoinDecision.Rejected):N0} rejected by a person; ")
+                    : string.Empty)
                 + string.Create(culture, $"{rows.Count(row => row.Ambiguous):N0} not the only match of a connection.");
         List<string> notes = [];
         if (result.DisjointMirrors > 0 || result.LoopbackAcrossHosts > 0)
@@ -138,6 +154,8 @@ public static class InvestigationRows
         }
 
         notes.AddRange(result.Unread.Select(unread => $"Not compared: session {Short(unread.SessionId)}, because {unread.Reason}"));
+        notes.AddRange((result.DecidedElsewhere ?? []).Select(unmatched => string.Create(culture,
+            $"Join revision {unmatched.Join.Revision} is {unmatched.Join.Decision.ToString().ToLowerInvariant()} by a person, but {unmatched.Why}.")));
         notes.AddRange(result.Caveats);
         return new(rows, summary, notes);
     }

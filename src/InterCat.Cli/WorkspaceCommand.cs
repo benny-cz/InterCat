@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v3.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v4.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -21,6 +21,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every alignment revision, in the order recorded; each member's latest one is in force.</summary>
     public required IReadOnlyList<WorkspaceAlignment> Alignments { get; init; }
+
+    /// <summary>Every join decision revision, in the order recorded; each pair's latest one is in force.</summary>
+    public required IReadOnlyList<WorkspaceJoin> Joins { get; init; }
 
     public required IReadOnlyList<string> Caveats { get; init; }
 }
@@ -55,7 +58,7 @@ internal sealed record WorkspaceMemberDocument
     public required int? Alignment { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v3.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v4.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -87,7 +90,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v3.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v4.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -102,7 +105,23 @@ internal sealed record WorkspaceCorrelationDocument
     public required int LoopbackAcrossHosts { get; init; }
 
     public required IReadOnlyList<UnreadMember> Unread { get; init; }
+
+    /// <summary>A person's decisions in force whose two connections are not a candidate now, and why.</summary>
+    public required IReadOnlyList<DecisionDocument> DecidedElsewhere { get; init; }
+
     public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+internal sealed record DecisionDocument
+{
+    public required int Revision { get; init; }
+    public required WorkspaceJoinDecision Decision { get; init; }
+
+    /// <summary>Whether it was made under the alignments in force now.</summary>
+    public required bool Current { get; init; }
+
+    public required string? Note { get; init; }
+    public required string? Why { get; init; }
 }
 
 internal sealed record CandidateDocument
@@ -113,6 +132,9 @@ internal sealed record CandidateDocument
 
     /// <summary>How many other candidates either connection has.</summary>
     public required int Alternatives { get; init; }
+
+    /// <summary>A person's decision in force about it; null when undecided.</summary>
+    public required DecisionDocument? Decision { get; init; }
 
     public required IReadOnlyList<string> Evidence { get; init; }
 }
@@ -140,11 +162,11 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v3";
+    public const string ResolutionContract = "workspace-resolution-v4";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
-    public const string CorrelationContract = "workspace-correlation-v1";
+    public const string CorrelationContract = "workspace-correlation-v2";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -171,6 +193,8 @@ internal static partial class WorkspaceCommand
 
         bool remove = command.TryTakeFlag("--remove");
         bool withdraw = command.TryTakeFlag("--withdraw");
+        bool accept = command.TryTakeFlag("--accept");
+        bool reject = command.TryTakeFlag("--reject");
         bool sameBoot = command.TryTakeFlag("--same-boot");
         bool wallClock = command.TryTakeFlag("--wall-clock");
         bool json = command.TryTakeFlag("--json");
@@ -193,20 +217,24 @@ internal static partial class WorkspaceCommand
             "align" => (2, 2, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>"),
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
+            "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
         bool misplaced = (remove && verb != "alias")
-            || ((withdraw || sameBoot || wallClock) && verb != "align")
-            || new[] { withdraw, sameBoot, wallClock }.Count(flag => flag) > 1
+            || ((sameBoot || wallClock) && verb != "align")
+            || (withdraw && verb is not ("align" or "join"))
+            || ((accept || reject) && verb != "join")
+            || (verb == "align" && new[] { withdraw, sameBoot, wallClock }.Count(flag => flag) > 1)
+            || (verb == "join" && new[] { accept, reject, withdraw }.Count(flag => flag) != 1)
             || (within is null) == manual
             || (sync is null) == wallClock
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
-            || (note is not null && (verb != "align" || withdraw));
+            || (note is not null && !(verb == "align" && !withdraw) && verb != "join");
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare or correlate"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate or join"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -224,6 +252,13 @@ internal static partial class WorkspaceCommand
             if (verb == "correlate")
             {
                 return Correlate(path, json, cancellationToken);
+            }
+
+            if (verb == "join")
+            {
+                return Join(path, operands[0],
+                    accept ? WorkspaceJoinDecision.Accepted : reject ? WorkspaceJoinDecision.Rejected : WorkspaceJoinDecision.Withdrawn,
+                    note, json, cancellationToken);
             }
 
             InterCatExitCode written = verb switch
@@ -423,11 +458,13 @@ internal static partial class WorkspaceCommand
                 Second = End(candidate.Second),
                 Timing = candidate.Timing,
                 Alternatives = candidate.Alternatives,
+                Decision = candidate.Decision is { } decision ? DecisionOf(decision, candidate.DecisionCurrent, null) : null,
                 Evidence = candidate.Evidence,
             })],
             DisjointMirrors = result.DisjointMirrors,
             LoopbackAcrossHosts = result.LoopbackAcrossHosts,
             Unread = result.Unread,
+            DecidedElsewhere = [.. (result.DecidedElsewhere ?? []).Select(unmatched => DecisionOf(unmatched.Join, true, unmatched.Why))],
             Caveats = result.Caveats,
         };
         if (json)
@@ -481,6 +518,12 @@ internal static partial class WorkspaceCommand
             ConsoleUi.Note($"Not compared: session {Short(unread.SessionId)}, because {unread.Reason}");
         }
 
+        foreach (DecisionDocument elsewhere in document.DecidedElsewhere)
+        {
+            ConsoleUi.Note(string.Create(culture, $"Join revision {elsewhere.Revision} is {elsewhere.Decision.ToString().ToLowerInvariant()} ")
+                + $"by a person, but {elsewhere.Why}.");
+        }
+
         foreach (string caveat in result.Caveats)
         {
             ConsoleUi.Note(caveat);
@@ -488,6 +531,50 @@ internal static partial class WorkspaceCommand
 
         return InterCatExitCode.Success;
     }
+
+    private static InterCatExitCode Join(string path, string candidate, WorkspaceJoinDecision decision, string? note, bool json,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out int number) || number < 1)
+        {
+            throw new InvalidOperationException($"A candidate is named by its number in icat workspace correlate's list; '{candidate}' is not one.");
+        }
+
+        WorkspaceCorrelationResult result = WorkspaceCorrelation.Candidates(path, cancellationToken: cancellationToken);
+        if (number > result.Candidates.Count)
+        {
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"There are {result.Candidates.Count} candidates now, so there is no candidate {number}; icat workspace correlate lists them."));
+        }
+
+        ConnectionCandidate chosen = result.Candidates[number - 1];
+        WorkspaceJoin join = InvestigationWorkspace.Decide(path, chosen.Ends.First, chosen.Ends.Second, decision, note, DateTimeOffset.UtcNow);
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(join, JsonContracts.Indented));
+            return InterCatExitCode.Success;
+        }
+
+        ConnectionSummary summary = chosen.First.Connection.Summary;
+        string what = decision switch
+        {
+            WorkspaceJoinDecision.Accepted => "accepted as one connection, by you, never as evidence",
+            WorkspaceJoinDecision.Rejected => "rejected: its two ends are not one connection",
+            _ => "undecided again; its earlier decisions are kept",
+        };
+        ConsoleUi.Success(string.Create(CultureInfo.InvariantCulture, $"Candidate {number} ({summary.LocalEndpoint} ⇄ {summary.RemoteEndpoint}) is ")
+            + what + string.Create(CultureInfo.InvariantCulture, $" (join revision {join.Revision})."));
+        return InterCatExitCode.Success;
+    }
+
+    private static DecisionDocument DecisionOf(WorkspaceJoin join, bool current, string? why) => new()
+    {
+        Revision = join.Revision,
+        Decision = join.Decision,
+        Current = current,
+        Note = join.Note,
+        Why = why,
+    };
 
     private static CandidateEndDocument End(WorkspaceConnection connection)
     {
@@ -582,6 +669,7 @@ internal static partial class WorkspaceCommand
             Hosts = hosts,
             TimeReference = workspace.TimeReference,
             Alignments = workspace.Alignments,
+            Joins = workspace.Joins,
             Caveats = caveats,
         };
     }
@@ -722,6 +810,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace align <workspace> <session> --withdraw [--json]");
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
+        ConsoleUi.Line("icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("An investigation over separately captured sessions (workspace-v2, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
@@ -749,5 +838,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  correlate proposes candidate joins: a connection one session holds one end of, and another");
         ConsoleUi.Line("           session its mirrored end, where their lifetimes can overlap in the investigation's");
         ConsoleUi.Line("           time. A candidate is never established; its evidence and alternatives are listed.");
+        ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
+        ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
+        ConsoleUi.Line("           alignments changed is flagged for review.");
     }
 }

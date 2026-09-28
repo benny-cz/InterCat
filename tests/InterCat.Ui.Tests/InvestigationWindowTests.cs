@@ -200,12 +200,28 @@ public sealed class InvestigationWindowTests
             InvestigationCandidateRow row = Assert.Single(found.Rows);
             Assert.Equal("TCP 10.0.0.1:50000 ⇄ 10.0.0.2:443 · lifetimes not comparable", row.Title);
             Assert.StartsWith("Candidate join: TCP 10.0.0.1:50000", row.AccessibleName, StringComparison.Ordinal);
-            Assert.Equal("1 candidate join, none established; 0 not the only match of a connection.", found.Summary);
+            Assert.Equal("1 candidate join, none established by evidence; 0 not the only match of a connection.", found.Summary);
             Assert.Equal(found.Summary, Named<TextBlock>(window, "What finding candidate joins found").Text);
             ListBox list = Named<ListBox>(window, "Candidate joins between the sessions; none is established");
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Assert.Equal(row.AccessibleName, AutomationProperties.GetName(list.ContainerFromIndex(0)!));
+
+            // Accepted as your decision, it says so, and can be withdrawn; every revision stays in the file.
+            window.SelectCandidate(0);
+            Button accept = Named<Button>(window, "Accept the selected candidate as one connection, as your decision");
+            Assert.True(accept.IsEnabled);
+            Assert.False(Named<Button>(window, "Withdraw your decision about the selected candidate").IsEnabled);
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
+            Assert.EndsWith("· accepted by a person", window.Candidates!.Rows[0].Title, StringComparison.Ordinal);
+            Assert.Equal("1 candidate join, none established by evidence; 1 accepted and 0 rejected by a person; 0 not the only match of a connection.",
+                window.Candidates.Summary);
+            window.SelectCandidate(0);
+            Assert.False(accept.IsEnabled);
+            Assert.True(Named<Button>(window, "Withdraw your decision about the selected candidate").IsEnabled);
             Save(window, "investigation-candidates.png");
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
+            Assert.Null(window.Candidates!.Rows[0].Decision);
+            Assert.Equal(2, InvestigationWorkspace.Read(workspace).Joins.Count);
             window.Close();
         }
         finally

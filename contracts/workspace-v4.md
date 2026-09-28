@@ -1,26 +1,29 @@
-# Workspace contract, version 3
+# Workspace contract, version 4
 
-Status: M4, revision 256 (ADR-038, ADR-039, ADR-040); version 1 was revision 253's, version 2 revision 254's
+Status: M4, revision 260 (ADR-038 to ADR-041); versions 1, 2 and 3 were revisions 253, 254 and 256's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align`; read by `icat workspace show | compare | correlate`
+Produced by: `icat workspace new | add | relink | alias | align | join`
+Read by: `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
 `*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
 member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
-counter, exactly, or their wall clocks (§5). A `workspace-v1` file - members and host names, no time - is read as one
-without alignments, and a `workspace-v2` file as one with manual alignments only; both are written as version 3.
+counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). A
+`workspace-v1` file - members and host names, no time - is read as one without alignments, a `workspace-v2` file as one
+with manual alignments only, and a `workspace-v3` file as one without join decisions; each is written as version 4.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v3"` (`"workspace-v1"` and `"workspace-v2"` are read) |
+| `contract` | `"workspace-v4"` (`"workspace-v1"`, `"workspace-v2"` and `"workspace-v3"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
 | `hostAliases` | A person's names for its members' hosts: `{ hostId, alias }`, one name per host and one host per name, ignoring case |
 | `timeReference` | The member whose session clock is the workspace's time; null while no member is aligned (§5) |
 | `alignments` | Every alignment revision, in the order recorded (§5) |
+| `joins` | Every join decision revision, in the order recorded (§6) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -64,10 +67,10 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v3`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v4`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given) and `alignment` (the revision in force, or null), the hosts with their members, the `timeReference`
-and every alignment revision, and caveats. It exits 0 when every member is present and 1 otherwise.
+and every alignment and join decision revision, and caveats. It exits 0 when every member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -151,17 +154,36 @@ of one member is a candidate with a connection of another when:
 A mirrored pair whose lifetimes lie apart beyond their uncertainty is not proposed, and is counted. A candidate is never
 an established join: it states its evidence - the mirrored endpoints, whether the lifetimes overlap or cannot be
 compared and why, and the bytes each side measured of each direction, the same or not - and how many other candidates
-either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v1`: the
+either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v2`: the
 rule, each candidate's two ends (session, key, protocol, endpoints, process, lifetime and bytes), its timing, its
-alternatives and its evidence; the mirrored pairs not proposed and the loopback pairs of two hosts, counted; the members
-not compared and why; and caveats. Nothing is joined by time alone, by an address alone or by a name.
+alternatives, the decision in force and its evidence; the mirrored pairs not proposed and the loopback pairs of two
+hosts, counted; the members not compared and why; the decisions in force whose pair is no candidate now, and why; and
+caveats. Nothing is joined by time alone, by an address alone or by a name.
+
+A person decides a candidate with `icat workspace join <n> --accept | --reject | --withdraw`, `<n>` its number in
+`correlate`'s list. Each decision is a revision of the file, kept when a later one replaces or withdraws it:
+
+| Join field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among joins and increasing in the order recorded |
+| `decision` | `Accepted`: one connection, by a person; `Rejected`: not one; `Withdrawn`: undecided from this revision |
+| `first`, `second` | The two ends: `{ sessionId, key }`, each a member's one-sided connection's stable key |
+| `decidedUnder` | The alignment revision in force for each of the two sessions when decided, 0 for none; empty for a withdrawal |
+| `note`, `recordedUtc` | The person's words, and when |
+
+A pair's decision in force is its latest revision, in either order of its ends, unless it withdraws. An accepted join is
+a person's and is never evidence: a candidate says it was accepted or rejected by a person, and, when either session's
+alignment has changed since the decision - revised, withdrawn or made - that the decision was made under alignments
+since changed, to review (§8.3). A decision in force whose pair is no candidate now is said, never dropped. A file whose
+joins name no member or connection, join one session's own connections, or state `decidedUnder` other than two entries
+for their own two sessions exactly when they decide, is refused, as is a join in an earlier version's file.
 
 ## 7. Not defined at this version
 
 - Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from shared
   markers (§8.2's third mode).
-- Confirming two host identities as one host; accepting or rejecting a candidate join as a versioned revision; pins,
-  notes and saved views.
+- Confirming two host identities as one host; pins, notes and saved views.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
-  257), aligns and withdraws them and lists candidate joins (revision 259); packaging a workspace with its sessions.
+  257), aligns and withdraws them and lists candidate joins (revision 259), and decides them (revision 260); packaging
+  a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.
