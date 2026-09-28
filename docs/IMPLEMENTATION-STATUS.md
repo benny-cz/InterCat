@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 251 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 252 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -29,7 +29,10 @@ too, and opens no segment: 4M and 10M rows both reopen in about 0.17 s, down fro
 Since revision 166 the ranked table ranks groups and processes by each process's own records, kept in the checkpoint,
 where it ranked by paired TCP alone and showed a real capture as zeros.
 L4 lanes wait on derived operations, and the operation view is open.
-M3–M5 are not complete. All three of §11.3's sharing
+M3's exit gate is met for its measured scope ([the M3 exit review](reviews/M3-exit-review.md), revision 252): RPC over
+ALPC without duplicate volume, content truncation and encryption states, and per-build coverage published; pipe and
+shared-section topology remain explicitly unavailable and move to M7 and M9. M4 and M5 are not complete. All three of
+§11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
@@ -65,9 +68,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-017 Desktop projection | Real overview, channel/evidence ladder, bounded metadata search, layout scheduling, live follow, interval/zoom/minimap with wheel and keyboard, exact L0 mechanism lanes, L1 process-owner lanes, L2 source-direction rows and L3 channel-end lanes banded by direction, with shared scale, own coverage, hover/time selection, persistent table/step focus and keyboard/wheel scrolling, exact bounded query data carried through live publications, the visible range as the default scope with a scope lock, and a bounded §6.3 graph with relationship-first layout, semantic hover, manual pinning/re-layout, quiet folding, minimal group collapse, table-shared selection, anchored carried layout, per-rung neighbourhoods with a context node, §6.7's edge double-click and back/forward history that restores each rung's interval, a per-rung timeline focus that counts what E reads, a selection highlighted in the timeline by its own exact count (§6.4) and a Ctrl+click multi-selection that Enter turns into a filter (§6.7), a labelled live edge that previews unpublished records within §12's steady-state budget (P26 asserted), a designed waiting state before a capture's first publication, a launch-time offer to finish a session a crashed viewer left, and the saved sessions listed while none is open; since revision 189 the machine and group rungs rank by records or by bytes sent or received (§6.1's metric selector), since revision 190 by RPC calls made or served, since revision 196 by bytes sent and received and by RPC errors, since revision 199 by median RPC call and serve time, and since revision 200 by peers, each listed by its basis since revision 201, and read per second over the ranked interval since revision 209; a large group keeps its process lanes when zoomed, counted coarser, since revision 210 | Resource topology once derived. L4 lanes beyond RPC calls (drawn since revision 181), and byte composition once IC-015 derives operations that carry a length. Deeper levels of the overview pyramid (S4; its top level is persisted since revision 163) and exact live cadence at 1M rows and beyond. A real screen-reader pass on Windows (the automation tree is audited headlessly since revision 131), and pin/collapse/search for lanes as scale requires. |
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
-| M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
+| M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
+| M4–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 252 — the M3 exit review (`docs/reviews/M3-exit-review.md`):**
+  - Each item of M3's exit gate checked against evidence that names it: RPC over ALPC adds no volume and counts calls,
+    not the records beneath them; pipes and sections are unavailable and say so; content truncation and HTTPS's
+    plaintext state are measured and stated; per-build coverage is published. The gate is met for its measured scope,
+    and M4, multi-machine investigation, is next.
 
 - **Revision 251 — per-build coverage, published and stated (M3's exit gate, §13.5, P27):**
   - `icat capabilities` said every mechanism was "Unsupported - no capture has measured it", TCP and HTTP included, on
@@ -392,6 +402,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 252 changes documents only: no code changed since revision 251's suites (1,399 tests: 1,395 passed, 4
+  skipped, in Debug and Release); the architecture tests ran again and passed. Every test the M3 exit review cites by
+  name exists.
 - Revision 251 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,399 tests: 1,395
   passed, 4 skipped**, zero failures. Live: the Release `icat capabilities` on this workstation's build states TCP and
   UDP TrafficVisualization (FX-TCP-002, FX-UDP-002), RPC and HTTP ExperimentalEvidence (FX-RPC-001, FX-HTTP-003) and
