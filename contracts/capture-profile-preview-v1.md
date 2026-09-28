@@ -57,8 +57,10 @@ and no TCP fallback.
 
 Content requires an exact `--source` and `--mechanism`, one or more `--pid` and `--channel` selectors,
 `--max-record-bytes`, `--max-session-bytes`, `--retention stop-at-limit`, and an explicit
-`--inspection disabled|hex-text` choice. PID and channel values are start-time selectors, not durable
-identities; a future broker must bind them to observed lifecycle/resource epochs. Inspection is separate
+`--inspection disabled|hex-text` choice. PID values select the processes running when the capture starts:
+a capture holds each open while it runs, so no other process can be given its ID, and a request naming a
+process that is not running is refused (revision 245). Channel values are start-time selectors a capture
+must bind to the resources it observes. Inspection is separate
 consent: `hex-text` lets a person see a record's bytes when they ask, bounded, as inert hex and declared
 text; joining a part's buffers, copying and saving are each a deliberate action of theirs
 (`contracts/content-v1.md` §4), and nothing searches, decodes, runs or actively renders the bytes.

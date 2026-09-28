@@ -18,8 +18,9 @@ public enum ContentInspectionMode
 }
 
 /// <summary>
-/// A deliberately complete content request. PID and channel values are selectors for a future start
-/// attempt, not durable identities; a broker must bind them to observed lifecycle/resource epochs.
+/// A deliberately complete content request. PID values select the processes running when a capture starts, which it
+/// holds open while it runs, so no other process can be given their IDs (ADR-037); channel values are selectors a capture
+/// must bind to the resources it observes.
 /// </summary>
 public sealed record ContentCaptureRequest
 {

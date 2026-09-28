@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
@@ -227,6 +229,27 @@ internal static class RecordCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        if (contentRequest is not null)
+        {
+            // Each named process as it is now. The capture holds each open while it runs, so its ID stays its own, and one
+            // that is not running is refused here, before anything starts (ADR-037).
+            foreach (int processId in contentRequest.ProcessIds)
+            {
+                if (RunningProcess(processId) is not { } running)
+                {
+                    ConsoleUi.Failure(
+                        $"Process {processId} is not running, so nothing was recorded: a content request names running "
+                        + "processes, which the capture holds open so their IDs stay theirs. Task Manager's Details tab "
+                        + "lists running processes with their IDs.");
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                ConsoleUi.Progress($"Content is kept from process {processId}, {running}, held open while the capture runs so its ID stays its own.");
+            }
+        }
+
+        // What the capture collects, stated before it starts, as a preview states it (§11.1).
+        ConsoleUi.Progress(effective.CollectionStatement);
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("m1record", System.Environment.ProcessId);
         var plan = new OwnedSessionPlan
         {
@@ -412,6 +435,52 @@ internal static class RecordCommand
     /// A content request from its options, or the problem with them. Every part is the request's own and required, except
     /// the retention, whose one bounded behaviour is stop-at-limit (`contracts/content-v1.md` §5).
     /// </summary>
+    /// <summary>A running process's image and start, in words; null when no process has the ID, or it has exited.</summary>
+    private static string? RunningProcess(int processId)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        using (process)
+        {
+            try
+            {
+                if (process.HasExited)
+                {
+                    return null;
+                }
+
+                string image = process.ProcessName;
+                string started;
+                try
+                {
+                    started = "started " + process.StartTime.ToString("T", CultureInfo.CurrentCulture);
+                }
+                catch (Exception exception) when (exception is Win32Exception or NotSupportedException)
+                {
+                    started = "its start not readable";
+                }
+
+                return $"{image} ({started})";
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+            catch (Win32Exception)
+            {
+                return "its image not readable";
+            }
+        }
+    }
+
     private static string? ContentRequest(string? source, Mechanism mechanism, List<string> processes, List<string> channels,
         string? maximumRecord, string? maximumSession, string? inspection, string? retention, out ContentCaptureRequest? request)
     {

@@ -60,6 +60,7 @@ public sealed class TraceEventEtlFileSessionHost : IEtlFileSessionHost
     private sealed class TraceEventOwnedEtlFileSession(TraceEventSession session, string outputPath)
         : IOwnedEtlFileSession
     {
+        private readonly ProcessHolds holds = new();
         private bool stopped;
 
         public string SessionName => session.SessionName;
@@ -67,7 +68,7 @@ public sealed class TraceEventEtlFileSessionHost : IEtlFileSessionHost
         public string OutputPath => outputPath;
 
         public ProviderEnablementResult Enable(ProviderEnablementRequest request) =>
-            TraceEventProviderControl.Enable(session, request);
+            TraceEventProviderControl.Enable(session, request, holds);
 
         public bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason) =>
             TraceEventProviderControl.TryRequestCaptureState(session, request, out failureReason);
@@ -106,6 +107,12 @@ public sealed class TraceEventEtlFileSessionHost : IEtlFileSessionHost
             }
         }
 
-        public void Dispose() => session.Dispose();
+        public void Dispose()
+        {
+            session.Dispose();
+
+            // The named processes are let go only once the session that filters by their IDs is gone.
+            holds.Dispose();
+        }
     }
 }

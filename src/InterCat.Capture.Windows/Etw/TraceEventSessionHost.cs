@@ -145,13 +145,14 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
 
     private sealed class TraceEventOwnedSession(TraceEventSession session, OwnedSessionPlan plan) : IOwnedEtwSession
     {
+        private readonly ProcessHolds holds = new();
         private ETWTraceEventSource? source;
         private bool stopped;
 
         public string SessionName => session.SessionName;
 
         public ProviderEnablementResult Enable(ProviderEnablementRequest request) =>
-            TraceEventProviderControl.Enable(session, request);
+            TraceEventProviderControl.Enable(session, request, holds);
 
         public ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags)
         {
@@ -261,6 +262,9 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
         {
             source?.Dispose();
             session.Dispose();
+
+            // The named processes are let go only once the session that filters by their IDs is gone.
+            holds.Dispose();
         }
     }
 }

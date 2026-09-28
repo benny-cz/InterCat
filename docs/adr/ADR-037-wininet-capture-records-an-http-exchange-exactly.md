@@ -3,7 +3,8 @@
 - Status: accepted as M3's content-capable source; measured in the lab (revision 237); in the catalog, its records bound
   to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
   (revision 239); HTTPS measured, and kept as its plaintext (revision 243); exchanges at once and chunked responses
-  measured, and an exchange's number bound to its use in time (revision 244)
+  measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
+  themselves (revision 245)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
@@ -102,7 +103,10 @@ names, not by time.
 2. **Scoped before persistence, always.** The provider is enabled only for the processes a capture names, by the
    session's process filter, which keeps every other process's records out of the session itself. A request without a
    process scope is refused: unscoped, the capture would record every WinINet client's requests on the machine,
-   cookies and authorization headers among them.
+   cookies and authorization headers among them. The filter holds process IDs, so the capture holds each named process
+   open while its session lives: Windows gives no process an ID while a handle to the process that had it is open, so a
+   named process that exits keeps its ID to the end and no other process's records can enter through it. A process
+   that is not running, or has exited, when the provider is enabled is refused (R22, revision 245).
 3. **What the bytes are.** Heads and bodies are `ApplicationPayload`: the HTTP messages as the client sent and read
    them, as WinINet held them. Their encoding is binary, as the schema declares it; a head is ASCII by HTTP's own rules,
    which is a reading of the bytes, not a declaration of the source, and is not claimed (content-v1 §1).
@@ -136,8 +140,8 @@ names, not by time.
   number, and a chunked body is kept as its client read it.
 - Not measured: asynchronous WinINet; HTTP/2; compressed responses; redirects, proxies and authentication. Each is
   measured before a profile claims it.
-- The scope is the named processes' IDs, which the provider's filter holds by number: a process ID used again during a
-  capture, by a process started after the named one exited, would be in scope too. Holding content to the named
-  process instances, so a named process's exit ends its content, is open.
+- The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
+  capture holds each process open while it runs, so a named process's exit ends its content and no process started
+  after it can take its ID.
 - WinINet is one client library among several. .NET's HTTP client, WinHTTP and browsers' own stacks do not raise these
   records, so their exchanges stay without content, and the statement of what a record holds says which source could.

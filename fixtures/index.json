@@ -1446,6 +1446,7 @@
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
+        "R22: a process filter is held to running processes, each held open so its ID stays its own",
         "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",

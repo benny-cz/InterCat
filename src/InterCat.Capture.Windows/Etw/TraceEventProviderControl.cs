@@ -6,10 +6,11 @@ namespace InterCat.Capture.Windows;
 /// <summary>Configures providers identically for live delivery and ETL-file acquisition.</summary>
 internal static class TraceEventProviderControl
 {
-    public static ProviderEnablementResult Enable(TraceEventSession session, ProviderEnablementRequest request)
+    public static ProviderEnablementResult Enable(TraceEventSession session, ProviderEnablementRequest request, ProcessHolds holds)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(holds);
 
         try
         {
@@ -25,6 +26,14 @@ internal static class TraceEventProviderControl
 
             if (request.ProcessIdsToInclude.Count > 0)
             {
+                // The filter holds process IDs, so each process it names is held open while the session lives: then none of
+                // its IDs can pass to another process and bring that process's records into scope (R22, ADR-037).
+                if (!holds.TryHold(request.ProcessIdsToInclude, out string? refusal))
+                {
+                    return new(request.SourceId, false,
+                        $"its process filter could not be held to the processes it names: {refusal}. The provider was not enabled.");
+                }
+
                 options.ProcessIDFilter = [.. request.ProcessIdsToInclude];
             }
 

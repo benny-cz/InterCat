@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 244 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 245 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 245 — a content capture's scope held to the named processes themselves (ADR-037):**
+  - A process filter holds process IDs, so a named ID given to a new process mid-capture would have brought that
+    process's HTTP messages into scope. Each session now holds every process its filter names open while it lives,
+    which keeps Windows from giving the ID to any other process; a process not running, or already exited, is refused.
+  - `icat record` names each process it keeps content from, with its image and start, refuses one that is not running
+    before anything starts, and states what it collects before it records, as a preview does (§11.1).
 
 - **Revision 244 — WinINet exchanges at once, chunked responses, and an exchange's number told apart in time
   (ADR-037, FX-HTTP-003):**
@@ -2139,11 +2146,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      `icat record`, scoped to named processes; revision 241 puts FX-HTTP-001 and FX-CONTENT-001 in the fixture index.
      Revision 242 reassembles a part from its buffers for a person (M8's first step); revision 243 measures HTTPS
      through it (FX-HTTP-002): kept as its plaintext, which a request says first; revision 244 measures exchanges at once
-     and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart. Next: hold a request's scope
-     to the named process instances, since the provider's filter holds process IDs and a reused one would be in scope.
-     Later: HTTP/2 and compressed responses through it; a part that is not whole shown with its gaps in place; a
-     follower that mirrors content, so a broker capture could keep it; releasing content alone; and a fixture decoder
-     (§11.2's `DecodedFields`).
+     and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart; revision 245 holds a
+     request's scope to the named processes themselves. Later: HTTP/2 and compressed responses through it; a part that
+     is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
+     releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -2197,6 +2203,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 245 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,387 tests: 1,383
+  passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: `icat record` named the workload by
+  image and start, stated what it collects, and kept 97 HTTP records of 16 exchanges with nothing lost while holding
+  the workload open; a request naming a process ID nobody has was refused before any session or directory existed.
+  The capture was deleted.
 - Revision 244 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,386 tests: 1,382
   passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: the probe matched every part of 256
   and of 2,048 exchanges eight at once, whose numbers ran 1 to 2,048, and of 64 chunked responses; `icat record` kept

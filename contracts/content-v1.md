@@ -165,7 +165,7 @@ previews such a request and never starts it, since its evidence follower does no
 | Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
 | Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last. A body is what its client sent or read: a chunked response's without its chunk framing, which only its head names (FX-HTTP-003) |
 | Exchange | `SessionId`: the client process's own count from 1, so it names an exchange only within one run of its client; exchanges at once keep their own (FX-HTTP-003, revision 244) |
-| Scope | the named processes, by the provider's process filter; every exchange of theirs (`*`) |
+| Scope | the named processes, by the provider's process filter, each held open while the capture runs so no other process can be given its ID; a process not running is refused (revision 245); every exchange of theirs (`*`) |
 | Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`); over TLS a median 0.74 CPU pp (`bench/results/wininet-capture-impact-tls-20260928T121427Z`) |
 | Encryption | none stated: WinINet holds a message above any encryption, so over HTTPS the capture holds its plaintext, and a record does not say whether its exchange was encrypted (FX-HTTP-002, revision 243). A request says so before it records |
 
@@ -181,8 +181,6 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 
 - A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTP/2, compressed responses
   and asynchronous WinINet are unmeasured, and so are the other client libraries, which raise no such records.
-- A request's scope held to the named process instances: the provider's filter holds process IDs, so a process ID used
-  again during a capture would be in scope too.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.
