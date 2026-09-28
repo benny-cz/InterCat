@@ -1,0 +1,88 @@
+{
+  "session": {
+    "createdAs": "TraceEventSession(name, Create | NoRestartOnCreate), named by CaptureSessionIdentity",
+    "privateSystemLogger": true,
+    "realTime": true,
+    "logFileMode": "0x0A400100",
+    "eventsLost": 0,
+    "goneAfterStop": true
+  },
+  "events": {
+    "alpcSends": 8111,
+    "alpcReceives": 8111,
+    "alpcWaitsAndUnwaits": 8245,
+    "kernelNetworkTcp": 697,
+    "other": 50
+  },
+  "alpcDescriptors": [
+    {
+      "eventName": "ALPC/SendMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 33,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/ReceiveMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 34,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/WaitForReply",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 35,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/WaitForNewMessage",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 36,
+      "version": 2,
+      "bodyLength": 38,
+      "pointerSize": 8,
+      "classic": true
+    },
+    {
+      "eventName": "ALPC/Unwait",
+      "providerGuid": "9e814aad-3204-11d2-9a82-006008a86939",
+      "taskGuid": "45d8cccd-539f-4b72-a8b7-5c683142609a",
+      "id": 65535,
+      "opcode": 37,
+      "version": 2,
+      "bodyLength": 4,
+      "pointerSize": 8,
+      "classic": true
+    }
+  ],
+  "systemLoggersOnTheMachine": {
+    "before": 4,
+    "during": 5,
+    "after": 4
+  },
+  "manifestProviderFirst": {
+    "kernelFlagsAfterward": "Exception: The kernel provider must be enabled first and only once in a session.",
+    "privateSystemLogger": false,
+    "logFileMode": "0x08400100",
+    "goneAfterStop": true
+  },
+  "schema": "intercat.alpc-session-check.v1",
+  "measuredUtc": "2026-09-28T03:44:10.3531275+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

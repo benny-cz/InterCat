@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 218 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 219 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 219 — how a classic ALPC record names itself (ADR-035's addendum):**
+  - Every ALPC record carries the generic kernel provider, ALPC's class as its task, event id 65535 (none) and version
+    2; only its opcode (33 send, 34 receive, 35/36 waits, 37 unwait) tells the kinds apart.
+  - Admission keys descriptors by provider, event id and version, which all ALPC records share, so classic descriptors
+    need their own key; the four kinds the relation rule reads carry a 4-byte message id.
 
 - **Revision 218 — ADR-035: a private system logger for an opt-in capture (§4, §9.2, ADR-034):**
   - `InterCat.AlpcProbe --session-check` made a session as the capture makes one, the ALPC flags first: it became a
@@ -2009,6 +2015,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 219 changed no product code: Debug and Release both ran **1,317 tests: 1,313 passed, 4 skipped**. The session
+  check ran again elevated (`bench/results/alpc-session-check-20260928T034426Z`), recording each ALPC opcode's identity;
+  no InterCat session remained and the machine's system logger count returned to four.
 - Revision 218 changed no product code: Debug and Release both ran **1,317 tests: 1,313 passed, 4 skipped**. Its check
   ran elevated: `InterCat.AlpcProbe --session-check`, counters in `bench/results/alpc-session-check-20260928T033708Z`,
   left no InterCat session running (`logman query -ets`), and the machine's system logger count returned to four.

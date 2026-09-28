@@ -22,12 +22,14 @@ internal static class SessionCheck
     private const ulong TcpKeywords = 0x30;
     private const uint SystemLoggerMode = 0x02000000;
     private const uint RealTimeMode = 0x00000100;
+    private static readonly Guid AlpcTask = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
 
     public static async Task<Dictionary<string, object?>> RunAsync(string workload, string scratch)
     {
         int before = SystemLoggers();
         CaptureSessionIdentity identity = CaptureSessionIdentity.Create("alpc-check", Environment.ProcessId);
         long alpcSends = 0, alpcReceives = 0, alpcOther = 0, network = 0, other = 0;
+        var descriptors = new SortedDictionary<int, Dictionary<string, object?>>();
         uint mode;
         int during;
         int lost;
@@ -40,7 +42,29 @@ internal static class SessionCheck
             session.EnableProvider(KernelNetwork, TraceEventLevel.Informational, TcpKeywords);
             mode = LogFileMode(identity.SessionName) ?? 0;
             during = SystemLoggers();
-            session.Source.Kernel.ALPCSendMessage += _ => alpcSends++;
+            // What identifies a classic ALPC record as TraceEvent delivers it, once per opcode: its header's provider and
+            // task, its id, opcode and version, and its body's length, which admission keys and checks.
+            session.Source.Kernel.All += data =>
+            {
+                if (data.TaskGuid != AlpcTask) return;
+                int opcode = (int)data.Opcode;
+                lock (descriptors)
+                {
+                    if (descriptors.ContainsKey(opcode)) return;
+                    descriptors[opcode] = new Dictionary<string, object?>
+                    {
+                        ["eventName"] = data.EventName,
+                        ["providerGuid"] = data.ProviderGuid.ToString("D"),
+                        ["taskGuid"] = data.TaskGuid.ToString("D"),
+                        ["id"] = (int)data.ID,
+                        ["opcode"] = opcode,
+                        ["version"] = (int)data.Version,
+                        ["bodyLength"] = data.EventDataLength,
+                        ["pointerSize"] = data.PointerSize,
+                        ["classic"] = data.IsClassicProvider,
+                    };
+                }
+            };            session.Source.Kernel.ALPCSendMessage += _ => alpcSends++;
             session.Source.Kernel.ALPCReceiveMessage += _ => alpcReceives++;
             session.Source.Kernel.ALPCWaitForReply += _ => alpcOther++;
             session.Source.Kernel.ALPCUnwait += _ => alpcOther++;
@@ -105,6 +129,7 @@ internal static class SessionCheck
                 ["kernelNetworkTcp"] = network,
                 ["other"] = other,
             },
+            ["alpcDescriptors"] = descriptors.Values.ToList(),
             ["systemLoggersOnTheMachine"] = new Dictionary<string, object?>
             {
                 ["before"] = before,

@@ -61,6 +61,20 @@ enabled first, then `Microsoft-Windows-Kernel-Network` for TCP, while the TCP an
 - ADR-002's consequence that the strategy deliberately creates no system logger holds for every profile without a kernel
   flag group, and no longer for the profile that needs one.
 
+## Addendum: how a classic ALPC record names itself (revision 219)
+
+A second run of the check (`bench/results/alpc-session-check-20260928T034426Z`) recorded, once per ALPC opcode, what
+TraceEvent reports of a record's identity. Every ALPC record carries the generic kernel provider id
+(`9e814aad-3204-11d2-9a82-006008a86939`), with ALPC's class in its task (`45d8cccd-539f-4b72-a8b7-5c683142609a`). Its
+event id is `65535`, the value that means none, and its version is 2. Only the opcode tells the five apart: 33 send,
+34 receive, 35 wait for reply, 36 wait for a new message and 37 unwait. Four carry a 4-byte body, the message id; the
+wait for a new message carries 38 bytes. So:
+
+- A classic descriptor is its class and opcode, with its version. The admission table's key today is a provider, an
+  event id and a version, and every ALPC record shares the first two, so classic descriptors need a key of their own.
+- The plan's body check is the measured length: 4 bytes for the four that carry only a message id. The wait for a new
+  message carries a port name besides, and admitting it is a later question.
+
 ## Alternatives considered
 
 - **A second session, a system logger beside the capture's.** Rejected. Ownership, recovery and cleanup would track two
