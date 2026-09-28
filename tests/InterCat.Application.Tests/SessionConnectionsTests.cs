@@ -47,6 +47,25 @@ public sealed class SessionConnectionsTests
             SessionConnections.OneSided(session.Store, client, new TimeRange(1_900, 2_100)).Connections.Select(connection => connection.Name));
     }
 
+    [Fact(DisplayName = "R21: the timeline counts a connection's records apart, the same records its evidence reads")]
+    public void TheTimelineCountsAConnectionApart()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        (ProcessInstanceId client, _) = Instances(session.Store);
+        ConnectionSummary tcp = SessionConnections.OneSided(session.Store, client).Connections[0];
+
+        // The connection's evidence scope is its timeline's focus: its five records, in the columns where they fell, and no
+        // other record of its process.
+        EvidenceScope scope = new($"Records of {tcp.Name}", tcp.Key, [], null, null);
+        TimelineFocus focus = TimelineFocus.Of(scope)!;
+        Assert.Equal(tcp.Key, focus.ChannelKey);
+        SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 300_000), 30, focus);
+        Assert.Equal(5, timeline.Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(10, timeline.Whole.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(5, timeline.Focus[0].ObservationCount);
+    }
+
     private static (ProcessInstanceId Client, ProcessInstanceId Server) Instances(SessionStore store)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(store);

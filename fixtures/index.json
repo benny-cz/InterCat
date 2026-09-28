@@ -1438,6 +1438,8 @@
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
+        "R21: the timeline counts a connection's records apart, the same records its evidence reads",
+        "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
         "R21: total-machine processor time is readable or explicitly unavailable",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],

@@ -99,7 +99,7 @@ public sealed record ChannelEndTimelineLane(
 /// </summary>
 public sealed class TimelineFocus
 {
-    public TimelineFocus(string? channelKey, IReadOnlyCollection<ProcessInstanceId> ownerProcesses)
+    public TimelineFocus(string? channelKey, IReadOnlyCollection<ProcessInstanceId> ownerProcesses, string? operationKey = null)
     {
         ArgumentNullException.ThrowIfNull(ownerProcesses);
         if (channelKey is not null && string.IsNullOrWhiteSpace(channelKey))
@@ -112,19 +112,34 @@ public sealed class TimelineFocus
             throw new ArgumentException("An owner process needs a non-empty instance ID.", nameof(ownerProcesses));
         }
 
-        if (channelKey is null && ownerProcesses.Count == 0)
+        if (operationKey is not null && (channelKey is not null || ownerProcesses.Count > 0
+            || (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey))))
         {
-            throw new ArgumentException("A timeline focus names a channel, owner processes or both; the whole session is no focus.",
+            throw new ArgumentException("An operation focus names an RPC channel or call, or HTTP exchanges, alone.", nameof(operationKey));
+        }
+
+        if (channelKey is null && ownerProcesses.Count == 0 && operationKey is null)
+        {
+            throw new ArgumentException(
+                "A timeline focus names a channel, owner processes or both, or an operation's records; the whole session is no focus.",
                 nameof(ownerProcesses));
         }
 
         ChannelKey = channelKey;
+        OperationKey = operationKey;
         OwnerProcesses = Array.AsReadOnly([.. ownerProcesses.Distinct().OrderBy(owner => owner.Value.ToString("N"), StringComparer.Ordinal)]);
         Key = $"channel:{channelKey?.Length ?? 0}:{channelKey}|owners:"
-            + string.Join(",", OwnerProcesses.Select(owner => owner.Value.ToString("N")));
+            + string.Join(",", OwnerProcesses.Select(owner => owner.Value.ToString("N")))
+            + (operationKey is null ? string.Empty : $"|operation:{operationKey.Length}:{operationKey}");
     }
 
     public string? ChannelKey { get; }
+
+    /// <summary>
+    /// The RPC channel or call, or the HTTP exchanges, whose own records the focus counts; null for a channel or owner
+    /// focus.
+    /// </summary>
+    public string? OperationKey { get; }
 
     /// <summary>The owner instances, distinct and in a stable order.</summary>
     public IReadOnlyList<ProcessInstanceId> OwnerProcesses { get; }
@@ -133,17 +148,15 @@ public sealed class TimelineFocus
     public string Key { get; }
 
     /// <summary>
-    /// The focus of an evidence scope; null for the whole session, for a scope that cannot be read, for an RPC channel or
-    /// call or HTTP exchanges, whose records the timeline does not yet count apart (their rungs list them), and for a
-    /// one-sided connection, which the timeline does not yet count apart either.
+    /// The focus of an evidence scope: its channel - paired, or a one-sided connection - its owner processes, or its RPC
+    /// or HTTP key's own records; null for the whole session and for a scope that cannot be read.
     /// </summary>
     public static TimelineFocus? Of(EvidenceScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return scope.Problem is null && !scope.IsWholeSession && scope.OperationKey is null
-            && !TransportConnection.IsKey(scope.ChannelKey)
-            ? new(scope.ChannelKey, scope.OwnerProcesses)
-            : null;
+        return scope.Problem is not null || scope.IsWholeSession ? null
+            : scope.OperationKey is { } operation ? new(null, [], operation)
+            : new(scope.ChannelKey, scope.OwnerProcesses);
     }
 }
 
@@ -520,14 +533,18 @@ internal sealed class FocusRows
     /// <summary>Whether each instance position is a focused owner; null when the focus names no owner.</summary>
     private readonly bool[]? members;
 
+    /// <summary>An operation focus's records by segment name and row; null for any other focus.</summary>
+    private readonly HashSet<(string Segment, int Row)>? operationRecords;
+
     private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
-        TransportRelation? relation, EvidencePolicy policy)
+        TransportRelation? relation, int? channel, HashSet<(string Segment, int Row)>? operationRecords, EvidencePolicy policy)
     {
         this.processes = processes;
         this.relations = relations;
         this.owners = owners;
         Relation = relation;
-        channel = relation?.Channel;
+        this.channel = channel;
+        this.operationRecords = operationRecords;
         this.policy = policy;
 
         // Membership by position: a row's test is an index, never a hash, since it is asked of every row (R11).
@@ -601,11 +618,25 @@ internal sealed class FocusRows
 
         TransportRelationIndex? relations = null;
         TransportRelation? relation = null;
-        if (focus.ChannelKey is { } key)
+        int? channel = null;
+        if (focus.ChannelKey is { } key && TransportConnection.IsKey(key))
+        {
+            // A one-sided connection is one process's channel: its rows are the ones naming its channel, all at one end.
+            relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            TransportConnection[] held = [.. relations.OneSided.Where(candidate =>
+                candidate.StableKey == key && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
+            if (held.Length != 1)
+            {
+                throw new InvalidOperationException("The focused connection is not in this generation under the evidence policy.");
+            }
+
+            channel = held[0].Channel;
+        }
+        else if (focus.ChannelKey is { } pairedKey)
         {
             relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(candidate =>
-                candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == key
+                candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == pairedKey
                 && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
             if (matching.Length != 1)
             {
@@ -614,9 +645,17 @@ internal sealed class FocusRows
             }
 
             relation = matching[0];
+            channel = relation.Channel;
         }
 
-        return new(processes, relations, owners, relation, policy);
+        // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group.
+        HashSet<(string Segment, int Row)>? operationRecords = focus.OperationKey is not { } operation ? null
+            : (HttpExchangeKeys.IsHttp(operation)
+                ? SessionHttpExchanges.RecordsOf(store, manifest, segments, operation, policy, cancellationToken)
+                : SessionRpcCalls.RecordsOf(store, manifest, segments, operation, policy, cancellationToken))
+                ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
+
+        return new(processes, relations, owners, relation, channel, operationRecords, policy);
     }
 
     /// <summary>
@@ -628,17 +667,35 @@ internal sealed class FocusRows
         // The bindings are the derivation's, kept with the reader (SegmentBindings); only a channel's ends are rented for
         // the segment's pass.
         RentedRows<sbyte>? ends = null;
-        if (channel is not null)
+        if (Relation is not null)
         {
             ends = RentedRows<sbyte>.For(segment);
             TransportRelationIndex.EndsOf(segment, ends.Value.Span);
+        }
+
+        // An operation's records in this segment, by row; a segment holding none of them includes no row.
+        bool[]? operationRows = null;
+        if (operationRecords is not null)
+        {
+            operationRows = new bool[segment.RowCount];
+            string name = segment.Published?.Name ?? string.Empty;
+            foreach ((string recordSegment, int row) in operationRecords)
+            {
+                if (string.Equals(recordSegment, name, StringComparison.Ordinal) && row < operationRows.Length)
+                {
+                    operationRows[row] = true;
+                }
+            }
         }
 
         return new(
             this,
             channel is null ? null : SegmentBindings.ChannelsOf(segment, relations!),
             owners.Count > 0 ? SegmentBindings.OwnersOf(segment, processes!) : null,
-            ends);
+            ends)
+        {
+            OperationRows = operationRows,
+        };
     }
 
     internal sealed class SegmentRows : IDisposable
@@ -678,8 +735,16 @@ internal sealed class FocusRows
             ? throw new InvalidOperationException("Only a channel focus has ends.")
             : ends[row];
 
+        /// <summary>For an operation focus, whether each row of the segment is one of its records; null otherwise.</summary>
+        public bool[]? OperationRows { get; init; }
+
         public bool Includes(int row)
         {
+            if (OperationRows is { } operation && !operation[row])
+            {
+                return false;
+            }
+
             if (hasChannels && channels[row].Channel != scope.channel)
             {
                 return false;

@@ -146,8 +146,9 @@ another host's - is a row of that process's rung beside its paired channels, as 
 - Enter opens its records: a transfer has no operation rung. `icat channels --process <instance> --one-sided` lists the
   same (`connection-list-v1`), and `icat evidence --channel <key>` reads a connection's records.
 
-A one-sided channel with an undecided or unbound holder is not listed; nor is an undecided incarnation's. The timeline
-does not yet count a connection's records apart.
+A one-sided channel with an undecided or unbound holder is not listed; nor is an undecided incarnation's. Since
+revision 249 a connection's evidence rung focuses the timeline on its records, as a paired channel's does - by its
+channel number, at its one end, so without a paired channel's two-ends lanes.
 
 ## 6. What is not inferred
 

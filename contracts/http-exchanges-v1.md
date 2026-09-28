@@ -54,7 +54,9 @@ duration. Enter on an exchange opens its buffers as evidence, where C opens a bu
 (`content-v1` §4); E at the channel rung reads every buffer of the process's exchanges.
 
 An evidence page scoped by an HTTP key names `http-exchange-v1` in its query identity, as one scoped by an RPC key names
-`rpc-call-operation-v1`, so a cursor never continues across a change of rule.
+`rpc-call-operation-v1`, so a cursor never continues across a change of rule. Since revision 249 the timeline beside such
+a page counts exactly its records apart - an exchange's buffers, or all of a process's - as it does an RPC channel's or
+call's.
 
 ## 5. `icat exchanges --json`
 

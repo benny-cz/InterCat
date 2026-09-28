@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 248 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 249 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 249 — every evidence rung's timeline counts its own records apart (R21, §6.2):**
+  - A one-sided connection's records, an HTTP exchange's buffers and an RPC channel's or call's records are the focus of
+    the timeline beside their evidence, as a process's or a paired channel's were: a connection by its channel number,
+    the others by the very records their evidence reads (`RecordsOf`), so the two never disagree.
 
 - **Revision 248 — a process's connections to other hosts on its rung (`relations-v1` §5b):**
   - A live pass over a real 30-second Explore capture found chrome.exe, with 460 TCP and UDP records, saying "Nothing at
@@ -315,7 +320,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
    - **One-sided connections (§7.1).** Revision 248 lists a process's connections no record's other end holds on its
-     rung. Later: counting a connection's records apart in the timeline, and naming the other host where a source
+     rung, and revision 249 counts its records apart in the timeline. Later: naming the other host where a source
      names it (a DNS name is content or another source's, never guessed).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -369,6 +374,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 249 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,395 tests: 1,391
+  passed, 4 skipped**, zero failures. Live, on a real 20-second Explore capture recorded into scratch (4,158 records,
+  nothing lost): Enter on one of chrome.exe's connections opened its records with the timeline reading "Records of TCP
+  to 3.72.134.85:443 in colour, the rest of the machine in grey". The capture was deleted.
 - Revision 248 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,393 tests: 1,389
   passed, 4 skipped**, zero failures. Live, on a real 30-second Explore capture recorded into scratch (4,013 records,
   nothing lost): chrome.exe's rung, which had said "Nothing at this level", listed 25 connections holding 459 of its

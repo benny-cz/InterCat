@@ -91,6 +91,28 @@ public sealed class SessionHttpExchangesTests
         Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, channelKey: "tcp:x", operationKey: channel));
     }
 
+    [Fact(DisplayName = "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads")]
+    public void TheTimelineCountsAnExchangeApart()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(out SourceFieldRowV1[] fields), fields: fields);
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(Client(session.Store)));
+
+        // Exchange 2's evidence scope is its timeline's focus: its three buffers, among exchange 1's interleaved with them.
+        EvidenceScope scope = new("Records of an HTTP exchange", null, [], null, null) { OperationKey = page.Exchanges[1].Key };
+        TimelineFocus focus = TimelineFocus.Of(scope)!;
+        Assert.Equal(page.Exchanges[1].Key, focus.OperationKey);
+        SessionFocusedTimeline timeline = SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 400), 40, focus);
+        Assert.Equal(3, timeline.Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal([1, 2], timeline.Focus.Select((bucket, column) => (bucket, column)).Where(pair => pair.bucket.ObservationCount > 0)
+            .Select(pair => pair.bucket.ObservationCount));
+
+        // A process's exchanges are all of its buffers.
+        TimelineFocus all = TimelineFocus.Of(new EvidenceScope("Records of HTTP exchanges", null, [], null, null)
+            { OperationKey = HttpExchangeKeys.Channel(Client(session.Store)) })!;
+        Assert.Equal(17, SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 400), 40, all).Focus.Sum(bucket => bucket.ObservationCount));
+    }
+
     private static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 
