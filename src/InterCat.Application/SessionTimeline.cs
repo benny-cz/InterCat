@@ -133,13 +133,15 @@ public sealed class TimelineFocus
     public string Key { get; }
 
     /// <summary>
-    /// The focus of an evidence scope; null for the whole session, for a scope that cannot be read, and for an RPC channel
-    /// or call, whose records the timeline does not yet count apart (their rungs list the calls).
+    /// The focus of an evidence scope; null for the whole session, for a scope that cannot be read, for an RPC channel or
+    /// call or HTTP exchanges, whose records the timeline does not yet count apart (their rungs list them), and for a
+    /// one-sided connection, which the timeline does not yet count apart either.
     /// </summary>
     public static TimelineFocus? Of(EvidenceScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
         return scope.Problem is null && !scope.IsWholeSession && scope.OperationKey is null
+            && !TransportConnection.IsKey(scope.ChannelKey)
             ? new(scope.ChannelKey, scope.OwnerProcesses)
             : null;
     }

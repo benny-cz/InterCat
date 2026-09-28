@@ -2435,6 +2435,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         CancelEvidence();
         CancelRpc();
         CancelHttp();
+        CancelConnections();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
@@ -2547,8 +2548,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public IReadOnlyList<RungRow> RungRows => IsEvidenceRung ? evidenceRows
         : IsRpcChannelRung ? rpcCallRows
         : IsHttpChannelRung ? httpExchangeRows
-        : rpcChannelRows.Count == 0 && httpChannelRows.Count == 0 ? LadderRows()
-        : Ranked([.. LadderRows(), .. rpcChannelRows.Select(RankedRpcChannel), .. httpChannelRows.Select(RankedHttpChannel)]);
+        : rpcChannelRows.Count == 0 && httpChannelRows.Count == 0 && ConnectionCount == 0 ? LadderRows()
+        : Ranked([.. LadderRows(), .. ConnectionRows(), .. rpcChannelRows.Select(RankedRpcChannel),
+            .. httpChannelRows.Select(RankedHttpChannel)]);
 
     /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
     private IReadOnlyList<RungRow> LadderRows()
@@ -2665,7 +2667,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     private string RungTotal(bool brief)
     {
-        if ((rpcChannelRows.Count == 0 && httpChannelRows.Count == 0) || view.Rows.Count > 0)
+        if ((rpcChannelRows.Count == 0 && httpChannelRows.Count == 0 && ConnectionCount == 0) || view.Rows.Count > 0)
         {
             // Under a byte ranking the note beneath the selector states the rows' bytes, so the total leaves out the
             // paired channels' known bytes, which would read as a second, contradicting byte figure.
@@ -2680,15 +2682,24 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return brief ? LadderRowBuilder.DescribeTotalShort(view) : LadderRowBuilder.DescribeTotal(view);
         }
 
-        if (httpChannelRows.Count > 0)
+        if (httpChannelRows.Count > 0 || ConnectionCount > 0)
         {
-            // Call records and buffer records are each their own process's, so they add up, but they are not one kind of
+            // Transport, call and buffer records are each their own process's, so they add up, but they are not one kind of
             // record, and each kind is counted apart.
-            long buffers = httpChannelRows.Sum(row => row.Source.ObservationCount);
-            string http = Spoken.Count(buffers, "HTTP buffer record");
-            if (rpcChannelRows.Count == 0) return http;
-            long calls = rpcChannelRows.Sum(row => row.Source.ObservationCount);
-            return Spoken.Count(calls, "call record") + " and " + http;
+            var kinds = new List<string>(3);
+            if (ConnectionCount > 0)
+            {
+                kinds.Add(Spoken.Count(connections!.Connections.Sum(connection => connection.Records), "record") + " on "
+                    + Spoken.Count(ConnectionCount, "connection"));
+            }
+
+            if (rpcChannelRows.Count > 0) kinds.Add(Spoken.Count(rpcChannelRows.Sum(row => row.Source.ObservationCount), "call record"));
+            if (httpChannelRows.Count > 0)
+            {
+                kinds.Add(Spoken.Count(httpChannelRows.Sum(row => row.Source.ObservationCount), "HTTP buffer record"));
+            }
+
+            return string.Join(" and ", kinds);
         }
 
         long records = rpcChannelRows.Sum(row => row.Source.ObservationCount);
@@ -2730,14 +2741,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     : " · each process's own records";
         }
 
-        if (ladder.Current.Level == DetailLevel.ProcessInstance && httpChannelRows.Count > 0)
+        if (ladder.Current.Level == DetailLevel.ProcessInstance && (httpChannelRows.Count > 0 || ConnectionCount > 0))
         {
-            // It names what the rung lists: its HTTP exchanges, and its RPC calls only when it made some.
-            return rpcChannelRows.Count > 0
-                ? brief ? " · paired TCP, RPC calls and HTTP exchanges"
-                    : " · admitted paired TCP, this process's RPC calls by interface and its HTTP exchanges; not all session observations"
-                : brief ? " · paired TCP and HTTP exchanges"
-                    : " · admitted paired TCP and this process's HTTP exchanges; not all session observations";
+            // It names what the rung lists, and only what it lists.
+            var listed = new List<string>(4) { brief ? "paired TCP" : "admitted paired TCP" };
+            if (ConnectionCount > 0) listed.Add(brief ? "connections" : "its connections whose other end no record holds");
+            if (rpcChannelRows.Count > 0) listed.Add(brief ? "RPC calls" : "its RPC calls by interface");
+            if (httpChannelRows.Count > 0) listed.Add(brief ? "HTTP exchanges" : "its HTTP exchanges");
+            string joined = listed.Count == 2 ? $"{listed[0]} and {listed[1]}" : string.Join(", ", listed[..^1]) + " and " + listed[^1];
+            return brief ? " · " + joined : " · " + joined + "; not all session observations";
         }
 
         if (ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannelRows.Count > 0)
@@ -2791,7 +2803,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         : "This process has no HTTP exchange in this scope. Its records are one step away.");
             }
 
-            if (view.EmptyReason is null || rpcChannelRows.Count > 0 || httpChannelRows.Count > 0) return string.Empty;
+            if (view.EmptyReason is null || rpcChannelRows.Count > 0 || httpChannelRows.Count > 0 || ConnectionCount > 0)
+            {
+                return string.Empty;
+            }
             if (emptyWorkspace) return awaitingCaptureNote ?? "No capture is running. Start exploring to publish a live session.";
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannels is { Loading: true })
             {
@@ -2801,6 +2816,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && httpChannels is { Loading: true })
             {
                 return "Reading this process's HTTP exchanges…";
+            }
+
+            if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance && connections is { Loading: true })
+            {
+                return "Reading this process's connections…";
             }
 
             if (realOverview && ladder.Current.Level is DetailLevel.Channel or DetailLevel.Operation)
@@ -2830,7 +2850,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool IsEmptyRung => IsEvidenceRung ? evidenceRows.Count == 0
         : IsRpcChannelRung ? rpcCallRows.Count == 0
         : IsHttpChannelRung ? httpExchangeRows.Count == 0
-        : view.EmptyReason is not null && rpcChannelRows.Count == 0 && httpChannelRows.Count == 0;
+        : view.EmptyReason is not null && rpcChannelRows.Count == 0 && httpChannelRows.Count == 0 && ConnectionCount == 0;
 
     /// <summary>Whether the empty rung can offer its one-step path to evidence as a button beside the reason.</summary>
     public bool OffersEvidenceStep => IsEmptyRung && realOverview && evidenceSource is not null
@@ -4126,6 +4146,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         SyncEvidence();
         SyncRpc();
         SyncHttp();
+        SyncConnections();
         RaiseRankingChanged();
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
@@ -5265,6 +5286,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RankingReady = FollowRankedMeasuresAsync();
         SyncRpcScope();
         SyncHttpScope();
+        SyncConnectionsScope();
         FollowDescribedBytes();
     }
 

@@ -240,13 +240,26 @@ public static class SessionEvidenceQuery
         if (channelKey is not null)
         {
             relations = derivation!.Relations(store.Root, segments, clock, fields, cancellationToken);
-            TransportRelation[] matching = [.. relations.Relations.Where(relation =>
-                relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
-                && SessionOverviewProjector.Admitted(relation.Strength, policy))];
-            if (matching.Length != 1)
-                throw new InvalidOperationException("This paired TCP channel is not uniquely admitted in the "
-                    + "current generation and evidence policy. Return to the overview and select it again.");
-            selectedChannel = matching[0].Channel;
+            if (TransportConnection.IsKey(channelKey))
+            {
+                // A one-sided connection is one process's channel: its records are the ones that name its channel.
+                TransportConnection[] held = [.. relations.OneSided.Where(connection =>
+                    connection.StableKey == channelKey && SessionOverviewProjector.Admitted(connection.Strength, policy))];
+                if (held.Length != 1)
+                    throw new InvalidOperationException("This connection is not in the current generation under the "
+                        + "evidence policy. Return to the process and select it again.");
+                selectedChannel = held[0].Channel;
+            }
+            else
+            {
+                TransportRelation[] matching = [.. relations.Relations.Where(relation =>
+                    relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
+                    && SessionOverviewProjector.Admitted(relation.Strength, policy))];
+                if (matching.Length != 1)
+                    throw new InvalidOperationException("This paired TCP channel is not uniquely admitted in the "
+                        + "current generation and evidence policy. Return to the overview and select it again.");
+                selectedChannel = matching[0].Channel;
+            }
         }
 
         // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls.

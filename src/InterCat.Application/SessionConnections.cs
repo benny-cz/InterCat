@@ -1,0 +1,189 @@
+using System.Globalization;
+using InterCat.Analysis;
+using InterCat.Domain;
+using InterCat.Storage;
+
+namespace InterCat.Application;
+
+/// <summary>
+/// One of a process's one-sided connections as its rung shows it (§7.1, `contracts/relations-v1.md` §6a): its two
+/// endpoints, its records and the transport bytes they measured, within an interval when one is given. Nothing is said of
+/// who is at the other end: no record of the capture holds it.
+/// </summary>
+public sealed record ConnectionSummary(
+    string Key,
+    Mechanism Mechanism,
+    string LocalEndpoint,
+    string RemoteEndpoint,
+    long Records,
+    long Sends,
+    long SentBytes,
+    long UnmeasuredSends,
+    long Receives,
+    long ReceivedBytes,
+    long UnmeasuredReceives,
+    bool OpenWitnessed,
+    bool CloseWitnessed)
+{
+    /// <summary>The transfers of either direction whose record stated no size.</summary>
+    public long Unmeasured => UnmeasuredSends + UnmeasuredReceives;
+
+    /// <summary>
+    /// Its transport bytes as a metric ranks them: what its sends or receives measured, of how many, and how many stated no
+    /// size; null for any other metric, which a connection holds nothing of.
+    /// </summary>
+    public RankedValue? RankedBy(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => new(metric, Sends > UnmeasuredSends ? SentBytes : null, Sends - UnmeasuredSends, UnmeasuredSends),
+        RankingMetric.BytesReceived => new(metric, Receives > UnmeasuredReceives ? ReceivedBytes : null, Receives - UnmeasuredReceives,
+            UnmeasuredReceives),
+        _ => null,
+    };
+    /// <summary>The connection in words: "TCP to 142.250.186.36:443".</summary>
+    public string Name => (Mechanism == Mechanism.Udp ? "UDP to " : "TCP to ") + RemoteEndpoint;
+
+    /// <summary>What its records measured, in one line: bytes each way, and how many transfers stated no size.</summary>
+    public string Transfers(IFormatProvider? culture = null)
+    {
+        IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
+        string measured = string.Create(format, $"{SentBytes:N0} B sent, {ReceivedBytes:N0} B received");
+        return Unmeasured == 0
+            ? measured
+            : measured + string.Create(format, $"; {Unmeasured:N0} {(Unmeasured == 1 ? "transfer" : "transfers")} of no stated size");
+    }
+
+    /// <summary>Whether the capture saw it open and close, in words.</summary>
+    public string Lifetime => Mechanism == Mechanism.Udp
+        ? "a datagram flow"
+        : (OpenWitnessed, CloseWitnessed) switch
+        {
+            (true, true) => "opened and closed in the capture",
+            (true, false) => "opened in the capture, still open at its end",
+            (false, true) => "open before the capture, closed in it",
+            _ => "open before the capture and after it",
+        };
+}
+
+/// <summary>A process instance's one-sided connections in one generation, the most records first.</summary>
+public sealed record ConnectionList(Guid SessionId, long Generation, IReadOnlyList<ConnectionSummary> Connections);
+
+/// <summary>
+/// Reads a process's one-sided connections for its rung: the TCP connections and UDP flows it held whose other end no
+/// record of the capture holds, most often another host's. Each read leases the current generation and reads the
+/// generation's relations once, shared by every read of it.
+/// </summary>
+public static class SessionConnections
+{
+    /// <summary>
+    /// The one-sided connections of <paramref name="instance"/>, with the records each holds and the transport bytes they
+    /// measured - within <paramref name="interval"/> (workspace ticks) when one is given, where a connection with no record
+    /// in it is not listed.
+    /// </summary>
+    public static ConnectionList OneSided(
+        SessionStore store,
+        ProcessInstanceId instance,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        if (segments.Length == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
+        {
+            return new(manifest.SessionId, manifest.Generation, []);
+        }
+
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        TransportRelationIndex relations = SessionDerivationCache.For(manifest).Relations(store.Root, segments, clock, fields, cancellationToken);
+        TransportConnection[] held = [.. relations.OneSided.Where(connection =>
+            connection.Holder.Id == instance && SessionOverviewProjector.Admitted(connection.Strength, policy))];
+        if (held.Length == 0)
+        {
+            return new(manifest.SessionId, manifest.Generation, []);
+        }
+
+        // One pass over the segments counts every connection's records and bytes at once, by the channel each row names.
+        var byChannel = new Dictionary<int, int>(held.Length);
+        for (int index = 0; index < held.Length; index++)
+        {
+            byChannel[held[index].Channel] = index;
+        }
+
+        long[] records = new long[held.Length], sends = new long[held.Length], sent = new long[held.Length],
+            unsized = new long[held.Length], receives = new long[held.Length], received = new long[held.Length],
+            unsizedReceives = new long[held.Length];
+        foreach (SegmentReaderV1 segment in segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PackedChannels channels = SegmentBindings.ChannelsOf(segment, relations);
+            SegmentColumnSlice kinds = default, bytes = default, times = default;
+            bool opened = false;
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if (!channels[row].IsKnown || !byChannel.TryGetValue(channels[row].Channel, out int at))
+                {
+                    continue;
+                }
+
+                if (!opened)
+                {
+                    kinds = segment.Slice(SegmentColumnId.ObservationKind);
+                    bytes = segment.Slice(SegmentColumnId.ByteValue);
+                    times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+                    opened = true;
+                }
+
+                if (interval is { } range && (times.SignedAt(row) is not { } nanoseconds || !range.Contains(nanoseconds / 100)))
+                {
+                    continue;
+                }
+
+                records[at]++;
+                var kind = (ObservationKind)kinds.UnsignedAt(row)!.Value;
+                if (kind is not (ObservationKind.Send or ObservationKind.Receive))
+                {
+                    continue;
+                }
+
+                long? value = bytes.SignedAt(row);
+                if (kind == ObservationKind.Send)
+                {
+                    sends[at]++;
+                    if (value is { } size) sent[at] += size;
+                    else unsized[at]++;
+                }
+                else
+                {
+                    receives[at]++;
+                    if (value is { } size) received[at] += size;
+                    else unsizedReceives[at]++;
+                }
+            }
+        }
+
+        return new(manifest.SessionId, manifest.Generation,
+        [
+            .. Enumerable.Range(0, held.Length)
+                .Where(index => interval is null || records[index] > 0)
+                .Select(index => new ConnectionSummary(
+                    held[index].StableKey,
+                    held[index].Mechanism,
+                    held[index].LocalEndpoint,
+                    held[index].RemoteEndpoint,
+                    records[index],
+                    sends[index],
+                    sent[index],
+                    unsized[index],
+                    receives[index],
+                    received[index],
+                    unsizedReceives[index],
+                    held[index].OpenWitnessed,
+                    held[index].CloseWitnessed))
+                .OrderByDescending(connection => connection.Records)
+                .ThenBy(connection => connection.Key, StringComparer.Ordinal),
+        ]);
+    }
+}

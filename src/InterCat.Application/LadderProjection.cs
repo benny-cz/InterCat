@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 
 namespace InterCat.Application;
@@ -209,6 +210,10 @@ public static class LadderProjection
             { Key = row.Key, Level = DetailLevel.Channel }],
         DetailLevel.Operation => [new("operation", row.Label, "Descending from a channel scopes to one operation.")
             { Key = row.Key, Level = DetailLevel.Operation }],
+        // A one-sided connection is a channel with no operation rung: its row opens its records.
+        DetailLevel.Evidence when TransportConnection.IsKey(row.Key) =>
+            [new("scope", row.Label, "Descending from a process scopes to one of its connections.")
+                { Key = row.Key, Level = DetailLevel.Channel }],
         DetailLevel.Evidence => [new("scope", row.Label, "Descending from an operation scopes to its records.")
             { Key = row.Key, Level = DetailLevel.Operation }],
         _ => [],

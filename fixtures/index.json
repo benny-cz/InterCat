@@ -1167,7 +1167,9 @@
       "P7": [
         "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
-        "P7: a pipe peer pairing is checked against the truth log rather than assumed"
+        "P7: a pipe peer pairing is checked against the truth log rather than assumed",
+        "P7: a process's connections to ends no record holds are rows of its rung, each opening its own records",
+        "P7: a process's one-sided connections are its channels no record's other end holds, named by their endpoints, never by a guessed peer"
       ],
       "P8": [
         "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",

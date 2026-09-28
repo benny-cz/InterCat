@@ -60,6 +60,54 @@ public sealed record TransportRelation
 }
 
 /// <summary>
+/// One connection incarnation, or one datagram flow, whose other end no record of the capture holds - most often a
+/// connection to another host. It is a channel of the one process holding it (§7.1; a one-sided channel since revision
+/// 47), named by its two endpoints as the source names them and never by a guess at who is at the other end (P7).
+/// </summary>
+public sealed record TransportConnection
+{
+    /// <summary>What every one-sided connection's stable key begins with.</summary>
+    public const string KeyPrefix = "connection:";
+
+    public required Mechanism Mechanism { get; init; }
+
+    /// <summary>The channel number its records share within this derivation: a join key, not a stable identity.</summary>
+    public required int Channel { get; init; }
+
+    /// <summary>
+    /// A generation-independent key, anchored to its earliest raw fact and naming its holder, so a later generation that
+    /// still holds it finds it and one that moved its first fact drops a stale selection rather than merging it.
+    /// </summary>
+    public required string StableKey { get; init; }
+
+    public required ProcessInstance Holder { get; init; }
+
+    /// <summary>Its holder's own endpoint, as the source names it.</summary>
+    public required string LocalEndpoint { get; init; }
+
+    /// <summary>The endpoint at its other end, as the source names it; no record of the capture holds that end.</summary>
+    public required string RemoteEndpoint { get; init; }
+
+    /// <summary>How strongly its records bind to their holder: the weakest of them.</summary>
+    public required RelationStrength Strength { get; init; }
+
+    public required long FirstNativeTicks { get; init; }
+
+    public required long LastNativeTicks { get; init; }
+
+    public required long Records { get; init; }
+
+    public required long RecordsWithoutSessionTime { get; init; }
+
+    public required bool OpenWitnessed { get; init; }
+
+    public required bool CloseWitnessed { get; init; }
+
+    /// <summary>Whether a key names a one-sided connection.</summary>
+    public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>
 /// The connection incarnation - the channel of §7.1 - one record belongs to, or why the record names none. A paired
 /// incarnation and its partner are one channel; an incarnation whose other end no record holds is a one-sided channel.
 /// </summary>
@@ -135,7 +183,14 @@ public sealed partial class TransportRelationIndex
 
         Channels = NumberChannels(ends);
         Relations = BuildRelations(processes, ends);
+        OneSided = BuildOneSided(processes, ends);
     }
+
+    /// <summary>
+    /// Every connection incarnation and datagram flow whose other end no record holds, held by one process instance: the
+    /// one-sided channels, in end order and then incarnation order.
+    /// </summary>
+    public IReadOnlyList<TransportConnection> OneSided { get; }
 
     /// <summary>How many distinct connection incarnations and datagram flows the capture's transport records establish.</summary>
     public int Channels { get; }
@@ -783,6 +838,44 @@ public sealed partial class TransportRelationIndex
         }
 
         return relations;
+    }
+
+    private static List<TransportConnection> BuildOneSided(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
+    {
+        var connections = new List<TransportConnection>();
+        foreach ((EndKey key, EndTimeline timeline) in ends.OrderBy(entry => entry.Key))
+        {
+            foreach (Incarnation incarnation in timeline.Incarnations)
+            {
+                if (incarnation is not { Pairing: Pairing.NotObserved, Holder: >= 0, Ambiguous: false, Records: > 0, Channel: >= 0 }
+                    || incarnation.FirstPosition is not { } anchor)
+                {
+                    continue;
+                }
+
+                ProcessInstance holder = processes.Instances[incarnation.Holder];
+                connections.Add(new()
+                {
+                    Mechanism = (Mechanism)key.Protocol,
+                    Channel = incarnation.Channel,
+                    StableKey = string.Create(CultureInfo.InvariantCulture,
+                        $"{TransportConnection.KeyPrefix}{holder.Id}:{anchor.Stream:x8}:{anchor.Epoch:x8}:{anchor.Ordinal:x16}:"
+                        + $"{anchor.FactHigh:x16}:{anchor.FactLow:x16}"),
+                    Holder = holder,
+                    LocalEndpoint = key.LocalEndpoint,
+                    RemoteEndpoint = key.Mirror().LocalEndpoint,
+                    Strength = incarnation.Weakest,
+                    FirstNativeTicks = incarnation.First,
+                    LastNativeTicks = incarnation.Last,
+                    Records = incarnation.Records,
+                    RecordsWithoutSessionTime = incarnation.Untimed,
+                    OpenWitnessed = incarnation.OpenWitnessed,
+                    CloseWitnessed = incarnation.CloseWitnessed,
+                });
+            }
+        }
+
+        return connections;
     }
 
     /// <summary>The weaker of two strengths: a relation is only as strong as the weakest binding it rests on.</summary>

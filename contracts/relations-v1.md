@@ -130,6 +130,25 @@ The relation between two paired incarnations exposes that same channel number, s
 edge to exactly the records at both ends. The number is deterministic within one derivation, not a cross-generation
 identity: another relation rule can number channels differently.
 
+## 5b. One-sided connections on the ladder (revision 248)
+
+A one-sided channel held by one process instance - no record's end pairs with it, most often because its other end is
+another host's - is a row of that process's rung beside its paired channels, as a **connection**:
+
+- its key is `connection:{holder}:{anchor}`, the holder's instance and the connection's earliest raw fact, so a later
+  generation that still holds it finds it and one that moved its first fact drops a stale selection, as a paired
+  channel's key does;
+- it is named by its two endpoints as the source names them - "TCP to 142.250.186.36:443", from its holder's own - and
+  by whether the capture saw it open and close; nothing is said of who is at its other end (P7);
+- its records are its holder's transfer and lifecycle records that name its channel, and its bytes are what the
+  holder's own sends and receives measured, `TransportObserved` like a paired channel's, so it ranks beside them under
+  a byte ranking, and a transfer of no stated size is counted as such (R3);
+- Enter opens its records: a transfer has no operation rung. `icat channels --process <instance> --one-sided` lists the
+  same (`connection-list-v1`), and `icat evidence --channel <key>` reads a connection's records.
+
+A one-sided channel with an undecided or unbound holder is not listed; nor is an undecided incarnation's. The timeline
+does not yet count a connection's records apart.
+
 ## 6. What is not inferred
 
 - **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is

@@ -708,6 +708,53 @@ public sealed class EvidenceRungTests
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
+    [Fact(DisplayName = "P7: a process's connections to ends no record holds are rows of its rung, each opening its own records")]
+    public async Task OneSidedConnectionsAreRowsOfTheProcessRung()
+    {
+        // Process 100 holds its paired channel with process 200, and a connection to another host no record's end holds.
+        const string local = "192.168.1.5:52000";
+        const string remote = "10.0.0.9:443";
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            Timed(Transfer(5_000, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 70_000).Between(local, remote)),
+            Timed(Transfer(5_001, ObservationKind.Send, AccountingSide.SendSide, 1_500, 100, 70_001).Between(local, remote)),
+            Timed(Transfer(5_002, ObservationKind.Receive, AccountingSide.ReceiveSide, 90_000, 100, 70_002).Between(local, remote)),
+            Timed(Transfer(5_003, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 70_003).Between(local, remote)),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.ConnectionsReady;
+
+        // The connection is a row beside the paired channel, leading with the other end's endpoint.
+        RungRow row = workspace.RungRows.Single(candidate => candidate.Label == "→ " + remote);
+        Assert.Equal("TCP to " + remote, row.Source.Label);
+        Assert.Equal("4", row.Observations);
+        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture,
+            $"TCP from {local} · opened and closed in the capture · {1_500:N0} B sent, {90_000:N0} B received"), row.Detail);
+        Assert.Contains(workspace.RungRows, candidate => candidate.Label.StartsWith('↔'));
+        Assert.EndsWith(" · admitted paired TCP and its connections whose other end no record holds; not all session observations",
+            workspace.LevelSummary, StringComparison.Ordinal);
+
+        // Under a byte ranking it ranks by its own transport bytes, as the paired channel beside it does.
+        workspace.RankBy = RankingMetric.BytesReceived;
+        await workspace.RankingReady;
+        RungRow ranked = workspace.RungRows.Single(candidate => candidate.Key == row.Key);
+        Assert.Equal(90_000L, ranked.Source.Ranked!.Value);
+        Assert.Equal(row.Key, workspace.RungRows[0].Key);
+
+        // Enter opens its records, and only its.
+        workspace.SelectedRung = ranked;
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.StartsWith("Records of TCP to " + remote, workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away")]
     public async Task HttpExchangesAreARowOfTheProcessRung()
     {
@@ -751,7 +798,7 @@ public sealed class EvidenceRungTests
         Assert.Equal(HttpChannelSummary.Name, row.Source.Label);
         Assert.Equal("HTTP client · 2 exchanges · 1 not recorded whole · median 600 ns", row.Detail.Replace(' ', ' '));
         Assert.Equal("7", row.Observations);
-        Assert.EndsWith(" · admitted paired TCP and this process's HTTP exchanges; not all session observations",
+        Assert.EndsWith(" · admitted paired TCP and its HTTP exchanges; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);
 
         // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded.

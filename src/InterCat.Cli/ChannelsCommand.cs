@@ -31,6 +31,7 @@ internal static class ChannelsCommand
         bool invalidProcess = processText is not null
             && (!Guid.TryParse(processText, out Guid parsed) || parsed == Guid.Empty);
         bool json = command.TryTakeFlag("--json");
+        bool oneSided = command.TryTakeFlag("--one-sided");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         if (directory is null || hasUnknown || invalidProcess || invalidSize)
         {
@@ -51,6 +52,13 @@ internal static class ChannelsCommand
         }
 
         ProcessInstanceId? scope = processText is null ? null : new(Guid.Parse(processText));
+        if (oneSided)
+        {
+            return scope is { } instance
+                ? OneSided(path, instance, json, cancellationToken)
+                : Refuse("--one-sided lists one process's connections: name it with --process <instance-guid>.");
+        }
+
         SessionChannelPage page;
         try
         {
@@ -99,11 +107,65 @@ internal static class ChannelsCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// One process's one-sided connections (§7.1): the TCP connections and UDP flows it held whose other end no record
+    /// holds, as its rung lists them, each with the key icat evidence --channel reads its records by.
+    /// </summary>
+    private static InterCatExitCode OneSided(string path, ProcessInstanceId instance, bool json, CancellationToken cancellationToken)
+    {
+        ConnectionList list;
+        try
+        {
+            list = SessionConnections.OneSided(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), instance,
+                cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(new
+            {
+                Contract = "connection-list-v1", SessionPath = path, ProcessInstance = instance.ToString(), List = list,
+            }, JsonContracts.Indented));
+            return InterCatExitCode.Success;
+        }
+
+        ConsoleUi.Heading("Connections no record's other end holds");
+        ConsoleUi.Field("Session", path);
+        ConsoleUi.Field("Generation", ConsoleUi.Count(list.Generation));
+        ConsoleUi.Field("Process instance", instance.ToString());
+        ConsoleUi.Field("Connections", ConsoleUi.Count(list.Connections.Count));
+        foreach (ConnectionSummary connection in list.Connections)
+        {
+            ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
+                $"  {connection.Name} from {connection.LocalEndpoint} · {connection.Records:N0} records · {connection.Transfers(CultureInfo.CurrentCulture)} · {connection.Lifetime}"));
+            ConsoleUi.Line("    " + connection.Key);
+        }
+
+        ConsoleUi.Note("No record of this capture holds these connections' other ends, so nothing is said of who is there: "
+            + "most are other hosts'. Bytes are what this process's own transfer records measured.");
+        ConsoleUi.Note("Use icat evidence <directory> --channel <key> for a connection's exact rows.");
+        return InterCatExitCode.Success;
+    }
+
+    private static InterCatExitCode Refuse(string reason)
+    {
+        ConsoleUi.Failure(reason);
+        PrintHelp();
+        return InterCatExitCode.InvalidInvocation;
+    }
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid>] [--page-size <1-200>]");
+        ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted paired TCP channels, even above the overview bound.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes by stable instance ID.");
+        ConsoleUi.Line("  --one-sided lists the process's connections whose other end no record holds - most often");
+        ConsoleUi.Line("  another host's - with their records and bytes, as its rung does.");
     }
 }

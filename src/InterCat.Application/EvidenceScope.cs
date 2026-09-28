@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 
 namespace InterCat.Application;
@@ -107,6 +108,9 @@ public static class EvidenceScopes
                 case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
                     // A call or an exchange is one entity: its records are all of its own wherever the view is zoomed.
                     return new($"Records of {filter.Value}", null, [], null, null) { OperationKey = filter.Key };
+                case DetailLevel.Channel when TransportConnection.IsKey(filter.Key):
+                    // A one-sided connection is no paired channel of the overview: it is read by its own key.
+                    return new($"Records of {filter.Value}{time}", filter.Key, [], interval, null);
                 case DetailLevel.Channel when filter.Key is { } channelKey:
                     Channel? channel = snapshot.Channels.FirstOrDefault(candidate => candidate.Key == channelKey);
                     return new($"Paired TCP channel {channel?.Name ?? filter.Value}{time}", channelKey, [], interval,

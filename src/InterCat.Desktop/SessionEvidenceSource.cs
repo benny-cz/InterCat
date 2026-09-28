@@ -120,6 +120,13 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionHttpExchanges.Exchanges(Store(), channelKey, offset, interval: interval, cancellationToken: cancellationToken),
             cancellationToken);
 
+    /// <summary>
+    /// One process instance's one-sided connections in the current generation - the TCP connections and UDP flows whose
+    /// other end no record holds - with their records and bytes, in the whole session or <paramref name="interval"/>.
+    /// </summary>
+    public Task<ConnectionList> ConnectionsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionConnections.OneSided(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
     public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(

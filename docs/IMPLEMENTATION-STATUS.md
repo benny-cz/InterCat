@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 247 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 248 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 248 — a process's connections to other hosts on its rung (`relations-v1` §5b):**
+  - A live pass over a real 30-second Explore capture found chrome.exe, with 460 TCP and UDP records, saying "Nothing at
+    this level": the rung listed paired channels only, and on a real machine most connections go to other hosts, whose
+    end no record holds.
+  - Such a connection is a row of its process's rung now - "→ 3.72.134.85:443", TCP or UDP from its own endpoint, how
+    the capture saw it open and close, and the bytes its sends and receives measured - ranked with the paired channels
+    beside it, and Enter opens its records. `icat channels --process <id> --one-sided` lists the same (R18).
 
 - **Revision 247 — a process's HTTP exchanges on its rung (M8, `http-exchanges-v1`):**
   - A content session's process rung lists its HTTP exchanges as a row, where it said "Nothing at this level"; Enter
@@ -306,6 +314,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
      releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
+   - **One-sided connections (§7.1).** Revision 248 lists a process's connections no record's other end holds on its
+     rung. Later: counting a connection's records apart in the timeline, and naming the other host where a source
+     names it (a DNS name is content or another source's, never guessed).
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -358,6 +369,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 248 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,393 tests: 1,389
+  passed, 4 skipped**, zero failures. Live, on a real 30-second Explore capture recorded into scratch (4,013 records,
+  nothing lost): chrome.exe's rung, which had said "Nothing at this level", listed 25 connections holding 459 of its
+  460 records, `icat channels --one-sided` the same, and an RPC-heavy svchost.exe's rung read as before. The capture
+  was deleted.
 - Revision 247 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,391 tests: 1,387
   passed, 4 skipped**, zero failures. Live, on the fresh 96-exchange content session: `icat exchanges` listed 96
   exchanges, all recorded whole, from 580 buffers; the Release window's process rung showed them as a row, Enter
