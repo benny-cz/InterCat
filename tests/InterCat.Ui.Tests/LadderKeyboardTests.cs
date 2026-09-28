@@ -209,6 +209,39 @@ public sealed class LadderKeyboardTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§3.2: Enter opens the row that has the keyboard, before an arrow has selected any row")]
+    public void EnterOpensTheRowWithTheKeyboard()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Settle(window);
+        Assert.Null(viewModel.SelectedRung);
+        Assert.True(list.ContainerFromIndex(0)!.Focus());
+        string opened = viewModel.RungRows[0].Label;
+
+        // A new rung's first row has the keyboard with nothing selected, and says "Press Enter"; Enter opens it at once.
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L1 · GROUP", viewModel.LevelBadge);
+        Assert.Contains(opened, viewModel.Crumbs[1].Label, StringComparison.Ordinal);
+        Assert.Null(viewModel.SelectedRung);
+        Assert.Equal(viewModel.RungRows[0].Key, TableRowWithKeyboard(list).Key);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L2 · PROCESS", viewModel.LevelBadge);
+
+        // Enter on a crumb that has the keyboard returns to its rung, and the rung's table takes the keyboard back.
+        CrumbRow machine = viewModel.Crumbs[0];
+        ListBox crumbs = window.GetControl<ListBox>("CrumbList");
+        Assert.True(crumbs.ContainerFromIndex(0)!.Focus());
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+        Assert.Equal(machine.Label, Assert.Single(viewModel.Crumbs).Label);
+        Assert.Equal((viewModel.SelectedRung ?? viewModel.RungRows[0]).Key, TableRowWithKeyboard(list).Key);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: the timeline and minimap say the range in view, so a zoom and a fit are heard as well as drawn")]
     public void TheTimelineSaysWhatIsInView()
     {

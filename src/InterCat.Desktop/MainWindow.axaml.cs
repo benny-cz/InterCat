@@ -275,6 +275,16 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = true;
                 break;
             case Key.Enter:
+                if (CrumbWithKeyboard() is { IsCurrent: false } crumb)
+                {
+                    // A crumb with the keyboard says "press Enter to return to this level"; the rung's table then has it.
+                    viewModel.SelectedCrumb = crumb;
+                    FocusRail();
+                    e.Handled = true;
+                    break;
+                }
+
+                ChooseRowWithKeyboard(viewModel);
                 if (viewModel.HasSelectedEvidence)
                 {
                     OpenOriginalRecord();
@@ -342,8 +352,21 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void KeepRailKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
-        if (closed || !railOwnsKeyboard || RungList.ItemCount == 0) return;
-        if (FocusManager?.GetFocusedElement() is Visual focused && RungList.IsVisualAncestorOf(focused)) return;
+        if (closed || !railOwnsKeyboard) return;
+        IInputElement? focused = FocusManager?.GetFocusedElement();
+        if (focused is Visual current && RungList.IsVisualAncestorOf(current)) return;
+        if (RungList.ItemCount == 0 || !RungList.IsEffectivelyVisible)
+        {
+            // A rung with no rows offers its evidence step beside the reason it has none. The step has the keyboard, so
+            // Enter lists the rung's records, and a screen reader reads the reason beside it.
+            if (EmptyEvidenceButton.IsEffectivelyVisible && !ReferenceEquals(focused, EmptyEvidenceButton))
+            {
+                EmptyEvidenceButton.Focus(NavigationMethod.Directional);
+            }
+
+            return;
+        }
+
         object? row = RungList.SelectedItem ?? RungList.Items[0];
         if (row is null) return;
         RungList.ScrollIntoView(row);
@@ -361,8 +384,29 @@ public sealed partial class MainWindow : Window, IDisposable
     private void FollowKeyboardOwner(object? sender, GotFocusEventArgs focus)
     {
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
-        railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target);
+        railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
+            || ReferenceEquals(target, EmptyEvidenceButton);
     }
+
+    /// <summary>
+    /// Makes the ranked row that has the keyboard the selected one when no row is, before Enter acts on the selection. A
+    /// rung's table takes the keyboard on its first row with nothing selected, and each row says "Press Enter", yet Enter
+    /// did nothing there until an arrow had selected a row. A selection or multi-selection the user made stays as it is.
+    /// </summary>
+    private void ChooseRowWithKeyboard(WorkspaceViewModel viewModel)
+    {
+        if (viewModel.SelectedRung is not null || viewModel.HasMultiSelection || viewModel.HasSelectedEvidence) return;
+        if (FocusManager?.GetFocusedElement() is ListBoxItem { DataContext: RungRow row } item && RungList.IsVisualAncestorOf(item))
+        {
+            viewModel.SelectedRung = row;
+        }
+    }
+
+    /// <summary>The breadcrumb's crumb that has the keyboard, or null when the keyboard is elsewhere.</summary>
+    private CrumbRow? CrumbWithKeyboard() =>
+        FocusManager?.GetFocusedElement() is ListBoxItem { DataContext: CrumbRow crumb } item && CrumbList.IsVisualAncestorOf(item)
+            ? crumb
+            : null;
 
     /// <summary>
     /// The pointer equivalent of Enter. Descending and ascending never need a menu or a mode, so both

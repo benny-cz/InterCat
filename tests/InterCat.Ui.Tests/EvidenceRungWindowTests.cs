@@ -1488,6 +1488,52 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§3.2: Enter alone walks a published session to a channel, whose evidence step and records then have the keyboard")]
+    public async Task EnterWalksToAChannelsRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 40));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Channel channel = workspace.Snapshot.Channels.Single();
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Settle(window);
+
+        // Each rung's row for the path gets the keyboard, as arrows would move it there, and Enter opens it unselected.
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString(), channel.Key })
+        {
+            workspace.SelectedRung = null;
+            Settle(window);
+            Assert.True(list.ContainerFromIndex(workspace.RungRows.ToList().FindIndex(row => row.Key == key))!.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Settle(window);
+        }
+
+        // The channel's rung has no rows: the step to its records has the keyboard beside the reason, and Enter takes it.
+        Assert.Equal("L3 · CHANNEL", workspace.LevelBadge);
+        Assert.True(workspace.OffersEvidenceStep);
+        Button step = window.GetControl<Button>("EmptyEvidenceButton");
+        Assert.Same(step, TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement());
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Settle(window);
+        Assert.True(workspace.IsEvidenceRung);
+        ListBoxItem record = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement());
+        Assert.Same(workspace.RungRows[0], record.DataContext);
+        window.Close();
+    }
+
+    private static void Settle(Window window)
+    {
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+    }
+
     [AvaloniaTheory(DisplayName = "§6.8: at every supported size rows, the header and every filter stay legible, and a running capture's card gives the list room")]
     [MemberData(nameof(Sizes))]
     public async Task RowsAndHeaderStayLegible(int width, int height)

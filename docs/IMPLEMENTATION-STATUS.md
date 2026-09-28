@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 214 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 215 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 215 — Enter acts on the row that has the keyboard (§3.2, R15):**
+  - With no row selected, Enter selects the ranked row, call or record that has the keyboard and opens it; before, it
+    did nothing after each descent until an arrow key selected a row, though the row said "Press Enter".
+  - Enter on a crumb returns to its rung and gives that rung's table the keyboard; a rung with no rows gives it to the
+    step to its records, whose rows then take it.
 
 - **Revision 214 — what a live pass of search, rankings, the row menu, graph and timeline found (§6.7, R15):**
   - Escape out of the search, Enter on a hit and "Show the selected processes' records" give the keyboard to the ranked
@@ -1980,6 +1986,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 215 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,314 tests: 1,310
+  passed, 4 skipped**, zero failures. In the Release window on a 20-second dense capture, Enter alone walked from the
+  machine through lsass.exe, its process and an RPC channel to a call's records; Enter on a call had done nothing.
 - Revision 214 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,312 tests: 1,308
   passed, 4 skipped**, zero failures. A live pass of the Release window on a 20-second dense capture (743 processes,
   6,896 RPC calls) drove search, every ranking, the row menu, graph, timeline, evidence rung and original-record window

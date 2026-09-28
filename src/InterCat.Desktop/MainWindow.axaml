@@ -203,7 +203,7 @@
                 <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                            AutomationProperties.Name="Why this level has no rows" />
                 <!-- Evidence is one step from every rung; an empty rung offers that step where the reason is read. -->
-                <Button Content="Show source records (E)" Click="ShowSourceRecords"
+                <Button x:Name="EmptyEvidenceButton" Content="Show source records (E)" Click="ShowSourceRecords"
                         IsVisible="{Binding OffersEvidenceStep}"
                         AutomationProperties.Name="Show this rung's source records" />
               </StackPanel>
