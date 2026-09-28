@@ -1,0 +1,31 @@
+{
+  "session": {
+    "createdAs": "TraceEventSession(name, Create | NoRestartOnCreate), named by CaptureSessionIdentity",
+    "privateSystemLogger": true,
+    "realTime": true,
+    "logFileMode": "0x0A400100",
+    "eventsLost": 0,
+    "goneAfterStop": true
+  },
+  "events": {
+    "alpcSends": 12034,
+    "alpcReceives": 12034,
+    "alpcWaitsAndUnwaits": 12410,
+    "kernelNetworkTcp": 664,
+    "other": 1314
+  },
+  "systemLoggersOnTheMachine": {
+    "before": 4,
+    "during": 5,
+    "after": 4
+  },
+  "manifestProviderFirst": {
+    "kernelFlagsAfterward": "Exception: The kernel provider must be enabled first and only once in a session.",
+    "privateSystemLogger": false,
+    "logFileMode": "0x08400100",
+    "goneAfterStop": true
+  },
+  "schema": "intercat.alpc-session-check.v1",
+  "measuredUtc": "2026-09-28T03:36:39.4240409+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

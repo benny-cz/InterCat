@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 217 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 218 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 218 — ADR-035: a private system logger for an opt-in capture (§4, §9.2, ADR-034):**
+  - `InterCat.AlpcProbe --session-check` made a session as the capture makes one, the ALPC flags first: it became a
+    private system logger, ALPC and TCP both arrived with none lost, and its slot came back when it stopped.
+  - One session per capture, a system logger only for a profile that needs a kernel flag group; opt-in only, refused
+    at the limit of eight (this machine runs four), and a manifest provider first is refused by TraceEvent.
 
 - **Revision 217 — a redacted package holds up to ten million rows (§11.3):**
   - The source-field join is a sorted address array (40 bytes an observation with fields, was about 100), released
@@ -1940,11 +1946,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         at 200,000 calls). Exactness needs every key a late record touches re-paired, and the grouping still reads every
         call.
      3. Resolve an RPC call's other end through ALPC (ADR-034) as an opt-in profile - collection alone measured Moderate
-        in revision 188, so never Explore - in order: an ADR amending ADR-002 for a private, uniquely named, owned system
-        logger in the broker's capture; admission for ALPC's classic kernel events, which have no manifest (the admission
-        compiler reads manifests today), and its measured class through the product path; the relation rule implementing
-        ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence beneath a call and
-        never a second count (§5.1, M3's exit gate).
+        in revision 188, so never Explore - in order: done in revision 218, ADR-035 for a private, uniquely named, owned
+        system logger in the capture's one session, checked in the product's session conditions; next, the owned
+        session's kernel flags (first in its plan), admission for ALPC's classic kernel events, which have no manifest
+        (the admission compiler reads manifests today), and its measured class through the product path; the relation
+        rule implementing ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence
+        beneath a call and never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
@@ -2002,6 +2009,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 218 changed no product code: Debug and Release both ran **1,317 tests: 1,313 passed, 4 skipped**. Its check
+  ran elevated: `InterCat.AlpcProbe --session-check`, counters in `bench/results/alpc-session-check-20260928T033708Z`,
+  left no InterCat session running (`logman query -ets`), and the machine's system logger count returned to four.
 - Revision 217 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,317 tests: 1,313
   passed, 4 skipped**, zero failures. Heap dumps (`dotnet-dump`) of the CLI packaging synthetic sessions at 1M, 4M and
   10M rows found the three row-sized holders. Ten million rows with a source field each packaged in 162 s under

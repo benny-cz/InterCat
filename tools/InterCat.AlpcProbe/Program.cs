@@ -55,6 +55,27 @@ internal static class Program
             return 2;
         }
 
+        if (args.Contains("--session-check"))
+        {
+            // ADR-035: the product's own session conditions, not the probe's.
+            string checkScratch = Path.Combine(Path.GetTempPath(), "InterCat-alpc-check-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(checkScratch);
+            try
+            {
+                Dictionary<string, object?> check = await SessionCheck.RunAsync(workload, checkScratch).ConfigureAwait(false);
+                check["schema"] = "intercat.alpc-session-check.v1";
+                check["measuredUtc"] = DateTimeOffset.UtcNow;
+                check["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+                Directory.CreateDirectory(output);
+                await File.WriteAllTextAsync(Path.Combine(output, "session-check.json"), JsonSerializer.Serialize(check, Json)).ConfigureAwait(false);
+                Console.WriteLine(JsonSerializer.Serialize(check, Json));
+                return 0;
+            }
+            finally
+            {
+                Directory.Delete(checkScratch, recursive: true);
+            }
+        }
         if (args.Contains("--impact"))
         {
             int pairs = int.Parse(Option(args, "--pairs") ?? "5", CultureInfo.InvariantCulture);
