@@ -291,7 +291,37 @@ public static class WorkspaceExport
         string generation = context.Generation is { } number
             ? string.Create(CultureInfo.InvariantCulture, $"-g{number}")
             : string.Empty;
-        return $"intercat-{NavigationState.Name(context.Rung).ToLowerInvariant()}-{session}{generation}.{extension}";
+
+        // The rung's focus - its deepest implied filter - so exports of two groups or two processes never suggest one
+        // name and a file says what it holds before it is opened. The machine rung has none and keeps the short form.
+        string focus = context.Filters.Count > 0 && FileNamePart(context.Filters[^1].Value) is { Length: > 0 } part
+            ? "-" + part
+            : string.Empty;
+        return $"intercat-{NavigationState.Name(context.Rung).ToLowerInvariant()}{focus}-{session}{generation}.{extension}";
+    }
+
+    /// <summary>
+    /// A label as part of a file name: its letters, digits, dots, hyphens and underscores, every other run of characters
+    /// one hyphen, at most 48 characters. "worker.exe · PID 87372" becomes "worker.exe-PID-87372".
+    /// </summary>
+    public static string FileNamePart(string label)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        var part = new StringBuilder(label.Length);
+        foreach (char character in label)
+        {
+            if (char.IsLetterOrDigit(character) || character is '.' or '_' or '-')
+            {
+                part.Append(character);
+            }
+            else if (part.Length > 0 && part[^1] != '-')
+            {
+                part.Append('-');
+            }
+        }
+
+        string text = part.ToString().Trim('-', '.');
+        return text.Length <= 48 ? text : text[..48].TrimEnd('-', '.');
     }
 
     private static object Describe(ExportContext context) => new

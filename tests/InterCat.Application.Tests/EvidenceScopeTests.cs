@@ -65,6 +65,11 @@ public sealed class EvidenceScopeTests
             Assert.True(ladder.TryDescend(LadderProjection.DescentFor(row, ladder.Current, Snapshot.Extent), out _));
         }
 
+        // A process rung is named by its name and PID, in its crumb and its filter: a group lists many of one name.
+        ProcessNode client = Snapshot.Processes.Single(process => process.Id == Client);
+        Assert.Equal($"app.exe · PID {client.ProcessId}", ladder.Current.Focus?.Label);
+        Assert.Equal(client.NameWithPid, ladder.Current.Filters.Single(filter => filter.Field == "process").Value);
+
         // The legend, the lanes and the tables call it TCP; the ranked row read "Tcp", the enumeration's own name.
         LadderRow channel = Assert.Single(LadderProjection.Project(Snapshot, ladder.Current).Rows);
         Assert.Equal("TCP · paired endpoints; direction varies by observation", channel.Detail);

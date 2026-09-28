@@ -23,6 +23,12 @@ public sealed record LadderRow(
     /// records, or before the metric has been read.
     /// </summary>
     public RankedValue? Ranked { get; init; }
+
+    /// <summary>
+    /// What a descent from this row names its rung by - the crumb, and the filter it adds - where the row's label alone is
+    /// ambiguous: a process instance by its name and PID, since a group lists many of one name. Null means the label.
+    /// </summary>
+    public string? TargetLabel { get; init; }
 }
 
 /// <summary>
@@ -135,7 +141,7 @@ public static class LadderProjection
         ArgumentNullException.ThrowIfNull(from);
         return new()
         {
-            Target = new(row.DescendsTo, row.Key, row.Label),
+            Target = new(row.DescendsTo, row.Key, row.TargetLabel ?? row.Label),
             Viewport = viewport,
             Lanes = LanesFor(row.DescendsTo),
             GraphFocusKey = row.DescendsTo <= DetailLevel.ProcessInstance ? row.Key : from.GraphFocusKey,
@@ -197,7 +203,7 @@ public static class LadderProjection
         DetailLevel.Group => [new("group", row.Label, "Descending from the machine rung scopes to one group.")
             { Key = row.Key, Level = DetailLevel.Group }],
         DetailLevel.ProcessInstance =>
-            [new("process", row.Label, "Descending from a group scopes to one process instance.")
+            [new("process", row.TargetLabel ?? row.Label, "Descending from a group scopes to one process instance.")
                 { Key = row.Key, Level = DetailLevel.ProcessInstance }],
         DetailLevel.Channel => [new("channel", row.Label, "Descending from a process scopes to one channel.")
             { Key = row.Key, Level = DetailLevel.Channel }],
@@ -283,6 +289,7 @@ public static class LadderProjection
                 AccountingSide.CanonicalOwner)
             {
                 Ranked = RankedOf([process], ranking, process.CallTimes, process.Peers),
+                TargetLabel = process.NameWithPid,
             });
         }
 

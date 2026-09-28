@@ -602,10 +602,10 @@ public sealed partial class MainWindow : Window, IDisposable
             SessionExportResult written = await WriteExportAsync(path, format, redacted);
             if (!closed)
             {
-                string what = written.Context.Rung == DetailLevel.Evidence ? "records" : "rows";
+                string what = Spoken.Count(written.Rows, written.Context.Rung == DetailLevel.Evidence ? "record" : "row");
                 CaptureDetail.Text = written.Context.Complete
-                    ? $"{(redacted ? "Saved redacted report with" : "Exported")} {written.Rows:N0} {what} (complete) to {path}."
-                    : $"{(redacted ? "Saved redacted report with" : "Exported the first")} {written.Rows:N0} {what} of the scope to {path}; the file says what it leaves out.";
+                    ? $"{(redacted ? "Saved redacted report with" : "Exported")} {what} (complete) to {path}."
+                    : $"{(redacted ? "Saved redacted report with" : "Exported the first")} {what} of the scope to {path}; the file says what it leaves out.";
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException

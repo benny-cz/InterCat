@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 215 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 216 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 216 — an export and a process rung say which one they are (§6.4, §3.2):**
+  - An export's suggested file name carries its rung's focus ("intercat-group-worker.exe-b61da093-g6.json"), so a
+    second group's export no longer offers to overwrite the first; the machine rung keeps the short form.
+  - A process rung's crumb and filter name the instance with its PID ("Process: worker.exe · PID 87372"), where a
+    group's 27 worker.exe rungs all read "Process: worker.exe"; "Exported 1 row" reads in the right number.
 
 - **Revision 215 — Enter acts on the row that has the keyboard (§3.2, R15):**
   - With no row selected, Enter selects the ranked row, call or record that has the keyboard and opens it; before, it
@@ -1986,6 +1992,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 216 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,315 tests: 1,311
+  passed, 4 skipped**, zero failures. The Release window exported a group's 27 rows and a process's 112 records through
+  its native save dialog, driven by window messages into scratch and deleted afterwards. During the work the Release
+  Application tests' host was killed from outside four times (exit code -1, no stderr, no crash record), while another
+  session's test runs were active on the machine. Alone it passed eight runs in a row, and the full suite passed.
 - Revision 215 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,314 tests: 1,310
   passed, 4 skipped**, zero failures. In the Release window on a 20-second dense capture, Enter alone walked from the
   machine through lsass.exe, its process and an RPC channel to a call's records; Enter on a call had done nothing.

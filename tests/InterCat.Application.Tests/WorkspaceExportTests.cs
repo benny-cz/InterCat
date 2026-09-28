@@ -47,6 +47,31 @@ public sealed class WorkspaceExportTests
         Assert.Equal("intercat-machine-d6e7f8a9-g3.json", WorkspaceExport.SuggestedName(context, "json"));
     }
 
+    [Fact(DisplayName = "§6.4: an export's suggested name carries its rung's focus, made safe for a file name")]
+    public void ASuggestedNameCarriesTheRungsFocus()
+    {
+        ExportContext machine = Context(complete: true, interval: null);
+        ExportContext process = machine with
+        {
+            Rung = DetailLevel.ProcessInstance,
+            Filters = [new("group", "worker.exe", "opened"), new("process", "worker.exe · PID 87372", "opened")],
+        };
+        ExportContext channel = machine with
+        {
+            Rung = DetailLevel.Channel,
+            Filters = [.. process.Filters, new("channel", "127.0.0.1:19423 ↔ 127.0.0.1:19469", "opened")],
+        };
+
+        Assert.Equal("intercat-process-worker.exe-PID-87372-d6e7f8a9-g3.csv", WorkspaceExport.SuggestedName(process, "csv"));
+        Assert.Equal("intercat-channel-127.0.0.1-19423-127.0.0.1-19469-d6e7f8a9-g3.json", WorkspaceExport.SuggestedName(channel, "json"));
+        Assert.Equal("dílna.exe-C-Tools", WorkspaceExport.FileNamePart(@"  dílna.exe <C:\Tools>  "));
+        Assert.Equal(48, WorkspaceExport.FileNamePart(new string('a', 60)).Length);
+
+        // A focus with nothing a file name can hold is left out rather than leaving a stray hyphen.
+        Assert.Equal("intercat-process-d6e7f8a9-g3.json",
+            WorkspaceExport.SuggestedName(process with { Filters = [new("process", "<>:?", "opened")] }, "json"));
+    }
+
     [Fact]
     public void AnEvidenceExportCarriesMetadataAndLocatorsButNoBodyAndSaysWhenItIsPartial()
     {
