@@ -46,7 +46,8 @@ public sealed class ImportedSourceClockTests
     {
         SourceClockDescriptor derived = ImportedSourceClock.Derive(Etl, 10_000_000, 0);
 
-        Assert.NotEqual(HostId.ForLocalMachine(), derived.HostId);
+        // The host is derived from the file, in the import's own domain: nothing of the machine reading it goes into it.
+        Assert.Equal(HostId.Derive($"{ImportedSourceClock.HostDomain}|{Etl}"), derived.HostId);
         Assert.NotEqual(Guid.Empty, derived.HostId.Value);
         Assert.NotEqual(Guid.Empty, derived.Id.Value);
     }

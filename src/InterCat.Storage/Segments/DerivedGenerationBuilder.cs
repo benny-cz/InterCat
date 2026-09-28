@@ -1075,7 +1075,15 @@ public static class SessionSegments
     /// and it is read from the evidence rather than assumed: every segment carries only the clock's identity,
     /// and the journal is where that identity is described (I8, ADR-010).
     /// </summary>
-    public static SourceClockDescriptor? SourceClock(IOwnedDirectory directory, SessionManifestV1 manifest)
+    public static SourceClockDescriptor? SourceClock(IOwnedDirectory directory, SessionManifestV1 manifest) =>
+        Source(directory, manifest)?.Clock;
+
+    /// <summary>
+    /// The capture a generation's journal records and the source clock it declares, or null when the generation names no
+    /// journal. The capture identity is the journal's own, which is what makes two sessions one capture: a store's source
+    /// identity is not, since a broker capture's is its plan's digest and an import's names the file it was read from.
+    /// </summary>
+    public static (CaptureId Capture, SourceClockDescriptor Clock)? Source(IOwnedDirectory directory, SessionManifestV1 manifest)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(manifest);
@@ -1096,7 +1104,7 @@ public static class SessionSegments
             FileAccess.Read,
             FileShare.Read,
             FileOptions.SequentialScan);
-        return JournalV1Reader.ReadSourceClock(stream).Clock;
+        return JournalV1Reader.ReadSourceClock(stream);
     }
 
     /// <summary>

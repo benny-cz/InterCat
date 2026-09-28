@@ -78,7 +78,7 @@ public static class EtwSourceClock
 
     /// <summary>Describes the local performance counter this process reads, as the capture's clock anchor.</summary>
     public static CaptureClockEvidence DescribeLocal() =>
-        Describe(HostId.ForLocalMachine(), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
+        Describe(LocalHostIdentity.Current, Stopwatch.GetTimestamp(), Stopwatch.Frequency);
 
     /// <summary>
     /// Checks one delivered native reading against the descriptor. A reading inside the window confirms the

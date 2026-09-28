@@ -1100,6 +1100,8 @@
         "I8: negative session ticks map to native coverage without rounding a bucket across zero"
       ],
       "I9": [
+        "I9: a workspace file that holds anything else is refused whole, and a change made meanwhile is never written over",
+        "I9: a workspace names its sessions by identity and writes nothing to any of them",
         "I9: alignment revisions never rewrite source time"
       ],
       "P1": [
@@ -1475,9 +1477,13 @@
         "R22: a brushed count admits a later instance's records only as the evidence policy does, as the whole count does",
         "R22: a call binds to its process by its first record's reading, and outside every lifetime says why",
         "R22: a call to another interface is scope, not a match",
+        "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
+        "R22: a live capture's host is its installation's, and a name alone never makes two machines one host",
+        "R22: a member put back to an earlier copy, or derived apart, is not the generation selected",
+        "R22: a member that moved, advanced or was replaced by another says so, and a relink takes only the member itself",
         "R22: a peer bound only as a candidate makes a candidate relation the default policy leaves out",
         "R22: a peer count counts process instances at the other end, as a lower bound beside what it cannot resolve",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
@@ -1497,6 +1503,8 @@
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
         "R22: candidate relations enter the overview only under an explicit candidate policy",
+        "R22: every capture on this machine records its installation's host, each on a clock of its own",
+        "R22: hosts are one only by identity, and a name never makes two of them one",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",

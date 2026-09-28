@@ -51,6 +51,7 @@ static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken ca
             "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "operations" => await OperationsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "exchanges" => await ExchangesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+            "workspace" => await WorkspaceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
             _ => UnknownCommand(args[0]),
@@ -235,6 +236,10 @@ static void PrintHelp()
     ConsoleUi.Line("  icat exchanges <directory> [--pid <id>] [--exchanges <n>] [--json]");
     ConsoleUi.Line("      Lists the HTTP exchanges a content capture recorded through WinINet: each client process's");
     ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content.");
+    ConsoleUi.Line();
+    ConsoleUi.Line("  icat workspace <new|add|show|relink|alias> <workspace> ... [--json]");
+    ConsoleUi.Line("      An investigation over separately captured sessions: one file naming each by identity, one");
+    ConsoleUi.Line("      member per capture, never writing to a session. show says where each member stands.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
     ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

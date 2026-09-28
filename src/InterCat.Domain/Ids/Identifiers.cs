@@ -19,13 +19,6 @@ public readonly record struct HostId(Guid Value)
     public static HostId New() => new(Guid.NewGuid());
 
     /// <summary>
-    /// A deterministic identity for the machine this process runs on, so two captures taken here share one
-    /// host and their native clocks stay comparable. It is derived from the machine name and OS
-    /// description, which makes it stable across boots and reruns but not globally unique: two hosts with
-    /// the same name and build produce the same value. Cross-host correlation therefore needs the stronger
-    /// evidence IC-013 owns, never this identity alone.
-    /// </summary>
-    /// <summary>
     /// A host identity derived from evidence rather than from this machine. An imported file was
     /// recorded somewhere, and claiming it was recorded here would let an import's records be compared
     /// against local captures as if they shared a clock.
@@ -36,9 +29,20 @@ public readonly record struct HostId(Guid Value)
         return new(StableIdentityHash.CreateUuidV8(canonicalForm));
     }
 
-    public static HostId ForLocalMachine() => new(StableIdentityHash.CreateUuidV8(string.Create(
-        CultureInfo.InvariantCulture,
-        $"intercat.host.v1|{Environment.MachineName}|{RuntimeInformation.OSDescription}|{RuntimeInformation.OSArchitecture}")));
+    /// <summary>
+    /// The identity of the machine this process runs on, for a live capture: derived from its installation's own
+    /// identity (<paramref name="installationId"/>, minted when the operating system was installed) together with the
+    /// machine's name and build. Captures of one installation share it; a renamed or reinstalled machine, a clone given a
+    /// name of its own, and another machine of the same name and build each have their own. Only an exact clone - one
+    /// installation, name and build - shares it, so equal identities are the strongest local evidence of one host and
+    /// never proof of it, which a person confirms (§8.3, R22). A name alone never makes it: two machines of one name and
+    /// build are two hosts. With no installation identity to read, the host is minted, and matches no other.
+    /// </summary>
+    public static HostId ForLocalMachine(string? installationId) => string.IsNullOrWhiteSpace(installationId)
+        ? New()
+        : new(StableIdentityHash.CreateUuidV8(string.Create(
+            CultureInfo.InvariantCulture,
+            $"intercat.host.v2|{installationId.Trim()}|{Environment.MachineName}|{RuntimeInformation.OSDescription}|{RuntimeInformation.OSArchitecture}")));
 
     public override string ToString() => Value.ToString("N");
 }

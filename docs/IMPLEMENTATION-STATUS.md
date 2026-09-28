@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 252 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 253 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -31,7 +31,8 @@ where it ranked by paired TCP alone and showed a real capture as zeros.
 L4 lanes wait on derived operations, and the operation view is open.
 M3's exit gate is met for its measured scope ([the M3 exit review](reviews/M3-exit-review.md), revision 252): RPC over
 ALPC without duplicate volume, content truncation and encryption states, and per-build coverage published; pipe and
-shared-section topology remain explicitly unavailable and move to M7 and M9. M4 and M5 are not complete. All three of
+shared-section topology remain explicitly unavailable and move to M7 and M9. M4 began with its workspace (revision
+253); M4 and M5 are not complete. All three of
 §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -69,9 +70,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (`workspace-v1`, ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's | Clock mappings with their uncertainty (§8.2), confirmed host equivalence, cross-host correlation, the Desktop's workspace, packaging a workspace with its sessions. |
+| M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 253 — an investigation references sessions it never changes (M4, ADR-038, `workspace-v1`):**
+  - `icat workspace new | add | show | relink | alias` keeps an `.icat-workspace` file naming separately valid sessions
+    by identity: the session, the capture its journal records, the generation selected and its digest, and its source
+    clock's host, clock and epoch. Showing it opens each session as a viewer does and writes nothing; each member is
+    present, advanced, replaced, missing, different or unreadable, with the reason, and only a relink to the member
+    itself selects what is there.
+  - A store's source identity names no capture - a broker capture's is its plan's digest, an import's its file's path -
+    so members are keyed by the journal's capture identity: a copy, or a second import of one file, is refused, and two
+    captures under one plan are two members.
+  - A live capture's host identity was its machine's name and build alone, which P6 forbids: it is now derived from the
+    installation's machine GUID with the name and build, so two machines of one name are two hosts. Captures recorded
+    before keep their identities.
 
 - **Revision 252 — the M3 exit review (`docs/reviews/M3-exit-review.md`):**
   - Each item of M3's exit gate checked against evidence that names it: RPC over ALPC adds no volume and counts calls,
@@ -399,9 +414,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Done in revision 206: a real session's interval table reads each listed interval's bytes when shown, which revision
      197's live pass found it had none of. (The relationship table's scope, the pass's other finding, is revision 198's.)
    - Done in revision 203: TCP connection events no longer admit the source's always-zero size field as bytes.
+6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
+   their resolution, and host names (`workspace-v1`). Next, in order:
+   - clock mappings between members' clocks (§8.2's affine segments with their uncertainty), recorded as annotations;
+     until one exists, no cross-host order, latency or pairing is stated;
+   - a person's confirmation that two host identities are one host, versioned (§8.3);
+   - cross-host correlation of network observations under timing uncertainty (§8.3), and flagging partial overlap
+     between two captures of one host;
+   - the Desktop's workspace: its members, their states and relinks, then pins, notes and saved views;
+   - packaging a workspace with its sessions (§8.4).
 
 ## Verification and cautions
 
+- Revision 253 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,407 tests: 1,403
+  passed, 4 skipped**, zero failures. Live, with the Release CLI on captures recorded into scratch and deleted after: a
+  copy of a member was refused; a moved member read Missing and was relinked; a rederived one read Advanced, then
+  Present once relinked; an older copy put back read Replaced; the workspace's own folder was refused as no session;
+  and every file of a session hashed the same before and after `show`. Two fresh captures recorded one host identity,
+  derived from the installation, where this machine's earlier captures recorded the name-based one.
 - Revision 252 changes documents only: no code changed since revision 251's suites (1,399 tests: 1,395 passed, 4
   skipped, in Debug and Release); the architecture tests ran again and passed. Every test the M3 exit review cites by
   name exists.
@@ -515,4 +545,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038; the complete historical ledger linked above.

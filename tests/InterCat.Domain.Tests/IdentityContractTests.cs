@@ -121,6 +121,19 @@ public sealed class IdentityContractTests
         Assert.Equal(expected.SameProcessKeyDifferentHost == "distinct", first != otherHost);
     }
 
+    [Fact(DisplayName = "R22: a live capture's host is its installation's, and a name alone never makes two machines one host")]
+    public void ALiveCapturesHostIsItsInstallations()
+    {
+        // One installation's captures share a host; two installations of one name and build are two hosts.
+        string installation = "6f1c2b9e-0d4a-4c1e-9b7f-3a2e5d8c4b10";
+        Assert.Equal(HostId.ForLocalMachine(installation), HostId.ForLocalMachine(installation));
+        Assert.NotEqual(HostId.ForLocalMachine(installation), HostId.ForLocalMachine("0b7e6c5d-4f3a-4e2d-8c1b-9a8f7e6d5c4b"));
+
+        // With no installation identity to read, each host is minted and matches no other.
+        Assert.NotEqual(HostId.ForLocalMachine(null), HostId.ForLocalMachine(" "));
+        Assert.NotEqual(Guid.Empty, HostId.ForLocalMachine(null).Value);
+    }
+
     [Fact(DisplayName = "Identity: fact keys and normalized observation IDs are deterministic")]
     public void NormalizedObservationIdsAreDeterministic()
     {

@@ -17,7 +17,21 @@ public sealed class SourceClockAndStageTests
         Assert.Equal(TimestampEncoding.Qpc, evidence.Descriptor.Encoding);
         Assert.Equal(SourceClockKind.Monotonic, evidence.Descriptor.Kind);
         Assert.Equal(Stopwatch.Frequency, evidence.Descriptor.TicksPerSecond);
-        Assert.Equal(HostId.ForLocalMachine(), evidence.Descriptor.HostId);
+        Assert.Equal(LocalHostIdentity.Current, evidence.Descriptor.HostId);
+    }
+
+    [Fact(DisplayName = "R22: every capture on this machine records its installation's host, each on a clock of its own")]
+    public void EveryCaptureHereRecordsTheInstallationsHost()
+    {
+        // Windows mints a machine GUID when it is installed; this machine's captures derive their host from it.
+        string? installation = LocalHostIdentity.InstallationId();
+        Assert.True(Guid.TryParse(installation, out _), "This Windows installation names no machine GUID.");
+        Assert.Equal(HostId.ForLocalMachine(installation), LocalHostIdentity.Current);
+
+        CaptureClockEvidence first = EtwSourceClock.DescribeLocal();
+        CaptureClockEvidence second = EtwSourceClock.DescribeLocal();
+        Assert.Equal(first.Descriptor.HostId, second.Descriptor.HostId);
+        Assert.NotEqual(first.Descriptor.Id, second.Descriptor.Id);
     }
 
     [Fact(DisplayName = "I8: a reading from this process's own clock confirms the capture's encoding")]
