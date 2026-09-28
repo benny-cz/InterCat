@@ -1,8 +1,8 @@
 # InterCat content v1
 
-Status: **implemented** in plan revisions 234 to 236 (ADR-036): the chunk format, its publication and lifetime in the
-store, its readers and viewer (§4), and the capture path that writes one (§5), which keeps InterCat's own content
-fixture's messages.
+Status: **implemented** in plan revisions 234 to 239 (ADR-036, ADR-037): the chunk format, its publication and lifetime
+in the store, its readers and viewer (§4), and the capture paths that write one (§5): InterCat's own content fixture,
+and WinINet's HTTP exchanges for the processes a request names.
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -108,10 +108,11 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 
 ## 5. Writing a chunk
 
-A capture keeps content only under a reviewed scoped content policy, and only of a source whose catalog entry carries a
-validated content contract naming the events and fields that hold it; every other source of the same capture keeps
-metadata only. At this version the one such policy is `scoped-content-fixture-v1` and the one such source is InterCat's
-own content fixture:
+A capture keeps content only under a reviewed scoped content policy, which names the sources whose content it keeps,
+and only of a source whose catalog entry carries a validated content contract naming the events and fields that hold
+it; every other source of the same capture keeps metadata only. At this version there are two: InterCat's own content
+fixture, under `scoped-content-fixture-v1`, and WinINet's capture of HTTP exchanges under a request (§5.1). The
+fixture:
 
 | | |
 |---|---|
@@ -135,11 +136,34 @@ never its bytes: 24 messages kept 23 whole and 1 truncated to 4,096 bytes; 8,000
 the truth's, every whole message's SHA-256 matched, nothing was reported lost, and no message byte was found in a
 journal or segment file.
 
+### 5.1 A Content request (revision 239, ADR-037)
+
+`icat record --profile content` compiles a bounded request - a source, its mechanism, the processes, the channels, a
+per-record and a session limit, stop-at-limit, and the consent to inspect - into `scoped-content-request-v1`, which
+keeps that one source's content within the request's limits. It compiles only for a source whose content contract
+holds its process scope before persistence and whose capture impact is measured, and only when the request names what
+the source can hold: a source that cannot select channels before anything is kept is requested with the one selector
+`*`, every channel of the named processes, and any other selector is refused. The source's provider is enabled for
+the named processes alone, by the session's process filter; lifecycle stays whole-machine metadata. The broker
+previews such a request and never starts it, since its evidence follower does not mirror content.
+
+| | |
+|---|---|
+| Source | `etw/manifest/Microsoft-Windows-WinINet-Capture`, events 2001 to 2004: a request head and body sent, a response head and body received |
+| Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
+| Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last |
+| Scope | the named processes, by the provider's process filter; every exchange of theirs (`*`) |
+| Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`) |
+
+Qualified live on revision 239: FX-HTTP-001's 32 exchanges, recorded by `icat record` scoped to the workload, kept 229
+buffers whole; regrouped by exchange and sequence, all 128 parts matched the server's truth by length and SHA-256,
+every record bound to the workload under `process-binding-v4`, and nothing was lost.
+
 ## 6. What is not defined at this version
 
-- Content of a real application's source. ADR-037 measured WinINet's capture provider in the lab (revision 237): it
-  states an HTTP exchange's parts exactly, scoped to named processes. Until its admission, the Content profile's bounded
-  request still compiles no admission policy (`contracts/capture-profile-preview-v1.md`).
+- A part reassembled from its buffers for a person: the viewer shows one record's buffer, and a part's other buffers are
+  its exchange's other records (M8). HTTPS and HTTP/2 through WinINet are unmeasured, and so are the other client
+  libraries, which raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.

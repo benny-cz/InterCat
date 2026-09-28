@@ -131,7 +131,8 @@ public static class CaptureProfileCatalog
             "content",
             "Content",
             AdmissionMode.ScopedContent,
-            "A bounded request can be previewed, but no payload-capable source has an approved body contract, enforceable scope and measured impact.",
+            "A bounded request compiles only for a source whose content contract, process scope and impact are proven - "
+                + "WinINet's HTTP exchanges (ADR-037) - and records through icat record only; the broker never starts one.",
             requestPreviewAvailable: true),
         Unavailable(
             CaptureProfileKind.FlightRecorder,
@@ -351,7 +352,10 @@ public static class CaptureProfileCompiler
             ? ContentCapturePolicyCompiler.Compile(request.Content!)
             : null;
 
-        if (!profile.CompilationAvailable)
+        // Content compiles from its request alone: a bounded request naming a source admitted for scoped content, whose
+        // own sources are that source and the lifecycle that names its processes (ADR-037).
+        bool contentAdmitted = contentDecision is { AdmissionPolicyAvailable: true };
+        if (!profile.CompilationAvailable && !contentAdmitted)
         {
             return Refused(
                 request,
@@ -372,13 +376,24 @@ public static class CaptureProfileCompiler
                 CaptureProfileCatalog.ContentFixtureRecordLimit,
                 CaptureProfileCatalog.ContentFixtureSessionLimit,
                 ContentInspectionMode.HexAndText),
+            (AdmissionMode.ScopedContent, CaptureProfileKind.Content) when contentAdmitted =>
+                CaptureBodyAdmissionPolicies.ScopedContentRequest(contentDecision!),
             _ => throw new NotSupportedException(
                 $"Profile '{profile.Id}' requests {profile.Admission}, which has no production admission compiler."),
         };
 
-        var decisions = new List<ProfileSourceDecision>(profile.Sources.Count);
-        var candidates = new List<string>(profile.Sources.Count);
-        foreach (ProfileSourceRequirement requirement in profile.Sources)
+        IReadOnlyList<ProfileSourceRequirement> requirements = contentAdmitted
+            ?
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true,
+                    "Process identity and PID-reuse-safe lifecycle context, so the named processes keep their names and lifetimes."),
+                new(contentDecision!.SourceId, true, true,
+                    "The named processes' messages: each record's length, and its bytes kept as content up to the request's limits."),
+            ]
+            : profile.Sources;
+        var decisions = new List<ProfileSourceDecision>(requirements.Count);
+        var candidates = new List<string>(requirements.Count);
+        foreach (ProfileSourceRequirement requirement in requirements)
         {
             WindowsSourceDefinition? definition = WindowsSourceCatalog.Find(requirement.SourceId);
             if (definition is null)
@@ -423,7 +438,7 @@ public static class CaptureProfileCompiler
         Dictionary<string, SourceAdmissionPlan> plansBySource = compilation.Plans.ToDictionary(
             plan => plan.SourceId,
             StringComparer.Ordinal);
-        foreach (ProfileSourceRequirement requirement in profile.Sources)
+        foreach (ProfileSourceRequirement requirement in requirements)
         {
             if (decisions.Any(decision => string.Equals(decision.SourceId, requirement.SourceId, StringComparison.Ordinal)))
             {
@@ -454,7 +469,7 @@ public static class CaptureProfileCompiler
         }
 
         IReadOnlyList<ProfileSourceDecision> orderedDecisions =
-        [.. profile.Sources.Select(requirement => decisions.Single(decision =>
+        [.. requirements.Select(requirement => decisions.Single(decision =>
             string.Equals(decision.SourceId, requirement.SourceId, StringComparison.Ordinal)))];
         IReadOnlyList<SourceAdmissionPlan> included =
         [.. compilation.Plans.Where(plan => orderedDecisions.Any(decision =>
@@ -499,12 +514,14 @@ public static class CaptureProfileCompiler
                 processFilters),
             SourceDecisions = orderedDecisions,
             Scope = scope,
-            Content = null,
+            Content = contentDecision,
             OriginalEvidence = originalEvidence,
             PreserveExtendedData = profile.PreserveExtendedData,
             RequestCallStacks = profile.RequestCallStacks,
             CanStart = canStart,
-            CollectionStatement = $"{profile.CollectionStatement} {scope.Disclosure}",
+            CollectionStatement = contentAdmitted
+                ? $"{ContentCollectionStatement(contentDecision!)} {scope.Disclosure}"
+                : $"{profile.CollectionStatement} {scope.Disclosure}",
             Diagnostics = diagnostics,
         };
     }
@@ -567,11 +584,47 @@ public static class CaptureProfileCompiler
             : null;
     }
 
+    /// <summary>What an admitted Content request collects, in words, before its scope's own disclosure.</summary>
+    private static string ContentCollectionStatement(ContentCaptureDecision content)
+    {
+        string source = WindowsSourceCatalog.Find(content.SourceId)?.DisplayName ?? content.SourceId;
+        string inspection = content.Inspection == ContentInspectionMode.HexAndText
+            ? "A person may see the bytes only when they ask, bounded and inert."
+            : "The bytes are kept without consent to inspect them, so they are never shown.";
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Collects lifecycle metadata and {source} of processes {string.Join(", ", content.ProcessIds)} only: each record's length, and up to {content.MaximumRecordBytes:N0} of its bytes kept as restricted content beside the journal, until {content.MaximumSessionBytes:N0} bytes of content stop the capture. {inspection}");
+    }
+
     private static CaptureScopeDecision CompileScope(
         CaptureProfileRequest request,
         IReadOnlyList<SourceAdmissionPlan> included)
     {
         int[] requestedProcessIds = [.. (request.FocusedProcessIds ?? []).Order()];
+        if (request.Profile == CaptureProfileKind.Content && request.Content is { } content)
+        {
+            // Content is held to its processes by the source's own process filter, before anything is kept; lifecycle stays
+            // whole-machine metadata, so those processes keep their names, lifetimes and parents (ADR-037).
+            int[] contentProcessIds = [.. content.ProcessIds.Order()];
+            return new()
+            {
+                RequestedProcessIds = contentProcessIds,
+                InitialViewProcessIds = contentProcessIds,
+                CapturesOutsideRequestedProcesses = included.Any(source => source.SourceId == WindowsSourceCatalog.KernelProcessSourceId),
+                BroaderCaptureNeedsConsent = false,
+                BroaderCaptureAccepted = false,
+                Sources =
+                [
+                    .. included.Select(source => source.SourceId == content.SourceId
+                        ? new ProviderScopeDecision(source.SourceId, ProviderProcessScope.ProcessFiltered, contentProcessIds, false,
+                            "Content is kept only from the named processes, by the session's process filter.")
+                        : new ProviderScopeDecision(source.SourceId, ProviderProcessScope.WholeMachineRequiredContext, [], true,
+                            "Lifecycle stays whole-machine metadata so the named processes keep their identity context.")),
+                ],
+                Disclosure = "Content is kept only from the named processes, by its provider's process filter; lifecycle "
+                    + "metadata stays whole-machine.",
+            };
+        }
+
         if (request.Profile != CaptureProfileKind.FocusedTransport)
         {
             return new()

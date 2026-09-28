@@ -27,6 +27,9 @@ internal sealed record HttpWinInetOptions
     public bool WaitForStart { get; init; }
 
     public int StartWaitSeconds { get; init; } = 30;
+
+    /// <summary>Seconds to wait before the first request, so a capture started for this process once it runs is in place.</summary>
+    public int StartAfterSeconds { get; init; }
 }
 
 /// <summary>
@@ -89,6 +92,11 @@ internal static partial class HttpWinInetScenario
                 await Console.Error.WriteLineAsync("No start line arrived within the wait; no request was made.")
                     .ConfigureAwait(false);
                 return 3;
+            }
+
+            if (options.StartAfterSeconds > 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(options.StartAfterSeconds), cancellationToken).ConfigureAwait(false);
             }
 
             using var serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

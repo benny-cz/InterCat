@@ -287,9 +287,24 @@ public sealed class BrokerConnectionDispatcherTests
         var fixture = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
             "content-fixture", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
 
+        // So is a content request its source is admitted for: its evidence follower does not mirror content (ADR-037).
+        var content = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
+            "content", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, new ContentCaptureRequest
+            {
+                SourceId = WindowsSourceCatalog.WinInetCaptureSourceId,
+                Mechanism = Mechanism.Http,
+                ProcessIds = [4_242],
+                ChannelSelectors = ["*"],
+                MaximumRecordBytes = 4_096,
+                MaximumSessionBytes = 16L * 1024 * 1024,
+                Retention = ContentRetentionMode.StopAtLimit,
+                Inspection = ContentInspectionMode.HexAndText,
+            })));
+
         Assert.Equal(BrokerErrorCode.InvalidRequest, unknown.Code);
         Assert.Equal(BrokerErrorCode.InvalidRequest, misfocused.Code);
         Assert.Equal(BrokerErrorCode.InvalidRequest, fixture.Code);
+        Assert.Equal(BrokerErrorCode.InvalidRequest, content.Code);
         Assert.Null(source.LastPreparedDigest);
     }
 

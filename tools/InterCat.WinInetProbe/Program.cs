@@ -44,6 +44,7 @@ internal static class Program
         if (output is null || requests < 1)
         {
             Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  [--impact [--pairs n]]: machine CPU and workload time with and without a scoped capture, in pairs");
             return 2;
         }
 
@@ -83,6 +84,15 @@ internal static class Program
 
         // The workload, and a decoy running the same exchange at the same time outside the process filter: a record of the
         // decoy reaching the session would show the filter does not hold the source to the processes it names.
+        if (args.Contains("--impact", StringComparer.Ordinal))
+        {
+            int pairs = int.Parse(Option(args, "--pairs") ?? "7", CultureInfo.InvariantCulture);
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload, requests, bytes, pairs);
+            await File.WriteAllTextAsync(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
         string truth = Path.Combine(output, "truth");
         string decoyTruth = Path.Combine(output, "decoy-truth");
         Process Start(string truthDirectory, int workloadSeed) => Process.Start(new ProcessStartInfo(workload)

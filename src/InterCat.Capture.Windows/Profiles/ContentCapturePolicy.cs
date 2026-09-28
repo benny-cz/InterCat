@@ -81,6 +81,13 @@ public static class ContentCapturePolicyCompiler
     public const int MaximumAllowedRecordBytes = 1024 * 1024;
     public const long MaximumAllowedSessionBytes = 64L * 1024 * 1024 * 1024;
 
+    /// <summary>
+    /// The channel selector that names every channel of the named processes. It stands alone, and it is how a request
+    /// scopes a source that cannot select channels before anything is kept: the process scope is then the whole scope,
+    /// and the request says so rather than naming channels nothing would enforce.
+    /// </summary>
+    public const string EveryChannel = "*";
+
     public static string? Validate(ContentCaptureRequest? request)
     {
         if (request is null)
@@ -133,6 +140,11 @@ public static class ContentCapturePolicyCompiler
             return "A content channel selector may appear only once.";
         }
 
+        if (request.ChannelSelectors.Count > 1 && request.ChannelSelectors.Contains(EveryChannel, StringComparer.Ordinal))
+        {
+            return $"The channel selector '{EveryChannel}' names every channel of the named processes, so it stands alone.";
+        }
+
         if (request.MaximumRecordBytes is < 1 or > MaximumAllowedRecordBytes)
         {
             return $"The per-record content limit must be between 1 and {MaximumAllowedRecordBytes} bytes.";
@@ -174,9 +186,13 @@ public static class ContentCapturePolicyCompiler
         bool impactMeasured = contract is not null
             && contract.Overhead != OverheadClass.Unmeasured
             && !string.IsNullOrWhiteSpace(contract.CaptureImpactEvidence);
+        // A source that holds the process scope and cannot select channels keeps every channel of the named processes,
+        // which the request states with the one selector that names them all.
+        bool everyChannel = request.ChannelSelectors is [EveryChannel];
         bool scopeEnforceable = contract?.EnforcesProcessScopeBeforePersistence == true
-            && contract.EnforcesChannelScopeBeforePersistence;
+            && (contract.EnforcesChannelScopeBeforePersistence || everyChannel);
         bool evidenceComplete = contract is not null && scopeEnforceable && impactMeasured;
+        bool admitted = evidenceComplete && CaptureBodyAdmissionPolicies.AdmitsContentRequests(source.SourceId);
         var blockers = new List<string>(3);
         if (contract is null)
         {
@@ -185,7 +201,9 @@ public static class ContentCapturePolicyCompiler
 
         if (!scopeEnforceable)
         {
-            blockers.Add("process/channel scope is not proven enforceable");
+            blockers.Add(contract?.EnforcesProcessScopeBeforePersistence == true
+                ? $"the source cannot select channels before anything is kept, so its request names every channel with '{EveryChannel}'"
+                : "process/channel scope is not proven enforceable");
         }
 
         if (!impactMeasured)
@@ -193,15 +211,21 @@ public static class ContentCapturePolicyCompiler
             blockers.Add("capture impact is unmeasured");
         }
 
-        string availability = evidenceComplete
-            ? $"Source '{source.SourceId}' has complete content-source evidence, but the production scoped-content admission compiler is not implemented. No provider request or production admission policy was compiled."
-            : $"Source '{source.SourceId}' is unavailable for scoped content: {string.Join("; ", blockers)}. "
-                + "No provider request or production admission policy was compiled.";
+        string processes = string.Join(", ", request.ProcessIds.Order());
+        string availability = admitted
+            ? $"Source '{source.SourceId}' is admitted for scoped content: kept only from processes {processes}, which the "
+                + "session's process filter holds before anything is kept"
+                + (everyChannel ? ", and every channel of theirs, since the request names them all." : ".")
+            : evidenceComplete
+                ? $"Source '{source.SourceId}' has complete content-source evidence, but no reviewed admission policy covers it. No provider request or production admission policy was compiled."
+                : $"Source '{source.SourceId}' is unavailable for scoped content: {string.Join("; ", blockers)}. "
+                    + "No provider request or production admission policy was compiled.";
         string inspection = request.Inspection == ContentInspectionMode.Disabled
             ? "Content preview inspection remains disabled."
             : "Separate inspection consent allows bounded inert hex/text previews only; it does not authorize search, decoding, reassembly, or export.";
         string disclosure =
-            $"Requested behavior (not active while this request is blocked): each record may retain at most {request.MaximumRecordBytes} bytes; "
+            (admitted ? "Requested behavior: " : "Requested behavior (not active while this request is blocked): ")
+            + $"each record may retain at most {request.MaximumRecordBytes} bytes; "
             + "a longer body keeps only its prefix with original length and truncation recorded. The capture must "
             + $"stop before retained content exceeds {request.MaximumSessionBytes} bytes. Unknown schemas and "
             + $"out-of-scope bodies are omitted before persistence. {inspection}";
@@ -226,7 +250,7 @@ public static class ContentCapturePolicyCompiler
             CaptureImpactMeasured = impactMeasured,
             CaptureImpactEvidence = impactMeasured ? contract!.CaptureImpactEvidence : null,
             SourceEvidenceComplete = evidenceComplete,
-            AdmissionPolicyAvailable = false,
+            AdmissionPolicyAvailable = admitted,
             AvailabilityReason = availability,
             Disclosure = disclosure,
         };

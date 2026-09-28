@@ -115,7 +115,7 @@ internal static class ProfilesCommand
         Mechanism? mechanism = ParseMechanism(mechanismText);
         if (mechanismText is not null && mechanism is null)
         {
-            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Known names are tcp, udp, and rpc; availability is checked per profile.");
+            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Known names are tcp, udp, rpc and http; availability is checked per profile.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -545,7 +545,9 @@ internal static class ProfilesCommand
         ConsoleUi.Line("  --pid requests process focus. If any provider must collect more broadly, the");
         ConsoleUi.Line("  preview blocks until --allow-broader-capture records explicit acknowledgement.");
         ConsoleUi.Line("  Content requires source/process/channel scope and explicit byte limits. Its request");
-        ConsoleUi.Line("  contract can be reviewed, but capture remains blocked until a payload adapter is validated.");
+        ConsoleUi.Line("  contract can be reviewed for any source; it compiles a capture only for one admitted for content,");
+        ConsoleUi.Line("  WinINet's HTTP exchanges (--source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http");
+        ConsoleUi.Line("  --channel *), which icat record --profile content records (ADR-037).");
     }
 
     private static Mechanism? ParseMechanism(string? value)
@@ -560,6 +562,7 @@ internal static class ProfilesCommand
             "tcp" => Mechanism.Tcp,
             "udp" => Mechanism.Udp,
             "rpc" => Mechanism.Rpc,
+            "http" => Mechanism.Http,
             _ => null,
         };
     }

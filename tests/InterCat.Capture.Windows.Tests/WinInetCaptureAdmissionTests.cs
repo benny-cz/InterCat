@@ -109,27 +109,101 @@ public sealed class WinInetCaptureAdmissionTests
             CaptureBodyAdmissionPolicies.MetadataOnly with { ContentSourceIds = [WindowsSourceCatalog.ContentFixtureSourceId] }));
     }
 
-    [Fact(DisplayName = "ADR-037: a content request for WinINet's capture compiles no policy until its channel scope and overhead are settled")]
-    public void AContentRequestWaitsForItsAdmission()
+    [Fact(DisplayName = "ADR-037: a content request for WinINet's capture is admitted held to its processes, and naming every channel")]
+    public void AContentRequestIsAdmittedOnlyWithItsScope()
     {
-        ContentCaptureDecision decision = ContentCapturePolicyCompiler.Compile(new()
-        {
-            SourceId = WindowsSourceCatalog.WinInetCaptureSourceId,
-            Mechanism = Mechanism.Http,
-            ProcessIds = [4_242],
-            ChannelSelectors = ["*"],
-            MaximumRecordBytes = 4_096,
-            MaximumSessionBytes = 16L * 1024 * 1024,
-            Retention = ContentRetentionMode.StopAtLimit,
-            Inspection = ContentInspectionMode.HexAndText,
-        });
-
-        Assert.Equal((true, false, false, false),
+        ContentCaptureDecision decision = ContentCapturePolicyCompiler.Compile(Request(["*"]));
+        Assert.Equal((true, true, true, true),
             (decision.SourceBodyContractAvailable, decision.ScopeEnforceable, decision.CaptureImpactMeasured, decision.AdmissionPolicyAvailable));
-        Assert.Contains("process/channel scope is not proven enforceable", decision.AvailabilityReason, StringComparison.Ordinal);
-        Assert.Contains("capture impact is unmeasured", decision.AvailabilityReason, StringComparison.Ordinal);
+        Assert.Contains("kept only from processes 4242", decision.AvailabilityReason, StringComparison.Ordinal);
+        Assert.Contains("every channel of theirs", decision.AvailabilityReason, StringComparison.Ordinal);
+
+        CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentRequest(decision);
+        Assert.Equal((CaptureBodyAdmissionPolicies.ScopedContentRequestPolicyId, 4_096, 16L * 1024 * 1024, ContentInspectionMode.HexAndText),
+            (policy.PolicyId, policy.ContentRecordLimit, policy.ContentSessionLimit, policy.ContentInspection!.Value));
+        Assert.Equal([WindowsSourceCatalog.WinInetCaptureSourceId], policy.ContentSourceIds);
+
+        // A channel the source cannot select before anything is kept is refused, not trusted; "*" stands alone.
+        ContentCaptureDecision named = ContentCapturePolicyCompiler.Compile(Request(["host:example.test"]));
+        Assert.False(named.AdmissionPolicyAvailable);
+        Assert.Contains("cannot select channels", named.AvailabilityReason, StringComparison.Ordinal);
+        Assert.Throws<NotSupportedException>(() => CaptureBodyAdmissionPolicies.ScopedContentRequest(named));
+        Assert.Contains("stands alone", ContentCapturePolicyCompiler.Validate(Request(["*", "host:example.test"])), StringComparison.Ordinal);
+
+        // Only a source admitted for requests may be named by a request's policy.
+        Assert.False(CaptureBodyAdmissionPolicies.AdmitsContentRequests(WindowsSourceCatalog.RpcSourceId));
+        Assert.Throws<NotSupportedException>(() => CaptureBodyAdmissionPolicies.EnsureSupported(
+            policy with { ContentSourceIds = [WindowsSourceCatalog.RpcSourceId] }));
     }
 
+    [Fact(DisplayName = "ADR-037: an admitted content request compiles a capture that keeps WinINet's bytes from its processes alone")]
+    public void AnAdmittedRequestCompilesAScopedCapture()
+    {
+        ContentCaptureRequest request = Request(["*"]);
+        CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentRequest(ContentCapturePolicyCompiler.Compile(request));
+        SourceAdmissionPlan http = AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(Manifest), 1, bodyPolicy: policy);
+        Assert.All(http.Events, descriptor => Assert.Single(descriptor.Slots, slot => slot.Kind == AdmittedSlotKind.Content));
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Content, Content: request),
+            new SourcePlanCompilation([Lifecycle(), http], []));
+        Assert.True(plan.CanStart);
+        Assert.Equal(("content", CaptureBodyAdmissionPolicies.ScopedContentRequestPolicyId), (plan.EffectiveProfileId, plan.BodyPolicy!.PolicyId));
+        Assert.True(plan.Content!.AdmissionPolicyAvailable);
+
+        // WinINet's provider is enabled for the named process alone; lifecycle stays whole-machine metadata.
+        Assert.Equal([4_242], plan.Providers.Single(provider => provider.SourceId == WindowsSourceCatalog.WinInetCaptureSourceId).ProcessIdsToInclude);
+        Assert.Empty(plan.Providers.Single(provider => provider.SourceId == WindowsSourceCatalog.KernelProcessSourceId).ProcessIdsToInclude);
+        Assert.Equal(ProviderProcessScope.ProcessFiltered,
+            plan.Scope.Sources.Single(source => source.SourceId == WindowsSourceCatalog.WinInetCaptureSourceId).ProcessScope);
+        Assert.Contains("of processes 4242 only", plan.CollectionStatement, StringComparison.Ordinal);
+    }
+
+    private static ContentCaptureRequest Request(IReadOnlyList<string> channels) => new()
+    {
+        SourceId = WindowsSourceCatalog.WinInetCaptureSourceId,
+        Mechanism = Mechanism.Http,
+        ProcessIds = [4_242],
+        ChannelSelectors = channels,
+        MaximumRecordBytes = 4_096,
+        MaximumSessionBytes = 16L * 1024 * 1024,
+        Retention = ContentRetentionMode.StopAtLimit,
+        Inspection = ContentInspectionMode.HexAndText,
+    };
+
+    /// <summary>A lifecycle plan of one admitted descriptor, which is all the profile compiler needs of it here.</summary>
+    private static SourceAdmissionPlan Lifecycle()
+    {
+        Guid provider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
+        return new()
+        {
+            SourceId = WindowsSourceCatalog.KernelProcessSourceId,
+            ProviderGuid = provider,
+            SourceIndex = 0,
+            Events =
+            [
+                new AdmittedEventPlan
+                {
+                    SourceIndex = 0,
+                    ProviderGuid = provider,
+                    EventId = 1,
+                    Version = 0,
+                    Name = "fixture",
+                    Mechanism = Mechanism.ProcessLifecycle,
+                    Layer = ObservationLayer.Lifecycle,
+                    Kind = ObservationKind.Create,
+                    Direction = Direction.DirectionNotApplicable,
+                    MinimumBodyLength = 0,
+                    PointerSize = 8,
+                    SchemaFingerprint = "sha256:fixture-lifecycle",
+                    BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
+                    Slots = [],
+                    FieldReport = [],
+                },
+            ],
+            Diagnostics = [],
+        };
+    }
     /// <summary>A machine that registers WinINet's capture provider with the layout ADR-037 measured, and nothing else.</summary>
     private sealed class WinInetMetadata : IEtwMetadataSource
     {

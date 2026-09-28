@@ -64,6 +64,15 @@ public static class BrokerPrepareRequestPolicy
             {
                 throw new InvalidDataException(contentProblem);
             }
+
+            // A request that would keep content records through icat record only: an evidence session's follower does not
+            // mirror content, so the broker previews such a request and never starts it (ADR-036, ADR-037).
+            if (ContentCapturePolicyCompiler.Compile(request.Content!).AdmissionPolicyAvailable)
+            {
+                throw new InvalidDataException(
+                    "A content capture records through icat record only, never through the broker: its evidence follower "
+                    + "does not mirror content.");
+            }
         }
         else if (request.Content is not null)
         {

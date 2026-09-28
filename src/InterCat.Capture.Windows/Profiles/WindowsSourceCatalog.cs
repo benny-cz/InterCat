@@ -710,7 +710,8 @@ public static class WindowsSourceCatalog
             StartupBehaviour = "No rundown: an exchange made before the capture enabled the provider is not seen.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
-            Overhead = OverheadClass.Unmeasured,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/wininet-capture-impact-20260928T105549Z/impact.json",
             ContentContract = new ValidatedContentSourceContract(
                 [2001, 2002, 2003, 2004],
                 ["Payload"],
@@ -718,8 +719,8 @@ public static class WindowsSourceCatalog
                 EnforcesProcessScopeBeforePersistence: true,
                 EnforcesChannelScopeBeforePersistence: false,
                 "ADR-037; bench/results/wininet-capture-feasibility-20260928T102426Z",
-                OverheadClass.Unmeasured,
-                string.Empty),
+                OverheadClass.Low,
+                "bench/results/wininet-capture-impact-20260928T105549Z/impact.json"),
             AdmittedEvents =
             [
                 new(2001, 0, "HTTP request head sent", Mechanism.Http, ObservationLayer.Application, ObservationKind.Send,
@@ -740,6 +741,8 @@ public static class WindowsSourceCatalog
                 + "process (ADR-030, process-binding-v4).",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
+                "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "
+                + "pp and 2.5% of the workload's time for 179,277 records and 640 MB copied, loss-free, so the class is Low.",
             ],
         };
 

@@ -1,7 +1,8 @@
 # ADR-037: WinINet's capture provider records an HTTP exchange exactly, for the processes a capture names
 
 - Status: accepted as M3's content-capable source; measured in the lab (revision 237); in the catalog, its records bound
-  to their client as `process-binding-v4` (revision 238); admitted to no profile yet
+  to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
+  (revision 239)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.2, M3, M8, I21, R21, ADR-030, ADR-036, FX-HTTP-001, `contracts/content-v1.md`,
@@ -64,8 +65,10 @@ and two of 64 with bodies to 256 KiB, the last beside the decoy.
    exchange - 444 of 444 here. Binding them by their header's process is ADR-030's rule reaching a new mechanism, which
    changes what `process-binding-v3` bound (`contracts/entities-v1.md` §7); revision 238 binds them so, as
    `process-binding-v4`, under a new mechanism, `Http`.
-5. **Not yet a profile.** Like ADR-034's spike, this is a measurement: no profile admits the provider until its
-   admission slice implements items 1 to 4 and measures its overhead.
+5. **Admitted under a request.** Revision 239 measured its overhead - Low, a median 0.71 CPU pp and 2.5% of the
+   workload's time over seven pairs - and admits it under a bounded Content request that names its processes and, since
+   the source cannot select channels, every channel of theirs (`*`). `icat record --profile content` records it; the
+   broker never starts one, since its follower does not mirror content.
 
 ## Consequences
 

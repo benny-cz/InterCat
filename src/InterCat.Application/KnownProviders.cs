@@ -15,6 +15,7 @@ public static class KnownProviders
         [Guid.Parse("2f07e2ee-15db-40f1-90ef-9d7ba282188a")] = "Microsoft-Windows-TCPIP",
         [Guid.Parse("edd08927-9cc4-4e65-b970-c2560fb5c289")] = "Microsoft-Windows-Kernel-File",
         [Guid.Parse("d1d93ef7-e1f2-4f45-9943-03d245fe6c00")] = "Microsoft-Windows-Kernel-Memory",
+        [Guid.Parse("a70ff94f-570b-4979-ba5c-e59c9feab61b")] = "Microsoft-Windows-WinINet-Capture",
         [System.Diagnostics.Tracing.EventSource.GetGuid(typeof(InterCat.Domain.ContentFixtureEventSource))] =
             InterCat.Domain.ContentFixtureEventSource.ProviderName,
     };

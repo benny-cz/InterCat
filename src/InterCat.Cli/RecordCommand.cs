@@ -68,6 +68,15 @@ internal static class RecordCommand
         string? mechanismOption = command.TakeOption("--mechanism");
         string? durationOption = command.TakeOption("--duration");
         string? publishOption = command.TakeOption("--publish-every");
+        string? contentSource = command.TakeOption("--source");
+        string? maximumRecordText = command.TakeOption("--max-record-bytes");
+        string? maximumSessionText = command.TakeOption("--max-session-bytes");
+        string? inspectionOption = command.TakeOption("--inspection");
+        string? retentionOption = command.TakeOption("--retention");
+        var processOptions = new List<string>();
+        for (string? value; (value = command.TakeOption("--pid")) is not null;) processOptions.Add(value);
+        var channelOptions = new List<string>();
+        for (string? value; (value = command.TakeOption("--channel")) is not null;) channelOptions.Add(value);
         bool evidenceOnly = command.TryTakeFlag("--evidence-only");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
@@ -90,21 +99,22 @@ internal static class RecordCommand
             "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
             "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
             "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
+            "CONTENT" => CaptureProfileKind.Content,
             _ => null,
         };
         if (profile is null)
         {
             ConsoleUi.Failure(
-                $"--profile records explore, focused-transport, rpc-peers or content-fixture; '{profileOption}' is not one. "
-                + "icat profiles lists every intent and what it would collect.");
+                $"--profile records explore, focused-transport, rpc-peers, content or content-fixture; '{profileOption}' is not "
+                + "one. icat profiles lists every intent and what it would collect.");
             return InterCatExitCode.InvalidInvocation;
         }
 
         // Kept content is published beside its journal chunk, which an evidence session's follower does not mirror.
-        if (profile == CaptureProfileKind.ContentFixture && evidenceOnly)
+        if (profile is CaptureProfileKind.ContentFixture or CaptureProfileKind.Content && evidenceOnly)
         {
             ConsoleUi.Failure("--evidence-only records metadata evidence for a follower, which does not mirror kept content; "
-                + "record the content fixture without it.");
+                + "record content without it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -113,12 +123,43 @@ internal static class RecordCommand
             null => null,
             "TCP" => Mechanism.Tcp,
             "UDP" => Mechanism.Udp,
+            "HTTP" => Mechanism.Http,
             _ => (Mechanism)0,
         };
-        if (mechanism == (Mechanism)0 || (mechanism is not null) != (profile == CaptureProfileKind.FocusedTransport))
+        bool mechanismFits = profile switch
+        {
+            CaptureProfileKind.FocusedTransport => mechanism is Mechanism.Tcp or Mechanism.Udp,
+            CaptureProfileKind.Content => mechanism is not null and not (Mechanism)0,
+            _ => mechanism is null,
+        };
+        if (!mechanismFits)
         {
             ConsoleUi.Failure(
-                "--mechanism tcp or udp names the transport of --profile focused-transport, and only of that profile.");
+                "--mechanism tcp or udp names the transport of --profile focused-transport, and http the messages a content "
+                + "request keeps; no other profile takes one.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        bool contentOptions = contentSource is not null || maximumRecordText is not null || maximumSessionText is not null
+            || inspectionOption is not null || retentionOption is not null || processOptions.Count > 0 || channelOptions.Count > 0;
+        ContentCaptureRequest? contentRequest = null;
+        if (profile == CaptureProfileKind.Content)
+        {
+            // Nothing about content is assumed: its source, its processes, its channels, both limits and the consent to
+            // inspect it are the request's own, stated on the command line and checked before anything starts.
+            string? problem = ContentRequest(contentSource, mechanism!.Value, processOptions, channelOptions, maximumRecordText,
+                maximumSessionText, inspectionOption, retentionOption, out contentRequest);
+            if (problem is not null)
+            {
+                ConsoleUi.Failure(problem);
+                PrintHelp();
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+        else if (contentOptions)
+        {
+            ConsoleUi.Failure("--source, --pid, --channel, the byte limits, --inspection and --retention make a content "
+                + "request, and only --profile content takes one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -166,7 +207,8 @@ internal static class RecordCommand
         ConsoleUi.Progress("Compiling the capture profile from the schemas this machine reports.");
         var inventory = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
         EffectiveCapturePlan effective = CaptureProfileCompiler.Compile(
-            new(profile.Value, FocusedMechanism: mechanism),
+            new(profile.Value, FocusedMechanism: profile == CaptureProfileKind.FocusedTransport ? mechanism : null,
+                Content: contentRequest),
             inventory,
             environment);
         if (!effective.CanStart)
@@ -366,10 +408,78 @@ internal static class RecordCommand
         ConsoleUi.Success($"Recorded {ConsoleUi.Count(document.JournaledRecords)} records.");
     }
 
+    /// <summary>
+    /// A content request from its options, or the problem with them. Every part is the request's own and required, except
+    /// the retention, whose one bounded behaviour is stop-at-limit (`contracts/content-v1.md` §5).
+    /// </summary>
+    private static string? ContentRequest(string? source, Mechanism mechanism, List<string> processes, List<string> channels,
+        string? maximumRecord, string? maximumSession, string? inspection, string? retention, out ContentCaptureRequest? request)
+    {
+        request = null;
+        if (source is null || processes.Count == 0 || channels.Count == 0 || maximumRecord is null || maximumSession is null
+            || inspection is null)
+        {
+            return "--profile content needs --source, --mechanism, at least one --pid and --channel, --max-record-bytes, "
+                + "--max-session-bytes and --inspection.";
+        }
+
+        var processIds = new List<int>(processes.Count);
+        foreach (string text in processes)
+        {
+            if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int processId) || processId <= 0)
+            {
+                return $"--pid takes a positive process ID; '{text}' is not one.";
+            }
+
+            processIds.Add(processId);
+        }
+
+        if (!int.TryParse(maximumRecord, NumberStyles.None, CultureInfo.InvariantCulture, out int recordBytes))
+        {
+            return $"--max-record-bytes takes a whole number of bytes; '{maximumRecord}' is not one.";
+        }
+
+        if (!long.TryParse(maximumSession, NumberStyles.None, CultureInfo.InvariantCulture, out long sessionBytes))
+        {
+            return $"--max-session-bytes takes a whole number of bytes; '{maximumSession}' is not one.";
+        }
+
+        ContentInspectionMode? mode = inspection.Trim().ToLowerInvariant() switch
+        {
+            "hex-text" or "hextext" => ContentInspectionMode.HexAndText,
+            "disabled" => ContentInspectionMode.Disabled,
+            _ => null,
+        };
+        if (mode is null)
+        {
+            return "--inspection is hex-text, which lets a person see kept bytes when they ask, or disabled, which never does.";
+        }
+
+        if (retention is not null && retention.Trim().ToLowerInvariant() is not ("stop-at-limit" or "stopatlimit"))
+        {
+            return "--retention is stop-at-limit, the one bounded behaviour: the capture stops when kept content reaches its limit.";
+        }
+
+        request = new()
+        {
+            SourceId = source,
+            Mechanism = mechanism,
+            ProcessIds = processIds,
+            ChannelSelectors = channels,
+            MaximumRecordBytes = recordBytes,
+            MaximumSessionBytes = sessionBytes,
+            Retention = ContentRetentionMode.StopAtLimit,
+            Inspection = mode.Value,
+        };
+        return ContentCapturePolicyCompiler.Validate(request);
+    }
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content-fixture] [--mechanism tcp|udp]");
-        ConsoleUi.Line("            [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
+        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");
+        ConsoleUi.Line("            [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
+        ConsoleUi.Line("            content: --source <source-id> --mechanism http --pid <id> ... --channel * --inspection hex-text|disabled");
+        ConsoleUi.Line("                     --max-record-bytes <n> --max-session-bytes <n> [--retention stop-at-limit]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");
         ConsoleUi.Line($"  for --duration seconds (default {DefaultSeconds}, at most {MaximumSeconds:N0}) or until Ctrl+C, which keeps what");
@@ -381,5 +491,10 @@ internal static class RecordCommand
         ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
         ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks, plan and ledger - and");
         ConsoleUi.Line("  derives nothing in the elevated process; icat follow derives the session from it (ADR-027).");
+        ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
+        ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
+        ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");
+        ConsoleUi.Line("  says every exchange of theirs is kept. It stops when kept content reaches --max-session-bytes,");
+        ConsoleUi.Line("  and it records through icat record only, never through the broker.");
     }
 }

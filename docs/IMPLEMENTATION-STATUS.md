@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 238 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 239 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-001–004, 007–010a (M0) | Complete for measured M0 scope | Qualify other supported retail builds and mechanisms as their gates require. |
 | IC-005/006 feasibility | Measured: TCP and UDP `TrafficVisualization` over IPv4 and, since revision 174, IPv6 loopback; pipe `Unsupported`; RPC `ExperimentalEvidence`; since revision 187, ALPC measured in the lab through a private system logger, linking RPC client calls to the calls that served them (ADR-034); since revision 223 captured by the product's opt-in RPC peers profile (ADR-035), whose links name each call's other end (revision 225) and draw RPC peers (revision 227) | Sections and wider mechanisms are unqualified; ALPC stays opt-in (Moderate), and no RPC byte claims. |
 | IC-011 journal | Complete for validated sources | New source/content adapters need their own evidence. |
-| IC-012 profiles | Metadata Explore, Focused TCP and RPC peers enforceable; the content fixture keeps InterCat's own messages through `icat record` only; Content request preview refuses start | A validated content-capable source, its payload-specific scope and impact proof before enabling Content; broader profiles remain. |
+| IC-012 profiles | Metadata Explore, Focused TCP and RPC peers enforceable; a Content request for WinINet's HTTP exchanges (ADR-037), and the content fixture, keep content through `icat record` only, scoped to named processes; other Content requests preview only | A validated content-capable source, its payload-specific scope and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
 | IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`); since revision 178 RPC calls are derived as operations (`rpc-call-operation-v1`), and since revision 183 counted on the logical-operations basis (`metrics-v1` §8a) | Canonical transfer owner, operation durations and operations beyond RPC calls (counted since revision 183), resource topology (process parents and children are shown since revision 211), relations beyond TCP and UDP, full coverage epoch publication. |
@@ -67,6 +67,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 239 — a capture keeps HTTP content from the processes it names (ADR-037, `content-v1` §5.1):**
+  - WinINet's capture measured Low: a median 0.71 CPU pp and 2.5% of the workload's time over seven pairs. A bounded
+    Content request for it compiles to `scoped-content-request-v1`, its provider enabled for the named processes alone.
+  - A source that cannot select channels is requested with `*`, every channel of the named processes; `icat record
+    --profile content` records it, and the broker previews such a request and never starts it.
+  - Live: 32 exchanges, 229 buffers kept whole; all 128 parts matched the wire's SHA-256, all bound to the client.
 
 - **Revision 238 — HTTP records bind to their client (ADR-037, ADR-030, `process-binding-v4`):**
   - A new mechanism, `Http`, and WinINet's capture source in the catalog: its four events are HTTP messages sent and
@@ -2091,11 +2098,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
      the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7); revision 237
      measures M3's content-capable source, WinINet's capture provider (ADR-037); revision 238 puts it in the catalog and
-     binds its records to their client (`process-binding-v4`). Next: its admission - its overhead, a Content request
-     that refuses one without a process scope and says it keeps every exchange of the named processes, `icat record`
-     options, a live run - and FX-HTTP-001 and FX-CONTENT-001 in the fixture index. Later: HTTPS and HTTP/2 through it;
-     a follower that mirrors content, so a broker capture could keep it; releasing content alone; and a fixture decoder
-     (§11.2's `DecodedFields`).
+     binds its records to their client (`process-binding-v4`); revision 239 admits it under a Content request, through
+     `icat record`, scoped to named processes. Next: FX-HTTP-001 and FX-CONTENT-001 in the fixture index, and a part
+     reassembled from its buffers for a person (M8). Later: HTTPS and HTTP/2 through it; a follower that mirrors content,
+     so a broker capture could keep it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+   - **A quiet interval of a covered capture reads as unknown.** Revision 239's live pass saw a process's evidence rung
+     hatch every interval without its own records as a coverage gap, though the ledger covered the capture throughout;
+     revisions 165, 197 and 206 fixed the same reading for lanes and direction rows. Next.
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
      interfaces (a record carries no zone index, so two interfaces' equal addresses are one address to a relation), and
@@ -2148,6 +2157,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 239 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,381 tests: 1,377
+  passed, 4 skipped**, zero failures. Live, elevated, into scratch: `icat record --profile content` scoped to
+  FX-HTTP-001's process kept 229 buffers whole; all 128 parts matched the wire; `icat content` and the Release
+  window's viewer read them, and a response head saved through the native dialog matched its SHA-256. No ETW session
+  was left; scratch was deleted.
 - Revision 238 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,380 tests: 1,376
   passed, 4 skipped**, zero failures. They include WinINet's four events compiled against its registered layout, a
   content policy that keeps only the sources it names, and v3 checkpoints read as v4's where every record named its
