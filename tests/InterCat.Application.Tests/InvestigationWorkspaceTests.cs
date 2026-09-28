@@ -225,7 +225,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         string[] refused =
         [
-            text.Replace("\"workspace-v2\"", "\"workspace-v9\"", StringComparison.Ordinal),
+            text.Replace("\"workspace-v3\"", "\"workspace-v9\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\"", "\"notes\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": null", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": [{ \"hostId\": \"" + Guid.NewGuid() + "\", \"alias\": \" \" }]", StringComparison.Ordinal),
@@ -347,15 +347,19 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string aligned = File.ReadAllText(workspace);
 
         // Revision 253's files, which hold no time, are read, and written as the current version.
-        File.WriteAllText(workspace, members.Replace("\"workspace-v2\"", "\"workspace-v1\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, members.Replace("\"workspace-v3\"", "\"workspace-v1\"", StringComparison.Ordinal));
         Assert.Equal(3, InvestigationWorkspace.Read(workspace).Members.Count);
         InvestigationWorkspace.Alias(workspace, InvestigationWorkspace.Read(workspace).Members[0].HostId, "lab", Now);
         Assert.Equal(InvestigationWorkspace.Contract, InvestigationWorkspace.Read(workspace).Contract);
 
+        // Revision 254's files hold manual alignments, and are read.
+        File.WriteAllText(workspace, aligned.Replace("\"workspace-v3\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+
         // A file whose time contradicts itself is refused whole.
         string[] refused =
         [
-            aligned.Replace("\"workspace-v2\"", "\"workspace-v1\"", StringComparison.Ordinal),
+            aligned.Replace("\"workspace-v3\"", "\"workspace-v1\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{c}\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{Guid.NewGuid()}\"", StringComparison.Ordinal),
             aligned.Replace("\"withinNanoseconds\": 1000", "\"withinNanoseconds\": -1", StringComparison.Ordinal),
@@ -368,6 +372,111 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             File.WriteAllText(workspace, variant);
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace));
         }
+    }
+
+    [Fact(DisplayName = "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do")]
+    public void OneBootsCapturesAlignExactly()
+    {
+        string workspace = NewWorkspace();
+        Guid boot = Guid.NewGuid();
+        Guid a = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "a"), "lab-1", 1_000_000, boot).Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "b"), "lab-1", 51_000_000, boot).Root.Path, Now).SessionId;
+
+        // B's epoch is 50,000,000 ticks of 100 ns after A's: its instant 0 is A's 5 s, exactly, with no drift.
+        WorkspaceAlignment same = InvestigationWorkspace.AlignSameBoot(workspace, b, a, null, Now);
+        Assert.Equal((WorkspaceAlignmentMode.SameBoot, 0L, Seconds(5), 0L, 0.0, (Guid?)boot),
+            (same.Mode, same.SessionNanoseconds, same.ReferenceNanoseconds, same.WithinNanoseconds, same.DriftPartsPerMillion, same.BootToken));
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        WorkspaceComparison tie = InvestigationWorkspace.Compare(read, a, Seconds(5), b, 0);
+        Assert.Equal((TimeOrder.Ambiguous, (TimeUncertainty?)TimeUncertainty.Exact), (tie.Result.Order, tie.Result.Uncertainty));
+        Assert.Equal("Both are one instant, exactly, so no order between them is stated.", tie.Statement(CultureInfo.InvariantCulture));
+        Assert.Equal((TimeOrder.Before, 100L), (InvestigationWorkspace.Compare(read, a, Seconds(5), b, 100).Result.Order,
+            InvestigationWorkspace.Compare(read, a, Seconds(5), b, 100).Result.DifferenceNanoseconds!.Value));
+
+        // Another boot, no calibration, or no boot token: nothing is aligned.
+        Guid other = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "c"), "lab-1", 1_000_000, Guid.NewGuid()).Root.Path, Now).SessionId;
+        Assert.Contains("ran in different boots", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignSameBoot(workspace, other, a, null, Now)).Message, StringComparison.Ordinal);
+        Guid plain = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "d"), "lab-1", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Assert.Contains("records no clock calibration", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignSameBoot(workspace, plain, a, null, Now)).Message, StringComparison.Ordinal);
+        Guid unbooted = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "e"), "lab-1", 1_000_000, null).Root.Path, Now).SessionId;
+        Assert.Contains("recorded no boot token", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignSameBoot(workspace, unbooted, a, null, Now)).Message, StringComparison.Ordinal);
+
+        // A version 2 file holds manual alignments only.
+        string text = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, text.Replace("\"workspace-v3\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        Assert.Contains("holds only manual alignments", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+
+        // A tick that is no whole number of nanoseconds rounds each side's session time and the offset: ±2 ns.
+        string rounded = Path.Combine(root, "rounded", "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(rounded, Now);
+        Guid g = InvestigationWorkspace.Add(rounded, CalibratedSession(Path.Combine(root, "rounded", "g"), "lab-1", 1_000, boot, 3_000_000).Root.Path, Now).SessionId;
+        Guid h = InvestigationWorkspace.Add(rounded, CalibratedSession(Path.Combine(root, "rounded", "h"), "lab-1", 1_001, boot, 3_000_000).Root.Path, Now).SessionId;
+        WorkspaceAlignment third = InvestigationWorkspace.AlignSameBoot(rounded, h, g, null, Now);
+        Assert.Equal((333L, 2L), (third.ReferenceNanoseconds!.Value, third.WithinNanoseconds!.Value));
+    }
+
+    [Fact(DisplayName = "R3: a wall-clock alignment is bounded by the clocks' stated agreement, the samples' acquisition and the stated drift")]
+    public void AWallClockAlignmentStatesItsBounds()
+    {
+        string workspace = NewWorkspace();
+        ClockCalibrationSampleV1 Sample(long ticks, int second, long uncertainty) =>
+            new() { NativeTicks = ticks, Utc = Now.AddSeconds(second), AcquisitionUncertaintyNanoseconds = uncertainty };
+        Guid a = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "a"), "lab-1", 1_000_000, Guid.NewGuid(),
+            samples: [Sample(1_000_000, 0, 200), Sample(31_000_000, 3, 200)]).Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "b"), "lab-2", 5_000_000, Guid.NewGuid(),
+            samples: [Sample(5_000_000, 1, 300), Sample(35_000_000, 4, 300)]).Root.Path, Now).SessionId;
+
+        // The samples taken closest in wall-clock time - B's start, a second after A's - anchor it: B's 0 s is A's 1 s, within
+        // the stated 1 ms agreement, 500 ns of acquisition, and 10 ppm over the second between the samples.
+        WorkspaceAlignment wall = InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000_000, 10, null, Now);
+        Assert.Equal((WorkspaceAlignmentMode.WallClock, 0L, Seconds(1), 1_010_500L),
+            (wall.Mode, wall.SessionNanoseconds!.Value, wall.ReferenceNanoseconds!.Value, wall.WithinNanoseconds!.Value));
+        Assert.Equal(((long?)1_000_000, (long?)500, (long?)Seconds(1)), (wall.SynchronizationNanoseconds, wall.AcquisitionNanoseconds, wall.GapNanoseconds));
+        Assert.Equal([1_000_000.0, 500.0, 10_000.0],
+            InvestigationWorkspace.MappingOf(wall).Contributions.Take(3).Select(contribution => contribution.Nanoseconds!.Value));
+
+        // Away from the anchor the stated drift grows: 2 s later, 20 µs more; an order is stated only beyond the pair's bound.
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(new TimeUncertainty(1_030_500, 0), InvestigationWorkspace.Place(read, b, Seconds(2)).Uncertainty);
+        Assert.Equal(TimeOrder.Ambiguous, InvestigationWorkspace.Compare(read, a, Seconds(3), b, Seconds(2)).Result.Order);
+        Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    /// <summary>
+    /// A published session whose capture recorded a clock calibration: a clock of <paramref name="ticksPerSecond"/> with its
+    /// epoch at <paramref name="epoch"/>, on <paramref name="host"/>, in the boot <paramref name="boot"/> when one was kept.
+    /// </summary>
+    private static SessionStore CalibratedSession(
+        string directory,
+        string host,
+        long epoch,
+        Guid? boot,
+        long ticksPerSecond = 10_000_000,
+        ClockCalibrationSampleV1[]? samples = null)
+    {
+        Directory.CreateDirectory(directory);
+        CaptureId capture = CaptureId.New();
+        var clock = new SourceClockDescriptor(ClockId.New(), HostId.Derive(host), SourceClockKind.Monotonic, TimestampEncoding.Qpc,
+            ticksPerSecond, epoch, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "workspace-tests");
+        Publish(store, Rows(epoch + 1_000), capture: capture, clock: clock, calibration: new ClockCalibrationV1
+        {
+            Contract = ClockCalibrationV1.ContractName,
+            CaptureId = capture.Value,
+            ClockId = clock.Id.Value,
+            BootToken = boot,
+            BootCount = boot is null ? null : 7,
+            WallClock = "test-wall-clock",
+            Samples = samples ?? [new() { NativeTicks = epoch, Utc = Now, AcquisitionUncertaintyNanoseconds = 200 }],
+        });
+        store.ReleaseSegmentReaders();
+        return store;
     }
 
     private static long Seconds(int seconds) => seconds * 1_000_000_000L;

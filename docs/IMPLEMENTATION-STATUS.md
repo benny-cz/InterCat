@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 255 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 256 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot | Alignment of one boot's captures exactly and of others through their recorded wall clocks, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks | Alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 256 — a workspace aligns captures by what they recorded (ADR-039 decision 7, `workspace-v3`):**
+  - `icat workspace align --same-boot` aligns two captures that recorded one boot's token exactly through their epochs:
+    live, the second's start fell 5.0632029 s into the first, as their 50,632,029 ticks say; another boot, no
+    calibration or no boot token is refused.
+  - `--wall-clock` anchors on the two samples taken closest in wall-clock time, bounded by their acquisition, the wall
+    clocks' agreement a person must state, and a stated drift; live, its anchor agreed with the exact one to the tick.
 
 - **Revision 255 — a capture records its clock against the wall clock, and its boot (ADR-040, `clock-calibration-v1`):**
   - At start and stop a live capture pairs the performance counter with the precise wall clock, each pair bracketed so
@@ -433,9 +440,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
    (`workspace-v2`). Next, in order:
-   - alignment from what captures record since revision 255: two members of one boot exactly, through their epochs,
-     and others through their wall-clock samples, under a synchronization bound a person states, which otherwise stays
-     unknown; a capture that ends before its last publication records no calibration yet;
+   - done in revision 256: one boot's captures aligned exactly and others through their wall clocks; still, a capture
+     that ends before its last publication records no calibration, and alignment from shared markers waits on
+     cross-host correlation;
    - a rate from two separated anchors, and aligning through another aligned member;
    - a person's confirmation that two host identities are one host, versioned (§8.3);
    - cross-host correlation of network observations under timing uncertainty (§8.3), and flagging partial overlap
@@ -445,6 +452,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 256 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,422 tests: 1,418
+  passed, 4 skipped**, zero failures. Live, on two `icat record` captures in scratch, deleted after: aligned by their
+  shared boot token, the second's start fell 5.0632029 s into the first - their epochs' 50,632,029 ticks - and instants
+  100 ns apart were ordered exactly; aligned by their wall clocks under a stated 5 ms and 20 ppm, the anchor matched the
+  exact one to the tick, and instants 6.8 ms apart were ordered beyond ±5.1 ms.
 - Revision 255 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,420 tests: 1,416
   passed, 4 skipped**, zero failures. Live, two `icat record` captures in scratch, deleted after, each recorded a clock
   calibration: two samples of ±200 ns, the wall clock 0.0 ppm (±0.1) against the counter, and one boot token for
@@ -574,4 +586,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v2.md`, `clock-calibration-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–040; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v3.md`, `clock-calibration-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–040; the complete historical ledger linked above.

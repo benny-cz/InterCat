@@ -1516,6 +1516,7 @@
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
+        "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
@@ -1548,6 +1549,7 @@
         "R3: a single sample answers every quantile from the bucket it fell in",
         "R3: a source field value and its availability cannot disagree",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
+        "R3: a wall-clock alignment is bounded by the clocks' stated agreement, the samples' acquisition and the stated drift",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an address is kept whole in its family's columns, never narrowed into another's",
         "R3: an empty latency histogram reports no quantile rather than zero",

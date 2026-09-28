@@ -1,19 +1,20 @@
-# Workspace contract, version 2
+# Workspace contract, version 3
 
-Status: M4, revision 254 (ADR-038, ADR-039); version 1 was revision 253's
+Status: M4, revision 256 (ADR-038, ADR-039, ADR-040); version 1 was revision 253's, version 2 revision 254's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align`; read by `icat workspace show | compare`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
-`*.icat-workspace`, that references its members by identity and never changes them. Version 2 adds its time: one
-member's clock, to which a person aligns the others (§5). A `workspace-v1` file - members and host names, no time - is
-read as a version 2 file without alignments, and written as version 2.
+`*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
+member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
+counter, exactly, or their wall clocks (§5). A `workspace-v1` file - members and host names, no time - is read as one
+without alignments, and a `workspace-v2` file as one with manual alignments only; both are written as version 3.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v2"` (`"workspace-v1"` is read) |
+| `contract` | `"workspace-v3"` (`"workspace-v1"` and `"workspace-v2"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -63,7 +64,7 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v2`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v3`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given) and `alignment` (the revision in force, or null), the hosts with their members, the `timeReference`
 and every alignment revision, and caveats. It exits 0 when every member is present and 1 otherwise.
@@ -88,11 +89,15 @@ withdrawal - and every alignment in force is to the time reference (ADR-039).
 |---|---|
 | `revision` | A positive number, unique in the file and increasing in the order recorded |
 | `sessionId` | The member aligned |
-| `mode` | `Manual`: a person's statement; `Withdrawn`: the member is not aligned from this revision |
+| `mode` | `Manual`: a person's statement; `SameBoot`: one boot's counter; `WallClock`: the captures' recorded wall clocks; `Withdrawn`: the member is not aligned from this revision |
 | `referenceSessionId` | The member aligned to: the time reference while the revision is in force; null for a withdrawal |
 | `sessionNanoseconds`, `referenceNanoseconds` | The anchor: the member's instant, and the same instant in the reference's session time |
-| `withinNanoseconds` | The person's bound on the anchor, a half-width |
-| `driftPartsPerMillion` | The person's bound on how fast the two clocks drift apart; null when not stated |
+| `withinNanoseconds` | The bound on the anchor, a half-width: the person's, the rounding of one counter, or the sum of the wall-clock bounds |
+| `driftPartsPerMillion` | The person's bound on how fast the two clocks drift apart; null when not stated; 0 for one boot's counter |
+| `bootToken` | `SameBoot` only: the boot both captures recorded |
+| `synchronizationNanoseconds` | `WallClock` only: the person's bound on how far apart the two wall clocks read at one instant |
+| `acquisitionNanoseconds` | `WallClock` only: the two anchoring samples' acquisition bounds, added |
+| `gapNanoseconds` | `WallClock` only: how far apart in wall-clock time the two anchoring samples were taken |
 | `note` | The person's words, when given |
 | `recordedUtc` | When it was recorded |
 
@@ -101,6 +106,18 @@ A manual alignment maps the member's instant `t` to `t + referenceNanoseconds - 
 no drift stated, the drift is unknown, and so is every uncertainty away from the anchor itself. The first alignment makes
 its reference the workspace's time; withdrawing the last alignment in force leaves the workspace without one, so the
 next may choose another. Every revision is kept.
+
+A same-boot alignment is made only when both captures recorded one `bootToken` in their clock calibrations
+(`contracts/clock-calibration-v1.md`), with one host, encoding and rate: they read one counter, so the member's instant 0
+is the reference's `(memberEpoch - referenceEpoch) * 10^9 / rate`, with no drift, exactly when a tick is a whole number
+of nanoseconds and otherwise within 2 ns of rounding. A capture with no calibration or no boot token, or of another
+boot, is refused.
+
+A wall-clock alignment is anchored on the pair of samples, one of each capture's calibration, taken closest in wall-clock
+time: the member's sample instant is the reference's sample instant plus the difference of their wall-clock readings.
+Its bound adds the wall clocks' agreement the person states - no sample can measure it - the two samples' acquisition,
+and the stated drift over the time between them; away from the anchor the drift grows as a manual alignment's does.
+Both a synchronization bound and a drift bound are required.
 
 `icat workspace compare` places two instants, each written `<session>@<seconds>` in its own session time, and prints
 `workspace-comparison-v1`: each instant's workspace time and half-width, or its `gap` (`NoTimeReference`, `NotAligned`,
@@ -114,12 +131,15 @@ up at the precision written, so it never reads smaller than it is.
 A file's time contradicts itself when a `workspace-v1` file holds any; its reference is no member; a revision is not a
 unique positive number; a manual revision names no member, aligns a member to itself or to no member, or lacks its
 anchor or a non-negative bound, or states a drift that is no non-negative rate; a withdrawal states an anchor; or an
-alignment in force is to a member other than the reference, or aligns the reference itself.
+alignment in force is to a member other than the reference, or aligns the reference itself. A `workspace-v2` file holds
+only manual alignments and withdrawals. A same-boot revision names a boot and states a drift of 0; a wall-clock revision
+states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; no other
+revision states any of these.
 
 ## 6. Not defined at this version
 
-- Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from recorded
-  wall clocks or shared markers (§8.2's other two modes).
+- Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from shared
+  markers (§8.2's third mode).
 - Confirming two host identities as one host; cross-host correlation revisions; pins, notes and saved views.
 - A workspace in the Desktop, and packaging a workspace with its sessions.
 - Flagging partial overlap between two captures of one host.

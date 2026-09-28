@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v2.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v3.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v2.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v3.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -58,7 +58,10 @@ public sealed record WorkspaceMember
 /// <summary>A person's name for a host identity; it makes no two identities one host (§8.3).</summary>
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
-/// <summary>A workspace as its file holds it (`workspace-v2`; a `workspace-v1` file is read as one without alignments).</summary>
+/// <summary>
+/// A workspace as its file holds it (`workspace-v3`): a `workspace-v1` file is read as one without alignments, and a
+/// `workspace-v2` file as one with manual alignments only.
+/// </summary>
 public sealed record InvestigationWorkspaceFile
 {
     public required string Contract { get; init; }
@@ -97,16 +100,19 @@ public sealed record WorkspaceMemberResolution(
 public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Guid> Members);
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v2` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v3` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v2";
+    public const string Contract = "workspace-v3";
 
     /// <summary>The first version, revision 253's: members and host names, no time. It is read, and written as the current one.</summary>
     public const string FirstContract = "workspace-v1";
+
+    /// <summary>The second version, revision 254's: manual alignments only. It is read, and written as the current one.</summary>
+    public const string SecondContract = "workspace-v2";
 
     /// <summary>A workspace file's conventional extension, added to a new workspace's name when it has none.</summary>
     public const string Extension = ".icat-workspace";
@@ -269,7 +275,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v2.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v3.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -385,7 +391,7 @@ public static partial class InvestigationWorkspace
         (CaptureId capture, SourceClockDescriptor clock) = SessionSegments.Source(store.Root, manifest)
             ?? throw new InvalidDataException(
                 $"Generation {manifest.Generation} names no journal, so the session has no capture, host or clock to place.");
-        return new(manifest, capture, clock, store.Recovery.RolledBackToLastKnownGood ? store.Recovery.RollbackReason : null);
+        return new(manifest, capture, clock, store.Recovery.RolledBackToLastKnownGood ? store.Recovery.RollbackReason : null, store.Root);
     }
 
     private static (InvestigationWorkspaceFile Workspace, string Text) Load(string full)
@@ -412,9 +418,9 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or FirstContract))
+        if (workspace.Contract is not (Contract or SecondContract or FirstContract))
         {
-            return $"it is '{workspace.Contract}', neither {FirstContract} nor {Contract}";
+            return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)
@@ -507,5 +513,10 @@ public static partial class InvestigationWorkspace
             : matches.FirstOrDefault();
     }
 
-    private sealed record Found(SessionManifestV1 Manifest, CaptureId Capture, SourceClockDescriptor Clock, string? RollbackReason);
+    private sealed record Found(
+        SessionManifestV1 Manifest,
+        CaptureId Capture,
+        SourceClockDescriptor Clock,
+        string? RollbackReason,
+        IOwnedDirectory Root);
 }

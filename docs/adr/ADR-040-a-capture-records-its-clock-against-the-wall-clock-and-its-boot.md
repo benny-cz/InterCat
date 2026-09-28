@@ -38,7 +38,7 @@ often would read as one boot, and claiming an exact alignment between two machin
 
 - Revision 255 records the calibration in `icat record` and the broker's captures and shows it in `icat session`, with
   the wall clock's rate against the counter over the capture.
-- The workspace can now align two captures of one boot exactly, and others through their wall clocks with a
-  synchronization bound a person states; both are later slices.
+- Revision 256 aligns a workspace's members by it: two captures of one boot exactly, others through their wall clocks
+  under a synchronization bound a person states (ADR-039 decision 7).
 - A capture that ends before its last publication records no calibration. Staging the start sample earlier, so a
   recovered capture keeps it, is a later refinement.

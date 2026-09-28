@@ -1,8 +1,8 @@
 # ADR-039: An alignment is a bounded statement, and an unknown bound orders nothing
 
-- Status: accepted; revision 254
+- Status: accepted; revision 254, recorded evidence revision 256
 - Date: 2026-09-28
-- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v2.md`
+- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v3.md`
 
 ## Context
 
@@ -37,12 +37,18 @@ fall on, and for what happens when the rate is not known.
 5. **An alignment is an annotation, versioned.** Each is a revision of the workspace file, kept when a later one
    supersedes or withdraws it; none changes a session, a timestamp or a derivation (I9).
 6. **A bound never reads smaller than it is.** A stated uncertainty is written rounded up at the precision written.
+7. **What captures record aligns them too, and says what it cannot measure** (revision 256, ADR-040). Two captures that
+   recorded one boot's token read one counter, so they align exactly through their epochs, with no drift. Two others
+   align through their recorded wall-clock samples, anchored on the pair taken closest in wall-clock time: its bound
+   adds the samples' acquisition, which they measured, the wall clocks' agreement, which no sample can measure and a
+   person must state, and a stated drift over the time between the samples and away from the anchor.
 
 ## Consequences
 
 - Revision 254 implements `icat workspace align` and `compare`, `workspace-v2`, and the §8.2 model in
   `InterCat.Domain` (`ClockMapping`, `UncertaintyContribution`, `TimeUncertainty`, `TimeComparison`).
 - §8.2's pair formula is restated in the plan with each side's random and bound parts.
-- Alignment from recorded wall clocks needs a capture to record paired monotonic and wall-clock samples with their
-  acquisition uncertainty, which no capture records yet; alignment from shared markers needs cross-host correlation.
-  Both, a rate from two separated anchors, and the Desktop's merged time follow.
+- Alignment from recorded wall clocks needed captures to record paired monotonic and wall-clock samples; revision 255
+  records them (ADR-040), and revision 256 aligns by them and by one boot's counter (`workspace-v3`, decision 7).
+  Alignment from shared markers needs cross-host correlation; it, a rate from two separated anchors, and the Desktop's
+  merged time follow.
