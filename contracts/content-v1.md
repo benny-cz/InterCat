@@ -106,7 +106,10 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   kept, and whether they make the whole part: every buffer from the one flagged first to the one flagged last, in
   sequence order, each kept whole. Only such a part may be shown, copied or saved as one (the viewer's toggle,
   `icat content --part`); a part missing a buffer, or holding one cut, names what it lacks and is shown one buffer at
-  a time, never as a whole (I21, P2).
+  a time, never as a whole (I21, P2). An exchange's number is its client process's own count from 1 (revision 244),
+  so one number, event and process ID can name two exchanges in a session - a process ID used again, or WinINet loaded
+  again - and a part is found among its number's buffers in time: a buffer flagged first, one after a buffer flagged
+  last, or one numbered no later than the one before it opens another use, and two uses are never merged (R22).
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
@@ -160,7 +163,8 @@ previews such a request and never starts it, since its evidence follower does no
 |---|---|
 | Source | `etw/manifest/Microsoft-Windows-WinINet-Capture`, events 2001 to 2004: a request head and body sent, a response head and body received |
 | Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
-| Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last |
+| Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last. A body is what its client sent or read: a chunked response's without its chunk framing, which only its head names (FX-HTTP-003) |
+| Exchange | `SessionId`: the client process's own count from 1, so it names an exchange only within one run of its client; exchanges at once keep their own (FX-HTTP-003, revision 244) |
 | Scope | the named processes, by the provider's process filter; every exchange of theirs (`*`) |
 | Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`); over TLS a median 0.74 CPU pp (`bench/results/wininet-capture-impact-tls-20260928T121427Z`) |
 | Encryption | none stated: WinINet holds a message above any encryption, so over HTTPS the capture holds its plaintext, and a record does not say whether its exchange was encrypted (FX-HTTP-002, revision 243). A request says so before it records |
@@ -169,12 +173,16 @@ Qualified live on revision 239: FX-HTTP-001's 32 exchanges, recorded by `icat re
 buffers whole; regrouped by exchange and sequence, all 128 parts matched the server's truth by length and SHA-256,
 every record bound to the workload under `process-binding-v4`, and nothing was lost. And on revision 243 over TLS:
 FX-HTTP-002's 32 exchanges kept 229 buffers whole, all 128 parts matched the bytes the server decrypted and encrypted,
-no buffer began as a TLS record does, and `icat content --part` saved a 262,144-byte response body that matched.
+no buffer began as a TLS record does, and `icat content --part` saved a 262,144-byte response body that matched. And on
+revision 244: FX-HTTP-003's 256 exchanges, eight at once with chunked responses, kept 1,540 buffers whole; matched with
+their requests by path, all 1,024 parts matched the server's bodies and none the chunk framing.
 
 ## 6. What is not defined at this version
 
-- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTP/2 through WinINet is
-  unmeasured, and so are the other client libraries, which raise no such records.
+- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTP/2, compressed responses
+  and asynchronous WinINet are unmeasured, and so are the other client libraries, which raise no such records.
+- A request's scope held to the named process instances: the provider's filter holds process IDs, so a process ID used
+  again during a capture would be in scope too.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.

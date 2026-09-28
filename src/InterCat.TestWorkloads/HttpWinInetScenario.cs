@@ -21,6 +21,9 @@ internal sealed record HttpWinInetOptions
     /// <summary>The same exchange over TLS: FX-HTTP-002.</summary>
     public const string TlsScenarioId = "FX-HTTP-002";
 
+    /// <summary>Several exchanges at once in one process, or chunked responses: FX-HTTP-003.</summary>
+    public const string InterleavedScenarioId = "FX-HTTP-003";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -43,8 +46,17 @@ internal sealed record HttpWinInetOptions
     /// </summary>
     public bool Tls { get; init; }
 
-    /// <summary>The scenario this run is: FX-HTTP-001, or FX-HTTP-002 over TLS.</summary>
-    public string Scenario => Tls ? TlsScenarioId : ScenarioId;
+    /// <summary>
+    /// How many exchanges run at once: that many client threads, each on its own connection handle and taking every nth
+    /// request, so their exchanges' buffers interleave in one process.
+    /// </summary>
+    public int Concurrency { get; init; } = 1;
+
+    /// <summary>Whether the server answers with chunked transfer coding, in seeded chunk sizes, rather than a Content-Length.</summary>
+    public bool Chunked { get; init; }
+
+    /// <summary>The scenario this run is: FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.</summary>
+    public string Scenario => Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -67,6 +79,10 @@ internal static partial class HttpWinInetScenario
     // accept for this request alone, so a self-signed certificate installed nowhere serves the loopback server.
     private const uint SecureRequestFlags = 0x00800000 | 0x00001000 | 0x00002000;
     private const int OptionSecurityFlags = 31;
+
+    // A process-wide WinINet option, set for this process alone: how many connections one server may have at once, raised
+    // to the run's concurrency so its clients' exchanges really overlap.
+    private const int OptionMaxConnectionsPerServer = 73;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -148,6 +164,8 @@ internal static partial class HttpWinInetScenario
         {
             scenarioId = options.Scenario,
             options.Tls,
+            options.Concurrency,
+            options.Chunked,
             processId = Environment.ProcessId,
             port,
             options.Seed,
@@ -183,6 +201,34 @@ internal static partial class HttpWinInetScenario
             return (0, 0, 0);
         }
 
+        try
+        {
+            uint connections = (uint)Math.Max(2, options.Concurrency);
+            if (options.Concurrency > 1 && !InternetSetOption(IntPtr.Zero, OptionMaxConnectionsPerServer, ref connections, sizeof(uint)))
+            {
+                client.Write(TruthEventKind.Failure, status: $"InternetSetOption failed: {Marshal.GetLastPInvokeError()}");
+            }
+
+            // One client per thread, each taking every nth request: with one, the requests go in order on one connection.
+            Task<(int Completed, long Sent, long Read)>[] clients =
+            [
+                .. Enumerable.Range(0, Math.Max(1, options.Concurrency)).Select(worker => Task.Factory.StartNew(
+                    () => Requests(internet, port, client, options, worker, cancellationToken), cancellationToken,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default)),
+            ];
+            (int Completed, long Sent, long Read)[] results = Task.WhenAll(clients).GetAwaiter().GetResult();
+            return (results.Sum(result => result.Completed), results.Sum(result => result.Sent), results.Sum(result => result.Read));
+        }
+        finally
+        {
+            InternetCloseHandle(internet);
+        }
+    }
+
+    /// <summary>One client's requests - every nth from its own - on its own connection handle.</summary>
+    private static (int Completed, long Sent, long Read) Requests(IntPtr internet, int port, TruthLog client,
+        HttpWinInetOptions options, int worker, CancellationToken cancellationToken)
+    {
         int completed = 0;
         long sent = 0, read = 0;
         IntPtr connect = IntPtr.Zero;
@@ -196,7 +242,7 @@ internal static partial class HttpWinInetScenario
             }
 
             byte[] buffer = new byte[16 * 1024];
-            for (int index = 0; index < options.Requests; index++)
+            for (int index = worker; index < options.Requests; index += Math.Max(1, options.Concurrency))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 byte[] body = Body(options.Seed, index, options.MaximumBodyBytes, request: true);
@@ -248,7 +294,6 @@ internal static partial class HttpWinInetScenario
         finally
         {
             if (connect != IntPtr.Zero) InternetCloseHandle(connect);
-            InternetCloseHandle(internet);
         }
 
         return (completed, sent, read);
@@ -338,15 +383,26 @@ internal static partial class HttpWinInetScenario
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
 
+                    // A chunked response frames its body in seeded chunks; the truth names the body the client reads and,
+                    // separately, the framed bytes the wire carried, so a capture can be matched with either.
                     byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
+                    string framing = options.Chunked
+                        ? "Transfer-Encoding: chunked"
+                        : string.Create(CultureInfo.InvariantCulture, $"Content-Length: {responseBody.Length}");
                     byte[] responseHead = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
-                        $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {responseBody.Length}\r\n{FixtureHeader(options)}\r\n"));
+                        $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n{framing}\r\n{FixtureHeader(options)}\r\n"));
+                    byte[] sentBody = options.Chunked ? Chunks(responseBody, options.Seed, index) : responseBody;
                     await stream.WriteAsync(responseHead, cancellationToken).ConfigureAwait(false);
-                    await stream.WriteAsync(responseBody, cancellationToken).ConfigureAwait(false);
+                    await stream.WriteAsync(sentBody, cancellationToken).ConfigureAwait(false);
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseHead.Length, status: "response-head",
                         resourceName: Sha256(responseHead));
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",
                         resourceName: Sha256(responseBody));
+                    if (options.Chunked)
+                    {
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: sentBody.Length,
+                            status: "response-body-chunked", resourceName: Sha256(sentBody));
+                    }
                 }
             }
             catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException)
@@ -407,6 +463,27 @@ internal static partial class HttpWinInetScenario
     }
 
     private static string Sha256(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>
+    /// <paramref name="body"/> in chunked transfer coding (RFC 9112 §7.1): seeded chunks of 1 to 9,000 bytes, each its size
+    /// in hexadecimal, a line end, its bytes and a line end, then the last chunk, of size 0, and the empty trailer.
+    /// </summary>
+    private static byte[] Chunks(byte[] body, int seed, int index)
+    {
+        var random = new Random(unchecked((seed * 131) ^ (index * 17) ^ 0xC4A2));
+        var framed = new ArrayBufferWriter<byte>(body.Length + 64);
+        for (int at = 0; at < body.Length;)
+        {
+            int size = Math.Min(body.Length - at, random.Next(1, 9_001));
+            framed.Write(Encoding.ASCII.GetBytes(size.ToString("x", CultureInfo.InvariantCulture) + "\r\n"));
+            framed.Write(body.AsSpan(at, size));
+            framed.Write("\r\n"u8);
+            at += size;
+        }
+
+        framed.Write("0\r\n\r\n"u8);
+        return framed.WrittenSpan.ToArray();
+    }
 
     /// <summary>
     /// A certificate for 127.0.0.1, made in memory for one run: self-signed, valid for an hour, and installed in no store.

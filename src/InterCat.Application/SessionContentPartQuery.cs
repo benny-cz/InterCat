@@ -44,6 +44,13 @@ public sealed record SessionContentPartDetail
 /// Finds the part a record's buffer belongs to (M8's first step): the records of the same exchange, the same event and the
 /// same raising process, ordered by their place, read under a lease on the current generation. Only a source that keeps a
 /// buffer's exchange, place and ends as source fields - WinINet's capture - has parts.
+/// <para>
+/// An exchange's number is its client process's own count from 1 (ADR-037), so the same number, event and process ID can
+/// name two exchanges in one session: a process ID used again by another process, or WinINet loaded again in one. Those
+/// buffers are told apart in time - a buffer flagged first, one after a buffer flagged last, or one that numbers from
+/// lower than the buffer before it opens another use of the number - and a part is the use its record belongs to, never
+/// two merged into one (R22).
+/// </para>
 /// </summary>
 public static class SessionContentPartQuery
 {
@@ -104,19 +111,22 @@ public static class SessionContentPartQuery
         SessionContentIndex content = manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
             ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
             : SessionContentIndex.Empty;
+        (List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)> use, int uses) = UseOf(members, fields, key);
         ContentPartBuffer[] buffers =
         [
-            .. members
-                .Select(member => (member, part: fields[(member.Row.RawStreamId, member.Row.RawSourceEpoch, member.Row.RawRecordOrdinal)]))
-                .OrderBy(pair => pair.part.Sequence ?? long.MaxValue)
-                .ThenBy(pair => pair.member.Row.NativeTicks)
-                .Select(pair => new ContentPartBuffer(pair.part.Sequence ?? -1, pair.part.Flags ?? 0,
-                    new RawRecordId(pair.member.Capture, pair.member.Row.RawStreamId, pair.member.Row.RawSourceEpoch,
-                        pair.member.Row.RawRecordOrdinal),
-                    content.Find(pair.member.Capture, pair.member.Row))),
+            .. use
+                .OrderBy(member => member.Part.Sequence ?? long.MaxValue)
+                .ThenBy(member => member.Row.NativeTicks)
+                .Select(member => new ContentPartBuffer(member.Part.Sequence ?? -1, member.Part.Flags ?? 0,
+                    new RawRecordId(member.Capture, member.Row.RawStreamId, member.Row.RawSourceEpoch, member.Row.RawRecordOrdinal),
+                    content.Find(member.Capture, member.Row))),
         ];
 
         string name = string.Create(CultureInfo.CurrentCulture, $"the {PartName(row.EventId)} of exchange {exchange:N0}");
+        string reused = uses > 1
+            ? string.Create(CultureInfo.CurrentCulture,
+                $" Exchange {exchange:N0} names {uses:N0} exchanges of this process ID in the session - it was used again, by another process or a restarted client - and this part is the one this record belongs to, in time.")
+            : string.Empty;
         string? problem = Problem(buffers);
         long length = buffers.Sum(buffer => (long)(buffer.Entry?.Fragment.Kept ?? 0));
         if (problem is not null)
@@ -128,7 +138,7 @@ public static class SessionContentPartQuery
                 Buffers = buffers,
                 Complete = false,
                 Statement = Capital(name) + " is not whole: " + problem + ". Its buffers are shown one at a time, and "
-                    + "nothing stands in for what is missing.",
+                    + "nothing stands in for what is missing." + reused,
             };
         }
 
@@ -160,8 +170,43 @@ public static class SessionContentPartQuery
                 : " Its bytes are not shown: the capture kept them without consent to inspect them.")
                 + (length > MaximumPartBytes
                     ? string.Create(CultureInfo.CurrentCulture, $" It is longer than the {MaximumPartBytes:N0} bytes a part is assembled up to.")
-                    : string.Empty),
+                    : string.Empty)
+                + reused,
         };
+    }
+
+    /// <summary>
+    /// The use of an exchange's number that the record <paramref name="key"/> belongs to, among the buffers of that number,
+    /// event and process ID, and how many uses there are. In time order, a buffer opens another use when it is flagged first,
+    /// when the use before it already ended with a buffer flagged last, or when its place is not after the place before it.
+    /// </summary>
+    private static (List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)> Use, int Uses) UseOf(
+        List<(ObservationRowV1 Row, CaptureId Capture)> members,
+        Dictionary<(uint, uint, ulong), PartFields> fields,
+        (uint, uint, ulong) key)
+    {
+        var uses = new List<List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)>>();
+        List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)>? current = null;
+        List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)>? own = null;
+        foreach ((ObservationRowV1 row, CaptureId capture) in members
+            .OrderBy(member => member.Row.NativeTicks)
+            .ThenBy(member => fields[(member.Row.RawStreamId, member.Row.RawSourceEpoch, member.Row.RawRecordOrdinal)].Sequence ?? long.MaxValue)
+            .ThenBy(member => member.Row.RawRecordOrdinal))
+        {
+            var memberKey = (row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal);
+            PartFields part = fields[memberKey];
+            if (current is not { Count: > 0 } || ((part.Flags ?? 0) & 1) != 0 || ((current[^1].Part.Flags ?? 0) & 2) != 0
+                || (part.Sequence ?? long.MaxValue) <= (current[^1].Part.Sequence ?? long.MinValue))
+            {
+                current = [];
+                uses.Add(current);
+            }
+
+            current.Add((row, capture, part));
+            if (memberKey == key) own = current;
+        }
+
+        return (own ?? [], uses.Count);
     }
 
     /// <summary>Why the buffers are not the whole part, in words; null when they are.</summary>

@@ -1,0 +1,37 @@
+{
+  "workload": "FX-HTTP-003",
+  "httpRecords": 1540,
+  "buffersOpeningLikeATlsRecord": 0,
+  "recordsWithContent": 1540,
+  "recordsCut": 0,
+  "recordsRaisedByTheWorkload": 1540,
+  "recordsBoundToTheWorkload": 1540,
+  "exchanges": 256,
+  "exchangesStartingBeforeAnEarlierOneEnded": 254,
+  "partsMatchingTheChunkedFramingInstead": 0,
+  "partsCompared": 1024,
+  "partsMatchingTheServersBodies": 1024,
+  "partsWithBuffers": 1023,
+  "partsNumberedFromZeroInOrder": 1023,
+  "partsFlaggedFirstAndLast": 1023,
+  "sessionGeneration": 7,
+  "contentChunks": 1,
+  "capture": {
+    "command": "icat record --profile content --source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http --pid <workload> --channel * --max-record-bytes 65536 --max-session-bytes 67108864 --inspection hex-text --duration 20, beside InterCat.TestWorkloads http-wininet --requests 256 --bytes 98304 --start-after 8 --concurrency 8 --chunked",
+    "policy": "scoped-content-request-v1",
+    "recordLimitBytes": 65536,
+    "sessionLimitBytes": 67108864,
+    "journaledRecords": 2331,
+    "deliveredRecords": 2331,
+    "contentKeptBytes": 4406997,
+    "lost": "nothing reported"
+  },
+  "partSavedByIcatContent": {
+    "command": "icat content --part --save, on buffer 0 of exchange 5's chunked response body, request 0",
+    "buffers": 8,
+    "bytes": 98304,
+    "matchesTheServersBody": true
+  },
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-09-28"
+}

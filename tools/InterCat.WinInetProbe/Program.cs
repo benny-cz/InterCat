@@ -40,12 +40,15 @@ internal static class Program
         int seed = int.Parse(Option(args, "--seed") ?? "20260929", CultureInfo.InvariantCulture);
         int bytes = int.Parse(Option(args, "--bytes") ?? "98304", CultureInfo.InvariantCulture);
         bool tls = args.Contains("--tls", StringComparer.Ordinal);
+        bool chunked = args.Contains("--chunked", StringComparer.Ordinal);
+        int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0",
             "InterCat.TestWorkloads.exe"));
         if (output is null || requests < 1)
         {
-            Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--concurrency n] [--chunked]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]");
             Console.Error.WriteLine("  [--impact [--pairs n]]: machine CPU and workload time with and without a scoped capture, in pairs");
             return 2;
         }
@@ -114,6 +117,13 @@ internal static class Program
                 CreateNoWindow = true,
             };
             if (tls) start.ArgumentList.Add("--tls");
+            if (chunked) start.ArgumentList.Add("--chunked");
+            if (concurrency > 1)
+            {
+                start.ArgumentList.Add("--concurrency");
+                start.ArgumentList.Add(concurrency.ToString(CultureInfo.InvariantCulture));
+            }
+
             return Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
         }
 
@@ -200,7 +210,7 @@ internal static class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, eventsLost, others, malformed),
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, eventsLost, others, malformed),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -214,11 +224,14 @@ internal static class Program
     }
 
     /// <summary>
-    /// What the capture holds against what the wire held: each exchange opens at a request head, in reading order, and each
-    /// of its four parts is the concatenation of its buffers, compared by length and SHA-256 with the server's truth.
+    /// What the capture holds against what the wire held. An exchange is the capture's own identity - a SessionId - taken in
+    /// time order, and a request head flagged first under an id already seen opens another exchange, so an id WinINet uses
+    /// again is counted rather than merged. Each exchange is matched with its request by the path its head names, and each
+    /// of its four parts is the concatenation of its buffers in sequence order, compared by length and SHA-256 with the
+    /// server's truth; a chunked response body is compared both with the body and with its framed bytes.
     /// </summary>
-    private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls, int eventsLost,
-        long others, long malformed)
+    private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
+        int concurrency, bool chunked, int eventsLost, long others, long malformed)
     {
         var wire = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
         foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl")))
@@ -234,28 +247,83 @@ internal static class Program
         int exchangedByTruth = File.ReadLines(Path.Combine(truth, "truth-http-client.jsonl"))
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
 
-        List<Buffer> ordered = [.. captured.OrderBy(buffer => buffer.Milliseconds).ThenBy(buffer => buffer.Arrival)];
         var exchanges = new List<List<Buffer>>();
-        foreach (Buffer buffer in ordered)
+        var open = new Dictionary<uint, List<Buffer>>();
+        var opened = new Dictionary<uint, int>();
+        foreach (Buffer buffer in captured.OrderBy(buffer => buffer.Milliseconds).ThenBy(buffer => buffer.Arrival))
         {
-            if (buffer.EventId == 2001 && (exchanges.Count == 0 || exchanges[^1].Any(earlier => earlier.EventId != 2001)))
+            bool opens = buffer.EventId == 2001 && (buffer.Flags & 1) != 0;
+            if (opens || !open.TryGetValue(buffer.SessionId, out List<Buffer>? current))
             {
-                exchanges.Add([]);
+                current = [];
+                open[buffer.SessionId] = current;
+                exchanges.Add(current);
+                opened[buffer.SessionId] = opened.GetValueOrDefault(buffer.SessionId) + 1;
             }
 
-            if (exchanges.Count == 0) exchanges.Add([]);
-            exchanges[^1].Add(buffer);
+            current.Add(buffer);
+        }
+
+        // Which request each exchange is, by the path its request head names: "POST /fx/{index} HTTP/1.1".
+        int? RequestOf(List<Buffer> exchange)
+        {
+            byte[] head = [.. exchange.Where(buffer => buffer.EventId == 2001).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)];
+            string text = Encoding.ASCII.GetString(head);
+            int start = text.IndexOf("/fx/", StringComparison.Ordinal);
+            int end = start < 0 ? -1 : text.IndexOf(' ', start);
+            return end > start && int.TryParse(text.AsSpan(start + 4, end - start - 4), NumberStyles.None, CultureInfo.InvariantCulture,
+                out int index) ? index : null;
+        }
+
+        var byRequest = new Dictionary<int, List<List<Buffer>>>();
+        int unmatched = 0;
+        foreach (List<Buffer> exchange in exchanges)
+        {
+            if (RequestOf(exchange) is { } index)
+            {
+                if (!byRequest.TryGetValue(index, out List<List<Buffer>>? found)) byRequest[index] = found = [];
+                found.Add(exchange);
+            }
+            else
+            {
+                unmatched++;
+            }
+        }
+
+        // How many exchanges were in flight at once: each spans its first buffer to its last.
+        var edges = exchanges.SelectMany(exchange => new[] { (At: exchange[0].Milliseconds, Step: 1), (At: exchange[^1].Milliseconds, Step: -1) })
+            .OrderBy(edge => edge.At).ThenBy(edge => edge.Step);
+        int inFlight = 0, mostAtOnce = 0;
+        foreach ((double _, int step) in edges)
+        {
+            inFlight += step;
+            mostAtOnce = Math.Max(mostAtOnce, inFlight);
+        }
+
+        // Whether buffers of different exchanges interleave: a buffer whose predecessor in time belongs to another exchange
+        // while its own exchange is still open.
+        var owner = new Dictionary<Buffer, int>(ReferenceEqualityComparer.Instance);
+        for (int index = 0; index < exchanges.Count; index++)
+        {
+            foreach (Buffer buffer in exchanges[index]) owner[buffer] = index;
+        }
+
+        List<Buffer> timeline = [.. captured.OrderBy(buffer => buffer.Milliseconds).ThenBy(buffer => buffer.Arrival)];
+        int interleavedBuffers = 0;
+        for (int index = 1; index < timeline.Count; index++)
+        {
+            int mine = owner[timeline[index]];
+            if (owner[timeline[index - 1]] != mine && exchanges[mine][0] != timeline[index]) interleavedBuffers++;
         }
 
         // What the flags and sequence numbers say, counted by where a buffer sits in its part - alone, first, between or
         // last - and checked as rules: a part's buffers are numbered from 0 in order, its first carries flag 1 and its last
-        // flag 2, and one exchange's buffers share one session id that no other exchange has.
+        // flag 2.
         var flagsByPosition = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var emptyBuffers = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        int partsWithBuffers = 0, numberedInOrder = 0, flaggedFirstAndLast = 0, oneSessionId = 0;
+        int partsWithBuffers = 0, numberedInOrder = 0, flaggedFirstAndLast = 0;
         foreach (List<Buffer> exchange in exchanges)
         {
-            oneSessionId += exchange.Select(buffer => buffer.SessionId).Distinct().Count() == 1 ? 1 : 0;
             foreach ((int id, string part) in Parts)
             {
                 List<Buffer> buffers = [.. exchange.Where(buffer => buffer.EventId == id)];
@@ -282,18 +350,18 @@ internal static class Program
             }
         }
 
-        int distinctExchangeSessions = exchanges.Select(exchange => exchange[0].SessionId).Distinct().Count();
-
         var parts = new Dictionary<string, object>();
         foreach ((int id, string part) in Parts)
         {
-            int present = 0, matched = 0, lengthMatched = 0, missing = 0, unexpected = 0;
+            int present = 0, matched = 0, lengthMatched = 0, missing = 0, unexpected = 0, framedMatches = 0;
             int mostBuffers = 0;
             long totalBytes = 0;
             var lengthDeltas = new SortedDictionary<long, int>();
-            for (int index = 0; index < Math.Max(exchanges.Count, requests); index++)
+            for (int index = 0; index < requests; index++)
             {
-                List<Buffer> buffers = index < exchanges.Count ? [.. exchanges[index].Where(buffer => buffer.EventId == id)] : [];
+                List<Buffer> buffers = byRequest.TryGetValue(index, out List<List<Buffer>>? found) && found.Count == 1
+                    ? [.. found[0].Where(buffer => buffer.EventId == id).OrderBy(buffer => buffer.Sequence)]
+                    : [];
                 byte[] bytes = [.. buffers.SelectMany(buffer => buffer.Bytes)];
                 mostBuffers = Math.Max(mostBuffers, buffers.Count);
                 totalBytes += bytes.Length;
@@ -304,10 +372,12 @@ internal static class Program
                 }
 
                 present++;
+                string hash = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
                 if (buffers.Count == 0 && expected.Length > 0) missing++;
                 if (bytes.Length == expected.Length) lengthMatched++;
-                if ("sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes)) == expected.Hash) matched++;
+                if (hash == expected.Hash) matched++;
                 else lengthDeltas[bytes.Length - expected.Length] = lengthDeltas.GetValueOrDefault(bytes.Length - expected.Length) + 1;
+                if (wire.TryGetValue((index, part + "-chunked"), out (long Length, string Hash) framed) && hash == framed.Hash) framedMatches++;
             }
 
             List<Buffer> all = [.. captured.Where(buffer => buffer.EventId == id)];
@@ -316,6 +386,7 @@ internal static class Program
                 eventId = id,
                 truthParts = present,
                 wholeMatches = matched,
+                matchesOfTheChunkedFraming = framedMatches,
                 lengthMatches = lengthMatched,
                 missing,
                 unexpected,
@@ -329,29 +400,13 @@ internal static class Program
 
         // The first exchange's heads as text, for the person running the probe: they are the fixture's own request to its
         // own server on loopback, and are printed here, never written.
-        if (exchanges.Count > 0)
+        if (byRequest.TryGetValue(0, out List<List<Buffer>>? first))
         {
             foreach (int id in (int[])[2001, 2003])
             {
-                byte[] head = [.. exchanges[0].Where(buffer => buffer.EventId == id).SelectMany(buffer => buffer.Bytes)];
-                Console.Error.WriteLine($"--- first exchange, event {id}, {head.Length} bytes:");
+                byte[] head = [.. first[0].Where(buffer => buffer.EventId == id).SelectMany(buffer => buffer.Bytes)];
+                Console.Error.WriteLine($"--- request 0, event {id}, {head.Length} bytes:");
                 Console.Error.WriteLine(Encoding.ASCII.GetString(head).Replace("\r", "\\r", StringComparison.Ordinal));
-            }
-        }
-
-        var sequenceSteps = new SortedDictionary<long, int>();
-        foreach (IGrouping<uint, Buffer> session in captured.OrderBy(buffer => buffer.Arrival).GroupBy(buffer => buffer.SessionId))
-        {
-            uint? previous = null;
-            foreach (Buffer buffer in session.OrderBy(buffer => buffer.Milliseconds).ThenBy(buffer => buffer.Arrival))
-            {
-                if (previous is { } before)
-                {
-                    long step = (long)buffer.Sequence - before;
-                    sequenceSteps[step] = sequenceSteps.GetValueOrDefault(step) + 1;
-                }
-
-                previous = buffer.Sequence;
             }
         }
 
@@ -364,12 +419,23 @@ internal static class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            workload = concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
             tls,
+            concurrency,
+            chunked,
             requests,
             maximumBodyBytes,
             exchangedByTruth,
             exchangesCaptured = exchanges.Count,
+            exchangesMatchedToOneRequest = byRequest.Count(pair => pair.Value.Count == 1),
+            requestsCapturedAsSeveralExchanges = byRequest.Count(pair => pair.Value.Count > 1),
+            exchangesNamingNoRequest = unmatched,
+            sessionIds = opened.Count,
+            sessionIdsUsedForMoreThanOneExchange = opened.Count(pair => pair.Value > 1),
+            smallestSessionId = opened.Count == 0 ? 0 : opened.Keys.Min(),
+            largestSessionId = opened.Count == 0 ? 0 : opened.Keys.Max(),
+            mostExchangesAtOnce = mostAtOnce,
+            buffersFollowingAnotherExchangesBuffer = interleavedBuffers,
             events = captured.Count,
             eventsLost,
             recordsOfOtherProcesses = others,
@@ -378,16 +444,12 @@ internal static class Program
             declaredLengthDiffersFromDelivered = captured.Count(buffer => buffer.DeclaredLength != buffer.Bytes.Length),
             buffersOpeningLikeATlsRecord = captured.Count(buffer => OpensLikeATlsRecord(buffer.Bytes)),
             parts,
-            sessionIds = captured.Select(buffer => buffer.SessionId).Distinct().Count(),
-            sequenceStepsWithinASessionId = sequenceSteps.ToDictionary(pair => pair.Key.ToString(CultureInfo.InvariantCulture), pair => pair.Value),
             flags = captured.Select(buffer => "0x" + buffer.Flags.ToString("X8", CultureInfo.InvariantCulture)).Distinct().Order().ToArray(),
             flagsByPosition,
             emptyBuffers,
             partsWithBuffers,
             partsNumberedFromZeroInOrder = numberedInOrder,
             partsFlaggedFirstAndLast = flaggedFirstAndLast,
-            exchangesWithOneSessionId = oneSessionId,
-            exchangesWithADistinctSessionId = distinctExchangeSessions,
             threads = captured.Select(buffer => buffer.ThreadId).Distinct().Count(),
             workloadProcessId = processId,
         };

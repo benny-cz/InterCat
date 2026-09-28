@@ -1,0 +1,15 @@
+{
+  "scenarioId": "FX-HTTP-003",
+  "tls": false,
+  "concurrency": 8,
+  "chunked": true,
+  "processId": 30656,
+  "port": 16918,
+  "seed": 20260929,
+  "requests": 256,
+  "completed": 256,
+  "sentBytes": 2221190,
+  "readBytes": 2107495,
+  "maximumBodyBytes": 98304,
+  "note": "The server\u0027s truth log names every head and body it received and sent by length and SHA-256; the client\u0027s names what it sent and read. Neither holds a byte of them."
+}

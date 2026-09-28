@@ -2,12 +2,16 @@
 
 - Status: accepted as M3's content-capable source; measured in the lab (revision 237); in the catalog, its records bound
   to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
-  (revision 239); HTTPS measured, and kept as its plaintext (revision 243)
+  (revision 239); HTTPS measured, and kept as its plaintext (revision 243); exchanges at once and chunked responses
+  measured, and an exchange's number bound to its use in time (revision 244)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
-- Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`, `bench/results/wininet-capture-feasibility-20260928T102426Z`,
-  `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`
+- Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
+  FX-HTTP-003, `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`,
+  `bench/results/wininet-capture-feasibility-20260928T102426Z`,
+  `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
+  `bench/results/wininet-capture-interleaved-20260928T123007Z`, `bench/results/wininet-capture-chunked-20260928T123023Z`,
+  `bench/results/wininet-capture-numbering-20260928T123112Z`
 
 ## Context
 
@@ -68,6 +72,27 @@ probe ran 16 exchanges with bodies to 96 KiB beside a decoy, as before.
   median 0.74 CPU pp, and no measurable cost to the workload's time (a median of -0.89%, within the machine's noise);
   179,277 records and 640 MB copied, nothing lost (`bench/results/wininet-capture-impact-tls-20260928T121427Z`).
 
+## Measurement of exchanges at once, and of chunked responses (revision 244)
+
+FX-HTTP-003 runs eight WinINet clients in one process, each on its own connection handle and taking every eighth
+request, with WinINet's per-server connection limit raised to eight for that process alone; and its server can answer
+in chunked transfer coding, in seeded chunks of 1 to 9,000 bytes, logging each response body twice - the body a client
+reads, and the framed bytes the wire carried. The probe matched each exchange with its request by the path its head
+names, not by time.
+
+- **Exchanges at once stay apart.** 256 exchanges eight at once, 805 of their buffers following another exchange's:
+  each exchange kept one `SessionId` of its own, each part was numbered from 0 and flagged at its ends, and all 1,024
+  parts matched. 2,048 exchanges eight at once did the same, 8,192 of 8,192.
+- **An exchange's number is its client process's own count.** The 2,048 exchanges were numbered 1 to 2,048: WinINet
+  counts a process's exchanges from 1. No number recurred within the process, but every client process counts from 1,
+  so a number names an exchange only within one run of its client.
+- **A chunked body is kept as its client read it.** All 64 chunked response bodies matched the body the client read,
+  and none the framed bytes: WinINet raises a read buffer after taking the framing away, and only the response head,
+  which says `Transfer-Encoding: chunked`, shows the body was chunked.
+- **Through `icat record`** (FX-HTTP-003: 256 exchanges eight at once, chunked): 1,540 buffers kept whole, 254 of the
+  exchanges begun before an earlier one ended; all 1,024 parts matched and none the framing, and `icat content --part`
+  saved a 98,304-byte chunked body from 8 buffers that matched.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -94,6 +119,12 @@ probe ran 16 exchanges with bodies to 96 KiB beside a decoy, as before.
    encrypted, since nothing in it says which. Because an HTTPS exchange is kept as its plaintext, headers, cookies and
    authorization included, a request says so before anything is recorded (§11.1), beside its process scope. The
    viewer says the same of every application payload (revision 243).
+7. **An exchange is its number within one run of its client, told apart in time.** Since the number restarts with
+   each client process, it names nothing across processes, nor across a process ID used again by another process, or
+   WinINet loaded again in one. InterCat finds a part among the buffers of its number, event and process ID and tells
+   two uses of the number apart in time: a buffer flagged first, one after a buffer flagged last, or one numbered no
+   later than the buffer before it opens another use. A part is its record's use, never two merged into one (R22,
+   revision 244). A body is what its client read: a chunked body without its framing.
 
 ## Consequences
 
@@ -101,7 +132,12 @@ probe ran 16 exchanges with bodies to 96 KiB beside a decoy, as before.
   a message, message identity and length, and completeness. It is scoped to named processes before anything is kept.
 - HTTPS is measured (revision 243): WinINet holds the bytes before encryption and after decryption, so a capture holds
   an encrypted exchange's plaintext, and the request that keeps it says so first.
-- Not measured: asynchronous WinINet; HTTP/2; chunked and compressed responses; redirects, proxies and authentication;
-  and several exchanges at once in one process. Each is measured before a profile claims it.
+- Exchanges at once in one process, and chunked responses, are measured (revision 244): each exchange keeps its own
+  number, and a chunked body is kept as its client read it.
+- Not measured: asynchronous WinINet; HTTP/2; compressed responses; redirects, proxies and authentication. Each is
+  measured before a profile claims it.
+- The scope is the named processes' IDs, which the provider's filter holds by number: a process ID used again during a
+  capture, by a process started after the named one exited, would be in scope too. Holding content to the named
+  process instances, so a named process's exit ends its content, is open.
 - WinINet is one client library among several. .NET's HTTP client, WinHTTP and browsers' own stacks do not raise these
   records, so their exchanges stay without content, and the statement of what a record holds says which source could.

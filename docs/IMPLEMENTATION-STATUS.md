@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 243 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 244 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 244 — WinINet exchanges at once, chunked responses, and an exchange's number told apart in time
+  (ADR-037, FX-HTTP-003):**
+  - Eight clients in one process keep their exchanges apart: each keeps one number, its parts numbered and flagged,
+    and every part matched, in the probe and through `icat record`. A chunked response body is kept as its client read
+    it, without the chunk framing, which only its head names.
+  - WinINet numbers a process's exchanges from 1, so one number can name two exchanges in a session - a process ID
+    used again, or WinINet loaded again. The part query now tells two uses of a number apart in time and never merges
+    them; before, their buffers sorted as 0, 0, 1, 1 and passed as one whole part (R22).
 
 - **Revision 243 — HTTPS through WinINet's capture, measured (ADR-037, FX-HTTP-002):**
   - Over TLS the capture holds the plaintext: all parts matched the bytes the server decrypted and encrypted, and no
@@ -2129,9 +2138,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      binds its records to their client (`process-binding-v4`); revision 239 admits it under a Content request, through
      `icat record`, scoped to named processes; revision 241 puts FX-HTTP-001 and FX-CONTENT-001 in the fixture index.
      Revision 242 reassembles a part from its buffers for a person (M8's first step); revision 243 measures HTTPS
-     through it (FX-HTTP-002): kept as its plaintext, which a request says first. Later: HTTP/2 through it; a part that
-     is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
-     releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+     through it (FX-HTTP-002): kept as its plaintext, which a request says first; revision 244 measures exchanges at once
+     and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart. Next: hold a request's scope
+     to the named process instances, since the provider's filter holds process IDs and a reused one would be in scope.
+     Later: HTTP/2 and compressed responses through it; a part that is not whole shown with its gaps in place; a
+     follower that mirrors content, so a broker capture could keep it; releasing content alone; and a fixture decoder
+     (§11.2's `DecodedFields`).
 
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -2185,6 +2197,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 244 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,386 tests: 1,382
+  passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: the probe matched every part of 256
+  and of 2,048 exchanges eight at once, whose numbers ran 1 to 2,048, and of 64 chunked responses; `icat record` kept
+  FX-HTTP-003's 256 exchanges, all 1,024 parts matched the server's bodies, and `icat content --part --save` wrote a
+  matching 98,304-byte chunked body. The captures were deleted.
 - Revision 243 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,385 tests: 1,381
   passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: the probe matched all 64 parts of 16
   TLS exchanges and measured the impact Low over TLS; `icat record` kept FX-HTTP-002's 32 exchanges, all 128 parts

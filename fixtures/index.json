@@ -721,6 +721,59 @@
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named"
       ]
+    },
+    {
+      "id": "FX-HTTP-003",
+      "title": "WinINet exchanges at once in one process, with chunked responses",
+      "scenario": "Several exchanges at once and chunked responses (ADR-037, revision 244): eight WinINet clients in one process, each on its own connection handle and taking every eighth of 256 requests, post to the loopback server, which answers in chunked transfer coding with seeded chunks of 1 to 9,000 bytes; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R17",
+          "R22"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": [
+          "P2",
+          "P15",
+          "P28"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --concurrency 8 --chunked",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-003/evidence/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs every request head and body it received and every response head it sent, and each response body twice - the body a client reads and the framed bytes the wire carried - by length and SHA-256, never the bytes. The client logs what it sent and read. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-003/evidence/measurement.json",
+        "note": "1,540 buffers of 256 exchanges kept whole under scoped-content-request-v1, 254 of them begun before an earlier one ended; matched with their requests by the path each head names, 1,024 of 1,024 parts matched the server's bodies and none the chunked framing, so a body is kept as its client read it. Every record was bound to the workload under process-binding-v4, and icat content --part saved a 98,304-byte chunked response body from 8 buffers that matched. Tier ExperimentalEvidence: HTTP/2, compressed responses and asynchronous WinINet are unmeasured (ADR-037)."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-09-28",
+          "result": "Recorded by icat record --profile content scoped to the workload's process: 2,331 records delivered and journaled, 4,406,997 bytes of content kept, nothing lost. The lab probe matched every part of 256 exchanges eight at once, of 64 chunked responses, and of 2,048 exchanges eight at once, whose exchange ids ran from 1 to 2,048: a client process numbers its exchanges from 1 (revision 244)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario - ports, lengths and SHA-256 of synthetic requests and responses, never their bytes - and the measurement's counters. The capture itself is not kept."
+      },
+      "tests": [
+        "R22: an exchange number used again in one process ID is two parts, told apart in time, never one",
+        "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
+        "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
+      ]
     }
   ],
   "contractCoverage": {
@@ -1401,6 +1454,7 @@
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
+        "R22: an exchange number used again in one process ID is two parts, told apart in time, never one",
         "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",

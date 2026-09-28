@@ -51,6 +51,8 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
         StartAfterSeconds = Integer(args, "--start-after") ?? 0,
         Tls = args.Contains("--tls", StringComparer.Ordinal),
+        Concurrency = Integer(args, "--concurrency") ?? 1,
+        Chunked = args.Contains("--chunked", StringComparer.Ordinal),
     };
 
     var pipeOptions = new PipeLoopbackOptions
@@ -192,13 +194,16 @@ static void PrintHelp()
     Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
     Console.WriteLine();
     Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start | --start-after s] [--tls]");
+    Console.WriteLine("               [--concurrency n] [--chunked]");
     Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
     Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
     Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
     Console.WriteLine("      line on standard input first, and --start-after waits that many seconds, so a capture scoped");
     Console.WriteLine("      to this process is in place before its first request. --tls runs it over TLS as FX-HTTP-002,");
     Console.WriteLine("      with a certificate made in memory for the run and installed nowhere; the server logs the");
-    Console.WriteLine("      bytes above the encryption.");
+    Console.WriteLine("      bytes above the encryption. --concurrency runs n clients at once, each on its own connection,");
+    Console.WriteLine("      and --chunked has the server frame its responses in chunks, logging the body and the framed");
+    Console.WriteLine("      bytes apart; either makes the run FX-HTTP-003.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

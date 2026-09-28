@@ -71,6 +71,65 @@ public sealed class ContentPartTests
         Assert.False(Part(6).IsPart);
     }
 
+    [Fact(DisplayName = "R22: an exchange number used again in one process ID is two parts, told apart in time, never one")]
+    public void AReusedExchangeNumberIsTwoParts()
+    {
+        using var session = new TemporarySession();
+
+        // WinINet numbers a process's exchanges from 1 (ADR-037), so a process ID used again numbers them again. Exchange 5's
+        // response body twice - "abcd" in two buffers, then "EFGH" in three - and a third use that lost its first buffer. Beside
+        // them, exchanges 6 and 7 at once, their buffers interleaved in time.
+        ObservationRowV1[] rows =
+        [
+            Http(100, 2004, 1), Http(110, 2004, 2),
+            Http(500, 2004, 3), Http(510, 2004, 4), Http(520, 2004, 5),
+            Http(900, 2004, 6), Http(910, 2004, 7),
+            Http(1_000, 2004, 8), Http(1_001, 2004, 9), Http(1_002, 2004, 10), Http(1_003, 2004, 11),
+        ];
+        (long Exchange, long Sequence, long Flags)[] places =
+        [
+            (5, 0, 1), (5, 1, 2),
+            (5, 0, 1), (5, 1, 0), (5, 2, 2),
+            (5, 1, 0), (5, 2, 2),
+            (6, 0, 1), (7, 0, 1), (6, 1, 2), (7, 1, 2),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. places.SelectMany((place, index) => new[]
+            {
+                Field(rows[index], SourceField.HttpExchangeId, place.Exchange),
+                Field(rows[index], SourceField.ContentBufferSequence, place.Sequence),
+                Field(rows[index], SourceField.ContentBufferFlags, place.Flags),
+            }),
+        ];
+        string[] messages = ["ab", "cd", "EF", "GH", "", "xy", "z", "six-", "seven-", "6", "7"];
+        Publish(session.Store, rows, fields: fields, content: (ContentHeader(recordLimit: 8),
+            [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 8, ContentEncodingV1.Binary))]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionContentPartDetail Part(int index) =>
+            SessionContentPartQuery.Read(session.Store, page.SessionId, page.Records[index].Observation, revealBytes: true);
+
+        // Each use of the number is its own part, whichever of its buffers is asked from, and never the other's bytes.
+        SessionContentPartDetail first = Part(1);
+        Assert.Equal((true, 2), (first.Complete, first.Buffers.Count));
+        Assert.Equal("abcd"u8.ToArray(), first.Bytes);
+        Assert.Contains("Exchange 5 names 3 exchanges of this process ID in the session", first.Statement, StringComparison.Ordinal);
+        SessionContentPartDetail second = Part(2);
+        Assert.Equal((true, 3), (second.Complete, second.Buffers.Count));
+        Assert.Equal("EFGH"u8.ToArray(), second.Bytes);
+
+        // The third use began after the second ended, so its missing first buffer is missing, not borrowed from another use.
+        SessionContentPartDetail third = Part(6);
+        Assert.False(third.Complete);
+        Assert.Null(third.Bytes);
+        Assert.Contains("its first buffer was not recorded", third.Statement, StringComparison.Ordinal);
+
+        // Two exchanges at once: their buffers interleave in time, and each part is its own exchange's.
+        Assert.Equal("six-6"u8.ToArray(), Part(9).Bytes);
+        Assert.Equal("seven-7"u8.ToArray(), Part(8).Bytes);
+        Assert.DoesNotContain("names", Part(8).Statement, StringComparison.Ordinal);
+    }
+
     /// <summary>A WinINet capture record of <paramref name="eventId"/>, raised by process 4242, whose payload names no owner.</summary>
     private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal) =>
         Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,

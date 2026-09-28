@@ -1,0 +1,122 @@
+{
+  "exchange": {
+    "schema": "intercat.wininet-capture-feasibility.v1",
+    "measuredUtc": "2026-09-28T12:31:12.8085021+00:00",
+    "windows": "Microsoft Windows NT 10.0.26220.0",
+    "provider": "Microsoft-Windows-WinINet-Capture",
+    "providerGuid": "a70ff94f-570b-4979-ba5c-e59c9feab61b",
+    "keywords": "0x0000060300000000",
+    "processFilter": "EVENT_FILTER_TYPE_PID: the workload\u0027s process alone",
+    "workload": "FX-HTTP-003",
+    "tls": false,
+    "concurrency": 8,
+    "chunked": false,
+    "requests": 2048,
+    "maximumBodyBytes": 16384,
+    "exchangedByTruth": 2048,
+    "exchangesCaptured": 2048,
+    "exchangesMatchedToOneRequest": 2048,
+    "requestsCapturedAsSeveralExchanges": 0,
+    "exchangesNamingNoRequest": 0,
+    "sessionIds": 2048,
+    "sessionIdsUsedForMoreThanOneExchange": 0,
+    "smallestSessionId": 1,
+    "largestSessionId": 2048,
+    "mostExchangesAtOnce": 8,
+    "buffersFollowingAnotherExchangesBuffer": 6240,
+    "events": 12285,
+    "eventsLost": 0,
+    "recordsOfOtherProcesses": 0,
+    "malformedRecords": 0,
+    "raisedByTheClientProcess": 12285,
+    "declaredLengthDiffersFromDelivered": 0,
+    "buffersOpeningLikeATlsRecord": 0,
+    "parts": {
+      "request-head": {
+        "eventId": 2001,
+        "truthParts": 2048,
+        "wholeMatches": 2048,
+        "matchesOfTheChunkedFraming": 0,
+        "lengthMatches": 2048,
+        "missing": 0,
+        "unexpected": 0,
+        "events": 2048,
+        "mostBuffersInOnePart": 1,
+        "largestBuffer": 187,
+        "bytes": 381046,
+        "lengthDeltasOfMismatches": {}
+      },
+      "request-body": {
+        "eventId": 2002,
+        "truthParts": 2048,
+        "wholeMatches": 2048,
+        "matchesOfTheChunkedFraming": 0,
+        "lengthMatches": 2048,
+        "missing": 0,
+        "unexpected": 0,
+        "events": 4094,
+        "mostBuffersInOnePart": 2,
+        "largestBuffer": 16384,
+        "bytes": 2818680,
+        "lengthDeltasOfMismatches": {}
+      },
+      "response-head": {
+        "eventId": 2003,
+        "truthParts": 2048,
+        "wholeMatches": 2048,
+        "matchesOfTheChunkedFraming": 0,
+        "lengthMatches": 2048,
+        "missing": 0,
+        "unexpected": 0,
+        "events": 2048,
+        "mostBuffersInOnePart": 1,
+        "largestBuffer": 115,
+        "bytes": 232639,
+        "lengthDeltasOfMismatches": {}
+      },
+      "response-body": {
+        "eventId": 2004,
+        "truthParts": 2048,
+        "wholeMatches": 2048,
+        "matchesOfTheChunkedFraming": 0,
+        "lengthMatches": 2048,
+        "missing": 0,
+        "unexpected": 0,
+        "events": 4095,
+        "mostBuffersInOnePart": 2,
+        "largestBuffer": 16384,
+        "bytes": 2807532,
+        "lengthDeltasOfMismatches": {}
+      }
+    },
+    "flags": [
+      "0x00000001",
+      "0x00000002",
+      "0x00000003"
+    ],
+    "flagsByPosition": {
+      "request-body first flags 1": 2047,
+      "request-body last flags 2": 2047,
+      "request-head alone flags 3": 2048,
+      "response-body alone flags 3": 1,
+      "response-body first flags 1": 2047,
+      "response-body last flags 2": 2047,
+      "response-head alone flags 3": 2048
+    },
+    "emptyBuffers": {
+      "request-body last": 2047,
+      "response-body alone": 1,
+      "response-body last": 2047
+    },
+    "partsWithBuffers": 8191,
+    "partsNumberedFromZeroInOrder": 8191,
+    "partsFlaggedFirstAndLast": 8191,
+    "threads": 16,
+    "workloadProcessId": 82308
+  },
+  "processFilter": {
+    "decoyExchangedByTruth": 2048,
+    "recordsOfTheDecoy": 0,
+    "note": "The decoy ran the same exchange at the same time outside the session\u0027s process filter."
+  }
+}
