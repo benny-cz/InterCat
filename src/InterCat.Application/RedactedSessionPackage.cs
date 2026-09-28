@@ -306,6 +306,7 @@ public static class RedactedSessionPackage
         Sequence = 3,
         Pointer = 4,
         Redact = 5,
+        Exchange = 6,
     }
 
     /// <summary>
@@ -314,8 +315,12 @@ public static class RedactedSessionPackage
     /// </summary>
     private static FieldTransform TransformOf(SourceField field) => field switch
     {
+        // An HTTP buffer's place and ends are the shape of one message, not an identity: kept, so a package's exchanges
+        // are still grouped into their parts. Its exchange number is its client's count, pseudonymized (ADR-037).
         SourceField.ProcessSessionId or SourceField.RpcProcedureNumber or SourceField.RpcProtocolSequence
-            or SourceField.FileByteOffset or SourceField.AlpcMessageId => FieldTransform.Keep,
+            or SourceField.FileByteOffset or SourceField.AlpcMessageId
+            or SourceField.ContentBufferSequence or SourceField.ContentBufferFlags => FieldTransform.Keep,
+        SourceField.HttpExchangeId => FieldTransform.Exchange,
         SourceField.ParentProcessId or SourceField.IssuingThreadId => FieldTransform.Number,
         SourceField.ProcessStartSequence or SourceField.ParentStartSequence => FieldTransform.Sequence,
         SourceField.ConnectionId or SourceField.IoRequestPacket or SourceField.FileObject
@@ -493,6 +498,9 @@ public static class RedactedSessionPackage
                         break;
                     case FieldTransform.Pointer:
                         pseudonyms.SeePointer(field.Value!.Value);
+                        break;
+                    case FieldTransform.Exchange:
+                        pseudonyms.SeeExchange(field.Value!.Value);
                         break;
                     case FieldTransform.Redact:
                         redactedFields++;
@@ -844,6 +852,7 @@ public static class RedactedSessionPackage
             FieldTransform.Number => pseudonyms.Number(unchecked((int)source)),
             FieldTransform.Sequence => unchecked((long)pseudonyms.Sequence(unchecked((ulong)source))),
             FieldTransform.Pointer => pseudonyms.Pointer(source),
+            FieldTransform.Exchange => pseudonyms.Exchange(source),
             _ => null,
         };
         return new()
@@ -951,7 +960,8 @@ public static class RedactedSessionPackage
             "Byte values with their domain, accounting side, unit and availability",
             "Status codes and their availability; the four quality levels",
             "Event id, descriptor version and opcode of each row's descriptor",
-            "Process terminal session, RPC procedure number and protocol sequence, and file byte offset fields",
+            "Process terminal session, RPC procedure number and protocol sequence, file byte offset and ALPC message id fields",
+            "An HTTP buffer's place in its message and whether it is the message's first or last",
             "Coverage and loss facts, when the source published a coverage ledger",
             "Whether a resource name was truncated",
         ],
@@ -963,6 +973,7 @@ public static class RedactedSessionPackage
             "Activity, related-activity and source identifiers",
             "Provider identities other than the public Microsoft providers InterCat admits, and every schema fingerprint",
             "Process start sequence numbers and kernel object values (connection, request packet, file object, file key)",
+            "HTTP exchange numbers, in a namespace of their own",
         ],
         Redacted =
         [
@@ -1161,6 +1172,7 @@ public static class RedactedSessionPackage
                         FieldTransform.Number => pseudonyms.IsIssuedOrFixedNumber(unchecked((int)value)),
                         FieldTransform.Sequence => pseudonyms.IsIssuedOrFixedSequence(unchecked((ulong)value)),
                         FieldTransform.Pointer => pseudonyms.IsIssuedOrFixedPointer(value),
+                        FieldTransform.Exchange => pseudonyms.IsIssuedOrFixedExchange(value),
                         _ => false,
                     }),
                     $"A package source field of row {field.RawRecordOrdinal} carries a value its policy does not allow.");
@@ -1351,7 +1363,7 @@ public static class RedactedSessionPackage
                 : TransformOf(field.Field) switch
                 {
                     FieldTransform.Number => Fixed(unchecked((int)value)),
-                    FieldTransform.Sequence or FieldTransform.Pointer => value == 0 ? "0" : "mapped",
+                    FieldTransform.Sequence or FieldTransform.Pointer or FieldTransform.Exchange => value == 0 ? "0" : "mapped",
                     _ => "kept",
                 };
             Count($"field|{field.Field}|{availability}|{fixedPoint}");

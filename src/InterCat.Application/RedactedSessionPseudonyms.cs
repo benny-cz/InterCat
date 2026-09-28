@@ -67,6 +67,9 @@ internal sealed class RedactedSessionPseudonyms
     private readonly Dictionary<Guid, Guid> identifiers = [];
     private readonly Dictionary<ulong, ulong> sequences = [];
     private readonly Dictionary<long, long> pointers = [];
+    private readonly Dictionary<long, long> exchanges = [];
+    private readonly HashSet<long> sourceExchanges = [];
+    private readonly HashSet<long> issuedExchanges = [];
     private readonly Dictionary<Guid, Guid> providers = [];
     private readonly Dictionary<string, string> fingerprints = new(StringComparer.Ordinal);
     private readonly Dictionary<(RedactedNameKind Kind, bool Folder, string Key), string> names = [];
@@ -140,6 +143,9 @@ internal sealed class RedactedSessionPseudonyms
     public void SeeSequence(ulong value) => sourceSequences.Add(value);
 
     public void SeePointer(long value) => sourcePointers.Add(value);
+
+    /// <summary>Notes an HTTP exchange number the source holds, so no pseudonym is ever one of them.</summary>
+    public void SeeExchange(long value) => sourceExchanges.Add(value);
 
     public void SeeProvider(Guid value) => sourceProviders.Add(value);
 
@@ -313,6 +319,26 @@ internal sealed class RedactedSessionPseudonyms
     }
 
     public bool IsIssuedOrFixedPointer(long value) => value == 0 || issuedPointers.Contains(value);
+
+    /// <summary>
+    /// An HTTP exchange number: its client process's count from 1 (ADR-037), which says how many exchanges it had made.
+    /// It maps to a pseudonym of its own namespace, the same wherever it appears, so a package's buffers still group into
+    /// their exchanges; zero means none.
+    /// </summary>
+    public long Exchange(long value)
+    {
+        if (value == 0) return value;
+        if (exchanges.TryGetValue(value, out long mapped)) return mapped;
+        do
+        {
+            mapped = 1 + (long)(BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8)) % (uint.MaxValue - 1UL));
+        }
+        while (sourceExchanges.Contains(mapped) || !issuedExchanges.Add(mapped));
+        exchanges[value] = mapped;
+        return mapped;
+    }
+
+    public bool IsIssuedOrFixedExchange(long value) => value == 0 || issuedExchanges.Contains(value);
 
     /// <summary>A provider: kept when it is one of the public providers, pseudonymized otherwise.</summary>
     public Guid Provider(Guid value)

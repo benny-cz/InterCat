@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 249 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 250 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -68,6 +68,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 250 — a redacted package keeps an HTTP exchange's shape (`redacted-session-v1` §4, I22):**
+  - A live pass over sharing a fresh content session found the redacted package sound - no content file, no reference
+    to one, the export carrying no byte, the original package stating the 287,837 kept bytes it holds - but its HTTP
+    records grouped into no exchange: the policy withheld the fields no rule named, and `icat exchanges` then blamed the
+    capture.
+  - A buffer's place and ends are kept now, and its exchange number becomes a pseudonym of its own namespace, never a
+    source value, so the package's exchanges group as the source's: 16 of 16 whole, the same bytes and median, none of
+    the content. The policy's list of kept fields also names the ALPC message id it always kept.
 
 - **Revision 249 — every evidence rung's timeline counts its own records apart (R21, §6.2):**
   - A one-sided connection's records, an HTTP exchange's buffers and an RPC channel's or call's records are the focus of
@@ -374,6 +383,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 250 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,396 tests: 1,392
+  passed, 4 skipped**, zero failures. Live, on a fresh 16-exchange content session in scratch: its redacted package held
+  no content file, `icat exchanges` on it grouped 16 of 16 exchanges whole with the source's bytes and median under
+  pseudonymous numbers, the export carried no byte, and the original package's check stated its 287,837 kept bytes. The
+  session and its packages were deleted.
 - Revision 249 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,395 tests: 1,391
   passed, 4 skipped**, zero failures. Live, on a real 20-second Explore capture recorded into scratch (4,158 records,
   nothing lost): Enter on one of chrome.exe's connections opened its records with the timeline reading "Records of TCP

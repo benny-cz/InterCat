@@ -65,6 +65,14 @@ that name no exchange, and per process its instance (or why none is admitted), i
 were recorded whole, its buffer records, request and response bytes and median duration; with `--exchanges n` or
 `--pid`, its first exchanges, each with its key, number, first time, duration, completeness and four parts.
 
+## 5a. In a redacted package (revision 250)
+
+A redacted package keeps each HTTP buffer's place and ends as they were, and its exchange number as a pseudonym of a
+namespace of its own - the same for every buffer of one exchange, and never a number the source held - so the package's
+exchanges group exactly as the source's, with their parts' sizes and timing and none of their content
+(`contracts/redacted-session-v1.md` §4). A package made before revision 250 withheld the three fields, and its HTTP
+records name no exchange.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers: they are content, and reading them is a decoder's work (§11.2's

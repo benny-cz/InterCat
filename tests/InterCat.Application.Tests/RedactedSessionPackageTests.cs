@@ -496,6 +496,78 @@ public sealed class RedactedSessionPackageTests
             Path.GetFileName(package.Path) + ".partial-*"));
     }
 
+    [Fact(DisplayName = "I22: a package keeps an HTTP exchange's shape - its buffers' places and ends - and pseudonymizes its number")]
+    public void KeepsAnHttpExchangesShape()
+    {
+        // Two exchanges of process 4242, numbered 1 and 2 by their client, each a request head, a response head and a
+        // response body in two buffers.
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags)[] buffers =
+        [
+            (10, 2001, 1, 0, 3), (11, 2003, 1, 0, 3), (12, 2004, 1, 0, 1), (13, 2004, 1, 1, 2),
+            (20, 2001, 2, 0, 3), (21, 2003, 2, 0, 3), (22, 2004, 2, 0, 1), (23, 2004, 2, 1, 2),
+        ];
+        ObservationRowV1[] http = [.. buffers.Select((buffer, index) => Transfer(buffer.Ticks,
+            buffer.Event <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            buffer.Event <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 100, null, (ulong)(10 + index)) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = buffer.Event,
+            HeaderProcessId = 4_242,
+            Direction = buffer.Event <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+            SessionRelativeTicks = buffer.Ticks * 100,
+        })];
+        SourceFieldRowV1[] fields =
+        [
+            .. buffers.SelectMany((buffer, index) => new[]
+            {
+                Field(http[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(http[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(http[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        using var source = new TemporarySession();
+        Publish(source.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1) with { SessionRelativeTicks = 100 }, .. http], fields: fields);
+        using var package = new PackageDirectory();
+        _ = RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+
+        // In the package each buffer keeps its place and ends; its exchange's number is a pseudonym, none of the source's,
+        // the same for every buffer of one exchange and different between the two.
+        SessionStore shared = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path));
+        SessionManifestV1 manifest = shared.Current!;
+        var places = new Dictionary<ulong, (long? Number, long? Sequence, long? Flags)>();
+        foreach (string name in SessionSegments.FieldNames(manifest))
+        {
+            SegmentReaderV1 segment = SessionSegments.Open(shared, manifest, name);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                SourceFieldRowV1 field = segment.FieldRow(row);
+                (long? number, long? sequence, long? flags) = places.GetValueOrDefault(field.RawRecordOrdinal);
+                places[field.RawRecordOrdinal] = field.Field switch
+                {
+                    SourceField.HttpExchangeId => (field.Value, sequence, flags),
+                    SourceField.ContentBufferSequence => (number, field.Value, flags),
+                    SourceField.ContentBufferFlags => (number, sequence, field.Value),
+                    _ => (number, sequence, flags),
+                };
+            }
+        }
+
+        Assert.Equal(buffers.Select(buffer => (buffer.Sequence, buffer.Flags)).Order(),
+            places.Values.Where(place => place.Number is not null).Select(place => (place.Sequence!.Value, place.Flags!.Value)).Order());
+        long[] numbers = [.. places.Values.Where(place => place.Number is not null).Select(place => place.Number!.Value).Distinct()];
+        Assert.Equal(2, numbers.Length);
+        Assert.DoesNotContain(1L, numbers);
+        Assert.DoesNotContain(2L, numbers);
+        Assert.All(numbers, number => Assert.Equal(4, places.Values.Count(place => place.Number == number)));
+
+        // So the package's exchanges are the source's: two, each recorded whole.
+        ProcessInstanceId client = SessionOverviewProjector.Project(shared).Nodes.Single(node => node.Records == 9).Id;
+        HttpChannelSummary exchanges = Assert.Single(SessionHttpExchanges.Channels(shared, client).Channels);
+        Assert.Equal((2L, 2L, 8L), (exchanges.Exchanges, exchanges.Complete, exchanges.Records));
+    }
+
     [Fact(DisplayName = "I22: a preview measures the package without writing it")]
     public void PreviewWritesNothing()
     {

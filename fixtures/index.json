@@ -1002,6 +1002,7 @@
         "I22: a cancelled package leaves neither the package nor its stage behind",
         "I22: a companion the package reproduces unchanged is not mistaken for a leak",
         "I22: a field whose observation the generation does not hold is refused, not attached elsewhere",
+        "I22: a package keeps an HTTP exchange's shape - its buffers' places and ends - and pseudonymizes its number",
         "I22: a package refuses an overlapping or existing destination, and a package of a package",
         "I22: a preview measures the package without writing it",
         "I22: a redacted package is refused as a package, not as a legacy session needing a plan",

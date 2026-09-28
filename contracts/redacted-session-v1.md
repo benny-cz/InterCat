@@ -124,6 +124,8 @@ A field row joins its observation by the package's locator. What happens to its 
 | Field | Value |
 |---|---|
 | Process terminal session, RPC procedure number, RPC protocol sequence, file byte offset, ALPC message id | kept |
+| HTTP buffer sequence and flags: a buffer's place in its message and its ends (revision 250) | kept |
+| HTTP exchange number (revision 250) | exchange pseudonym, a namespace of its own, so a package's buffers still group into their exchanges |
 | Parent PID, issuing thread | process and thread id pseudonym |
 | Process start sequence, parent start sequence | start-sequence pseudonym, one namespace for both |
 | Connection id, request packet, file object, file key | kernel-object pseudonym, one namespace |

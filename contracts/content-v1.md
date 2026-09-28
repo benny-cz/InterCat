@@ -119,6 +119,8 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
   logs, telemetry and crash diagnostics never read one.
 - **Sharing.** A redacted package (`redacted-session-v1`) keeps no chunk and no reference to one, and says so (I22).
+  Since revision 250 it keeps an HTTP exchange's shape - its buffers' places and ends, and its number as a pseudonym -
+  so its exchanges group as the source's do, with their sizes and timing, and none of their bytes.
   The original evidence package (`original-evidence-package-v1`) carries every chunk as the evidence it is, and states
   how many fragments and bytes it carries before it saves.
 
