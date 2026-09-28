@@ -884,6 +884,7 @@
         "I21: a chunk keeps each record's content with its classification, direction, lengths and how it was cut",
         "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
         "I21: a fragment that misstates how it was cut, or breaks record order, is never written",
+        "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "I21: a recording keeps each fixture message's bytes beside its journal chunk, and stops at its content limit",
         "I21: an over-long extended item keeps its original length and a truncation flag"

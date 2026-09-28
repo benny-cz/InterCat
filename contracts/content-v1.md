@@ -98,6 +98,13 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   range as the bytes it is to a file they name, published whole or not at all. Content kept without that consent is
   never shown, copied or saved one record at a time. `icat content --json` (`content-view-v1`) states the facts and
   never a byte.
+- **A part** (revision 242, M8's first step). A record whose source keeps its buffer's exchange, place and ends as
+  source fields - WinINet's capture (§5.1) - is one buffer of a part: its exchange's request or response head or body.
+  The viewer and `icat content` say which buffer of which part it is, which of the part's buffers were recorded and
+  kept, and whether they make the whole part: every buffer from the one flagged first to the one flagged last, in
+  sequence order, each kept whole. Only such a part may be shown, copied or saved as one (the viewer's toggle,
+  `icat content --part`); a part missing a buffer, or holding one cut, names what it lacks and is shown one buffer at
+  a time, never as a whole (I21, P2).
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
@@ -161,9 +168,8 @@ every record bound to the workload under `process-binding-v4`, and nothing was l
 
 ## 6. What is not defined at this version
 
-- A part reassembled from its buffers for a person: the viewer shows one record's buffer, and a part's other buffers are
-  its exchange's other records (M8). HTTPS and HTTP/2 through WinINet are unmeasured, and so are the other client
-  libraries, which raise no such records.
+- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTPS and HTTP/2 through
+  WinINet are unmeasured, and so are the other client libraries, which raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.

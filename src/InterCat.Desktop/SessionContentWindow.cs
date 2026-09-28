@@ -47,7 +47,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private readonly TabControl views = new() { IsVisible = false };
     private readonly Button copy = new() { Content = "Copy as hex", IsEnabled = false };
     private readonly Button save = new() { Content = "Save bytes…", IsEnabled = false };
+    private readonly TextBlock partStatement = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
+    private readonly Button partToggle = new() { Content = "Show its whole part", IsVisible = false };
     private SessionContentDetail? detail;
+    private SessionContentPartDetail? part;
+    private byte[]? shownBytes;
+    private bool showingPart;
     private ContentRange? kept;
     private ContentRange? range;
     private bool loading;
@@ -91,6 +96,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         AutomationProperties.SetName(copy, "Copy the chosen bytes as hex");
         AutomationProperties.SetName(save, "Save the chosen bytes to a file");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
+        AutomationProperties.SetName(partToggle, "Switch between this buffer and its whole part");
         rangeProblem.Classes.Add("caution");
 
         // A hex dump reads line under line: its lines keep a text line's height rather than a menu row's, and its one or
@@ -140,6 +146,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         };
         first.KeyDown += ApplyOnEnter;
         last.KeyDown += ApplyOnEnter;
+        partToggle.Click += (_, _) => TogglePart();
         copy.Click += (_, _) => _ = CopyAsync();
         save.Click += (_, _) => _ = SaveAsync();
         var close = new Button { Content = "Close" };
@@ -153,6 +160,9 @@ internal sealed class SessionContentWindow : Window, IDisposable
             key.Handled = true;
         };
 
+        // A buffer of a part - an HTTP head or body - says whether its part was kept whole, and shows it whole if so (M8).
+        rangePanel.Children.Add(partStatement);
+        rangePanel.Children.Add(partToggle);
         rangePanel.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -227,6 +237,16 @@ internal sealed class SessionContentWindow : Window, IDisposable
                 SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, selected, revealBytes, token), token);
             if (closed) return;
             detail = result;
+
+            // A buffer of an HTTP head or body belongs to a part, found from source fields alone; its bytes are read only
+            // when the record's are asked for.
+            if (result.Available && selected.Observation.Mechanism == Mechanism.Http)
+            {
+                bool withBytes = revealBytes && result.Bytes is not null;
+                part = await Task.Run(() => SessionContentPartQuery.Read(
+                    SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, selected.Observation, withBytes, token), token);
+                if (closed) return;
+            }
             if (!result.Available || result.Entry is not { } entry)
             {
                 status.Text = "No kept content in the current generation";
@@ -235,7 +255,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
                 return;
             }
 
-            ShowFacts(ContentBytesView.Facts(entry, selected.Observation, result.Generation, CultureInfo.CurrentCulture));
+            ShowFacts(ContentBytesView.Facts(entry, selected.Observation, result.Generation, CultureInfo.CurrentCulture, part));
+            if (part is { IsPart: true } stated)
+            {
+                partStatement.Text = stated.Statement;
+                partStatement.IsVisible = true;
+            }
             kept = ContentBytesView.Kept(entry.Fragment);
             status.Text = string.Create(CultureInfo.CurrentCulture,
                 $"Checked {entry.ChunkName} in generation {result.Generation:N0}");
@@ -267,6 +292,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
             reveal.IsVisible = false;
             rangePanel.IsVisible = true;
             views.IsVisible = true;
+            shownBytes = result.Bytes;
+            if (part is { IsPart: true } found)
+            {
+                partToggle.IsVisible = true;
+                partToggle.IsEnabled = found is { Complete: true, Bytes.Length: > 0 };
+            }
             textTab.IsVisible = ContentBytesView.DeclaresText(entry.Fragment.Encoding);
             textTab.Header = entry.Fragment.Encoding == ContentEncodingV1.Utf8 ? "Text (UTF-8)" : "Text (UTF-16)";
             Show(kept.Value);
@@ -341,7 +372,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     /// <summary>Shows <paramref name="chosen"/>: its first bounded window in hex and, where declared, as text.</summary>
     private void Show(ContentRange chosen)
     {
-        if (detail?.Bytes is not { } bytes || kept is not { } all) return;
+        if (shownBytes is not { } bytes || detail?.Entry is null || kept is not { } all) return;
         range = chosen;
         rangeProblem.IsVisible = false;
         first.Text = chosen.First.ToString(CultureInfo.InvariantCulture);
@@ -351,7 +382,9 @@ internal sealed class SessionContentWindow : Window, IDisposable
         hex.ItemsSource = ContentBytesView.Rows(window.Span, shown.First);
         CultureInfo culture = CultureInfo.CurrentCulture;
         rangeSummary.Text = "Chosen: " + chosen.Describe(culture)
-            + string.Create(culture, $", of the {all.Length:N0} kept")
+            + (showingPart
+                ? string.Create(culture, $", of the {all.Length:N0} bytes of its whole part")
+                : string.Create(culture, $", of the {all.Length:N0} kept"))
             + (shown == chosen
                 ? "."
                 : string.Create(culture, $". The view shows its first {shown.Length:N0}; a copy takes those, and Save writes all of them."));
@@ -375,9 +408,28 @@ internal sealed class SessionContentWindow : Window, IDisposable
         save.IsEnabled = true;
     }
 
+    /// <summary>
+    /// Switches the view between this record's buffer and the whole part it belongs to, which is offered only when every
+    /// buffer of the part was kept whole: a part missing a buffer is never shown as whole (I21, P2).
+    /// </summary>
+    private void TogglePart()
+    {
+        if (part is not { Complete: true, Bytes: { Length: > 0 } partBytes } || detail?.Bytes is not { } recordBytes
+            || detail.Entry is not { } entry)
+        {
+            return;
+        }
+
+        showingPart = !showingPart;
+        shownBytes = showingPart ? partBytes : recordBytes;
+        kept = showingPart ? new ContentRange(0, partBytes.Length - 1) : ContentBytesView.Kept(entry.Fragment);
+        partToggle.Content = showingPart ? "Show this buffer only" : "Show its whole part";
+        if (kept is { } all) Show(all);
+    }
+
     private async Task CopyAsync()
     {
-        if (detail?.Bytes is not { } bytes || kept is not { } all || range is not { } chosen || Clipboard is not { } clipboard) return;
+        if (shownBytes is not { } bytes || kept is not { } all || range is not { } chosen || Clipboard is not { } clipboard) return;
         ContentRange shown = ContentBytesView.Shown(chosen);
         await clipboard.SetTextAsync(ContentBytesView.Dump(ContentBytesView.Slice(bytes, all, shown).Span, shown.First));
         if (!closed) status.Text = "Copied " + shown.Describe(CultureInfo.CurrentCulture) + " as hex.";
@@ -389,7 +441,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     /// </summary>
     private async Task SaveAsync()
     {
-        if (saving || detail?.Bytes is not { } bytes || detail.Entry is not { } entry || kept is not { } all
+        if (saving || shownBytes is not { } bytes || detail?.Entry is not { } entry || kept is not { } all
             || range is not { } chosen) return;
         saving = true;
         try
@@ -399,14 +451,19 @@ internal sealed class SessionContentWindow : Window, IDisposable
             {
                 Title = "Save the chosen bytes",
                 SuggestedFileName = string.Create(CultureInfo.InvariantCulture,
-                    $"content-{record.StreamId}-{record.SourceEpoch}-{record.RecordOrdinal}-bytes-{chosen.First}-{chosen.Last}.bin"),
+                    $"content-{record.StreamId}-{record.SourceEpoch}-{record.RecordOrdinal}{(showingPart ? "-part" : string.Empty)}-bytes-{chosen.First}-{chosen.Last}.bin"),
                 DefaultExtension = "bin",
                 FileTypeChoices = [new("The bytes as they are") { Patterns = ["*.bin"] }],
             });
             if (file is null || closed) return;
             string destination = file.Path.LocalPath;
             await ExportFileWriter.WriteAsync(destination, ContentBytesView.Slice(bytes, all, chosen), overwrite: true);
-            if (!closed) status.Text = $"Saved {chosen.Describe(CultureInfo.CurrentCulture)} of {entry.ChunkName} to {destination}.";
+            if (!closed)
+            {
+                status.Text = showingPart
+                    ? $"Saved {chosen.Describe(CultureInfo.CurrentCulture)} of {part!.Name} to {destination}."
+                    : $"Saved {chosen.Describe(CultureInfo.CurrentCulture)} of {entry.ChunkName} to {destination}.";
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {

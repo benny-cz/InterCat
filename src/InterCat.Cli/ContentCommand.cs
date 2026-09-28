@@ -29,6 +29,7 @@ internal static class ContentCommand
         string? toText = command.TakeOption("--to");
         string? saveOption = command.TakeOption("--save");
         bool reveal = command.TryTakeFlag("--reveal");
+        bool wholePart = command.TryTakeFlag("--part");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -71,10 +72,19 @@ internal static class ContentCommand
         }
 
         SessionContentDetail detail;
+        SessionContentPartDetail? part = null;
         try
         {
-            detail = SessionContentQuery.ReadAt(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), sessionId,
-                generation, segment!, row, revealBytes: reveal || savePath is not null, cancellationToken);
+            SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            detail = SessionContentQuery.ReadAt(store, sessionId, generation, segment!, row,
+                revealBytes: (reveal || savePath is not null) && !wholePart, cancellationToken);
+
+            // A buffer of an HTTP head or body says whether its part was kept whole (M8); its bytes are read with --part.
+            if (detail.Available && detail.Observation.Mechanism == Mechanism.Http)
+            {
+                part = SessionContentPartQuery.Read(store, sessionId, detail.Observation,
+                    revealBytes: wholePart && (reveal || savePath is not null), cancellationToken);
+            }
         }
         catch (ArgumentException exception)
         {
@@ -88,7 +98,7 @@ internal static class ContentCommand
         }
 
         IReadOnlyList<ContentFact> facts = detail.Entry is { } found
-            ? ContentBytesView.Facts(found, detail.Observation, detail.Generation, CultureInfo.CurrentCulture)
+            ? ContentBytesView.Facts(found, detail.Observation, detail.Generation, CultureInfo.CurrentCulture, part)
             : [];
         if (json)
         {
@@ -105,6 +115,9 @@ internal static class ContentCommand
                     ? new { entry.Header.PolicyId, entry.Header.RecordLimit, entry.Header.Inspection }
                     : null,
                 Facts = facts,
+                Part = part is { IsPart: true } known
+                    ? new { known.Name, known.Complete, known.Length, Buffers = known.Buffers.Count, known.Statement }
+                    : null,
             }, JsonContracts.Indented));
             return detail.Available ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
         }
@@ -124,6 +137,17 @@ internal static class ContentCommand
         foreach (ContentFact fact in facts)
         {
             ConsoleUi.Field(fact.Label, fact.Value);
+        }
+
+        if (part is { IsPart: true })
+        {
+            ConsoleUi.Field("Part", part.Statement);
+        }
+
+        if (wholePart)
+        {
+            return await WholePartAsync(part, reveal, savePath, fromText, toText, overwrite, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (ContentBytesView.Kept(kept.Fragment) is not { } all)
@@ -199,16 +223,82 @@ internal static class ContentCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// The whole part a buffer belongs to, shown or saved as one: only when every buffer from its first to its last was
+    /// kept whole, since a part missing a buffer is never presented as whole (I21, P2).
+    /// </summary>
+    private static async Task<InterCatExitCode> WholePartAsync(SessionContentPartDetail? part, bool reveal, string? savePath,
+        string? fromText, string? toText, bool overwrite, CancellationToken cancellationToken)
+    {
+        if (part is not { IsPart: true })
+        {
+            ConsoleUi.Failure("--part applies to a buffer of an HTTP head or body; this record's belongs to no part.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (!part.Complete)
+        {
+            ConsoleUi.Warn("The part is not whole, so it is neither shown nor saved as one; each buffer is, on its own.");
+            return reveal || savePath is not null ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+        }
+
+        if (!reveal && savePath is null)
+        {
+            ConsoleUi.Note("Its bytes are hidden. Add --reveal to show the whole part, bounded and inert, or --save <file> "
+                + "to write it as it is.");
+            return InterCatExitCode.Success;
+        }
+
+        if (part.Bytes is not { Length: > 0 } bytes)
+        {
+            ConsoleUi.Warn(part.Length == 0 ? "The part holds no bytes, so there is nothing to show or save."
+                : "The part's bytes are not shown: " + part.Statement);
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        var all = new ContentRange(0, bytes.Length - 1);
+        ContentRange chosen = all;
+        if ((fromText is not null || toText is not null)
+            && !ContentBytesView.TryParseRange(fromText ?? "0", toText ?? all.Last.ToString(CultureInfo.InvariantCulture), all,
+                out chosen, out string? problem))
+        {
+            ConsoleUi.Failure(problem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (reveal)
+        {
+            ContentRange shown = ContentBytesView.Shown(chosen);
+            ConsoleUi.Heading("The whole part · inert hexadecimal");
+            ConsoleUi.Note("Chosen: " + chosen.Describe(CultureInfo.CurrentCulture) + " of " + part.Name
+                + (shown == chosen ? "." : $"; shown: its first {shown.Length.ToString("N0", CultureInfo.CurrentCulture)}."));
+            foreach (ContentHexRow line in ContentBytesView.Rows(ContentBytesView.Slice(bytes, all, shown).Span, shown.First))
+            {
+                ConsoleUi.Line("  " + line.Line);
+            }
+        }
+
+        if (savePath is not null)
+        {
+            await ExportFileWriter.WriteAsync(savePath, ContentBytesView.Slice(bytes, all, chosen), overwrite, cancellationToken)
+                .ConfigureAwait(false);
+            ConsoleUi.Success($"Saved {chosen.Describe(CultureInfo.CurrentCulture)} of {part.Name} to {savePath}, as they are.");
+        }
+
+        return InterCatExitCode.Success;
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
-        ConsoleUi.Line("             [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+        ConsoleUi.Line("             [--part] [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
         ConsoleUi.Line("  under. Its bytes are hidden unless --reveal shows them as inert hex (and, where the source");
         ConsoleUi.Line("  declares text, that text with control characters made visible), at most 64 KiB at once, or");
         ConsoleUi.Line("  --save writes them as they are to a new file. --from and --to choose the bytes, by offset in");
         ConsoleUi.Line("  the message, decimal or 0x hexadecimal. Content kept without consent to inspect it is never");
-        ConsoleUi.Line("  shown or saved. --json states the facts only.");
+        ConsoleUi.Line("  shown or saved. --json states the facts only. For a buffer of an HTTP head or body it says whether");
+        ConsoleUi.Line("  its part was kept whole, and --part shows or saves the whole part instead - only when it was.");
     }
 }

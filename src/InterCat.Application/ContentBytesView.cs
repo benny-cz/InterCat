@@ -254,7 +254,7 @@ public static class ContentBytesView
     /// were kept and which are missing, whether it is part of a reassembled whole, and what it was kept under.
     /// </summary>
     public static IReadOnlyList<ContentFact> Facts(SessionContentEntry entry, ObservationRowV1 row, long generation,
-        IFormatProvider? culture = null)
+        IFormatProvider? culture = null, SessionContentPartDetail? part = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(row);
@@ -302,9 +302,17 @@ public static class ContentBytesView
             : fragment.OriginalLength is null && fragment.Disposition != ContentDispositionV1.Whole
                 ? "Unknown: its source does not state the message's length"
                 : "None";
-        string reassembly = start > 0
-            ? string.Create(culture, $"One fragment, from byte {start:N0} of its message; it is not joined with any other record's content")
-            : "One fragment, from its message's first byte; it is not joined with any other record's content";
+        // A buffer its source numbers within a part says which one it is, and whether the part was kept whole (M8).
+        ContentPartBuffer? buffer = part is { IsPart: true }
+            ? part.Buffers.FirstOrDefault(candidate => candidate.Entry?.Entry == entry.Entry && candidate.Entry.ChunkName == entry.ChunkName)
+            : null;
+        string reassembly = buffer is not null
+            ? string.Create(culture, $"Buffer {buffer.Sequence:N0} of {part!.Name}, of {part.Buffers.Count:N0} recorded; ")
+                + (part.Complete ? "every buffer of the part was kept whole, so it can be shown as one"
+                    : "the part is not whole, so it is shown one buffer at a time")
+            : start > 0
+                ? string.Create(culture, $"One fragment, from byte {start:N0} of its message; it is not joined with any other record's content")
+                : "One fragment, from its message's first byte; it is not joined with any other record's content";
         string policy = string.Create(culture, $"{entry.Header.PolicyId}, at most {entry.Header.RecordLimit:N0} bytes a record; ")
             + (entry.Inspectable
                 ? "its bytes are shown only when you ask"
