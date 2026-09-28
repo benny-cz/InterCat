@@ -466,7 +466,8 @@ public static class LiveRecorder
             AdmittedEventPlan descriptor = session.AdmissionTable.FindBySourceIndex(
                 admitted.SourceIndex,
                 admitted.EventId,
-                admitted.Version)
+                admitted.Version,
+                admitted.Opcode)
                 ?? throw new InvalidDataException(
                     $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"
                     + $"v{admitted.Version}, which the compiled plan does not describe.");

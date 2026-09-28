@@ -105,6 +105,11 @@ policyCount  i32
   policyId     text
 ```
 
+A classic kernel record, one with no manifest (ADR-035), is stored with its header as its source gave it: its event
+class as `providerId`, `eventId` 0, its class's `version` and its `opcode`. Its schema entry is its class's at
+that version, shared by every opcode of the class a capture admits, which therefore share one layout and fingerprint
+(revision 221); the record's opcode, not its schema, says which event it is.
+
 ### RecordBatchFrame payload
 
 ```text

@@ -142,7 +142,8 @@ internal static partial class MeasureCommand
                     AdmittedEventPlan? plan = table.FindBySourceIndex(
                         admitted.SourceIndex,
                         admitted.EventId,
-                        admitted.Version);
+                        admitted.Version,
+                        admitted.Opcode);
                     if (plan is null)
                     {
                         continue;

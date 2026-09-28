@@ -61,6 +61,14 @@ public sealed record AdmittedEventPlan
     public required int SourceIndex { get; init; }
     public required Guid ProviderGuid { get; init; }
     public required int EventId { get; init; }
+
+    /// <summary>
+    /// A classic descriptor's opcode, which with its class and version is its identity (ADR-035's addendum); null for a
+    /// manifest descriptor, whose id and version are. Left out of a plan file when null, so manifest plans are unchanged.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? Opcode { get; init; }
+
     public required int Version { get; init; }
     public required string Name { get; init; }
     public required Mechanism Mechanism { get; init; }
@@ -151,7 +159,7 @@ public sealed class EventAdmissionTable
             knownProviders.Add(source.ProviderGuid);
             foreach (AdmittedEventPlan plan in source.Events)
             {
-                var key = new DescriptorKey(plan.ProviderGuid, plan.EventId, plan.Version);
+                var key = new DescriptorKey(plan.ProviderGuid, plan.EventId, plan.Version, plan.Opcode ?? ManifestOpcode);
                 if (!plans.TryAdd(key, plan))
                 {
                     throw new InvalidOperationException(
@@ -170,28 +178,32 @@ public sealed class EventAdmissionTable
 
     public bool IsKnownProvider(Guid providerGuid) => knownProviders.Contains(providerGuid);
 
-    public AdmittedEventPlan? Find(Guid providerGuid, int eventId, int version) =>
-        plans.TryGetValue(new(providerGuid, eventId, version), out AdmittedEventPlan? plan) ? plan : null;
+    /// <summary>The opcode a manifest descriptor's key carries: a manifest event's opcode is not part of its identity.</summary>
+    public const int ManifestOpcode = -1;
+
+    /// <summary>A descriptor's plan; <paramref name="opcode"/> is a classic record's, or <see cref="ManifestOpcode"/>.</summary>
+    public AdmittedEventPlan? Find(Guid providerGuid, int eventId, int version, int opcode = ManifestOpcode) =>
+        plans.TryGetValue(new(providerGuid, eventId, version, opcode), out AdmittedEventPlan? plan) ? plan : null;
 
     /// <summary>
     /// Classifies a descriptor without touching its body. Unknown versions are decode failures because
     /// the descriptor was requested but its shape is unknown; entirely unrequested descriptors are
     /// policy omissions. The distinction feeds separate health counters (I13).
     /// </summary>
-    public DescriptorAdmissionResolution Resolve(Guid providerGuid, int eventId, int version)
+    public DescriptorAdmissionResolution Resolve(Guid providerGuid, int eventId, int version, int opcode = ManifestOpcode)
     {
         if (!IsKnownProvider(providerGuid))
         {
             return new(DescriptorAdmissionOutcome.UnrequestedProvider, null);
         }
 
-        AdmittedEventPlan? plan = Find(providerGuid, eventId, version);
+        AdmittedEventPlan? plan = Find(providerGuid, eventId, version, opcode);
         if (plan is not null)
         {
             return new(DescriptorAdmissionOutcome.Admitted, plan);
         }
 
-        return HasDescriptor(providerGuid, eventId)
+        return HasDescriptor(providerGuid, eventId, opcode)
             ? new(DescriptorAdmissionOutcome.UnknownDescriptorVersion, null)
             : new(DescriptorAdmissionOutcome.DescriptorNotAdmitted, null);
     }
@@ -200,11 +212,12 @@ public sealed class EventAdmissionTable
     /// Resolves the plan an admitted record was produced by. Records carry the source index rather than a
     /// provider identity, so the decode stage resolves them without re-reading callback memory.
     /// </summary>
-    public AdmittedEventPlan? FindBySourceIndex(int sourceIndex, int eventId, int version)
+    public AdmittedEventPlan? FindBySourceIndex(int sourceIndex, int eventId, int version, int opcode)
     {
         foreach (AdmittedEventPlan plan in plans.Values)
         {
-            if (plan.SourceIndex == sourceIndex && plan.EventId == eventId && plan.Version == version)
+            if (plan.SourceIndex == sourceIndex && plan.EventId == eventId && plan.Version == version
+                && (plan.Opcode is null || plan.Opcode == opcode))
             {
                 return plan;
             }
@@ -217,11 +230,11 @@ public sealed class EventAdmissionTable
     /// True when the descriptor is admitted at some version. It separates an event the profile never
     /// wanted from one that arrived at a version the saved schema does not cover (section 18.3).
     /// </summary>
-    public bool HasDescriptor(Guid providerGuid, int eventId)
+    public bool HasDescriptor(Guid providerGuid, int eventId, int opcode = ManifestOpcode)
     {
         foreach (DescriptorKey key in plans.Keys)
         {
-            if (key.EventId == eventId && key.ProviderGuid == providerGuid)
+            if (key.EventId == eventId && key.ProviderGuid == providerGuid && key.Opcode == opcode)
             {
                 return true;
             }
@@ -230,5 +243,5 @@ public sealed class EventAdmissionTable
         return false;
     }
 
-    private readonly record struct DescriptorKey(Guid ProviderGuid, int EventId, int Version);
+    private readonly record struct DescriptorKey(Guid ProviderGuid, int EventId, int Version, int Opcode);
 }

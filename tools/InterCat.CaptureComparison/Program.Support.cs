@@ -18,7 +18,7 @@ internal static partial class Program
         var network = new List<NetworkTransferObservation>();
         foreach (AdmittedEvent record in admitted)
         {
-            AdmittedEventPlan? plan = table.FindBySourceIndex(record.SourceIndex, record.EventId, record.Version);
+            AdmittedEventPlan? plan = table.FindBySourceIndex(record.SourceIndex, record.EventId, record.Version, record.Opcode);
             if (plan is null)
             {
                 continue;

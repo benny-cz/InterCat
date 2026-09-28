@@ -304,7 +304,8 @@ internal static partial class Program
                 AdmittedEventPlan? plan = session.AdmissionTable.FindBySourceIndex(
                     admitted.SourceIndex,
                     admitted.EventId,
-                    admitted.Version);
+                    admitted.Version,
+                    admitted.Opcode);
                 if (plan is null)
                 {
                     outcome.RecordsWithoutAdmissionPlan++;

@@ -154,6 +154,33 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 continue;
             }
 
+            if (definition.Kind == SourceKind.KernelFlagGroup && definition.ClassicEventClass is { } classGuid)
+            {
+                // A classic class has no manifest; its layout is its registration, read from TDH (ADR-035).
+                int[] opcodes = [.. definition.AdmittedEvents.Select(intent => intent.Opcode).OfType<int>().Distinct()];
+                int[] versions = [.. definition.AdmittedEvents.Select(intent => intent.Version).Distinct()];
+                ProviderSchema? classic = versions.Length == 1
+                    ? metadata.TryReadClassic(classGuid, definition.DisplayName, versions[0], opcodes)
+                    : null;
+                if (classic is null)
+                {
+                    issues.Add(new(
+                        sourceId,
+                        SourcePlanIssueSeverity.Refusal,
+                        "The machine registers no layout for this classic event class at the version it is planned for."));
+                    continue;
+                }
+
+                SourceAdmissionPlan classicPlan = AdmissionPlanCompiler.Compile(definition, classic, index++, bodyPolicy: bodyPolicy);
+                plans.Add(classicPlan);
+                foreach (string diagnostic in classicPlan.Diagnostics)
+                {
+                    issues.Add(new(sourceId, SourcePlanIssueSeverity.Warning, diagnostic));
+                }
+
+                continue;
+            }
+
             if (definition.Kind != SourceKind.ManifestProvider)
             {
                 issues.Add(new(

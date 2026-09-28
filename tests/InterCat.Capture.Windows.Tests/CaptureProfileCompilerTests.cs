@@ -284,7 +284,7 @@ public sealed class CaptureProfileCompilerTests
             });
         Assert.All(plan.Providers, provider => Assert.Equal(4, provider.Level));
 
-        // RPC joined once its records bind, pair into calls and reach the ladder; ALPC is still unmeasured.
+        // RPC joined once its records bind, pair into calls and reach the ladder; named pipes are still unmeasured.
         Assert.Contains(
             plan.SourceDecisions,
             decision => decision.SourceId == WindowsSourceCatalog.RpcSourceId
@@ -292,9 +292,12 @@ public sealed class CaptureProfileCompilerTests
                 && decision.Overhead == OverheadClass.Low);
         Assert.Contains(
             plan.SourceDecisions,
-            decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId
+            decision => decision.SourceId == WindowsSourceCatalog.KernelFileSourceId
                 && decision.State == ProfileSourceDecisionState.Omitted
                 && decision.Reason.Contains("unmeasured", StringComparison.OrdinalIgnoreCase));
+
+        // ALPC measured Moderate, so it is never Explore's; an opt-in profile admits it (ADR-034, ADR-035).
+        Assert.DoesNotContain(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelAlpcSourceId);
     }
 
     [Fact(DisplayName = "IC-012: a missing required source blocks Explore instead of silently weakening it")]

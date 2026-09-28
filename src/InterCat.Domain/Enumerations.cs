@@ -145,6 +145,12 @@ public enum SourceField : ushort
 
     /// <summary>A file I/O byte offset.</summary>
     FileByteOffset = 14,
+
+    /// <summary>
+    /// An ALPC message id. The kernel reuses one within seconds across processes, so it joins a send to a receive only
+    /// inside one call's window and thread chain, and is never an identity by itself (ADR-034).
+    /// </summary>
+    AlpcMessageId = 15,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

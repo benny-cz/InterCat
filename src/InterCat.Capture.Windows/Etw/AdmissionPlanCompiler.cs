@@ -44,7 +44,8 @@ public static class AdmissionPlanCompiler
             var versions = new List<ProviderSchemaEvent>();
             foreach (ProviderSchemaEvent candidate in schema.Events)
             {
-                if (candidate.EventId == intent.EventId)
+                // A classic class's events share an id, 0, and are told apart by their opcode (ADR-035's addendum).
+                if (candidate.EventId == intent.EventId && (intent.Opcode is null || candidate.OpcodeValue == intent.Opcode))
                 {
                     versions.Add(candidate);
                 }
@@ -367,6 +368,7 @@ public static class AdmissionPlanCompiler
             SourceIndex = sourceIndex,
             ProviderGuid = schema.ProviderGuid,
             EventId = descriptor.EventId,
+            Opcode = intent.Opcode,
             Version = descriptor.Version,
             Name = intent.Name,
             Mechanism = intent.Mechanism,

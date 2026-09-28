@@ -44,7 +44,14 @@ public sealed record AdmittedEventIntent(
     ObservationLayer Layer,
     ObservationKind Kind,
     Direction Direction,
-    IReadOnlyList<AdmittedFieldIntent> Fields);
+    IReadOnlyList<AdmittedFieldIntent> Fields)
+{
+    /// <summary>
+    /// A classic kernel event's opcode, which alone tells its class's events apart; null for a manifest event, whose id
+    /// does (ADR-035's addendum). A classic intent's event id is 0, as its header has it.
+    /// </summary>
+    public int? Opcode { get; init; }
+}
 
 /// <summary>
 /// A candidate Windows source with everything §4.3 requires before a capture may request it.
@@ -79,6 +86,15 @@ public sealed record WindowsSourceDefinition
 
     /// <summary>Mechanisms this source could serve but the current enablement deliberately omits.</summary>
     public IReadOnlyList<Mechanism> MechanismsOmittedByProfile { get; init; } = [];
+
+    /// <summary>
+    /// A kernel flag group's classic event class, whose registration TDH reads for its layout (ADR-035); null for a
+    /// manifest provider.
+    /// </summary>
+    public Guid? ClassicEventClass { get; init; }
+
+    /// <summary>The kernel flags that enable a kernel flag group in a private system logger; 0 for a manifest provider.</summary>
+    public ulong KernelFlags { get; init; }
 }
 
 /// <summary>
@@ -94,6 +110,19 @@ public static class WindowsSourceCatalog
     public const string KernelFileSourceId = "etw/manifest/Microsoft-Windows-Kernel-File";
     public const string KernelMemorySourceId = "etw/manifest/Microsoft-Windows-Kernel-Memory";
     public const string KernelAlpcSourceId = "etw/kernel-flag/ALPC";
+
+    /// <summary>The classic event class of the kernel's ALPC events, measured on this workstation (ADR-035's addendum).</summary>
+    public static readonly Guid AlpcEventClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+
+    /// <summary><c>EVENT_TRACE_FLAG_ALPC</c>.</summary>
+    public const ulong AlpcKernelFlag = 0x0010_0000;
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> AlpcMessageFields =
+    [
+        new("MessageID", FieldRole.CorrelationKey,
+            Notes: "Reused within seconds across processes: a join key inside one call's window and thread chain only (ADR-034).",
+            SourceField: SourceField.AlpcMessageId),
+    ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> TcpTransferFields =
     [
@@ -497,15 +526,28 @@ public static class WindowsSourceCatalog
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "A kernel flag group, not a manifest provider: it needs a system logger session, which the M0 "
-                + "owned-session experiment does not create (section 18.2).",
-            StartupBehaviour = "Unmeasured.",
+                "A kernel flag group, not a manifest provider: only a private system logger receives it, and a capture "
+                + "whose profile needs it makes its one session one, the kernel flags first (ADR-035).",
+            StartupBehaviour = "No rundown: a message in flight at capture start is seen only from its next event.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Moderate,
+            OverheadEvidence = "bench/results/alpc-impact-20260927T171439Z/impact.json",
+            ClassicEventClass = AlpcEventClass,
+            KernelFlags = AlpcKernelFlag,
+            AdmittedEvents =
+            [
+                new(0, 2, "ALPC message send", Mechanism.Alpc, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, AlpcMessageFields) { Opcode = 33 },
+                new(0, 2, "ALPC message receive", Mechanism.Alpc, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, AlpcMessageFields) { Opcode = 34 },
+            ],
             Notes =
             [
                 "There is no registered ALPC manifest provider to inventory, so its absence from the registry is expected.",
                 "Documented send and receive payloads expose a message identifier, not a size or content contract (section 4.1).",
+                "A classic event: its header names ALPC's class with event id 0 and version 2, and only its opcode - 33 send, "
+                + "34 receive - tells the two apart; TDH reads their one 32-bit message id from the class's registration.",
+                "Collection alone measured 1.86 CPU pp at about 1,160 events a second, Moderate, so it is never in Explore "
+                + "(ADR-034's addendum); the profile that admits it states its own class once measured through the product.",
             ],
         };
 

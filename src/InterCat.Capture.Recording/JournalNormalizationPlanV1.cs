@@ -123,7 +123,8 @@ public sealed record JournalNormalizationPlanV1
             descriptor.SourceIndex == checked((int)envelope.StreamId - 1)
             && descriptor.ProviderGuid == envelope.Header.ProviderId
             && descriptor.EventId == envelope.Header.EventId
-            && descriptor.Version == envelope.Header.Version)
+            && descriptor.Version == envelope.Header.Version
+            && (descriptor.Opcode is null || descriptor.Opcode == envelope.Header.Opcode))
             ?? throw new InvalidDataException(
                 $"Record {envelope.RecordOrdinal} has no retained descriptor interpretation for its stream and event.");
         if (schema.ProviderId != plan.ProviderGuid
@@ -147,8 +148,10 @@ public sealed record JournalNormalizationPlanV1
             throw new InvalidDataException("A normalizer-plan-v1 file names its contract and 1-1,024 descriptors.");
         }
 
-        var keys = new HashSet<(int Source, int Event, int Version)>();
-        var schemas = new HashSet<(Guid Provider, int Event, int Version)>();
+        // A classic descriptor is its class, id 0, version and opcode (ADR-035's addendum); a manifest one has no opcode.
+        var keys = new HashSet<(int Source, int Event, int Version, int Opcode)>();
+        var schemas = new HashSet<(Guid Provider, int Event, int Version, int Opcode)>();
+        var fingerprints = new Dictionary<(Guid Provider, int Event, int Version), string>();
         foreach (AdmittedEventPlan descriptor in Descriptors)
         {
             if (descriptor is null
@@ -156,17 +159,22 @@ public sealed record JournalNormalizationPlanV1
                 || descriptor.ProviderGuid == Guid.Empty
                 || descriptor.EventId is < 0 or > ushort.MaxValue
                 || descriptor.Version is < 0 or > byte.MaxValue
+                || descriptor.Opcode is < 0 or > byte.MaxValue
                 || string.IsNullOrWhiteSpace(descriptor.SchemaFingerprint)
                 || descriptor.Slots is null or { Count: > AdmissionPlanCompiler.MaximumSlots }
                 || descriptor.Slots.Count(slot => slot?.Kind == AdmittedSlotKind.Address128) > AdmittedEvent.MaximumAddresses
                 || descriptor.FieldReport is null
                 || descriptor.BodyPolicy is null
-                || !keys.Add((descriptor.SourceIndex, descriptor.EventId, descriptor.Version))
-                || !schemas.Add((descriptor.ProviderGuid, descriptor.EventId, descriptor.Version)))
+                || !keys.Add((descriptor.SourceIndex, descriptor.EventId, descriptor.Version, descriptor.Opcode ?? -1))
+                || !schemas.Add((descriptor.ProviderGuid, descriptor.EventId, descriptor.Version, descriptor.Opcode ?? -1))
+                || (fingerprints.TryGetValue((descriptor.ProviderGuid, descriptor.EventId, descriptor.Version), out string? shared)
+                    && !string.Equals(shared, descriptor.SchemaFingerprint, StringComparison.Ordinal)))
             {
                 throw new InvalidDataException("A retained normalizer descriptor is incomplete, out of bounds or duplicated.");
             }
 
+            // One journal schema entry serves every opcode of a class at a version, so they must share its fingerprint.
+            fingerprints[(descriptor.ProviderGuid, descriptor.EventId, descriptor.Version)] = descriptor.SchemaFingerprint;
             CaptureBodyAdmissionPolicies.EnsureSupported(descriptor.BodyPolicy);
         }
     }

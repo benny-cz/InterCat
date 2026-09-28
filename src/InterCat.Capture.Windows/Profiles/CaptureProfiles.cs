@@ -43,7 +43,7 @@ public static class CaptureProfileCatalog
                 new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
                 new(WindowsSourceCatalog.KernelNetworkSourceId, true, true, "Validated TCP and UDP endpoints, direction and transport-observed byte counts."),
                 new(WindowsSourceCatalog.RpcSourceId, false, true, "Validated RPC call metadata when its capture impact is known."),
-                new(WindowsSourceCatalog.KernelAlpcSourceId, false, true, "ALPC metadata when a bounded adapter and capture impact are known."),
+
                 new(WindowsSourceCatalog.KernelFileSourceId, false, true, "Named-pipe metadata when its whole-machine cost is acceptable."),
             ],
             PreserveExtendedData = true,

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 220 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 221 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 221 — ALPC's send and receive admitted by opcode (ADR-035):**
+  - The ALPC source compiles from its class's registration into two plans told apart only by opcode, each admitting a
+    message id (`AlpcMessageId`, source field 15); every descriptor key, lookup and plan check now carries the opcode.
+  - Send and receive share one journal schema entry; manifest plans and journals are byte for byte unchanged, and
+    Explore no longer lists ALPC, which measured Moderate. No profile enables it yet.
 
 - **Revision 220 — a classic kernel event's layout from TDH (ADR-035):**
   - `TdhClassicSchemaReader` gives TDH a synthetic header (class, opcode, version) and reads the class's registered
@@ -1958,9 +1964,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         call.
      3. Resolve an RPC call's other end through ALPC (ADR-034) as an opt-in profile - collection alone measured Moderate
         in revision 188, so never Explore - in order: done in revision 218, ADR-035 for a private, uniquely named, owned
-        system logger in the capture's one session, checked in the product's session conditions; next, the owned
-        session's kernel flags (first in its plan), admission for ALPC's classic kernel events, which have no manifest
-        (the admission compiler reads manifests today), and its measured class through the product path; the relation
+        system logger in the capture's one session, checked in the product's session conditions; done in revisions
+        220 and 221, admission for ALPC's classic send and receive by opcode, from the class's registered layout; next,
+        the owned session's kernel flags (first in its plan), a profile that admits them, and its measured class
+        through the product path; the relation
         rule implementing ADR-034's chain, with its contract; then RPC peers in the graph, ALPC as transport evidence
         beneath a call and never a second count (§5.1, M3's exit gate).
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
@@ -2020,6 +2027,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 221 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,324 tests: 1,320
+  passed, 4 skipped**, zero failures, four of them taking ALPC's send and receive from a class layout to the journal
+  and a replay's plan selection.
 - Revision 220 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,320 tests: 1,316
   passed, 4 skipped**, zero failures, one of them reading ALPC's registered layout from this machine's TDH.
 - Revision 219 changed no product code: Debug and Release both ran **1,317 tests: 1,313 passed, 4 skipped**. The session

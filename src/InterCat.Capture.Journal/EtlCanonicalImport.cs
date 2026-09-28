@@ -296,7 +296,8 @@ public static class EtlCanonicalImport
     /// <summary>Resolves the descriptor plan one admitted record was admitted against.</summary>
     private sealed class AdmittedEventPlanIndex
     {
-        private readonly Dictionary<(int Source, int EventId, int Version), AdmittedEventPlan> plans = [];
+        // A classic descriptor's opcode is part of its key; a manifest descriptor's is not (ADR-035's addendum).
+        private readonly Dictionary<(int Source, int EventId, int Version, int Opcode), AdmittedEventPlan> plans = [];
 
         public AdmittedEventPlanIndex(IReadOnlyList<SourceAdmissionPlan> sources)
         {
@@ -305,13 +306,14 @@ public static class EtlCanonicalImport
             {
                 foreach (AdmittedEventPlan plan in source.Events)
                 {
-                    plans[(plan.SourceIndex, plan.EventId, plan.Version)] = plan;
+                    plans[(plan.SourceIndex, plan.EventId, plan.Version, plan.Opcode ?? EventAdmissionTable.ManifestOpcode)] = plan;
                 }
             }
         }
 
         public AdmittedEventPlan Resolve(in AdmittedEvent admitted) =>
-            plans.TryGetValue((admitted.SourceIndex, admitted.EventId, admitted.Version), out AdmittedEventPlan? plan)
+            plans.TryGetValue((admitted.SourceIndex, admitted.EventId, admitted.Version, admitted.Opcode), out AdmittedEventPlan? plan)
+                || plans.TryGetValue((admitted.SourceIndex, admitted.EventId, admitted.Version, EventAdmissionTable.ManifestOpcode), out plan)
                 ? plan
                 : throw new InvalidDataException(
                     $"An admitted record names descriptor {admitted.SourceIndex}/{admitted.EventId}/"

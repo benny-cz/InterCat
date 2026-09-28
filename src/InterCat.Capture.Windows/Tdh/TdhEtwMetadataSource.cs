@@ -14,6 +14,19 @@ public sealed class TdhEtwMetadataSource : IEtwMetadataSource
     public string? UnavailableReason =>
         IsAvailable ? null : "ETW provider metadata is available only on Windows.";
 
+    public ProviderSchema? TryReadClassic(Guid classGuid, string className, int version, IReadOnlyList<int> opcodes)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        try
+        {
+            return TdhClassicSchemaReader.Read(classGuid, className, version, opcodes);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
     public RegisteredProvider? TryResolveProvider(string providerName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);

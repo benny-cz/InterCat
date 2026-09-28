@@ -38,6 +38,16 @@ stages no files and publishes no generation. Passing means this evidence can be 
 the current implementation; it does not guarantee a later segment write or commit will succeed. Plain
 `icat rederive` uses the same replay path before publishing a replacement generation.
 
+## Classic kernel descriptors (revision 221)
+
+A classic kernel event, such as ALPC's send and receive (ADR-035), has no manifest. Its descriptor's `providerGuid`
+is its event class, its `eventId` is 0 and its `version` is the class's, as its header has them, and an `opcode`
+member names which of the class's events it is: 33 an ALPC send, 34 a receive. The opcode is part of the descriptor's
+key, so the stream/event/version and provider/event/version keys above are unique with it, and a record's plan is
+selected by its header's opcode too. A class's descriptors at one version share one journal schema entry, so they must
+share one layout fingerprint, and a file where they do not is refused. A manifest descriptor has no `opcode` member,
+so its plan file is exactly what it was before this revision.
+
 ## IPv6 address slots (revision 174)
 
 A descriptor may admit up to two IPv6 endpoint addresses (ADR-029). Such a slot has kind 6, `Address128`, width 16, and

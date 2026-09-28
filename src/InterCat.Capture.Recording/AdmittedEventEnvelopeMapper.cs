@@ -59,6 +59,7 @@ public sealed class AdmittedEventEnvelopeMapper
         if (admitted.SourceIndex != plan.SourceIndex
             || admitted.EventId != plan.EventId
             || admitted.Version != plan.Version
+            || (plan.Opcode is { } opcode && admitted.Opcode != opcode)
             || !WidthAdmitted(plan, RecordWidth(admitted, plan)))
         {
             throw new InvalidDataException(
@@ -319,6 +320,7 @@ public sealed class AdmittedEventEnvelopeMapper
             && envelope.Header.ProviderId == plan.ProviderGuid
             && envelope.Header.EventId == plan.EventId
             && envelope.Header.Version == plan.Version
+            && (plan.Opcode is not { } classicOpcode || envelope.Header.Opcode == classicOpcode)
             && WidthAdmitted(plan, envelope.PointerSize)
             ? admitted
             : throw new InvalidDataException(

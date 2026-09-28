@@ -29,4 +29,10 @@ public interface IEtwMetadataSource
     int CountPublishedProviders();
 
     ManifestReadResult TryReadManifest(Guid providerGuid);
+
+    /// <summary>
+    /// A classic kernel event class's layout at a version, for the opcodes asked for, as the machine registers it
+    /// (ADR-035); null when none of them is described.
+    /// </summary>
+    ProviderSchema? TryReadClassic(Guid classGuid, string className, int version, IReadOnlyList<int> opcodes);
 }
