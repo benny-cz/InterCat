@@ -45,7 +45,7 @@
           <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
                ranks a row whose records recorded no size after every measured row, never as zero (§5.2). -->
           <!-- The basis a ranking is on stays on screen beside it (§3.2): observations or operations, in full on hover. -->
-          <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
+          <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
             <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
               <TextBlock Text="Rank by" Classes="muted" FontSize="11" />
               <TextBlock x:Name="RankingBasisText" Text="{Binding RankingBasis}" Classes="muted" FontSize="9"
@@ -72,6 +72,14 @@
                 </DataTemplate>
               </ComboBox.SelectionBoxItemTemplate>
             </ComboBox>
+            <!-- §5.2's rate: a count or sum per second over the interval the rows count, in the order of its total. It sits
+                 on the selector's own row, since the rail's height is the ranked rows'; a median or a distinct count has
+                 no rate, so it steps aside for them. -->
+            <ToggleButton x:Name="PerSecondToggle" Grid.Column="2" Content="/s" Margin="6,0,0,0" MinHeight="28" MinWidth="30"
+                          FontSize="11" Padding="6,0" VerticalAlignment="Stretch"
+                          IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
+                          ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count. The rows keep the order of their totals; a whole session states no interval, so brush one or zoom."
+                          AutomationProperties.Name="Per second: state each row's value per second over the interval the rows count" />
           </Grid>
           <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding ShowsRankingNote}" ToolTip.Tip="{Binding RankingNoteDetail}"

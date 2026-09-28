@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 208 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 209 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 209 — §5.2's rate: a per-second reading of the ranking (§6.1, metrics-v1 §7):**
+  - A "/s" toggle beside Rank by states each row's count or sum per second over the whole interval the rows count, in
+    the order of its total, which the row's second line keeps; medians and peers have no rate, and it steps aside.
+  - A whole session states no interval (its first-to-last span is not one), so its rows keep totals and the note says
+    to brush or zoom; the choice stays set, travels with the ranking, and equals `icat metric --metric rate` per process.
 
 - **Revision 208 — a redacted package is shared as it is, never called unredacted (§11.3):**
   - Found by a live pass over the sharing paths on a real capture, which otherwise held: the package reproduced the
@@ -1919,8 +1925,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      cells take it when they plot a value that can be unknown. The ranked and interval tables state it in words.
    - §6.1's metric selector ranks the machine and group rungs by records, bytes sent or received (revision 189), or RPC
      calls made or served (revision 190), and a process's channels by its own bytes on each (revision 192), bytes sent and
-     received and RPC errors (revision 196), RPC call and serve time (revision 199), and peers (revision 200). Still open:
-     a per-second display for rate, which orders rows as its numerator does, and bytes in the persisted overview itself
+     received and RPC errors (revision 196), RPC call and serve time (revision 199), and peers (revision 200); each count or
+     sum reads per second over the ranked interval since revision 209. Still open: bytes in the persisted overview itself
      (overview-index-v1 §4 sums none), so that edges, channels and intervals carry them without a read and the graph and
      timeline can draw volume. Meanwhile revision 206 reads the interval table's bytes when it is shown.
      Each metric is listed under its basis, which stays beside the selector, since revision 201.
@@ -1930,6 +1936,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 209 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,299 tests: 1,295
+  passed, 4 skipped**, zero failures. A first layout put the toggle on a line of its own; the full UI suite caught the
+  rail losing a ranked row at 1080 × 700 (the multi-selection test found its third row unrealized), and it moved beside
+  the selector.
 - Revision 208 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,297 tests: 1,293
   passed, 4 skipped**, zero failures. The live pass recorded a 20-second dense capture with `icat record` from the
   elevated shell into scratch, made every sharing preset and a ranked export from it, opened the redacted package in the

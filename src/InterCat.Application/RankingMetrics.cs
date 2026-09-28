@@ -99,6 +99,12 @@ public static class RankingMetrics
     /// calls taken together, never a sum of their values.
     /// </summary>
     public static bool IsDuration(RankingMetric metric) => metric is RankingMetric.RpcCallTime or RankingMetric.RpcServeTime;
+
+    /// <summary>
+    /// Whether <paramref name="metric"/> is a count or a sum over an interval, and so has a rate: its value over the whole
+    /// interval divided by it (metrics-v1 §7). A median and a distinct count do not add over time, and have none.
+    /// </summary>
+    public static bool IsAdditive(RankingMetric metric) => !IsDuration(metric) && metric != RankingMetric.ActivePeers;
 }
 
 /// <summary>

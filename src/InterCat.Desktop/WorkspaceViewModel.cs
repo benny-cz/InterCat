@@ -76,7 +76,8 @@ public sealed record WorkspaceNavigationMemento(
     Direction? SelectedTimelineDirection = null,
     int? SelectedChannelEnd = null,
     IReadOnlyList<NavigationState>? Forward = null,
-    RankingMetric RankBy = RankingMetric.Records);
+    RankingMetric RankBy = RankingMetric.Records,
+    bool PerSecond = false);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1305,7 +1306,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
-        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy);
+        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1399,6 +1400,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         AfterNavigation();
         RankBy = saved.RankBy;
+        PerSecond = saved.PerSecond;
         if (saved.SelectedTimelineMechanism is { } savedMechanism)
         {
             if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))
@@ -2463,7 +2465,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
     private IReadOnlyList<RungRow> LadderRows()
     {
-        IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes);
+        IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes, RateSeconds);
         if (!realOverview || ladder.Current.Level != DetailLevel.ProcessInstance
             || ladder.Current.Focus is not { } focus || !Guid.TryParse(focus.Key, out Guid id))
         {

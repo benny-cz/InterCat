@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -807,6 +808,66 @@ public sealed class RankingSelectorTests
         await workspace.RankingReady;
         Assert.False(workspace.GraphDrawsUnmeasured);
         Assert.All(workspace.GraphDisplay.Edges, edge => Assert.False(edge.Unmeasured));
+    });
+
+    [Fact(DisplayName = "§5.2: per second states each row's value over the whole ranked interval, in its total's order, as icat metric's rate does")]
+    public void PerSecondStatesTheRateOverTheRankedInterval() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+
+        // At the whole session there is no interval to divide by: the rows keep their totals, and the note says why.
+        Assert.True(workspace.OffersPerSecond);
+        workspace.PerSecond = true;
+        Assert.True(workspace.ShowsRankingNote);
+        Assert.Equal("Per second needs an interval: brush one or zoom", workspace.RankingNote);
+        Assert.All(workspace.RungRows, row => Assert.Null(row.RankedFigure));
+
+        // Brushed to [10, 20), one microsecond: records per second, with each row's records still on its second line.
+        var interval = new TimeRange(10, 20);
+        string over = OperationText.Duration(1_000, CultureInfo.CurrentCulture);
+        workspace.SelectInterval(interval);
+        await workspace.IntervalReady;
+        Assert.Equal("Records · per second over " + over, workspace.RankingNote);
+        RungRow first = workspace.RungRows[0];
+        Assert.Equal(WorkspaceRowBuilder.DescribeRate(first.Source.ObservationCount / 1e-6) + "/s", first.Figure);
+        Assert.Contains($"{first.Observations} records", first.DetailLine, StringComparison.Ordinal);
+
+        // Bytes sent per second: the client's 300 bytes over the microsecond, what icat metric's rate of bytes sent answers,
+        // and the rows in the order of their totals; the server, which sent nothing, says so rather than a zero rate.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        MetricResult rate = SessionMetrics.Evaluate(session.Store, new MetricRequest
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Rate,
+            RateNumerator = Metric.BytesSent,
+            ByteDomain = ByteDomain.TransportObserved,
+            AccountingSide = AccountingSide.SendSide,
+            Grouping = LaneGrouping.InstanceOnly,
+            Interval = interval,
+        });
+        decimal perSecond = rate.Groups.Single(group => group.Process?.Id == client.Id).Rate!.PerSecond!.Value;
+        RungRow sender = workspace.RungRows[0];
+        Assert.Equal(client.GroupKey, sender.Key);
+        Assert.Equal(WorkspaceRowBuilder.DescribeByteRate((double)perSecond), sender.Figure);
+        Assert.Equal(WorkspaceRowBuilder.DescribeByteRate(300 / 1e-6), sender.Figure);
+        Assert.Contains(WorkspaceRowBuilder.DescribeByteRate(300 / 1e-6).Replace("/s", " per second", StringComparison.Ordinal)
+            + ", " + WorkspaceRowBuilder.DescribeSize(300) + " sent", sender.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("no sends", workspace.RungRows.Single(row => row.Label.StartsWith("server", StringComparison.Ordinal)).Figure);
+        Assert.EndsWith(" · per second over " + over, workspace.RankingNote, StringComparison.Ordinal);
+        Assert.Contains("divided by it (metrics-v1 §7)", workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // The choice travels with the ranking to the next publication.
+        Assert.True(workspace.CaptureNavigation().PerSecond);
+
+        // A median has no rate: the choice steps aside, and the rows state their medians.
+        workspace.RankBy = RankingMetric.RpcCallTime;
+        await workspace.RankingReady;
+        Assert.False(workspace.OffersPerSecond);
+        Assert.DoesNotContain("per second", workspace.RankingNote, StringComparison.Ordinal);
     });
 
     /// <summary>

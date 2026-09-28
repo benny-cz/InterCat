@@ -121,15 +121,18 @@ public static class LadderRowBuilder
 {
     /// <summary>
     /// The rung's presentation rows. Where <paramref name="bytesSummed"/> is false, as for a real session whose overview
-    /// sums no bytes, a row with no byte total states none rather than calling its bytes unknown.
+    /// sums no bytes, a row with no byte total states none rather than calling its bytes unknown. With
+    /// <paramref name="rateSeconds"/>, a count or sum is stated per second over that whole interval (metrics-v1 §7), and
+    /// the total it divides stays on the row's second line.
     /// </summary>
-    public static IReadOnlyList<RungRow> Rows(LadderView view, ThemeMode mode, bool bytesSummed = true)
+    public static IReadOnlyList<RungRow> Rows(LadderView view, ThemeMode mode, bool bytesSummed = true, double? rateSeconds = null)
     {
         ArgumentNullException.ThrowIfNull(view);
 
         var rows = new List<RungRow>(view.Rows.Count);
         foreach (LadderRow row in view.Rows)
         {
+            bool perSecond = rateSeconds is > 0 && (row.Ranked is null || RankingMetrics.IsAdditive(row.Ranked.Metric));
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(row.Mechanism));
             rows.Add(new RungRow(
                 row.Key,
@@ -143,13 +146,62 @@ public static class LadderRowBuilder
                 NavigationState.Name(row.DescendsTo),
                 row)
             {
-                RankedFigure = row.Ranked is { } ranked ? RankedFigure(ranked) : null,
-                RankedSpoken = row.Ranked is { } spoken ? RankedSpoken(spoken) : null,
+                RankedFigure = perSecond ? RateFigure(row, rateSeconds!.Value)
+                    : row.Ranked is { } ranked ? RankedFigure(ranked) : null,
+                RankedSpoken = perSecond ? RateSpoken(row, rateSeconds!.Value)
+                    : row.Ranked is { } spoken ? RankedSpoken(spoken) : null,
             });
         }
 
         return rows;
     }
+
+    /// <summary>
+    /// A count or sum per second, as the right column shows it: records, calls or errors "214/s", bytes "147 KB/s". A row
+    /// with no measured value keeps its words - "unmeasured", "no sends" - since nothing divides into a rate (R21).
+    /// </summary>
+    public static string RateFigure(LadderRow row, double seconds)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(seconds);
+        if (row.Ranked is not { } ranked)
+        {
+            return WorkspaceRowBuilder.DescribeRate(row.ObservationCount / seconds) + "/s";
+        }
+
+        if (ranked.Value is not { } value)
+        {
+            return RankedFigure(ranked);
+        }
+
+        return IsBytes(ranked.Metric)
+            ? WorkspaceRowBuilder.DescribeByteRate(value / seconds)
+            : WorkspaceRowBuilder.DescribeRate(value / seconds) + "/s";
+    }
+
+    /// <summary>The rate as a sentence says it, before the total it divides and what stands behind it.</summary>
+    public static string RateSpoken(LadderRow row, double seconds)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(seconds);
+        if (row.Ranked is not { } ranked)
+        {
+            return WorkspaceRowBuilder.DescribeRate(row.ObservationCount / seconds) + " records per second";
+        }
+
+        if (ranked.Value is not { } value)
+        {
+            return RankedSpoken(ranked);
+        }
+
+        string rate = IsBytes(ranked.Metric)
+            ? WorkspaceRowBuilder.DescribeByteRate(value / seconds).Replace("/s", " per second", StringComparison.Ordinal)
+            : WorkspaceRowBuilder.DescribeRate(value / seconds) + " per second";
+        return rate + ", " + RankedSpoken(ranked);
+    }
+
+    private static bool IsBytes(RankingMetric metric) =>
+        metric is RankingMetric.BytesSent or RankingMetric.BytesReceived or RankingMetric.EndpointBytes;
 
     /// <summary>
     /// A ranking's value in the right column. Under a byte ranking: the measured sum, or "unmeasured" when the row's

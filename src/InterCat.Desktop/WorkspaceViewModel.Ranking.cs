@@ -65,6 +65,7 @@ public sealed partial class WorkspaceViewModel
     ]);
 
     private RankingMetric rankBy = RankingMetric.Records;
+    private bool perSecond;
     private readonly RankingReads<SessionByteMeasures> byteReads = new((source, scope, cancellation) =>
         source.ByteMeasuresAsync(scope, cancellation));
     private readonly RankingReads<SessionCallMeasures> callReads = new((source, scope, cancellation) =>
@@ -119,6 +120,52 @@ public sealed partial class WorkspaceViewModel
     public RankingMetric AppliedRanking => ShownMeasures is null || !RanksThisRung ? RankingMetric.Records : rankBy;
 
     /// <summary>
+    /// Whether the ranked table states each row's value per second over the interval the rows count: §5.2's rate, the value
+    /// over the whole interval divided by that interval (metrics-v1 §7). It orders the rows as the value does, so it is a
+    /// way of reading the ranking rather than a ranking of its own. A whole session states no interval to divide by, and
+    /// its rows keep their totals until one is brushed or zoomed to.
+    /// </summary>
+    public bool PerSecond
+    {
+        get => perSecond;
+        set
+        {
+            if (perSecond == value || disposed) return;
+            perSecond = value;
+            OnPropertyChanged();
+            Rerank();
+        }
+    }
+
+    /// <summary>Whether the chosen ranking has a rate to state: a count or a sum, not a median or a distinct count.</summary>
+    public bool OffersPerSecond => ShowsRankingChoice && RankingMetrics.IsAdditive(rankBy);
+
+    /// <summary>
+    /// The seconds each row's value is divided by when it is stated per second: the whole interval the rows count. Null
+    /// when rows are not stated per second, or count the whole session, which states no interval (metrics-v1 §7 refuses
+    /// the span between the first and last record as one).
+    /// </summary>
+    private double? RateSeconds => perSecond && OffersPerSecond && RankingMetrics.IsAdditive(AppliedRanking)
+        && CountedScope is { } interval
+            ? interval.SpanTicks / (double)WorkspaceTime.TicksPerSecond
+            : null;
+
+    /// <summary>What the per-second choice adds to the note: the interval its rates divide by, or why there are none.</summary>
+    private string PerSecondNote => !perSecond || !OffersPerSecond ? string.Empty
+        : CountedScope is { } interval
+            ? " · per second over " + OperationText.Duration(interval.SpanTicks * 100, CultureInfo.CurrentCulture)
+        : " · per second needs an interval: brush one or zoom";
+
+    /// <summary>The per-second choice in full, for the note's tooltip and a screen reader.</summary>
+    private string PerSecondDetail => !perSecond || !OffersPerSecond ? string.Empty
+        : CountedScope is { } interval
+            ? " Per second: each row's value over the whole " + OperationText.Duration(interval.SpanTicks * 100, CultureInfo.CurrentCulture)
+                + " the rows count, divided by it (metrics-v1 §7). It is an observed rate, never corrected for coverage, and "
+                + "the rows keep the order of their totals, which the second line of each still states."
+        : " Per second needs an interval: a rate divides a value by the whole interval it counts, and the whole session "
+            + "states none, since the span between its first and last record is not one. Brush an interval or zoom to see rates.";
+
+    /// <summary>
     /// Whether the chosen ranking orders this rung's rows: every ranking orders groups and processes; at a process's rung
     /// only bytes do, since its RPC channels already list their calls and no TCP channel carries one.
     /// </summary>
@@ -137,8 +184,8 @@ public sealed partial class WorkspaceViewModel
             + "counted by the record that puts it in scope; the records beneath a call add no operation."
         : "Basis: source observations. Each record counts as the capture recorded it, as the rung's own totals do.";
 
-    /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet.</summary>
-    public bool ShowsRankingNote => ShowsRankingChoice && rankBy != RankingMetric.Records;
+    /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet, or what a rate divides by.</summary>
+    public bool ShowsRankingNote => ShowsRankingChoice && (rankBy != RankingMetric.Records || (perSecond && OffersPerSecond));
 
     /// <summary>
     /// What a ranking measured over the rows shown, in one line the narrow rail keeps short: the bytes and the records
@@ -150,6 +197,11 @@ public sealed partial class WorkspaceViewModel
         get
         {
             if (!ShowsRankingNote) return string.Empty;
+            if (rankBy == RankingMetric.Records)
+            {
+                return CountedScope is not null ? "Records" + PerSecondNote : Capitalized(PerSecondNote[3..]);
+            }
+
             if (!RanksThisRung) return "Channels rank by records at a process's rung";
             string name = Capitalized(Phrase(rankBy));
             if (CurrentMeasures is SessionCallMeasures { Unavailable: not null })
@@ -219,7 +271,7 @@ public sealed partial class WorkspaceViewModel
                 }
             }
 
-            return MeasuresStandIn ? note + " · updating" : note;
+            return (MeasuresStandIn ? note + " · updating" : note) + PerSecondNote;
         }
     }
 
@@ -233,6 +285,11 @@ public sealed partial class WorkspaceViewModel
         get
         {
             if (!ShowsRankingNote) return string.Empty;
+            if (rankBy == RankingMetric.Records)
+            {
+                return "Records: each process's own records." + PerSecondDetail;
+            }
+
             if (!RanksThisRung)
             {
                 return "RPC call rankings rank groups and processes. At a process's rung its RPC channels list their calls, "
@@ -356,9 +413,9 @@ public sealed partial class WorkspaceViewModel
                 }
             }
 
-            return MeasuresStandIn
+            return (MeasuresStandIn
                 ? detail + " These are the previous publication's measures, shown until this one's are read."
-                : detail;
+                : detail) + PerSecondDetail;
         }
     }
 
@@ -542,6 +599,8 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(RankingBasisDetail));
         OnPropertyChanged(nameof(AppliedRanking));
         OnPropertyChanged(nameof(ShowsRankingChoice));
+        OnPropertyChanged(nameof(OffersPerSecond));
+        OnPropertyChanged(nameof(PerSecond));
         OnPropertyChanged(nameof(ShowsRankingNote));
         OnPropertyChanged(nameof(RankingNote));
         OnPropertyChanged(nameof(RankingNoteDetail));

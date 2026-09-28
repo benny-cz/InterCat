@@ -111,6 +111,52 @@ public sealed class RankingSelectorWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§5.2: the Per second box states the rail's values per second over a brushed interval, and steps aside for a median")]
+    public async Task PerSecondStatesTheRailsRates()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Avalonia.Controls.Primitives.ToggleButton perSecond =
+            window.GetControl<Avalonia.Controls.Primitives.ToggleButton>("PerSecondToggle");
+        TextBlock note = window.GetControl<TextBlock>("RankingNote");
+        ListBox rail = window.GetControl<ListBox>("RungList");
+
+        // Ticked at the whole session, the box has no interval to divide by: the note says so, and the rail keeps totals.
+        Assert.True(perSecond.IsEffectivelyVisible);
+        perSecond.IsChecked = true;
+        Dispatch();
+        Assert.True(workspace.PerSecond);
+        Assert.Equal(("Per second needs an interval: brush one or zoom", true), (note.Text, note.IsEffectivelyVisible));
+        Assert.DoesNotContain(Texts(rail), text => text.EndsWith("/s", StringComparison.Ordinal));
+
+        // Brushed, every row states its records per second, and the bytes a byte ranking states per second too.
+        workspace.SelectInterval(new TimeRange(10, 30));
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Contains(Texts(rail), text => text.EndsWith("/s", StringComparison.Ordinal));
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        Dispatch();
+        Assert.Contains(Texts(rail), text => text.EndsWith("B/s", StringComparison.Ordinal));
+        Assert.Contains(" · per second over ", note.Text, StringComparison.Ordinal);
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        Save(window.CaptureRenderedFrame()!, "l0-bytes-per-second-1080x700.png");
+
+        // A median is not a count: the box steps aside, and the rail states medians.
+        workspace.RankBy = RankingMetric.RpcCallTime;
+        await workspace.RankingReady;
+        Dispatch();
+        Assert.False(perSecond.IsEffectivelyVisible);
+        window.Close();
+    }
+
     private static string? FirstLabel(ListBox rail) =>
         rail.GetVisualDescendants().OfType<ListBoxItem>().Select(item => (item.DataContext as RungRow)?.Label).FirstOrDefault();
 

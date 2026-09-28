@@ -265,6 +265,39 @@ public static class WorkspaceRowBuilder
                 : none ?? "nothing " + verb;
 
     /// <summary>
+    /// A per-second value as the ranked table shows it: three significant figures and at most three decimals (§1.4),
+    /// "214", "12.3", "4.20", "0.051"; a value too small to show is "< 0.001", never a zero it is not.
+    /// </summary>
+    public static string DescribeRate(double perSecond)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(perSecond);
+        if (perSecond == 0)
+        {
+            return "0";
+        }
+
+        if (perSecond < 0.0005)
+        {
+            return "< 0.001";
+        }
+
+        string format = perSecond >= 99.95 ? "N0" : perSecond >= 9.995 ? "N1" : perSecond >= 0.9995 ? "N2" : "N3";
+        return perSecond.ToString(format, CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>
+    /// A byte rate in <see cref="DescribeSize"/>'s decimal units per second: "147 KB/s", "830 B/s", "0.42 B/s" (§1.4:
+    /// a decimal byte rate is written MB/s).
+    /// </summary>
+    public static string DescribeByteRate(double bytesPerSecond)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytesPerSecond);
+        return bytesPerSecond >= 999.5
+            ? DescribeSize((long)Math.Round(bytesPerSecond, MidpointRounding.ToEven)) + "/s"
+            : DescribeRate(bytesPerSecond) + " B/s";
+    }
+
+    /// <summary>
     /// A measured byte total as the ranked table shows it, in the decimal units of <see cref="DescribeBytes"/> and three
     /// significant figures at most: "512 B", "8.4 KB", "37 MB", "1.3 GB". A value that rounds up to the next unit is
     /// written in it, so 999,999 bytes reads "1.0 MB" rather than "1,000 KB".
