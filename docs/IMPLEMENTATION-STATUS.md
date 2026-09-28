@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 242 · Branch: `main`
+Updated: 2026-09-28 · Plan revision: 243 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -67,6 +67,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3–M5 release | Open | Multi-machine/workspace, full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 243 — HTTPS through WinINet's capture, measured (ADR-037, FX-HTTP-002):**
+  - Over TLS the capture holds the plaintext: all parts matched the bytes the server decrypted and encrypted, and no
+    buffer began as a TLS record does. Nothing in a record says whether its exchange was encrypted. The impact stays
+    Low (a median 0.74 CPU pp).
+  - A WinINet content request now says, before it records, that an HTTPS exchange is kept as its plaintext, headers,
+    cookies and authorization included. The viewer and `icat content` state an application payload's encryption fact:
+    the message as the application held it, above any encryption of its connection.
+  - The request's inspection disclosure and the preview contract no longer deny what revisions 239 and 242 do: a
+    WinINet request can start, and joining a part's buffers, copying and saving are deliberate actions of a person.
 
 - **Revision 242 — an HTTP part reassembled from its buffers (M8's first step, `content-v1` §4):**
   - A WinINet buffer's record says which buffer of which part it is - a request or response head or body - and
@@ -2118,9 +2128,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      measures M3's content-capable source, WinINet's capture provider (ADR-037); revision 238 puts it in the catalog and
      binds its records to their client (`process-binding-v4`); revision 239 admits it under a Content request, through
      `icat record`, scoped to named processes; revision 241 puts FX-HTTP-001 and FX-CONTENT-001 in the fixture index.
-     Revision 242 reassembles a part from its buffers for a person (M8's first step). Later: HTTPS and HTTP/2 through
-     it; a part that is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture
-     could keep it; releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+     Revision 242 reassembles a part from its buffers for a person (M8's first step); revision 243 measures HTTPS
+     through it (FX-HTTP-002): kept as its plaintext, which a request says first. Later: HTTP/2 through it; a part that
+     is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
+     releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
    - **IPv6 beyond loopback.** Revisions 172–174 store, relate, redact, show and capture IPv6 endpoints, measured on
      `::1` (FX-TCP-002, FX-UDP-002; ADR-029). Still unmeasured: two-host IPv6 traffic, link-local addresses on several
@@ -2174,6 +2185,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 243 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,385 tests: 1,381
+  passed, 4 skipped**, zero failures. Live, from the elevated shell into scratch: the probe matched all 64 parts of 16
+  TLS exchanges and measured the impact Low over TLS; `icat record` kept FX-HTTP-002's 32 exchanges, all 128 parts
+  matched the server's decrypted bytes, and `icat content --part --save` wrote a matching 262,144-byte body; the
+  Release window's viewer showed the Encryption fact and the whole part. The captures were deleted.
 - Revision 242 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,384 tests: 1,380
   passed, 4 skipped**, zero failures. Live, a fresh FX-HTTP-001 capture: `icat content --part --save` wrote a
   262,144-byte response body reassembled from 17 buffers that matched the server's SHA-256, and the Release window's

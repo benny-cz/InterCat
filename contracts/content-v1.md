@@ -90,14 +90,16 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   encoding, lengths and disposition.
 - **The content viewer and `icat content`** (revision 236) read one record's fragment afresh, found by its raw identity
   in the current generation under a lease. They state its facts first: what it is and its source, its declared encoding,
-  the message's length, which bytes were kept and which are missing, that it is one fragment and not a reassembled
-  whole, and the policy it was kept under. Only when the chunk's inspection is `hex-text` and a person asks do they
-  show its bytes: a typed range of them, by offset in the message, at most 64 KiB at once, as inert hexadecimal with
-  each byte's printable ASCII beside it and, only where the source declares text, as that text with every control,
-  format, separator and private character shown as a visible mark. A person may copy the shown bytes as hex, or save a
-  range as the bytes it is to a file they name, published whole or not at all. Content kept without that consent is
-  never shown, copied or saved one record at a time. `icat content --json` (`content-view-v1`) states the facts and
-  never a byte.
+  what encryption its bytes sit above where its classification says (revision 243: an application payload is the
+  message as the application held it, above any encryption of its connection, which no admitted source says was or was
+  not encrypted), the message's length, which bytes were kept and which are missing, that it is one fragment and not a
+  reassembled whole, and the policy it was kept under. Only when the chunk's inspection is `hex-text` and a person asks
+  do they show its bytes: a typed range of them, by offset in the message, at most 64 KiB at once, as inert
+  hexadecimal with each byte's printable ASCII beside it and, only where the source declares text, as that text with
+  every control, format, separator and private character shown as a visible mark. A person may copy the shown bytes as
+  hex, or save a range as the bytes it is to a file they name, published whole or not at all. Content kept without
+  that consent is never shown, copied or saved one record at a time. `icat content --json` (`content-view-v1`) states
+  the facts and never a byte.
 - **A part** (revision 242, M8's first step). A record whose source keeps its buffer's exchange, place and ends as
   source fields - WinINet's capture (§5.1) - is one buffer of a part: its exchange's request or response head or body.
   The viewer and `icat content` say which buffer of which part it is, which of the part's buffers were recorded and
@@ -160,16 +162,19 @@ previews such a request and never starts it, since its evidence follower does no
 | Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
 | Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last |
 | Scope | the named processes, by the provider's process filter; every exchange of theirs (`*`) |
-| Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`) |
+| Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`); over TLS a median 0.74 CPU pp (`bench/results/wininet-capture-impact-tls-20260928T121427Z`) |
+| Encryption | none stated: WinINet holds a message above any encryption, so over HTTPS the capture holds its plaintext, and a record does not say whether its exchange was encrypted (FX-HTTP-002, revision 243). A request says so before it records |
 
 Qualified live on revision 239: FX-HTTP-001's 32 exchanges, recorded by `icat record` scoped to the workload, kept 229
 buffers whole; regrouped by exchange and sequence, all 128 parts matched the server's truth by length and SHA-256,
-every record bound to the workload under `process-binding-v4`, and nothing was lost.
+every record bound to the workload under `process-binding-v4`, and nothing was lost. And on revision 243 over TLS:
+FX-HTTP-002's 32 exchanges kept 229 buffers whole, all 128 parts matched the bytes the server decrypted and encrypted,
+no buffer began as a TLS record does, and `icat content --part` saved a 262,144-byte response body that matched.
 
 ## 6. What is not defined at this version
 
-- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTPS and HTTP/2 through
-  WinINet are unmeasured, and so are the other client libraries, which raise no such records.
+- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTP/2 through WinINet is
+  unmeasured, and so are the other client libraries, which raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.

@@ -18,7 +18,7 @@ internal static class Impact
     private const ulong Keywords = 0x0000_0603_0000_0000;
     private static readonly Guid Provider = Guid.Parse("a70ff94f-570b-4979-ba5c-e59c9feab61b");
 
-    public static async Task<Dictionary<string, object?>> MeasureAsync(string workload, int requests, int bytes, int pairs)
+    public static async Task<Dictionary<string, object?>> MeasureAsync(string workload, int requests, int bytes, int pairs, bool tls)
     {
         var trials = new List<Dictionary<string, object?>>();
         var busyDeltas = new List<double>();
@@ -28,8 +28,8 @@ internal static class Impact
         {
             // Alternating which trial runs first keeps drift from favouring either (the capture-impact harness's rule).
             bool captureFirst = pair % 2 == 1;
-            Trial first = await RunAsync(workload, requests, bytes, capture: captureFirst);
-            Trial second = await RunAsync(workload, requests, bytes, capture: !captureFirst);
+            Trial first = await RunAsync(workload, requests, bytes, tls, capture: captureFirst);
+            Trial second = await RunAsync(workload, requests, bytes, tls, capture: !captureFirst);
             Trial without = captureFirst ? second : first;
             Trial with = captureFirst ? first : second;
             busyDeltas.Add(with.BusyPercent - without.BusyPercent);
@@ -57,7 +57,8 @@ internal static class Impact
             ["measuredUtc"] = DateTimeOffset.UtcNow,
             ["windows"] = Environment.OSVersion.VersionString,
             ["processors"] = Environment.ProcessorCount,
-            ["workload"] = "FX-HTTP-001",
+            ["workload"] = tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            ["tls"] = tls,
             ["requests"] = requests,
             ["maximumBodyBytes"] = bytes,
             ["pairs"] = trials,
@@ -76,11 +77,11 @@ internal static class Impact
         };
     }
 
-    private static async Task<Trial> RunAsync(string workload, int requests, int bytes, bool capture)
+    private static async Task<Trial> RunAsync(string workload, int requests, int bytes, bool tls, bool capture)
     {
         string scratch = Path.Combine(Path.GetTempPath(), "InterCat-wininet-impact-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
-        using Process run = Process.Start(new ProcessStartInfo(workload)
+        var start = new ProcessStartInfo(workload)
         {
             ArgumentList =
             {
@@ -90,7 +91,9 @@ internal static class Impact
             RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-        }) ?? throw new InvalidOperationException("The workload did not start.");
+        };
+        if (tls) start.ArgumentList.Add("--tls");
+        using Process run = Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
         TraceEventSession? session = null;
         Thread? reader = null;
         long records = 0, copied = 0;

@@ -1,0 +1,93 @@
+{
+  "schema": "intercat.wininet-capture-impact.v1",
+  "measuredUtc": "2026-09-28T12:14:27.1459269+00:00",
+  "windows": "Microsoft Windows NT 10.0.26220.0",
+  "processors": 24,
+  "workload": "FX-HTTP-002",
+  "tls": true,
+  "requests": 4096,
+  "maximumBodyBytes": 131072,
+  "pairs": [
+    {
+      "pair": 1,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.273,
+      "withBusyPercent": 14.01,
+      "withoutSeconds": 21.307,
+      "withSeconds": 22.143,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 2,
+      "captureFirst": true,
+      "withoutBusyPercent": 13.39,
+      "withBusyPercent": 12.652,
+      "withoutSeconds": 21.552,
+      "withSeconds": 21.209,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 3,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.711,
+      "withBusyPercent": 15.31,
+      "withoutSeconds": 22.052,
+      "withSeconds": 23.077,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 4,
+      "captureFirst": true,
+      "withoutBusyPercent": 25.421,
+      "withBusyPercent": 14.881,
+      "withoutSeconds": 24.535,
+      "withSeconds": 22.328,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 5,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.112,
+      "withBusyPercent": 14.017,
+      "withoutSeconds": 22.229,
+      "withSeconds": 22.03,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 6,
+      "captureFirst": true,
+      "withoutBusyPercent": 14.502,
+      "withBusyPercent": 20.634,
+      "withoutSeconds": 22.234,
+      "withSeconds": 23.496,
+      "records": 25611,
+      "bytes": 91433076
+    },
+    {
+      "pair": 7,
+      "captureFirst": false,
+      "withoutBusyPercent": 17.381,
+      "withBusyPercent": 14.222,
+      "withoutSeconds": 22.611,
+      "withSeconds": 22.33,
+      "records": 25611,
+      "bytes": 91433076
+    }
+  ],
+  "medianCaptureCpuPercentagePoints": 0.737,
+  "medianWorkloadSlowdownPercent": -0.89,
+  "recordsCaptured": 179277,
+  "bytesCopied": 640031532,
+  "eventsLost": 0,
+  "overheadClass": "Low",
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the exchange alone; process starts and the session\u0027s start and stop are outside it.",
+    "The session is scoped to the workload\u0027s process, as a product capture of this source must be, and its consumer copies every record\u0027s bytes.",
+    "Signed differences are kept; a pair can show a negative cost on a noisy machine. A negative median classifies as no cost."
+  ]
+}

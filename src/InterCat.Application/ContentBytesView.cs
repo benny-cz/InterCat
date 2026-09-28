@@ -313,6 +313,15 @@ public static class ContentBytesView
             : start > 0
                 ? string.Create(culture, $"One fragment, from byte {start:N0} of its message; it is not joined with any other record's content")
                 : "One fragment, from its message's first byte; it is not joined with any other record's content";
+        // An application's own message is held above whatever carried it; no source InterCat admits says whether that was
+        // encrypted, so neither does the viewer (ADR-037).
+        string? encryption = fragment.Classification switch
+        {
+            ContentClassificationV1.ApplicationPayload =>
+                "Above any encryption of its connection: the message as the application held it. Whether that connection was encrypted is not recorded",
+            ContentClassificationV1.EncryptedContent => "Encrypted as recorded: shown as the bytes it is, never decrypted",
+            _ => null,
+        };
         string policy = string.Create(culture, $"{entry.Header.PolicyId}, at most {entry.Header.RecordLimit:N0} bytes a record; ")
             + (entry.Inspectable
                 ? "its bytes are shown only when you ask"
@@ -323,6 +332,7 @@ public static class ContentBytesView
             new("Source", string.Create(culture,
                 $"{EvidenceRowText.ProviderName(row.ProviderId)} · event {row.EventId} version {row.DescriptorVersion}")),
             new("Encoding", encoding),
+            .. encryption is null ? (ContentFact[])[] : [new("Encryption", encryption)],
             new("Message", message),
             new("Kept", keptText),
             new("Missing", missingText),

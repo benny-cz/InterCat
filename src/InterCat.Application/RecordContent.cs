@@ -77,7 +77,8 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
                 new(RecordContentState.None, "A lifecycle record describes a process or thread, not a message.", null),
             Mechanism.Tcp or Mechanism.Udp => new(RecordContentState.None,
                 "The kernel's network events carry endpoints and a transfer's size, never the bytes sent.",
-                "A packet capture could hold them; encrypted traffic stays encrypted there."),
+                "A packet capture could hold them, and encrypted traffic stays encrypted there. A Content capture of a WinINet "
+                + "client's process keeps its HTTP messages above the encryption."),
             Mechanism.Rpc => new(RecordContentState.None,
                 "RPC's events carry a call's interface, procedure and status, never its arguments.",
                 "No driverless source is known to carry them; instrumenting the process could."),

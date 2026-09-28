@@ -157,9 +157,10 @@ static void PrintHelp()
     ConsoleUi.Line("      One original retained journal record, from an icat evidence page's exact row locator.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat content <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
-    ConsoleUi.Line("               [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+    ConsoleUi.Line("               [--part] [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
     ConsoleUi.Line("      One record's kept content from the same locator: its facts, and its bytes only when asked,");
-    ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036).");
+    ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036). --part reads an HTTP buffer's whole");
+    ConsoleUi.Line("      head or body instead, only when every buffer of it was kept whole.");
     ConsoleUi.Line();
     ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--bytes] [--json]");
     ConsoleUi.Line("              [--mechanism <name> | --process <instance-id> [--direction <name>]");

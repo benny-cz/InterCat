@@ -1,9 +1,12 @@
 using System.Buffers;
 using System.Globalization;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using InterCat.Domain;
@@ -14,6 +17,9 @@ namespace InterCat.TestWorkloads;
 internal sealed record HttpWinInetOptions
 {
     public const string ScenarioId = "FX-HTTP-001";
+
+    /// <summary>The same exchange over TLS: FX-HTTP-002.</summary>
+    public const string TlsScenarioId = "FX-HTTP-002";
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
@@ -30,6 +36,15 @@ internal sealed record HttpWinInetOptions
 
     /// <summary>Seconds to wait before the first request, so a capture started for this process once it runs is in place.</summary>
     public int StartAfterSeconds { get; init; }
+
+    /// <summary>
+    /// Whether the exchange runs over TLS: the loopback server presents a self-signed certificate made in memory for this
+    /// run and installed nowhere, and the client accepts it for its own requests only.
+    /// </summary>
+    public bool Tls { get; init; }
+
+    /// <summary>The scenario this run is: FX-HTTP-001, or FX-HTTP-002 over TLS.</summary>
+    public string Scenario => Tls ? TlsScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -46,7 +61,13 @@ internal static partial class HttpWinInetScenario
 
     // No cache, no cookies, no prompts, and one kept-alive connection: every request goes to the server as it was made.
     private const uint RequestFlags = 0x80000000 | 0x04000000 | 0x00000100 | 0x00080000 | 0x00000200 | 0x00400000;
-    private const string FixtureHeader = "X-InterCat-Fixture: FX-HTTP-001\r\n";
+    private static string FixtureHeader(HttpWinInetOptions options) => $"X-InterCat-Fixture: {options.Scenario}\r\n";
+
+    // Over TLS: a secure request whose certificate errors - an unknown issuer, a name, dates, revocation - WinINet is told to
+    // accept for this request alone, so a self-signed certificate installed nowhere serves the loopback server.
+    private const uint SecureRequestFlags = 0x00800000 | 0x00001000 | 0x00002000;
+    private const int OptionSecurityFlags = 31;
+    private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     [LibraryImport("wininet.dll", EntryPoint = "InternetOpenW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
@@ -68,6 +89,10 @@ internal static partial class HttpWinInetScenario
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetReadFile(IntPtr file, byte[] buffer, int toRead, out int read);
 
+    [LibraryImport("wininet.dll", EntryPoint = "InternetSetOptionW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InternetSetOption(IntPtr handle, int option, ref uint buffer, int length);
+
     [LibraryImport("wininet.dll", EntryPoint = "InternetCloseHandle", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetCloseHandle(IntPtr handle);
@@ -80,10 +105,11 @@ internal static partial class HttpWinInetScenario
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         int completed;
         long sentBytes = 0, readBytes = 0;
+        using X509Certificate2? certificate = options.Tls ? LoopbackCertificate() : null;
         await using (var server = new TruthLog(
-            Path.Combine(options.TruthDirectory, "truth-http-server.jsonl"), HttpWinInetOptions.ScenarioId, "server"))
+            Path.Combine(options.TruthDirectory, "truth-http-server.jsonl"), options.Scenario, "server"))
         await using (var client = new TruthLog(
-            Path.Combine(options.TruthDirectory, "truth-http-client.jsonl"), HttpWinInetOptions.ScenarioId, "client"))
+            Path.Combine(options.TruthDirectory, "truth-http-client.jsonl"), options.Scenario, "client"))
         {
             server.Write(TruthEventKind.ListenerBound, localPort: port);
             client.Write(TruthEventKind.ProcessStarted);
@@ -100,7 +126,7 @@ internal static partial class HttpWinInetScenario
             }
 
             using var serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task served = ServeAsync(listener, server, options, serving.Token);
+            Task served = ServeAsync(listener, server, options, certificate, serving.Token);
             (completed, sentBytes, readBytes) = await Task.Factory.StartNew(
                 () => Exchange(port, client, options, cancellationToken), cancellationToken,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
@@ -120,7 +146,8 @@ internal static partial class HttpWinInetScenario
 
         var summary = new
         {
-            scenarioId = HttpWinInetOptions.ScenarioId,
+            scenarioId = options.Scenario,
+            options.Tls,
             processId = Environment.ProcessId,
             port,
             options.Seed,
@@ -149,7 +176,7 @@ internal static partial class HttpWinInetScenario
     private static (int Completed, long Sent, long Read) Exchange(int port, TruthLog client, HttpWinInetOptions options,
         CancellationToken cancellationToken)
     {
-        IntPtr internet = InternetOpen("InterCat-" + HttpWinInetOptions.ScenarioId, OpenTypeDirect, null, null, 0);
+        IntPtr internet = InternetOpen("InterCat-" + options.Scenario, OpenTypeDirect, null, null, 0);
         if (internet == IntPtr.Zero)
         {
             client.Write(TruthEventKind.Failure, status: $"InternetOpen failed: {Marshal.GetLastPInvokeError()}");
@@ -174,7 +201,7 @@ internal static partial class HttpWinInetScenario
                 cancellationToken.ThrowIfCancellationRequested();
                 byte[] body = Body(options.Seed, index, options.MaximumBodyBytes, request: true);
                 IntPtr request = HttpOpenRequest(connect, "POST", string.Create(CultureInfo.InvariantCulture, $"/fx/{index}"),
-                    "HTTP/1.1", null, IntPtr.Zero, RequestFlags, IntPtr.Zero);
+                    "HTTP/1.1", null, IntPtr.Zero, RequestFlags | (options.Tls ? SecureRequestFlags : 0), IntPtr.Zero);
                 if (request == IntPtr.Zero)
                 {
                     client.Write(TruthEventKind.Failure, callId: index, status: $"HttpOpenRequest failed: {Marshal.GetLastPInvokeError()}");
@@ -183,9 +210,16 @@ internal static partial class HttpWinInetScenario
 
                 try
                 {
+                    uint ignore = IgnoreCertificateErrors;
+                    if (options.Tls && !InternetSetOption(request, OptionSecurityFlags, ref ignore, sizeof(uint)))
+                    {
+                        client.Write(TruthEventKind.Failure, callId: index, status: $"InternetSetOption failed: {Marshal.GetLastPInvokeError()}");
+                        continue;
+                    }
+
                     client.Write(TruthEventKind.CallIssued, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
-                    if (!HttpSendRequest(request, FixtureHeader, -1, body, body.Length))
+                    if (!HttpSendRequest(request, FixtureHeader(options), -1, body, body.Length))
                     {
                         client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {Marshal.GetLastPInvokeError()}");
                         continue;
@@ -220,9 +254,12 @@ internal static partial class HttpWinInetScenario
         return (completed, sent, read);
     }
 
-    /// <summary>The server: each connection's requests read to their last byte and answered, every part logged as the wire held it.</summary>
+    /// <summary>
+    /// The server: each connection's requests read to their last byte and answered, every part logged as the wire held it,
+    /// or over TLS as the server decrypted and encrypted it.
+    /// </summary>
     private static async Task ServeAsync(TcpListener listener, TruthLog server, HttpWinInetOptions options,
-        CancellationToken cancellationToken)
+        X509Certificate2? certificate, CancellationToken cancellationToken)
     {
         var connections = new List<Task>();
         while (!cancellationToken.IsCancellationRequested)
@@ -230,18 +267,41 @@ internal static partial class HttpWinInetScenario
             TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
             var remote = (IPEndPoint)connection.Client.RemoteEndPoint!;
             server.Write(TruthEventKind.ConnectionAccepted, localPort: ((IPEndPoint)listener.LocalEndpoint).Port, remotePort: remote.Port);
-            connections.Add(ServeConnectionAsync(connection, server, options, cancellationToken));
+            connections.Add(ServeConnectionAsync(connection, server, options, certificate, cancellationToken));
         }
 
         await Task.WhenAll(connections).ConfigureAwait(false);
     }
 
     private static async Task ServeConnectionAsync(TcpClient connection, TruthLog server, HttpWinInetOptions options,
-        CancellationToken cancellationToken)
+        X509Certificate2? certificate, CancellationToken cancellationToken)
     {
         using (connection)
         {
-            NetworkStream stream = connection.GetStream();
+            // Over TLS the server reads and writes the decrypted stream, so its truth is the bytes above the encryption.
+            Stream stream = connection.GetStream();
+            if (certificate is not null)
+            {
+                var secure = new SslStream(stream, leaveInnerStreamOpen: false);
+                try
+                {
+                    await secure.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                    {
+                        ServerCertificate = certificate,
+                        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                        ClientCertificateRequired = false,
+                    }, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is AuthenticationException or IOException)
+                {
+                    server.Write(TruthEventKind.Failure, status: "TLS handshake failed: " + exception.Message);
+                    await secure.DisposeAsync().ConfigureAwait(false);
+                    return;
+                }
+
+                stream = secure;
+            }
+
             var pending = new ArrayBufferWriter<byte>();
             byte[] chunk = new byte[16 * 1024];
             try
@@ -280,7 +340,7 @@ internal static partial class HttpWinInetScenario
 
                     byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
                     byte[] responseHead = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
-                        $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {responseBody.Length}\r\n{FixtureHeader}\r\n"));
+                        $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {responseBody.Length}\r\n{FixtureHeader(options)}\r\n"));
                     await stream.WriteAsync(responseHead, cancellationToken).ConfigureAwait(false);
                     await stream.WriteAsync(responseBody, cancellationToken).ConfigureAwait(false);
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseHead.Length, status: "response-head",
@@ -347,4 +407,21 @@ internal static partial class HttpWinInetScenario
     }
 
     private static string Sha256(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>
+    /// A certificate for 127.0.0.1, made in memory for one run: self-signed, valid for an hour, and installed in no store.
+    /// SChannel cannot use a key that exists only in memory, so it is loaded again from its own PKCS #12 bytes into a
+    /// temporary key container, which goes when the certificate is disposed.
+    /// </summary>
+    private static X509Certificate2 LoopbackCertificate()
+    {
+        using RSA key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=127.0.0.1", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(names.Build());
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], critical: false));
+        using X509Certificate2 made = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddHours(1));
+        return X509CertificateLoader.LoadPkcs12(made.Export(X509ContentType.Pkcs12), null);
+    }
 }

@@ -23,7 +23,8 @@ public sealed class RecordContentTests
         Assert.False(tcp.Recorded);
         Assert.Equal(
             "None. The kernel's network events carry endpoints and a transfer's size, never the bytes sent. "
-            + "A packet capture could hold them; encrypted traffic stays encrypted there.",
+            + "A packet capture could hold them, and encrypted traffic stays encrypted there. A Content capture of a WinINet "
+            + "client's process keeps its HTTP messages above the encryption.",
             tcp.Describe());
         Assert.Equal(tcp, RecordContent.Of(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1) with { Mechanism = Mechanism.Udp }));
 

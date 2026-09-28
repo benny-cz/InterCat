@@ -163,6 +163,29 @@ public sealed class WinInetCaptureAdmissionTests
         Assert.Contains("of processes 4242 only", plan.CollectionStatement, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R17: a WinINet content request says before it records that an HTTPS exchange is kept as its plaintext")]
+    public void ARequestStatesThatHttpsIsKeptAsPlaintext()
+    {
+        // Measured over TLS (FX-HTTP-002): WinINet holds each message above the encryption, and no record says whether its
+        // exchange was encrypted, so the request says what it will keep before anything is kept.
+        ContentCaptureRequest request = Request(["*"]);
+        CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentRequest(ContentCapturePolicyCompiler.Compile(request));
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Content, Content: request),
+            new SourcePlanCompilation([Lifecycle(), AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(Manifest), 1, bodyPolicy: policy)], []));
+        Assert.Contains("an HTTPS exchange is kept as its plaintext, headers, cookies and authorization included.", plan.CollectionStatement,
+            StringComparison.Ordinal);
+        Assert.Contains("A person may see the bytes only when they ask", plan.CollectionStatement, StringComparison.Ordinal);
+
+        // Inspection lets a person see, join, copy and save what they ask for, each deliberately, and nothing else.
+        Assert.Contains("joining a part's buffers, copying and saving are each a deliberate action of theirs", plan.Content!.Disclosure,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("does not authorize", plan.Content.Disclosure, StringComparison.Ordinal);
+
+        // A source whose contract states nothing of its bytes adds nothing to its request's statement.
+        Assert.Null(WindowsSourceCatalog.Find(WindowsSourceCatalog.ContentFixtureSourceId)!.ContentContract!.ContentStatement);
+    }
+
     private static ContentCaptureRequest Request(IReadOnlyList<string> channels) => new()
     {
         SourceId = WindowsSourceCatalog.WinInetCaptureSourceId,

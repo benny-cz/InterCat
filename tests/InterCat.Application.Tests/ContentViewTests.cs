@@ -94,6 +94,8 @@ public sealed class ContentViewTests
         Assert.Equal("An application payload, which the record's owner sent", cut["What it is"]);
         Assert.StartsWith("Microsoft-Windows-Kernel-Network · event ", cut["Source"], StringComparison.Ordinal);
         Assert.Equal("UTF-8 text, as its source declares", cut["Encoding"]);
+        Assert.Equal("Above any encryption of its connection: the message as the application held it. "
+            + "Whether that connection was encrypted is not recorded", cut["Encryption"]);
         Assert.Equal("16 bytes", cut["Message"]);
         Assert.Equal("Bytes 0 to 7 (8 bytes), cut by the 8-byte record limit", cut["Kept"]);
         Assert.Equal("Bytes 8 to 15 (8 bytes). They were never recorded, and nothing stands in for them", cut["Missing"]);

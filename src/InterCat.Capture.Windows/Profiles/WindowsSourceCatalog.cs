@@ -718,9 +718,15 @@ public static class WindowsSourceCatalog
                 [ContentEvidenceClassification.ApplicationPayload],
                 EnforcesProcessScopeBeforePersistence: true,
                 EnforcesChannelScopeBeforePersistence: false,
-                "ADR-037; bench/results/wininet-capture-feasibility-20260928T102426Z",
+                "ADR-037; bench/results/wininet-capture-feasibility-20260928T102426Z; over TLS, bench/results/wininet-capture-feasibility-tls-20260928T120408Z",
                 OverheadClass.Low,
-                "bench/results/wininet-capture-impact-20260928T105549Z/impact.json"),
+                "bench/results/wininet-capture-impact-20260928T105549Z/impact.json")
+            {
+                // Measured over TLS (FX-HTTP-002): every part matched the server's decrypted bytes, and nothing in a record
+                // says whether its exchange was encrypted.
+                ContentStatement = "WinINet holds each message above any encryption, so an HTTPS exchange is kept as its "
+                    + "plaintext, headers, cookies and authorization included.",
+            },
             AdmittedEvents =
             [
                 new(2001, 0, "HTTP request head sent", Mechanism.Http, ObservationLayer.Application, ObservationKind.Send,

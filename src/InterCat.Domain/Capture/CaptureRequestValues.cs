@@ -7,8 +7,9 @@ public enum ContentRetentionMode
 }
 
 /// <summary>
-/// Inspection is a separate consent from collection. Hex/text means inert, bounded previews only; it
-/// does not authorize search, decoding, reassembly, export, or active rendering.
+/// Inspection is a separate consent from collection. Hex/text lets a person see a record's bytes when they ask, bounded
+/// and inert; joining a part's buffers, copying and saving are each a deliberate action of theirs (content-v1 §4). It
+/// does not authorize search, decoding, or active rendering.
 /// </summary>
 public enum ContentInspectionMode
 {

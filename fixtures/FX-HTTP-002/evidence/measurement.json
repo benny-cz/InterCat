@@ -1,0 +1,35 @@
+{
+  "workload": "FX-HTTP-002",
+  "httpRecords": 229,
+  "buffersOpeningLikeATlsRecord": 0,
+  "recordsWithContent": 229,
+  "recordsCut": 0,
+  "recordsRaisedByTheWorkload": 229,
+  "recordsBoundToTheWorkload": 229,
+  "exchanges": 32,
+  "partsCompared": 128,
+  "partsMatchingTheServersDecryptedBytes": 128,
+  "partsWithBuffers": 127,
+  "partsNumberedFromZeroInOrder": 127,
+  "partsFlaggedFirstAndLast": 127,
+  "sessionGeneration": 6,
+  "contentChunks": 1,
+  "capture": {
+    "command": "icat record --profile content --source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http --pid <workload> --channel * --max-record-bytes 65536 --max-session-bytes 67108864 --inspection hex-text --duration 20, beside InterCat.TestWorkloads http-wininet --requests 32 --bytes 262144 --start-after 8 --tls",
+    "policy": "scoped-content-request-v1",
+    "recordLimitBytes": 65536,
+    "sessionLimitBytes": 67108864,
+    "journaledRecords": 735,
+    "deliveredRecords": 735,
+    "contentKeptBytes": 1774618,
+    "lost": "nothing reported"
+  },
+  "partSavedByIcatContent": {
+    "command": "icat content --part --save, on buffer 0 of exchange 1's response body",
+    "buffers": 17,
+    "bytes": 262144,
+    "matchesTheServersDecryptedBytes": true
+  },
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-09-28"
+}

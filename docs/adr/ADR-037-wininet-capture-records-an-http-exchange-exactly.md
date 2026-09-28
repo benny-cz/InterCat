@@ -2,11 +2,12 @@
 
 - Status: accepted as M3's content-capable source; measured in the lab (revision 237); in the catalog, its records bound
   to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
-  (revision 239)
+  (revision 239); HTTPS measured, and kept as its plaintext (revision 243)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
-- Relates to: §3.7, §11, §11.2, M3, M8, I21, R21, ADR-030, ADR-036, FX-HTTP-001, `contracts/content-v1.md`,
-  `tools/InterCat.WinInetProbe`, `bench/results/wininet-capture-feasibility-20260928T102426Z`
+- Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
+  `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`, `bench/results/wininet-capture-feasibility-20260928T102426Z`,
+  `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`
 
 ## Context
 
@@ -48,6 +49,25 @@ and two of 64 with bodies to 256 KiB, the last beside the decoy.
 - **The client raised every record, and the filter holds.** 444 of 444 records were raised in the workload's process;
   the decoy completed its 64 exchanges alongside and none of its records reached the session.
 
+## Measurement over TLS (revision 243)
+
+FX-HTTP-002 is the same exchange over TLS 1.2 or 1.3. The loopback server presents a self-signed certificate made in
+memory for the run and installed in no store; the client tells WinINet to accept that certificate's errors for its own
+requests alone; and the server's truth is the bytes above the encryption, what it decrypted and what it encrypted. The
+probe ran 16 exchanges with bodies to 96 KiB beside a decoy, as before.
+
+- **The capture holds the plaintext.** Every part, 64 of 64, matched the server's decrypted bytes by length and SHA-256,
+  and no buffer began as a TLS record does. WinINet raises these records above the encryption: the bytes the client
+  handed it to send, and the bytes it read back decrypted.
+- **Nothing in a record says the exchange was encrypted.** The layout, the flags (the same 1, 2 and 3 at a part's
+  ends), the numbering and the buffering (sent bodies in buffers of at most 64,511 bytes, read bodies in the
+  application's 16 KiB reads) were plain HTTP's, and a request head names neither a scheme nor what its port means.
+- **The client raised every record, and the filter holds**, as before: 99 of 99 records were the workload's, none of
+  the decoy's 16 exchanges reached the session, and nothing was lost.
+- **The impact stays Low.** Seven pairs of 4,096 exchanges with bodies to 128 KiB, as revision 239's, now over TLS: a
+  median 0.74 CPU pp, and no measurable cost to the workload's time (a median of -0.89%, within the machine's noise);
+  179,277 records and 640 MB copied, nothing lost (`bench/results/wininet-capture-impact-tls-20260928T121427Z`).
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -69,14 +89,19 @@ and two of 64 with bodies to 256 KiB, the last beside the decoy.
    workload's time over seven pairs - and admits it under a bounded Content request that names its processes and, since
    the source cannot select channels, every channel of theirs (`*`). `icat record --profile content` records it; the
    broker never starts one, since its follower does not mirror content.
+6. **What a record says of encryption: only what it knows.** A record's bytes are the application's message above any
+   encryption of its connection, and are stated so; a record is never said to have crossed the wire in the clear, nor
+   encrypted, since nothing in it says which. Because an HTTPS exchange is kept as its plaintext, headers, cookies and
+   authorization included, a request says so before anything is recorded (§11.1), beside its process scope. The
+   viewer says the same of every application payload (revision 243).
 
 ## Consequences
 
 - M3's content-capable source is a Windows source with every semantic M8 names measured: direction, byte ranges within
   a message, message identity and length, and completeness. It is scoped to named processes before anything is kept.
-- Not measured: HTTPS, where WinINet holds the bytes before encryption and after decryption, so a capture would hold
-  plaintext of an encrypted exchange; asynchronous WinINet; HTTP/2; chunked and compressed responses; redirects,
-  proxies and authentication; several exchanges at once in one process; and the provider's overhead. Each is measured
-  before a profile claims it.
+- HTTPS is measured (revision 243): WinINet holds the bytes before encryption and after decryption, so a capture holds
+  an encrypted exchange's plaintext, and the request that keeps it says so first.
+- Not measured: asynchronous WinINet; HTTP/2; chunked and compressed responses; redirects, proxies and authentication;
+  and several exchanges at once in one process. Each is measured before a profile claims it.
 - WinINet is one client library among several. .NET's HTTP client, WinHTTP and browsers' own stacks do not raise these
   records, so their exchanges stay without content, and the statement of what a record holds says which source could.

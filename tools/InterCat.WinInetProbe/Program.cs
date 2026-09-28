@@ -17,7 +17,8 @@ namespace InterCat.WinInetProbe;
 /// loopback server logs the exact bytes on the wire by length and SHA-256. The provider is enabled in one uniquely named
 /// real-time session of this probe's own, scoped by a process filter to the workload alone, so no other process's traffic
 /// reaches it; what it delivers is the workload's synthetic exchange, compared in memory and never written. Only counters
-/// are.
+/// are. With --tls the same exchange runs over TLS as FX-HTTP-002, and the server's truth is the bytes above the
+/// encryption: a capture that matches it holds the plaintext its client sent and read.
 /// </summary>
 internal static class Program
 {
@@ -38,12 +39,13 @@ internal static class Program
         int requests = int.Parse(Option(args, "--requests") ?? "16", CultureInfo.InvariantCulture);
         int seed = int.Parse(Option(args, "--seed") ?? "20260929", CultureInfo.InvariantCulture);
         int bytes = int.Parse(Option(args, "--bytes") ?? "98304", CultureInfo.InvariantCulture);
+        bool tls = args.Contains("--tls", StringComparer.Ordinal);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0",
             "InterCat.TestWorkloads.exe"));
         if (output is null || requests < 1)
         {
-            Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--workload <InterCat.TestWorkloads.exe>]");
             Console.Error.WriteLine("  [--impact [--pairs n]]: machine CPU and workload time with and without a scoped capture, in pairs");
             return 2;
         }
@@ -87,7 +89,7 @@ internal static class Program
         if (args.Contains("--impact", StringComparer.Ordinal))
         {
             int pairs = int.Parse(Option(args, "--pairs") ?? "7", CultureInfo.InvariantCulture);
-            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload, requests, bytes, pairs);
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload, requests, bytes, pairs, tls);
             await File.WriteAllTextAsync(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
             Console.WriteLine(JsonSerializer.Serialize(impact, Json));
             return 0;
@@ -95,20 +97,26 @@ internal static class Program
 
         string truth = Path.Combine(output, "truth");
         string decoyTruth = Path.Combine(output, "decoy-truth");
-        Process Start(string truthDirectory, int workloadSeed) => Process.Start(new ProcessStartInfo(workload)
+        Process Start(string truthDirectory, int workloadSeed)
         {
-            ArgumentList =
+            var start = new ProcessStartInfo(workload)
             {
-                "http-wininet", "--truth", truthDirectory, "--requests", requests.ToString(CultureInfo.InvariantCulture),
-                "--seed", workloadSeed.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
-                "--wait-for-start",
-            },
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        }) ?? throw new InvalidOperationException("The workload did not start.");
+                ArgumentList =
+                {
+                    "http-wininet", "--truth", truthDirectory, "--requests", requests.ToString(CultureInfo.InvariantCulture),
+                    "--seed", workloadSeed.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
+                    "--wait-for-start",
+                },
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            if (tls) start.ArgumentList.Add("--tls");
+            return Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
+        }
+
         using Process process = Start(truth, seed);
         using Process decoy = Start(decoyTruth, seed + 1);
 
@@ -192,7 +200,7 @@ internal static class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, eventsLost, others, malformed),
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, eventsLost, others, malformed),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -209,8 +217,8 @@ internal static class Program
     /// What the capture holds against what the wire held: each exchange opens at a request head, in reading order, and each
     /// of its four parts is the concatenation of its buffers, compared by length and SHA-256 with the server's truth.
     /// </summary>
-    private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, int eventsLost, long others,
-        long malformed)
+    private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls, int eventsLost,
+        long others, long malformed)
     {
         var wire = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
         foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl")))
@@ -356,7 +364,8 @@ internal static class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = "FX-HTTP-001",
+            workload = tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            tls,
             requests,
             maximumBodyBytes,
             exchangedByTruth,
@@ -367,6 +376,7 @@ internal static class Program
             malformedRecords = malformed,
             raisedByTheClientProcess = captured.Count,
             declaredLengthDiffersFromDelivered = captured.Count(buffer => buffer.DeclaredLength != buffer.Bytes.Length),
+            buffersOpeningLikeATlsRecord = captured.Count(buffer => OpensLikeATlsRecord(buffer.Bytes)),
             parts,
             sessionIds = captured.Select(buffer => buffer.SessionId).Distinct().Count(),
             sequenceStepsWithinASessionId = sequenceSteps.ToDictionary(pair => pair.Key.ToString(CultureInfo.InvariantCulture), pair => pair.Value),
@@ -382,6 +392,13 @@ internal static class Program
             workloadProcessId = processId,
         };
     }
+
+    /// <summary>
+    /// Whether bytes begin as a TLS record does - a content type from 20 to 23 and a version of 3.1 to 3.4 - which a
+    /// capture of the encrypted stream, rather than of what the client sent and read, would show.
+    /// </summary>
+    private static bool OpensLikeATlsRecord(byte[] bytes) =>
+        bytes.Length >= 5 && bytes[0] is >= 20 and <= 23 && bytes[1] == 3 && bytes[2] is >= 1 and <= 4;
 
     /// <summary>Why the registered capture events are not the layout this probe reads; null when all four are.</summary>
     private static string? CheckSchema(ProviderSchema schema)

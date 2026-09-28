@@ -59,15 +59,26 @@ Content requires an exact `--source` and `--mechanism`, one or more `--pid` and 
 `--max-record-bytes`, `--max-session-bytes`, `--retention stop-at-limit`, and an explicit
 `--inspection disabled|hex-text` choice. PID and channel values are start-time selectors, not durable
 identities; a future broker must bind them to observed lifecycle/resource epochs. Inspection is separate
-consent: `hex-text` permits only bounded inert previews and does not authorize search, decoding,
-reassembly, export, scripts, or active rendering.
+consent: `hex-text` lets a person see a record's bytes when they ask, bounded, as inert hex and declared
+text; joining a part's buffers, copying and saving are each a deliberate action of theirs
+(`contracts/content-v1.md` §4), and nothing searches, decodes, runs or actively renders the bytes.
 
-The current adapter compiles these request boundaries but no production content policy. Consequently
-`canStart` is false, `effectiveAdmission` and `bodyPolicy` are null, `providers[]` and approved content
-events/fields/classifications are empty, and `content.admissionPolicyAvailable` is false. Longer records
-would retain only a bounded prefix with original length and truncation recorded; the session would stop
-before exceeding its content-byte cap; unknown schemas and out-of-scope bodies would be omitted before
-persistence. These are reviewable requested rules, not claims that the current adapter can enforce them.
+A request compiles into a production policy only for a source with its own validated content contract,
+which a reviewed admission policy covers. Since revision 239 that is WinINet's capture (ADR-037),
+requested for its processes with the one channel selector `*`: `canStart` is true, `effectiveAdmission`
+is `ScopedContent`, `bodyPolicy` is `scoped-content-request-v1`, `providers[]` enables the provider for
+the requested `processIdsToInclude` alone, and `content.admissionPolicyAvailable` is true. Its
+`collectionStatement` says what the source's bytes are before anything is recorded: for WinINet, that an
+HTTPS exchange is kept as its plaintext, headers, cookies and authorization included (revision 243).
+`icat record --profile content` starts such a request; the broker refuses it, since its evidence follower
+does not mirror content.
+
+For any other source the preview is request-only: `canStart` is false, `effectiveAdmission` and
+`bodyPolicy` are null, `providers[]` and approved content events/fields/classifications are empty, and
+`content.admissionPolicyAvailable` is false, with the exact blockers. Longer records would retain only a
+bounded prefix with original length and truncation recorded; the session would stop before exceeding its
+content-byte cap; unknown schemas and out-of-scope bodies would be omitted before persistence. For such a
+source these are reviewable requested rules, not claims that the adapter can enforce them.
 
 A source can become available only through its own validated content contract: approved descriptors,
 fields and classifications; process/channel enforcement before persistence; and impact evidence measured

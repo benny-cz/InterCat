@@ -591,8 +591,11 @@ public static class CaptureProfileCompiler
         string inspection = content.Inspection == ContentInspectionMode.HexAndText
             ? "A person may see the bytes only when they ask, bounded and inert."
             : "The bytes are kept without consent to inspect them, so they are never shown.";
+        string holds = WindowsSourceCatalog.Find(content.SourceId)?.ContentContract?.ContentStatement is { } statement
+            ? " " + statement
+            : string.Empty;
         return string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"Collects lifecycle metadata and {source} of processes {string.Join(", ", content.ProcessIds)} only: each record's length, and up to {content.MaximumRecordBytes:N0} of its bytes kept as restricted content beside the journal, until {content.MaximumSessionBytes:N0} bytes of content stop the capture. {inspection}");
+            $"Collects lifecycle metadata and {source} of processes {string.Join(", ", content.ProcessIds)} only: each record's length, and up to {content.MaximumRecordBytes:N0} of its bytes kept as restricted content beside the journal, until {content.MaximumSessionBytes:N0} bytes of content stop the capture.{holds} {inspection}");
     }
 
     private static CaptureScopeDecision CompileScope(

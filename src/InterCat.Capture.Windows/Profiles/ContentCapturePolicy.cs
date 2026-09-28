@@ -30,8 +30,9 @@ public enum ContentFieldEncoding
 }
 
 /// <summary>
-/// Adapter evidence required before a catalog source can compile scoped content. The catalog currently
-/// contains no instance; adding one requires measured descriptor semantics and scope/impact evidence.
+/// Adapter evidence required before a catalog source can compile scoped content. The catalog holds two: the content
+/// fixture's (ADR-036) and WinINet's capture (ADR-037). Adding one requires measured descriptor semantics and scope and
+/// impact evidence.
 /// </summary>
 public sealed record ValidatedContentSourceContract(
     IReadOnlyList<int> EventIds,
@@ -41,7 +42,14 @@ public sealed record ValidatedContentSourceContract(
     bool EnforcesChannelScopeBeforePersistence,
     string ValidationEvidence,
     OverheadClass Overhead,
-    string CaptureImpactEvidence);
+    string CaptureImpactEvidence)
+{
+    /// <summary>
+    /// What the source's bytes are, measured, in the words a request states before anything is recorded: what a person
+    /// consenting to keep them should know, such as that they are held above any encryption.
+    /// </summary>
+    public string? ContentStatement { get; init; }
+}
 
 /// <summary>
 /// Read-only compilation of requested content boundaries and the adapter facts that still block them.
@@ -222,7 +230,8 @@ public static class ContentCapturePolicyCompiler
                     + "No provider request or production admission policy was compiled.";
         string inspection = request.Inspection == ContentInspectionMode.Disabled
             ? "Content preview inspection remains disabled."
-            : "Separate inspection consent allows bounded inert hex/text previews only; it does not authorize search, decoding, reassembly, or export.";
+            : "Separate inspection consent lets a person see a record's bytes when they ask, bounded, as inert hex and declared text; "
+                + "joining a part's buffers, copying and saving are each a deliberate action of theirs, and nothing searches, decodes or renders the bytes.";
         string disclosure =
             (admitted ? "Requested behavior: " : "Requested behavior (not active while this request is blocked): ")
             + $"each record may retain at most {request.MaximumRecordBytes} bytes; "
