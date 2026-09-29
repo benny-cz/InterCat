@@ -1,5 +1,6 @@
 using System.Globalization;
 using InterCat.Application;
+using InterCat.Domain;
 
 namespace InterCat.Desktop.Presentation;
 
@@ -181,12 +182,13 @@ public static class InvestigationRows
         string path,
         CultureInfo culture,
         int columns,
+        TimeRange? interval = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(culture);
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
         IReadOnlyList<WorkspaceHost> hosts = InvestigationWorkspace.Hosts(workspace);
-        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, cancellationToken: cancellationToken);
+        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, interval, cancellationToken);
         var labels = new List<string>();
         var sentences = new List<string>();
         foreach (InvestigationLane lane in view.Lanes)

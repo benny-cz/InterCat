@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
+using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
@@ -22,6 +23,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
 {
     private readonly string path;
     private readonly Func<string, Task<bool>>? openSession;
+    private readonly Func<string, TimeRange, Task<bool>>? openSessionAt;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock summary = new() { TextWrapping = TextWrapping.Wrap };
@@ -63,6 +65,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
     };
     private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
     private readonly Button compareInstants = new() { Content = "Compare instants…", IsEnabled = false };
+    private readonly Button zoomIn = new() { Content = "Zoom in", IsEnabled = false };
+    private readonly Button zoomOut = new() { Content = "Zoom out", IsEnabled = false };
+    private readonly Button zoomWhole = new() { Content = "Whole investigation", IsEnabled = false };
+    private readonly Button openColumn = new() { Content = "Open this column", IsEnabled = false };
+    private readonly TextBlock columnReadout = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+    private TimeRange? zoom;
+    private TimeRange? whole;
     private readonly Button package = new() { Content = "Package…", IsEnabled = false };
     private CancellationTokenSource? packaging;
     private bool timelineLoaded;
@@ -72,10 +81,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
-    public InvestigationWindow(string path, Func<string, Task<bool>>? openSession, string? opening = null)
+    public InvestigationWindow(
+        string path,
+        Func<string, Task<bool>>? openSession,
+        string? opening = null,
+        Func<string, TimeRange, Task<bool>>? openSessionAt = null)
     {
         this.path = Path.GetFullPath(path);
         this.openSession = openSession;
+        this.openSessionAt = openSessionAt;
         Title = $"InterCat · Investigation · {Path.GetFileName(this.path)}";
         Width = 940;
         Height = 660;
@@ -100,6 +114,11 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
         AutomationProperties.SetName(refreshTimeline, "Draw the investigation's timeline again");
         AutomationProperties.SetName(compareInstants, "Compare an instant of one session with an instant of another");
+        AutomationProperties.SetName(zoomIn, "Zoom the timeline in around the chosen column");
+        AutomationProperties.SetName(zoomOut, "Zoom the timeline out");
+        AutomationProperties.SetName(zoomWhole, "Show the whole investigation on the timeline");
+        AutomationProperties.SetName(openColumn, "Open the chosen column's records in InterCat");
+        AutomationProperties.SetName(columnReadout, "The chosen column of the timeline");
         AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
         AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
@@ -156,6 +175,20 @@ internal sealed class InvestigationWindow : Window, IDisposable
         find.Click += (_, _) => _ = FindCandidatesAsync();
         refreshTimeline.Click += (_, _) => _ = ShowTimelineAsync();
         compareInstants.Click += (_, _) => _ = CompareInstantsAsync();
+        zoomIn.Click += (_, _) => ZoomBy(0.5m);
+        zoomOut.Click += (_, _) => ZoomBy(2m);
+        zoomWhole.Click += (_, _) => _ = ZoomToAsync(null);
+        openColumn.Click += (_, _) =>
+        {
+            if (timelineChart.ChosenColumn is { } chosen) _ = OpenColumnAsync(chosen);
+        };
+        timelineChart.ZoomRequested += (_, range) => _ = ZoomToAsync(range);
+        timelineChart.ColumnChosen += (_, chosen) => _ = OpenColumnAsync(chosen);
+        timelineChart.CursorMoved += (_, _) =>
+        {
+            columnReadout.Text = timelineChart.Describe() ?? string.Empty;
+            openColumn.IsEnabled = timelineChart.ChosenColumn is not null && openSessionAt is not null;
+        };
         acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
@@ -221,7 +254,16 @@ internal sealed class InvestigationWindow : Window, IDisposable
         timelineHeader.Children.Add(timelineIntro);
         timelineHeader.Children.Add(compareInstants);
         timelineHeader.Children.Add(refreshTimeline);
-        var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8 };
+        var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
+        var zooming = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto") };
+        columnReadout.Margin = new Thickness(0, 0, 12, 0);
+        zooming.Children.Add(columnReadout);
+        foreach ((Button button, int column) in new[] { (openColumn, 1), (zoomIn, 2), (zoomOut, 3), (zoomWhole, 4) })
+        {
+            Grid.SetColumn(button, column);
+            button.Margin = new Thickness(8, 0, 0, 0);
+            zooming.Children.Add(button);
+        }
         var chart = new ScrollViewer
         {
             Content = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = timelineChart },
@@ -229,9 +271,11 @@ internal sealed class InvestigationWindow : Window, IDisposable
         };
         Grid.SetRow(timelineHeader, 0);
         Grid.SetRow(chart, 1);
-        Grid.SetRow(timelineWords, 2);
+        Grid.SetRow(zooming, 2);
+        Grid.SetRow(timelineWords, 3);
         timelinePage.Children.Add(timelineHeader);
         timelinePage.Children.Add(chart);
+        timelinePage.Children.Add(zooming);
         timelinePage.Children.Add(timelineWords);
 
         tabs.ItemsSource = new[]
@@ -295,11 +339,18 @@ internal sealed class InvestigationWindow : Window, IDisposable
         {
             CancellationToken token = lifetime.Token;
             (InvestigationTimelineView view, IReadOnlyList<string> labels, IReadOnlyList<string> sentences) =
-                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, token), token);
+                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, zoom, token), token);
             if (closed) return;
             Timeline = view;
             TimelineSentences = sentences;
+            if (zoom is null)
+            {
+                whole = view.Interval;
+            }
+
             timelineChart.Show(view, labels);
+            zoomIn.IsEnabled = view.Interval is { } shown && shown.EndTicks - shown.StartTicks > 200;
+            zoomOut.IsEnabled = zoomWhole.IsEnabled = zoom is not null;
             timelineWords.Text = string.Join("\n", sentences);
             timelineLoaded = true;
         }
@@ -317,6 +368,81 @@ internal sealed class InvestigationWindow : Window, IDisposable
             refreshTimeline.IsEnabled = true;
         }
     }
+
+    /// <summary>The interval of the investigation's time the timeline shows; null when it shows the whole.</summary>
+    internal TimeRange? Zoom => zoom;
+
+    /// <summary>
+    /// Shows <paramref name="range"/> of the investigation's time, within the whole of it, or the whole when it is null or
+    /// reaches past it; the timeline is read again at its full column count there.
+    /// </summary>
+    internal async Task ZoomToAsync(TimeRange? range)
+    {
+        TimeRange? next = null;
+        if (range is { } asked && whole is { } all)
+        {
+            long span = asked.EndTicks - asked.StartTicks;
+            long start = Math.Clamp(asked.StartTicks, all.StartTicks, Math.Max(all.StartTicks, all.EndTicks - span));
+            TimeRange within = new(start, Math.Min(checked(start + span), all.EndTicks));
+            next = within.StartTicks <= all.StartTicks && within.EndTicks >= all.EndTicks ? null : within;
+        }
+
+        zoom = next;
+        await ShowTimelineAsync();
+    }
+
+    private void ZoomBy(decimal factor)
+    {
+        if (Timeline?.Interval is not { } shown) return;
+        long around = timelineChart.ChosenColumn is { } chosen && Timeline.Lanes[chosen.Lane].Buckets is { Count: > 0 } buckets
+            ? buckets[chosen.Column].Interval.StartTicks + ((buckets[chosen.Column].Interval.EndTicks - buckets[chosen.Column].Interval.StartTicks) / 2)
+            : shown.StartTicks + ((shown.EndTicks - shown.StartTicks) / 2);
+        _ = ZoomToAsync(InvestigationTimelineControl.Zoomed(shown, around, factor));
+    }
+
+    /// <summary>Chooses a lane's column on the timeline, as the arrow keys or a click do; a test uses it.</summary>
+    internal void ChooseColumn(int lane, int column) => timelineChart.MoveTo(new(lane, column));
+
+    /// <summary>What the timeline says of the chosen column.</summary>
+    internal string ColumnReadout => columnReadout.Text ?? string.Empty;
+
+    /// <summary>
+    /// Opens a lane's column in InterCat's window: its session, its timeline zoomed to that column in the session's own
+    /// time, and the column's interval selected, so its records are what the window shows.
+    /// </summary>
+    internal async Task<bool> OpenColumnAsync(TimelineColumn column)
+    {
+        if (Timeline is not { } timeline || openSessionAt is null || column.Lane >= timeline.Lanes.Count) return false;
+        InvestigationLane lane = timeline.Lanes[column.Lane];
+        if (column.Column >= lane.OwnIntervals.Count
+            || View?.Members.FirstOrDefault(row => row.SessionId == lane.SessionId) is not { HoldsItsCapture: true } row)
+        {
+            return false;
+        }
+
+        TimeRange own = lane.OwnIntervals[column.Column];
+        string name = row.Title.Split(',')[0];
+        if (lane.Buckets[column.Column].ObservationCount == 0)
+        {
+            status.Text = string.Create(CultureInfo.CurrentCulture, $"Column {column.Column + 1:N0} holds no records of {name}, ")
+                + "so there is nothing of it to open: choose a column with records.";
+            return false;
+        }
+
+        status.Text = $"Opening {name} at that column…";
+        bool opened = await openSessionAt(row.FullPath, own);
+        if (!closed)
+        {
+            status.Text = opened
+                ? $"Opened {name} in the InterCat window, zoomed to {Seconds(own.StartTicks)} to {Seconds(own.EndTicks)} s of its own "
+                    + "time, the column's interval selected."
+                : $"{row.FullPath} could not be opened.";
+        }
+
+        return opened;
+    }
+
+    private static string Seconds(long ticks) => (ticks / 10_000_000m).ToString("0.0######", CultureInfo.CurrentCulture);
 
     /// <summary>Shows the sessions or the candidate joins, as choosing a tab does.</summary>
     internal void ShowTab(int index) => tabs.SelectedIndex = index;

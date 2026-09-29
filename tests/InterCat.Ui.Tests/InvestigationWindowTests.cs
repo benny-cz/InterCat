@@ -4,6 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using InterCat.Application;
@@ -381,6 +382,80 @@ public sealed class InvestigationWindowTests
             Assert.Null(await dialog.CompareAsync());
             Assert.Equal("Write both instants in seconds of their own session's time, such as 12.5.", dialog.Said);
             dialog.Close();
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: the investigation window zooms its merged time, and opens a column's records in InterCat")]
+    public async Task TheWindowZoomsAndOpensAColumn()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        string alphaPath = Datagrams(root.Path, "alpha", 4);
+        string betaPath = Datagrams(root.Path, "beta", 6);
+        Guid a = InvestigationWorkspace.Add(workspace, alphaPath, Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, betaPath, Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            TimeRange whole = window.Timeline!.Interval!.Value;
+            Assert.True(Named<Button>(window, "Zoom the timeline in around the chosen column").IsEnabled);
+            Assert.False(Named<Button>(window, "Show the whole investigation on the timeline").IsEnabled);
+
+            // The chosen column says its session, its time and its records; the cursor starts on the busiest.
+            Assert.Contains($"Session {Short(a)}, column 1 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
+            Assert.EndsWith("4 records. Enter opens them in InterCat.", window.ColumnReadout, StringComparison.Ordinal);
+
+            // The keyboard moves the cursor along a lane and to the next one: Right, End, Down.
+            Control chart = window.GetVisualDescendants().OfType<InvestigationTimelineControl>().Single();
+            chart.Focus();
+            window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+            Assert.Contains($"Session {Short(a)}, column 2 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
+            window.KeyPressQwerty(PhysicalKey.End, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Assert.StartsWith($"Session {Short(b)}, column 160 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
+            Save(window, "investigation-timeline-cursor.png");
+
+            // Zoomed in around beta's column, half as much time is shown, within the whole; the whole comes back.
+            int column = window.Timeline.Lanes[1].Buckets.ToList().FindIndex(bucket => bucket.ObservationCount > 0);
+            window.ChooseColumn(1, column);
+            Named<Button>(window, "Zoom the timeline in around the chosen column").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => window.Zoom is not null && window.Timeline!.Interval != whole);
+            TimeRange zoomed = window.Timeline!.Interval!.Value;
+            Assert.InRange(zoomed.EndTicks - zoomed.StartTicks, (whole.EndTicks - whole.StartTicks) / 2 - 1, (whole.EndTicks - whole.StartTicks) / 2 + 1);
+            Assert.True(zoomed.StartTicks >= whole.StartTicks && zoomed.EndTicks <= whole.EndTicks);
+            await window.ZoomToAsync(null);
+            Assert.Equal((null, (TimeRange?)whole), (window.Zoom, window.Timeline!.Interval));
+
+            // A column opens its session in InterCat's window, its interval selected, in the session's own time.
+            TimeRange own = window.Timeline.Lanes[1].OwnIntervals[column];
+            // A column holding none of a session's records opens nothing, and says so.
+            Assert.False(await window.OpenColumnAsync(new TimelineColumn(1, 0)));
+            Assert.StartsWith("Column 1 holds no records of Session ", Named<TextBlock>(window, "Investigation status").Text, StringComparison.Ordinal);
+
+            // Only what the session holds of the column is selected: this one reaches back before beta's capture began.
+            Assert.True(await window.OpenColumnAsync(new TimelineColumn(1, column)));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == betaPath);
+            var opened = (WorkspaceViewModel)main.DataContext!;
+            TimeRange extent = opened.Snapshot.Extent;
+            Assert.True(own.StartTicks < extent.StartTicks);
+            TimeRange held = new(Math.Max(own.StartTicks, extent.StartTicks), Math.Min(own.EndTicks, extent.EndTicks));
+            Assert.Equal(held, opened.SelectedInterval);
+            TimeRange viewport = main.GetControl<TimelineView>("TimelineSurface").Viewport;
+            Assert.True(viewport.StartTicks <= held.StartTicks && viewport.EndTicks >= held.EndTicks, $"viewport {viewport} held {held}");
+            Assert.StartsWith($"Opened Session {Short(b)} in the InterCat window, zoomed to ", Named<TextBlock>(window, "Investigation status").Text,
+                StringComparison.Ordinal);
             window.Close();
         }
         finally

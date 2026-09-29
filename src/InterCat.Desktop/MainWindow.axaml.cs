@@ -847,9 +847,39 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         }
 
-        var window = new InvestigationWindow(full, session => OpenSessionAsync(session), made);
+        var window = new InvestigationWindow(full, session => OpenSessionAsync(session), made, OpenSessionAtAsync);
         window.Show(this);
         return window;
+    }
+
+    /// <summary>
+    /// Opens a session - or keeps it, when it is the one shown - with its timeline zoomed to <paramref name="interval"/> of
+    /// its own time, with a column of it either side, and that interval selected, so its records are what this window shows.
+    /// </summary>
+    internal async Task<bool> OpenSessionAtAsync(string path, TimeRange interval)
+    {
+        string full = Path.GetFullPath(path);
+        bool shown = currentSessionPath is { } current
+            && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(current)), Path.TrimEndingDirectorySeparator(full),
+                StringComparison.OrdinalIgnoreCase);
+        if (!shown && !await OpenSessionAsync(full) || closed)
+        {
+            return false;
+        }
+
+        // A column may reach past the session's own records, before or after its capture: only what the session holds of it
+        // is selected, and nothing when it holds none of it - the session is then shown whole.
+        TimeRange extent = workspace.Snapshot.Extent;
+        if (interval.StartTicks >= extent.EndTicks || interval.EndTicks <= extent.StartTicks)
+        {
+            return true;
+        }
+
+        TimeRange held = new(Math.Max(interval.StartTicks, extent.StartTicks), Math.Min(interval.EndTicks, extent.EndTicks));
+        long span = Math.Max(held.EndTicks - held.StartTicks, 1);
+        TimelineSurface.SetViewport(new TimeRange(held.StartTicks - span, held.EndTicks + span));
+        workspace.SelectInterval(held);
+        return true;
     }
 
     /// <summary>

@@ -21,6 +21,12 @@ public sealed record InvestigationLane(
 
     /// <summary>Its records over the investigation's interval.</summary>
     public long Records => Buckets.Sum(bucket => (long)bucket.ObservationCount);
+
+    /// <summary>
+    /// Each column's interval in the session's own time, as its records were counted there: what opening the column shows
+    /// of the session. Parallel to <see cref="Buckets"/>.
+    /// </summary>
+    public IReadOnlyList<TimeRange> OwnIntervals { get; init; } = [];
 }
 
 /// <summary>What two captures of one host are to each other in the investigation's time (§8.4).</summary>
@@ -113,6 +119,7 @@ public static class InvestigationTimeline
             }
 
             IReadOnlyList<TimelineBucket> buckets = [];
+            IReadOnlyList<TimeRange> own = [];
             if (whole is { } axis)
             {
                 // A mapping is affine, so the axis's uniform grid is a uniform grid of the session's own time: its columns
@@ -123,10 +130,14 @@ public static class InvestigationTimeline
                 {
                     Interval = new TimeRange(Forward(chain, bucket.Interval.StartTicks), Forward(chain, bucket.Interval.EndTicks)),
                 })];
+                own = [.. detail.Buckets.Select(bucket => bucket.Interval)];
             }
 
             lanes.Add(new(placement.SessionId, extent, buckets, placement.Uncertainty,
-                placement.Uncertainty is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null));
+                placement.Uncertainty is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null)
+            {
+                OwnIntervals = own,
+            });
         }
 
         return new(whole, columns, lanes) { Overlaps = Overlaps(placements) };
