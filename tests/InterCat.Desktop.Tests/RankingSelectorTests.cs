@@ -870,6 +870,56 @@ public sealed class RankingSelectorTests
         Assert.DoesNotContain("per second", workspace.RankingNote, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "R3: a whole session states per second over its recording when its capture recorded a stop, as icat metric's rate does")]
+    public void AWholeSessionStatesPerSecondOverItsRecording() => SingleThreadedContext.Run(async () =>
+    {
+        // The capture's calibration read its clock 5 ticks in and again at its stop, 2 s in: its recording is those 2 s.
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer(), calibration: new ClockCalibrationV1
+        {
+            Contract = ClockCalibrationV1.ContractName,
+            CaptureId = TestSessions.Capture.Value,
+            ClockId = TestClock.Id.Value,
+            WallClock = "test-wall-clock",
+            Samples =
+            [
+                new() { NativeTicks = 5, Utc = Exported, AcquisitionUncertaintyNanoseconds = 200 },
+                new() { NativeTicks = 20_000_000, Utc = Exported.AddSeconds(2), AcquisitionUncertaintyNanoseconds = 200 },
+            ],
+        });
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+
+        // At the whole session the rows state records per second over those 2 s, each with its records still beneath.
+        string over = OperationText.Duration(2_000_000_000, CultureInfo.CurrentCulture);
+        workspace.PerSecond = true;
+        Assert.Equal("Records · per second over the whole recording, " + over, workspace.RankingNote);
+        Assert.Contains("from the capture's start to the stop its clock calibration records", workspace.RankingNoteDetail,
+            StringComparison.Ordinal);
+        RungRow first = workspace.RungRows[0];
+        Assert.Equal(WorkspaceRowBuilder.DescribeRate(first.Source.ObservationCount / 2.0) + "/s", first.Figure);
+
+        // Bytes sent per second: the client's 5,300 bytes over the 2 s, what icat metric's rate answers over the recording.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        TimeRange recording = SessionRecording.NativeInterval(session.Store, session.Store.Current!, TestClock)!.Value;
+        Assert.Equal(new TimeRange(0, 20_000_000), recording);
+        MetricResult rate = SessionMetrics.Evaluate(session.Store, new MetricRequest
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Rate,
+            RateNumerator = Metric.BytesSent,
+            ByteDomain = ByteDomain.TransportObserved,
+            AccountingSide = AccountingSide.SendSide,
+            Grouping = LaneGrouping.InstanceOnly,
+            Interval = recording,
+        });
+        decimal perSecond = rate.Groups.Single(group => group.Process?.Id == client.Id).Rate!.PerSecond!.Value;
+        Assert.Equal(2_650m, perSecond);
+        Assert.Equal(WorkspaceRowBuilder.DescribeByteRate((double)perSecond), workspace.RungRows[0].Figure);
+        Assert.EndsWith(" · per second over the whole recording, " + over, workspace.RankingNote, StringComparison.Ordinal);
+    });
+
     /// <summary>
     /// client.exe sends the server 500 bytes; blind.exe sends it once without recording a size; quiet.exe's connection to it
     /// carries no send at either end, only receives. Each relationship is its own graph edge.

@@ -47,6 +47,9 @@ public sealed record SessionOverviewBundle(
     /// as strongly as the evidence policy withholds. The timeline counts them; the ranked table's processes cannot.
     /// </summary>
     public long RowsNoProcessHolds { get; init; }
+
+    /// <summary>The interval the capture recorded (<see cref="SessionRecording"/>); null when it recorded no stop.</summary>
+    public TimeRange? Recording { get; init; }
 }
 
 /// <summary>
@@ -273,6 +276,7 @@ public static class SessionOverviewProjector
             MechanismLanes = Array.AsReadOnly(lanes),
             Clock = clock,
             RowsNoProcessHolds = heldByNone,
+            Recording = SessionRecording.Interval(store.Root, manifest, clock, extent),
         };
 
         SegmentReaderV1[] Segments() => opened ??=

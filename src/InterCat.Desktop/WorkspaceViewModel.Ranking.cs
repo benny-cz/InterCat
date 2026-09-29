@@ -122,8 +122,8 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Whether the ranked table states each row's value per second over the interval the rows count: §5.2's rate, the value
     /// over the whole interval divided by that interval (metrics-v1 §7). It orders the rows as the value does, so it is a
-    /// way of reading the ranking rather than a ranking of its own. A whole session states no interval to divide by, and
-    /// its rows keep their totals until one is brushed or zoomed to.
+    /// way of reading the ranking rather than a ranking of its own. A whole session's interval is its recording, which a
+    /// capture that recorded its stop states; any other keeps its totals until an interval is brushed or zoomed to.
     /// </summary>
     public bool PerSecond
     {
@@ -141,12 +141,13 @@ public sealed partial class WorkspaceViewModel
     public bool OffersPerSecond => ShowsRankingChoice && RankingMetrics.IsAdditive(rankBy);
 
     /// <summary>
-    /// The seconds each row's value is divided by when it is stated per second: the whole interval the rows count. Null
-    /// when rows are not stated per second, or count the whole session, which states no interval (metrics-v1 §7 refuses
-    /// the span between the first and last record as one).
+    /// The seconds each row's value is divided by when it is stated per second: the whole interval the rows count - the one
+    /// brushed or zoomed to, or the whole recording. Null when rows are not stated per second, or count a whole session
+    /// whose capture recorded no stop, which states no interval (metrics-v1 §7 refuses the span between the first and last
+    /// record as one).
     /// </summary>
     private double? RateSeconds => perSecond && OffersPerSecond && RankingMetrics.IsAdditive(AppliedRanking)
-        && CountedScope is { } interval
+        && (CountedScope ?? wholeSnapshot.Recording) is { } interval
             ? interval.SpanTicks / (double)WorkspaceTime.TicksPerSecond
             : null;
 
@@ -154,6 +155,8 @@ public sealed partial class WorkspaceViewModel
     private string PerSecondNote => !perSecond || !OffersPerSecond ? string.Empty
         : CountedScope is { } interval
             ? " · per second over " + OperationText.Duration(interval.SpanTicks * 100, CultureInfo.CurrentCulture)
+        : wholeSnapshot.Recording is { } recording
+            ? " · per second over the whole recording, " + OperationText.Duration(recording.SpanTicks * 100, CultureInfo.CurrentCulture)
         : " · per second needs an interval: brush one or zoom";
 
     /// <summary>The per-second choice in full, for the note's tooltip and a screen reader.</summary>
@@ -162,8 +165,14 @@ public sealed partial class WorkspaceViewModel
             ? " Per second: each row's value over the whole " + OperationText.Duration(interval.SpanTicks * 100, CultureInfo.CurrentCulture)
                 + " the rows count, divided by it (metrics-v1 §7). It is an observed rate, never corrected for coverage, and "
                 + "the rows keep the order of their totals, which the second line of each still states."
-        : " Per second needs an interval: a rate divides a value by the whole interval it counts, and the whole session "
-            + "states none, since the span between its first and last record is not one. Brush an interval or zoom to see rates.";
+        : wholeSnapshot.Recording is { } recording
+            ? " Per second: each row's value over the whole recording of " + OperationText.Duration(recording.SpanTicks * 100, CultureInfo.CurrentCulture)
+                + " - from the capture's start to the stop its clock calibration records - divided by it (metrics-v1 §7). It is an "
+                + "observed rate, never corrected for coverage, and the rows keep the order of their totals, which the second "
+                + "line of each still states."
+        : " Per second needs an interval: a rate divides a value by the whole interval it counts, and this session states "
+            + "none - its capture recorded no stop, as an import or an older capture does not, and the span between its first "
+            + "and last record is not one. Brush an interval or zoom to see rates.";
 
     /// <summary>
     /// Whether the chosen ranking orders this rung's rows: every ranking orders groups and processes; at a process's rung
@@ -199,7 +208,7 @@ public sealed partial class WorkspaceViewModel
             if (!ShowsRankingNote) return string.Empty;
             if (rankBy == RankingMetric.Records)
             {
-                return CountedScope is not null ? "Records" + PerSecondNote : Capitalized(PerSecondNote[3..]);
+                return (CountedScope ?? wholeSnapshot.Recording) is not null ? "Records" + PerSecondNote : Capitalized(PerSecondNote[3..]);
             }
 
             if (!RanksThisRung) return "Channels rank by records at a process's rung";

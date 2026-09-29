@@ -395,8 +395,19 @@ public sealed class LiveSessionRecorderTests
             RecordOrdinal = 1,
         });
 
+        ClockCalibrationSource local = Calibration();
+        List<bool> stoppedWhenSampled = [];
         LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
-            Plan(), host, store, _ => host.Delivered.Task, DateTimeOffset.UtcNow, calibration: Calibration());
+            Plan(), host, store, _ => host.Delivered.Task, DateTimeOffset.UtcNow, calibration: new()
+            {
+                WallClock = local.WallClock,
+                Sample = () =>
+                {
+                    stoppedWhenSampled.Add(host.StopRequested);
+                    return local.Sample();
+                },
+                Boot = local.Boot,
+            });
 
         // One calibration, in the last generation: the capture's own capture and clock, its boot, and two samples - one
         // when it started and one when it stopped - in the order they were taken.
@@ -409,6 +420,10 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(2, calibration.Samples.Count);
         Assert.True(calibration.Samples[0].NativeTicks <= calibration.Samples[1].NativeTicks);
         Assert.Equal(result.Calibration!.Samples, calibration.Samples);
+
+        // The stop reading is the recording's end, read before its session was asked to stop, not once it had drained: a
+        // whole session's rates divide by it (metrics-v1 §7).
+        Assert.Equal([false, false], stoppedWhenSampled);
 
         // A recording asked for none publishes none.
         using var plain = new TemporaryDirectory();

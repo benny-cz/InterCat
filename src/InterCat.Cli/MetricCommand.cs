@@ -190,6 +190,12 @@ internal sealed record MetricIntervalDocument
     public required long EndNativeTicks { get; init; }
     public required string? StartSeconds { get; init; }
     public required string? EndSeconds { get; init; }
+
+    /// <summary>
+    /// Whether the interval is the session's whole recording, named because a whole session's rate was asked for
+    /// (metrics-v1 §7), rather than one the request gave.
+    /// </summary>
+    public required bool WholeRecording { get; init; }
 }
 
 internal sealed record MetricUnavailableDocument
@@ -539,6 +545,7 @@ internal static class MetricCommand
                 + $"last-known-good generation {manifest.Generation}.");
         }
 
+        bool wholeRecording = false;
         if (intervalOption is not null)
         {
             SourceClockDescriptor? clock = SessionSegments.SourceClock(store.Root, manifest);
@@ -549,6 +556,16 @@ internal static class MetricCommand
             }
 
             request = request with { Interval = interval };
+        }
+        else if (request.Metric == Metric.Rate
+            && SessionSegments.SourceClock(store.Root, manifest) is { } described
+            && SessionRecording.NativeInterval(store, manifest, described, cancellationToken) is { } recording)
+        {
+            // A whole session's rate divides by its recording, the interval its capture recorded (metrics-v1 §7), and the
+            // request names it, so the answer states what it divided by. A session whose capture recorded no stop names
+            // none, and its rate stays unavailable.
+            request = request with { Interval = recording };
+            wholeRecording = true;
         }
 
         if (printCanonical)
@@ -575,7 +592,7 @@ internal static class MetricCommand
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.InvalidInvocation;
         }
-        MetricDocument document = Describe(result, full, store.Recovery.RolledBackToLastKnownGood);
+        MetricDocument document = Describe(result, full, store.Recovery.RolledBackToLastKnownGood, wholeRecording);
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
         if (json)
         {
@@ -658,7 +675,7 @@ internal static class MetricCommand
         return true;
     }
 
-    private static MetricDocument Describe(MetricResult result, string path, bool fromLastKnownGood)
+    private static MetricDocument Describe(MetricResult result, string path, bool fromLastKnownGood, bool wholeRecording)
     {
         MetricRequest request = result.Request;
         SourceClockDescriptor? clock = result.Clock;
@@ -704,6 +721,7 @@ internal static class MetricCommand
                         EndNativeTicks = interval.EndTicks,
                         StartSeconds = Seconds(clock, interval.StartTicks),
                         EndSeconds = Seconds(clock, interval.EndTicks),
+                        WholeRecording = wholeRecording,
                     }
                     : null,
             },
@@ -1040,7 +1058,7 @@ internal static class MetricCommand
             ConsoleUi.Field("Accounting", $"{side} - {MetricCompatibility.Describe(side)}");
         }
 
-        ConsoleUi.Field("Scope", Scope(result));
+        ConsoleUi.Field("Scope", Scope(result, document.Specification.Interval is { WholeRecording: true }));
         if (request.Focus is { } focus)
         {
             ConsoleUi.Field("Process focus", $"{Role(focus.Role)} {focus.Instance}");
@@ -1105,6 +1123,14 @@ internal static class MetricCommand
             ConsoleUi.Field("Reason", Words(document.Unavailable!.Reason));
             ConsoleUi.Line();
             ConsoleUi.Note(document.Unavailable.Explanation);
+            if (result.Unavailable == MetricUnavailableReason.NoInterval)
+            {
+                ConsoleUi.Note(
+                    "A whole session's rate divides by its recording, from its capture's start to the stop its clock "
+                    + "calibration records, and this session's capture recorded no stop, as an import or an older capture "
+                    + "does not. Name an interval with --interval <start>:<end>.");
+            }
+
             RenderSides(document, result);
             return;
         }
@@ -1436,14 +1462,16 @@ internal static class MetricCommand
         };
     }
 
-    private static string Scope(MetricResult result)
+    private static string Scope(MetricResult result, bool wholeRecording)
     {
         SourceClockDescriptor? clock = result.Clock;
         if (result.Request.Interval is { } interval)
         {
             return clock is null
                 ? string.Create(CultureInfo.CurrentCulture, $"[{interval.StartTicks:N0}, {interval.EndTicks:N0}) native ticks")
-                : $"[{Seconds(clock, interval.StartTicks)} s, {Seconds(clock, interval.EndTicks)} s) after capture start"
+                : (wholeRecording ? "the whole recording, " : string.Empty)
+                    + $"[{Seconds(clock, interval.StartTicks)} s, {Seconds(clock, interval.EndTicks)} s) after capture start"
+                    + (wholeRecording ? ", to the stop its clock calibration records" : string.Empty)
                     + string.Create(CultureInfo.CurrentCulture, $" (native [{interval.StartTicks:N0}, {interval.EndTicks:N0}))");
         }
 
@@ -1808,6 +1836,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      compatible ones named; one the matrix permits that this session cannot derive");
         ConsoleUi.Line("      is reported as unavailable with what it needs. --matrix prints the matrix.");
         ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s.");
+        ConsoleUi.Line("      A rate without one divides by the whole recording, from capture start to the stop");
+        ConsoleUi.Line("      its clock calibration records; a session that recorded no stop needs --interval.");
         ConsoleUi.Line("      --evidence lists the first records the answer counted.");
         ConsoleUi.Line("      One process focus scopes the answer to a process instance (ids from icat processes):");
         ConsoleUi.Line("        --owner        the records it made");

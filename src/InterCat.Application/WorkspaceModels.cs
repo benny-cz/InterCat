@@ -279,4 +279,10 @@ public sealed record WorkspaceSnapshot(
     /// cannot count and the timeline does; null for a snapshot not projected from a session.
     /// </summary>
     public long? RowsNoProcessHolds { get; init; }
+
+    /// <summary>
+    /// The interval the session's capture recorded, which its whole-session rates divide by (<see cref="SessionRecording"/>);
+    /// null when the capture recorded no stop.
+    /// </summary>
+    public TimeRange? Recording { get; init; }
 }

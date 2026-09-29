@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 271 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 272 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 272 — a whole session's rates divide by its recording (`metrics-v1` §7, `clock-calibration-v1`):**
+  - A capture's recording runs from its epoch to the stop reading its clock calibration records, widened to hold every
+    timed record. Per second at the whole session, and `icat metric`'s rate without `--interval`, divide by it.
+  - The stop reading is now taken as the capture asks its session to stop, not once it has drained, a second later.
 
 - **Revision 271 — saved views of the merged time (§8.4, `workspace-v10`):**
   - A named interval of the investigation's time, kept as revisions in its reference's clock and never shown on another;
@@ -472,12 +477,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    field join and verification, measured at 10M rows with a field each under a 1 GiB heap. All three presets exist since
    revision 154.
 5. Interaction follow-ups with no dependents:
-   - Per second over a whole session: revision 209 states rates only over a brushed or zoomed interval, because a
-     session states no interval of its own and the span between its first and last record is not one. Session time 0
-     is the capture's own epoch reading, but its stop is recorded only as wall-clock provenance
-     (`capture-finalization-v1`), and the coverage ledger's first and last readings are delivered records, not the
-     recording's bounds. A whole-session rate needs the capture to record its stop reading in the source clock, and a
-     rule for records before the epoch or without a time.
+   - Per second over a whole session: done in revision 272. A whole session's rates divide by its recording, from its
+     epoch to the stop its clock calibration records, widened to hold every timed record; an import, a redacted package
+     and a capture before revision 255 record no stop and keep none. What it leaves open:
+     - Coverage over the recording is unknown, since `coverage-v1` §2 bounds a live epoch by its delivered readings,
+       which the recording always reaches beyond. A live epoch could speak for its whole recording.
+     - Its live check found that `icat record` never delivers a capture's last second or so: delivery stops before the
+       session's partly filled buffers are flushed, and no ledger counts them lost. That is revision 273's work.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -532,6 +538,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 272 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,465 tests: 1,461
+  passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad, deleted after, answered `icat
+  metric --metric rate` over "the whole recording, [-0.002778 s, 4.173207 s)", a record before the epoch widening it.
+  Before the stop reading moved, a capture of the same length recorded 5.07 s. A loopback sender running past the stop
+  showed its records ending 1.2 s before it: the tail-delivery defect above.
 - Revision 271 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,461 tests: 1,457
   passed, 4 skipped**, zero failures. Live, `icat workspace view` on a scratch investigation of an imported ETL and a
   2-second capture, deleted after, refused a view before any alignment, saved one after, listed and removed it, and

@@ -291,8 +291,15 @@ the interval. A rate is kept as the integers it is made of — numerator, its un
 and the clock's ticks per second — and its per-second value is derived from them for presentation only,
 rounded half to even to three decimal places (§1.4, §10.5).
 
-A rate with no interval is unavailable, not defaulted. A rate whose clock the session does not describe is
-stated per native tick. Every rate is an *observed* rate, whether its generation publishes `coverage-v1` or not;
+A rate with no interval is unavailable, not defaulted. A session's **recording** is a whole interval: from its
+capture epoch, session time 0, to the stop reading its clock calibration records (`clock-calibration-v1`), widened
+to hold every record with a session time; a record with none widens nothing. A front end asked for a whole
+session's rate names the recording as the request's interval and says so; natively, each widened end is the first
+native reading at or after it. A session whose capture recorded no stop — an import, a redacted package, a capture
+before revision 255 — names none, and its whole-session rate stays unavailable. A capture before revision 272 took
+its stop reading once its session had drained, up to about a second after its recording ended, so its whole-session
+rates are that much lower than they would be. A rate whose clock the session does not describe is stated per native
+tick. Every rate is an *observed* rate, whether its generation publishes `coverage-v1` or not;
 no corrected rate exists (§21.1). A metric answer reports capture coverage separately from its numeric value:
 for a mechanism filter, the state and reason over the request's native interval; for an all-mechanism request,
 the separate states of every mechanism, never a synthetic single "covered" state. A legacy generation reports

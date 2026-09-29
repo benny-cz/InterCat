@@ -41,7 +41,9 @@ The UTF-8 JSON object is at most 16 KiB:
 ```
 
 - `samples` holds 1 to 64 samples in the order taken, their `nativeTicks` non-decreasing: a capture takes one when it
-  starts and one when it stops. A sample's `nativeTicks` is the source clock's reading midway between two reads that
+  starts and one when it stops. Since revision 272 the stop sample is taken as the capture asks its session to stop,
+  before the session drains, so the last sample ends the capture's recording (`metrics-v1` §7); an earlier capture took
+  it once its session had drained. A sample's `nativeTicks` is the source clock's reading midway between two reads that
   bracket one read of the wall clock, whose UTC reading is `utc`; `acquisitionUncertaintyNanoseconds` is half that
   bracket widened by the source clock's own tick, plus the wall clock's resolution. It bounds only how far apart the
   pair was taken: it says nothing of how right the wall clock was, which is a synchronization claim no sample makes.

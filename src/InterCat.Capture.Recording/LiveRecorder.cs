@@ -234,6 +234,7 @@ public static class LiveRecorder
 
         CaptureStopResult stop;
         long journaled;
+        ClockCalibrationSampleV1? stopSample = null;
         try
         {
             // A broker may acknowledge Start only after ETW, the source clock and the single journal
@@ -249,6 +250,11 @@ public static class LiveRecorder
             {
                 // An early end is a stop, not a failure: what was captured is still the capture's evidence.
             }
+
+            // The recording ends as its session is asked to stop, so the stop reading is taken now rather than once the
+            // session has drained: a record it still delivers was raised before this, or widens the recording (metrics-v1
+            // §7), and a second of draining would otherwise count as a second recorded.
+            stopSample = startSample is null ? null : calibration?.Sample();
         }
         finally
         {
@@ -278,7 +284,7 @@ public static class LiveRecorder
             ]);
         }
 
-        ClockCalibrationV1? calibrated = calibration is null || startSample is null
+        ClockCalibrationV1? calibrated = calibration is null || startSample is null || stopSample is null
             ? null
             : new()
             {
@@ -288,7 +294,7 @@ public static class LiveRecorder
                 BootToken = boot.Token,
                 BootCount = boot.Count,
                 WallClock = calibration.WallClock,
-                Samples = [startSample, calibration.Sample()],
+                Samples = [startSample, stopSample],
             };
         DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained, calibrated);
         return new()
