@@ -456,5 +456,5 @@ public sealed class DerivationCheckpointOverviewTests
     /// without its caveats, which each test compares itself.
     /// </summary>
     private static string Comparable(SessionOverviewBundle overview) =>
-        JsonSerializer.Serialize(overview with { Generation = 0, GraphIdentity = string.Empty, Caveats = [] });
+        JsonSerializer.Serialize(overview with { Generation = 0, ManifestDigest = null, GraphIdentity = string.Empty, Caveats = [] });
 }

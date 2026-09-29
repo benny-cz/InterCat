@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -90,6 +91,12 @@ public sealed record InvestigationTimelineView(TimeRange? Interval, int Columns,
 
     /// <summary>The investigation's notes in force, each where it is pinned (§8.4).</summary>
     public IReadOnlyList<InvestigationNote> Notes { get; init; } = [];
+
+    /// <summary>
+    /// The snapshot vector it answers (I16, §10.4): the one generation of each read member's capture, with its manifest's
+    /// digest, ordered by capture. A member not read, unresolved or unaligned, has none.
+    /// </summary>
+    public IReadOnlyList<SnapshotEntry> Snapshot { get; init; } = [];
 }
 
 /// <summary>
@@ -112,7 +119,27 @@ public static class InvestigationTimeline
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, SessionTimelineQuery.MaximumColumns);
+        for (int attempt = 1; ; attempt++)
+        {
+            // A member that records as it is read can publish between its placement and its columns. The read is taken
+            // again so each capture answers from one generation (I16); after three, it states the generation of its columns.
+            (InvestigationTimelineView view, bool straddled) = ReadOnce(workspacePath, columns, interval, cancellationToken);
+            if (!straddled || attempt == 3)
+            {
+                return view;
+            }
+        }
+    }
+
+    private static (InvestigationTimelineView View, bool Straddled) ReadOnce(
+        string workspacePath,
+        int columns,
+        TimeRange? interval,
+        CancellationToken cancellationToken)
+    {
         List<Placement> placements = Placements(workspacePath, cancellationToken);
+        var snapshot = new List<SnapshotEntry>(placements.Count);
+        bool straddled = false;
         Placement[] placed = [.. placements.Where(placement => placement.Extent is not null)];
         TimeRange? whole = interval ?? (placed.Length == 0
             ? null
@@ -123,18 +150,26 @@ public static class InvestigationTimeline
             cancellationToken.ThrowIfCancellationRequested();
             if (placement is not { Extent: { } extent, Store: { } store, Chain: { } chain })
             {
+                if (placement.Read is { } unplaced)
+                {
+                    snapshot.Add(unplaced);
+                }
+
                 lanes.Add(new(placement.SessionId, null, [], null, placement.Gap, placement.Unread));
                 continue;
             }
 
             IReadOnlyList<TimelineBucket> buckets = [];
             IReadOnlyList<TimeRange> own = [];
+            SnapshotEntry read = placement.Read!;
             if (whole is { } axis)
             {
                 // A mapping is affine, so the axis's uniform grid is a uniform grid of the session's own time: its columns
                 // are read there and placed back through the mapping.
                 SessionTimelineDetail detail = SessionTimelineQuery.Detail(
                     store, new TimeRange(Back(chain, axis.StartTicks), Back(chain, axis.EndTicks)), columns, cancellationToken);
+                straddled |= detail.Generation != read.Generation;
+                read = read with { Generation = detail.Generation, ManifestDigest = detail.ManifestDigest ?? string.Empty };
                 buckets = [.. detail.Buckets.Select(bucket => bucket with
                 {
                     Interval = new TimeRange(Forward(chain, bucket.Interval.StartTicks), Forward(chain, bucket.Interval.EndTicks)),
@@ -142,6 +177,7 @@ public static class InvestigationTimeline
                 own = [.. detail.Buckets.Select(bucket => bucket.Interval)];
             }
 
+            snapshot.Add(read);
             lanes.Add(new(placement.SessionId, extent, buckets, placement.Uncertainty,
                 placement.Uncertainty is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null)
             {
@@ -149,7 +185,12 @@ public static class InvestigationTimeline
             });
         }
 
-        return new(whole, columns, lanes) { Overlaps = Overlaps(placements), Notes = Notes(workspacePath, placements) };
+        return (new(whole, columns, lanes)
+        {
+            Overlaps = Overlaps(placements),
+            Notes = Notes(workspacePath, placements),
+            Snapshot = [.. snapshot.OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal)],
+        }, straddled);
     }
 
     /// <summary>Each note in force where it is pinned: its session's lane and its instant placed through the session's chain.</summary>
@@ -250,6 +291,7 @@ public static class InvestigationTimeline
                 null, null, WorkspaceTimeGap.None, null)
             {
                 Identity = member.HostId,
+                CaptureId = member.CaptureId,
             };
             if (!resolution.HoldsItsCapture)
             {
@@ -270,9 +312,11 @@ public static class InvestigationTimeline
             {
                 SessionStore store = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(resolution.FullPath));
                 Guid? boot = store.Current is { } manifest ? ClockCalibrationV1.Read(store.Root, manifest)?.BootToken : null;
-                if (SessionOverviewProjector.Project(store, cancellationToken: cancellationToken).Extent is not { } own)
+                SessionOverviewBundle overview = SessionOverviewProjector.Project(store, cancellationToken: cancellationToken);
+                var read = new SnapshotEntry(new CaptureId(member.CaptureId), overview.Generation, overview.ManifestDigest ?? string.Empty);
+                if (overview.Extent is not { } own)
                 {
-                    placements.Add(none with { Unread = "it holds no record with a session time", BootToken = boot });
+                    placements.Add(none with { Unread = "it holds no record with a session time", BootToken = boot, Read = read });
                     continue;
                 }
 
@@ -288,6 +332,7 @@ public static class InvestigationTimeline
                     Uncertainty = widest,
                     BootToken = boot,
                     Gap = widest is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None,
+                    Read = read,
                 });
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -327,5 +372,11 @@ public static class InvestigationTimeline
     {
         /// <summary>Its own host identity; <see cref="HostId"/> stands for every identity confirmed one host with it.</summary>
         public Guid Identity { get; init; }
+
+        /// <summary>The capture the member names.</summary>
+        public Guid CaptureId { get; init; }
+
+        /// <summary>The generation its extent was read from, with its manifest's digest; null when it was not read.</summary>
+        public SnapshotEntry? Read { get; init; }
     }
 }

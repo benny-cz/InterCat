@@ -176,6 +176,15 @@ public static class InvestigationRows
                     : string.Empty)
                 + string.Create(culture, $"{rows.Count(row => row.Ambiguous):N0} not the only match of a connection.");
         List<string> notes = [];
+        if (result.Snapshot.Count > 0)
+        {
+            // What the candidates answer (I16): a session that records on can hold more by the next comparison.
+            IReadOnlyList<WorkspaceMember> members = InvestigationWorkspace.Read(path).Members;
+            notes.Add("Compared " + string.Join(", ", result.Snapshot.Select(entry => string.Create(culture,
+                $"session {Short(members.First(member => member.CaptureId == entry.CaptureId.Value).SessionId)} at generation {entry.Generation:N0}")))
+                + ".");
+        }
+
         if (result.DisjointMirrors > 0 || result.LoopbackAcrossHosts > 0)
         {
             notes.Add(string.Create(culture, $"Not proposed: {result.DisjointMirrors:N0} mirrored pairs whose lifetimes lie apart "
@@ -222,11 +231,16 @@ public static class InvestigationRows
                 _ => "placed, its uncertainty unknown at its ends: its drift is not stated",
             };
             labels.Add($"Session {Short(lane.SessionId)} · {host}\n{place}");
-            sentences.Add(lane.Placed
+
+            // The generation its columns were counted from (I16); a session that records on holds more at its next read.
+            string read = view.Snapshot.FirstOrDefault(entry => entry.CaptureId.Value == member.CaptureId) is { } entry
+                ? string.Create(culture, $" Read at its generation {entry.Generation:N0}.")
+                : string.Empty;
+            sentences.Add((lane.Placed
                 ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} records, from ")
                     + Seconds(lane.Extent!.Value.StartTicks * 100, culture) + " to " + Seconds(lane.Extent.Value.EndTicks * 100, culture)
                     + $" of the investigation's time, {place}."
-                : $"Session {Short(lane.SessionId)} ({host}): {place}.");
+                : $"Session {Short(lane.SessionId)} ({host}): {place}.") + read);
         }
 
         sentences.AddRange(view.Overlaps.Select(overlap => overlap.Statement(culture)));

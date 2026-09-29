@@ -63,6 +63,9 @@ public sealed record SessionTimelineDetail(
     IReadOnlyList<TimelineBucket> Buckets)
 {
     public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
+
+    /// <summary>The digest of the one generation's manifest the buckets were counted from (I16).</summary>
+    public string? ManifestDigest { get; init; }
 }
 
 /// <summary>One group's exact owner-accounted L1 timeline row, keyed independently of its visual position.</summary>
@@ -316,6 +319,7 @@ public static class SessionTimelineQuery
             Array.AsReadOnly(counted.Buckets(coverage, clock, capture)))
         {
             MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
+            ManifestDigest = manifest.Digest,
         };
         CoverageState[]? laneCapture = total?.Lanes is not { Length: > 0 } counting ? null
             : counting[0].Counts.Count == counted.Counts.Count ? capture : counting[0].CaptureCoverage(coverage, clock);

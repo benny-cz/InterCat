@@ -71,6 +71,33 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         Assert.Contains("missing", unread.Reason, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I16: candidate joins and the merged time name the generation of each capture they read, with its manifest")]
+    public void WorkspaceResultsNameTheirSnapshotVector()
+    {
+        string workspace = Workspace();
+        string client = Session("client", "lab-1", ClientRows(1_000));
+        string server = Session("server", "lab-2", ServerRows(5_000));
+        Guid a = InvestigationWorkspace.Add(workspace, client, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, server, Now).SessionId;
+
+        // Each compared session's capture at the generation read, with that generation's manifest, ordered by capture.
+        SnapshotEntry[] expected =
+        [
+            .. new[] { client, server }.Select(path =>
+            {
+                SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+                SessionManifestV1 manifest = store.Current!;
+                return new SnapshotEntry(SessionSegments.Source(store.Root, manifest)!.Value.Capture, manifest.Generation, manifest.Digest);
+            }).OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal),
+        ];
+        Assert.Equal(expected, WorkspaceCorrelation.Candidates(workspace).Snapshot);
+
+        // The merged time names the sessions it placed: none before an alignment, both after one.
+        Assert.Empty(InvestigationTimeline.Read(workspace, 10).Snapshot);
+        InvestigationWorkspace.Align(workspace, b, 500_000, a, 100_000, 1_000, 10, null, Now);
+        Assert.Equal(expected, InvestigationTimeline.Read(workspace, 10).Snapshot);
+    }
+
     [Fact(DisplayName = "R22: a candidate with another for either connection is ambiguous, and loopback joins only one host's captures")]
     public void CandidatesSayWhenTheyAreNotTheOnlyMatch()
     {

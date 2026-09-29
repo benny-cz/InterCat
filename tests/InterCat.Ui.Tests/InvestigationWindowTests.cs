@@ -699,7 +699,8 @@ public sealed class InvestigationWindowTests
             InvestigationTimelineView timeline = window.Timeline!;
             Assert.Equal([true, true, false], timeline.Lanes.Select(lane => lane.Placed));
             Assert.Equal((4L, 6L), (timeline.Lanes[0].Records, timeline.Lanes[1].Records));
-            Assert.EndsWith("of the investigation's time, the investigation's own clock, exactly.", window.TimelineSentences[0], StringComparison.Ordinal);
+            Assert.EndsWith("of the investigation's time, the investigation's own clock, exactly. Read at its generation 1.",
+                window.TimelineSentences[0], StringComparison.Ordinal);
             Assert.Contains("records, from ", window.TimelineSentences[1], StringComparison.Ordinal);
             Assert.Contains("placed within ±", window.TimelineSentences[1], StringComparison.Ordinal);
             Assert.EndsWith("not placed: not aligned to the investigation's time.", window.TimelineSentences[2], StringComparison.Ordinal);

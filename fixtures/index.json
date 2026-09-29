@@ -971,6 +971,7 @@
         "I16: a result names the materialized request it answers, so two spellings are one request",
         "I16: an operation answer names the operation rule and the binding rule in its identity",
         "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
+        "I16: candidate joins and the merged time name the generation of each capture they read, with its manifest",
         "I16: every answer names the identity of the specification and snapshot it answers",
         "I16: every golden specification canonicalizes to exactly its recorded bytes and identity"
       ],

@@ -57,7 +57,14 @@ public sealed record WorkspaceCorrelationResult(
     int LoopbackAcrossHosts,
     IReadOnlyList<UnreadMember> Unread,
     IReadOnlyList<string> Caveats,
-    IReadOnlyList<UnmatchedDecision>? DecidedElsewhere = null);
+    IReadOnlyList<UnmatchedDecision>? DecidedElsewhere = null)
+{
+    /// <summary>
+    /// The snapshot vector it answers (I16, §10.4): the one generation of each compared member's capture, with its
+    /// manifest's digest, ordered by capture.
+    /// </summary>
+    public IReadOnlyList<SnapshotEntry> Snapshot { get; init; } = [];
+}
 
 /// <summary>
 /// Proposes candidate joins between an investigation's captures (§8.3, M4): a connection one capture holds only one end of
@@ -208,7 +215,17 @@ public static class WorkspaceCorrelation
                 + "holds is that capture's own channel.",
             "Lifetimes are where each capture saw the connection, from its first record to its last, compared in the "
                 + "investigation's time within their alignment's uncertainty; without an alignment they cannot be compared.",
-        ], elsewhere);
+        ], elsewhere)
+        {
+            // The one generation of each member it compared, which a later read of a growing session can differ from (I16).
+            Snapshot =
+            [
+                .. members
+                    .Select(member => new SnapshotEntry(new CaptureId(member.Member.CaptureId), member.Index.Generation,
+                        member.Index.ManifestDigest ?? string.Empty))
+                    .OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal),
+            ],
+        };
     }
 
     /// <summary>What a person decided of a candidate, in words, and whether the investigation's time has changed since.</summary>

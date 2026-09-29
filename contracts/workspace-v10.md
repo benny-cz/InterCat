@@ -216,11 +216,13 @@ of one member is a candidate with a connection of another when:
 A mirrored pair whose lifetimes lie apart beyond their uncertainty is not proposed, and is counted. A candidate is never
 an established join: it states its evidence - the mirrored endpoints, whether the lifetimes overlap or cannot be
 compared and why, and the bytes each side measured of each direction, the same or not - and how many other candidates
-either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v3`: the
+either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v4`: the
 rule, each candidate's two ends (session, key, protocol, endpoints, process, lifetime and bytes), its timing, its
 alternatives, the decision in force, the translations it mirrors through, and its evidence; the mirrored pairs not
 proposed and the loopback pairs of two hosts, counted; the members not compared and why; the decisions in force whose
-pair is no candidate now, and why; and caveats. Nothing is joined by time alone, by an address alone or by a name.
+pair is no candidate now, and why; caveats; and, since revision 277, the snapshot vector it answers (I16): each compared
+capture with its session, the one generation read and that generation's manifest digest, by capture. A session that
+records on can hold more at the next comparison. Nothing is joined by time alone, by an address alone or by a name.
 
 A person decides a candidate with `icat workspace join <n> --accept | --reject | --withdraw`, `<n>` its number in
 `correlate`'s list. Each decision is a revision of the file, kept when a later one replaces or withdraws it:

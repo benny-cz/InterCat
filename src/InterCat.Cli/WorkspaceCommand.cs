@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 
@@ -140,6 +141,20 @@ internal sealed record WorkspaceCorrelationDocument
     public required IReadOnlyList<DecisionDocument> DecidedElsewhere { get; init; }
 
     public required IReadOnlyList<string> Caveats { get; init; }
+
+    /// <summary>The snapshot vector the candidates answer (I16): each compared capture's one generation, by capture.</summary>
+    public required IReadOnlyList<SnapshotEntryDocument> SnapshotVector { get; init; }
+}
+
+/// <summary>One capture's generation a workspace result was read from, as a query identity's snapshot vector names it.</summary>
+internal sealed record SnapshotEntryDocument
+{
+    public required string CaptureId { get; init; }
+    public required Guid SessionId { get; init; }
+    public required long Generation { get; init; }
+
+    /// <summary>The digest of that generation's manifest: a generation number alone is local to one session.</summary>
+    public required string Manifest { get; init; }
 }
 
 internal sealed record DecisionDocument
@@ -199,7 +214,7 @@ internal static partial class WorkspaceCommand
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
-    public const string CorrelationContract = "workspace-correlation-v3";
+    public const string CorrelationContract = "workspace-correlation-v4";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -653,6 +668,7 @@ internal static partial class WorkspaceCommand
             Unread = result.Unread,
             DecidedElsewhere = [.. (result.DecidedElsewhere ?? []).Select(unmatched => DecisionOf(unmatched.Join, true, unmatched.Why))],
             Caveats = result.Caveats,
+            SnapshotVector = SnapshotOf(path, result.Snapshot),
         };
         if (json)
         {
@@ -664,6 +680,10 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Heading("Connection candidates");
         ConsoleUi.Field("Investigation", path);
         ConsoleUi.Field("Rule", result.Rule);
+        ConsoleUi.Field("Read", document.SnapshotVector.Count == 0
+            ? "no session"
+            : string.Join("; ", document.SnapshotVector.Select(entry =>
+                string.Create(culture, $"{Short(entry.SessionId)} at generation {entry.Generation:N0}"))));
         int ambiguous = result.Candidates.Count(candidate => candidate.Ambiguous);
         ConsoleUi.Field("Candidates", string.Create(culture,
             $"{result.Candidates.Count:N0}, {ambiguous:N0} of them not the only match of a connection"));
@@ -1060,6 +1080,22 @@ internal static partial class WorkspaceCommand
         (nanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
 
     private static string Short(Guid identity) => identity.ToString("N")[..8];
+
+    /// <summary>A result's snapshot vector as documents, each capture beside the member session that holds it.</summary>
+    private static SnapshotEntryDocument[] SnapshotOf(string path, IReadOnlyList<SnapshotEntry> snapshot)
+    {
+        IReadOnlyList<WorkspaceMember> members = InvestigationWorkspace.Read(path).Members;
+        return
+        [
+            .. snapshot.Select(entry => new SnapshotEntryDocument
+            {
+                CaptureId = entry.CaptureId.Value.ToString("N"),
+                SessionId = members.First(member => member.CaptureId == entry.CaptureId.Value).SessionId,
+                Generation = entry.Generation,
+                Manifest = entry.ManifestDigest,
+            }),
+        ];
+    }
 
     /// <summary>A member's path as this system writes paths: relative as stored, or the whole path it resolves to.</summary>
     private static string Shown(string stored, string full) =>

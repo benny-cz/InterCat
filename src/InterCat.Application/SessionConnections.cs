@@ -78,7 +78,11 @@ public sealed record HeldConnection(
     long LastNanoseconds);
 
 /// <summary>Every one-sided connection of one generation, whoever held it.</summary>
-public sealed record SessionConnectionIndex(Guid SessionId, long Generation, IReadOnlyList<HeldConnection> Connections);
+public sealed record SessionConnectionIndex(Guid SessionId, long Generation, IReadOnlyList<HeldConnection> Connections)
+{
+    /// <summary>The digest of the one generation's manifest the connections were read from (I16).</summary>
+    public string? ManifestDigest { get; init; }
+}
 
 /// <summary>
 /// Reads a process's one-sided connections for its rung: the TCP connections and UDP flows it held whose other end no
@@ -99,7 +103,7 @@ public static class SessionConnections
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
-        (Guid session, long generation, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+        (Guid session, long generation, _, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
             Read(store, connection => connection.Holder.Id == instance, interval, policy, cancellationToken);
         return new(session, generation, [.. held.Select(pair => pair.Summary)]);
     }
@@ -113,7 +117,8 @@ public static class SessionConnections
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default)
     {
-        (Guid session, long generation, SourceClockDescriptor? clock, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+        (Guid session, long generation, string digest, SourceClockDescriptor? clock,
+            IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
             Read(store, _ => true, null, policy, cancellationToken);
         return new(session, generation,
         [
@@ -122,14 +127,18 @@ public static class SessionConnections
                 pair.Connection.Holder,
                 SessionTime(clock!.Value, pair.Connection.FirstNativeTicks),
                 SessionTime(clock.Value, pair.Connection.LastNativeTicks))),
-        ]);
+        ])
+        {
+            ManifestDigest = digest,
+        };
     }
 
     private static long SessionTime(SourceClockDescriptor clock, long nativeTicks) =>
         SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, nativeTicks)).SessionTime?.Nanoseconds
             ?? throw new InvalidDataException($"A connection's reading {nativeTicks} is not on its capture's clock.");
 
-    private static (Guid Session, long Generation, SourceClockDescriptor? Clock, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Held) Read(
+    private static (Guid Session, long Generation, string Digest, SourceClockDescriptor? Clock,
+        IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Held) Read(
         SessionStore store,
         Func<TransportConnection, bool> selected,
         TimeRange? interval,
@@ -143,7 +152,7 @@ public static class SessionConnections
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
         if (segments.Length == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
         {
-            return (manifest.SessionId, manifest.Generation, null, []);
+            return (manifest.SessionId, manifest.Generation, manifest.Digest, null, []);
         }
 
         SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
@@ -152,7 +161,7 @@ public static class SessionConnections
             selected(connection) && SessionOverviewProjector.Admitted(connection.Strength, policy))];
         if (held.Length == 0)
         {
-            return (manifest.SessionId, manifest.Generation, clock, []);
+            return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, []);
         }
 
         // One pass over the segments counts every connection's records and bytes at once, by the channel each row names.
@@ -214,7 +223,7 @@ public static class SessionConnections
             }
         }
 
-        return (manifest.SessionId, manifest.Generation, clock,
+        return (manifest.SessionId, manifest.Generation, manifest.Digest, clock,
         [
             .. Enumerable.Range(0, held.Length)
                 .Where(index => interval is null || records[index] > 0)
