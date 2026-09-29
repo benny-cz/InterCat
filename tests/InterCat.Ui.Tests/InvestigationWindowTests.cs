@@ -295,6 +295,76 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window packages the investigation with the sessions a person chooses")]
+    public async Task TheWindowPackagesTheInvestigation()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        string gamma = Datagrams(root.Path, "gamma", 2);
+        Guid c = InvestigationWorkspace.Add(workspace, gamma, Committed).SessionId;
+        Directory.Delete(gamma, recursive: true);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            Button package = Named<Button>(window, "Package this investigation with its sessions, to share it");
+            Assert.True(package.IsEnabled);
+
+            // The confirmation offers each session that can be copied, chosen, and says what the choice exposes.
+            var prompt = new InvestigationPackageWindow(InvestigationPackage.Preview(workspace));
+            prompt.Show(window);
+            Assert.False(Named<CheckBox>(prompt, $"Copy session {Short(c)}, found in gamma").IsEnabled);
+            Assert.Equal([a, b], prompt.Chosen);
+            Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 2 of its 3 sessions",
+                prompt.Statements[0], StringComparison.Ordinal);
+            Assert.Equal(InvestigationPackage.Warning, prompt.Statements[^1]);
+            Assert.Equal("Save unredacted package…", Named<Button>(prompt, "Save the package in a new folder you choose").Content);
+            Save(prompt, "investigation-package-prompt.png");
+            prompt.Choose(a, copied: false);
+            Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 1 of its 3 sessions",
+                prompt.Statements[0], StringComparison.Ordinal);
+            prompt.Choose(b, copied: false);
+            Assert.False(prompt.CanSave);
+            prompt.Choose(b, copied: true);
+            Assert.True(prompt.CanSave);
+            Assert.Equal([b], prompt.Chosen);
+            prompt.Close();
+
+            // The package holds what was chosen, and the status line says where it is and that it verified.
+            string destination = Path.Combine(root.Path, "shared", "case-package");
+            InvestigationPackageResult? result = await window.WritePackageAsync(destination, [b]);
+            Assert.NotNull(result);
+            Assert.Equal([null, $"sessions/{Short(b)}-beta", null], result!.Members.Select(member => member.PackagedPath));
+            TextBlock status = Named<TextBlock>(window, "Investigation status");
+            Assert.Equal(InvestigationWindow.Saved(result), status.Text);
+            Assert.Contains("2 sessions were not copied and stay references to relink.", status.Text, StringComparison.Ordinal);
+            Assert.Equal(("Package…", true), (package.Content, package.IsEnabled));
+
+            // Opened, it is the same investigation: the copy is found beside its file, the others where they were.
+            InvestigationWindow opened = main.ShowInvestigation(result.WorkspacePath);
+            WaitFor(() => opened.View is not null);
+            Assert.Equal([$"Session {Short(a)}, present", $"Session {Short(b)}, present", $"Session {Short(c)}, missing"],
+                opened.View!.Members.Select(row => row.Title));
+            Assert.StartsWith(Path.Combine(destination, "sessions"), opened.View.Members[1].FullPath, StringComparison.OrdinalIgnoreCase);
+            opened.Close();
+
+            // A package goes only to a new folder: a second one there is refused, and the window says so.
+            Assert.Null(await window.WritePackageAsync(destination, null));
+            Assert.StartsWith("The investigation could not be packaged: ", status.Text, StringComparison.Ordinal);
+            Assert.Contains("exists", status.Text, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>A session whose process 100 sends <paramref name="records"/> datagrams 100 µs into its capture, 1 µs apart.</summary>
     private static string Datagrams(string root, string name, int records, string? host = null)
     {

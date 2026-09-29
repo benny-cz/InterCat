@@ -15,8 +15,8 @@ namespace InterCat.Desktop;
 /// <summary>
 /// An investigation over separately captured sessions (ADR-038, M4): its members, where each stands, its host and its
 /// time, with the gestures that keep it whole - open a member, relink one that moved, add sessions, align one to the
-/// investigation's time - and the candidate joins between its captures (ADR-041). Showing it opens each session as a
-/// viewer does and writes to none; only the investigation's own file is written.
+/// investigation's time - the candidate joins between its captures (ADR-041), and a package of it with its sessions to share
+/// (§8.4). Showing it opens each session as a viewer does and writes to none; only the investigation's own file is written.
 /// </summary>
 internal sealed class InvestigationWindow : Window, IDisposable
 {
@@ -61,6 +61,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
             + "scaled to its own busiest column. A session with no alignment has no place.",
     };
     private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
+    private readonly Button package = new() { Content = "Package…", IsEnabled = false };
+    private CancellationTokenSource? packaging;
     private bool timelineLoaded;
     private bool timelineLoading;
     private bool loading;
@@ -97,6 +99,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
         AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
+        AutomationProperties.SetName(package, PackageName);
         AccessibleItems.Name(members);
         AccessibleItems.Name(candidates);
         members.ItemTemplate = new FuncDataTemplate<InvestigationMemberRow>((row, _) => new StackPanel
@@ -150,6 +153,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
+        package.Click += (_, _) => _ = PackageAsync();
         candidates.SelectionChanged += (_, _) => ShowSelectedCandidate();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the investigation window");
@@ -233,11 +237,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(tabs, "Sessions and candidate joins");
 
         var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlaps, status } };
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        Grid.SetColumn(close, 1);
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+        Grid.SetColumn(package, 1);
+        Grid.SetColumn(close, 2);
+        package.VerticalAlignment = VerticalAlignment.Bottom;
+        package.Margin = new Thickness(0, 0, 8, 0);
         close.VerticalAlignment = VerticalAlignment.Bottom;
         caveats.Margin = new Thickness(0, 0, 12, 0);
         footer.Children.Add(caveats);
+        footer.Children.Add(package);
         footer.Children.Add(close);
         var grid = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10 };
         Grid.SetRow(header, 0);
@@ -257,6 +265,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
     /// <summary>The candidate joins as last found; null before they were looked for.</summary>
     internal InvestigationCandidates? Candidates { get; private set; }
+
+    private const string PackageName = "Package this investigation with its sessions, to share it";
 
     /// <summary>The timeline as last drawn; null before it was first shown.</summary>
     internal InvestigationTimelineView? Timeline { get; private set; }
@@ -329,6 +339,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             overlaps.IsVisible = view.Overlaps is { Count: > 0 };
             caveats.Text = string.Join(" ", view.Caveats);
             members.ItemsSource = view.Members;
+            package.IsEnabled = packaging is not null || view.Members.Count > 0;
             members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)
                 ?? (view.Members.Count > 0 ? view.Members[0] : null);
             int unresolved = view.Members.Count(row => !row.HoldsItsCapture);
@@ -347,6 +358,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             if (closed) return;
             View = null;
             members.ItemsSource = Array.Empty<InvestigationMemberRow>();
+            package.IsEnabled = packaging is not null;
             summary.Text = string.Empty;
             time.Text = string.Empty;
             status.Text = "This investigation could not be read: " + exception.Message;
@@ -500,6 +512,188 @@ internal sealed class InvestigationWindow : Window, IDisposable
             if (!closed) status.Text = exception.Message;
         }
     }
+
+    /// <summary>
+    /// Packages the investigation with its sessions (§8.4): what a package would hold is measured and stated first, the
+    /// person chooses its sessions and where the new folder goes, and the package, verified before it appears, can be opened
+    /// here. While it is made, the same button cancels it.
+    /// </summary>
+    private async Task PackageAsync()
+    {
+        if (packaging is { } running)
+        {
+            running.Cancel();
+            return;
+        }
+
+        InvestigationPackagePreview preview;
+        status.Text = "Measuring what a package of this investigation would hold…";
+        try
+        {
+            CancellationToken token = lifetime.Token;
+            preview = await Task.Run(() => InvestigationPackage.Preview(path, token), token);
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed) status.Text = "The investigation could not be measured to package it: " + exception.Message;
+            return;
+        }
+
+        if (closed) return;
+        if (preview.Copied.Count == 0)
+        {
+            status.Text = "No session of this investigation is where it was last found, so there is nothing to package. Relink "
+                + "its sessions first.";
+            return;
+        }
+
+        var prompt = new InvestigationPackageWindow(preview);
+        if (!await prompt.ShowDialog<bool>(this) || closed)
+        {
+            if (!closed) status.Text = "Nothing was packaged.";
+            return;
+        }
+
+        IReadOnlyList<Guid> chosen = prompt.Chosen;
+        IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        {
+            Title = "Choose where to save the investigation package",
+            AllowMultiple = false,
+        });
+        if (folders.Count == 0 || closed)
+        {
+            if (!closed) status.Text = "Nothing was packaged.";
+            return;
+        }
+
+        string destination = MainWindow.NewPackageDirectory(
+            folders[0].Path.LocalPath, DateTimeOffset.Now, Path.GetFileNameWithoutExtension(path) + "-package");
+        InvestigationPackageResult? result = await WritePackageAsync(destination, chosen);
+        if (result is not null && !closed && await ShowPackageResultAsync(result) && Owner is MainWindow main)
+        {
+            _ = main.ShowInvestigation(result.WorkspacePath);
+        }
+    }
+
+    /// <summary>
+    /// Makes the package off the window's thread, its progress in the status line, and returns null when it was cancelled
+    /// or refused - the status line then says which, and nothing is saved.
+    /// </summary>
+    internal async Task<InvestigationPackageResult?> WritePackageAsync(string destination, IReadOnlyList<Guid>? chosen)
+    {
+        if (packaging is not null || closed) return null;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        packaging = cancellation;
+        package.Content = "Cancel packaging";
+        package.IsEnabled = true;
+        AutomationProperties.SetName(package, "Cancel packaging; nothing is saved");
+        status.Text = "Copying and checking the sessions…";
+        var progress = new Progress<InvestigationPackageProgress>(update =>
+        {
+            if (closed || packaging != cancellation) return;
+            string stage = update.Stage == OriginalPackageStage.Copying ? "Copying and checking" : "Reopening and verifying";
+            status.Text = string.Create(CultureInfo.CurrentCulture,
+                $"{stage} session {update.Session:N0} of {update.Sessions:N0}… {(update.Total > 0 ? update.Done * 100 / update.Total : 100)}%");
+        });
+        try
+        {
+            InvestigationPackageResult result = await Task.Run(
+                () => InvestigationPackage.Create(path, destination, chosen, progress, cancellation.Token), cancellation.Token);
+            if (!closed) status.Text = Saved(result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!closed) status.Text = "Packaging cancelled. Nothing was saved, and the investigation and its sessions are unchanged.";
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed) status.Text = "The investigation could not be packaged: " + exception.Message;
+            return null;
+        }
+        finally
+        {
+            packaging = null;
+            if (!closed)
+            {
+                package.Content = "Package…";
+                package.IsEnabled = View is { Members.Count: > 0 };
+                AutomationProperties.SetName(package, PackageName);
+            }
+        }
+    }
+
+    /// <summary>What saving a package did, as the status line says it.</summary>
+    internal static string Saved(InvestigationPackageResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        int copies = result.Members.Count(member => member.PackagedPath is not null);
+        int references = result.Members.Count - copies;
+        return string.Create(CultureInfo.CurrentCulture, $"Saved the investigation with {Spoken.Count(copies, "session")} to ")
+            + $"{result.Directory}. Each copy was checked as it was copied, and the package was reopened and resolved before it "
+            + "was saved."
+            + (references == 0 ? string.Empty : references == 1
+                ? " One session was not copied and stays a reference to relink."
+                : string.Create(CultureInfo.CurrentCulture, $" {references:N0} sessions were not copied and stay references to relink."));
+    }
+
+    /// <summary>Says where the package is and what verified it; true when the person wants to open it here.</summary>
+    private async Task<bool> ShowPackageResultAsync(InvestigationPackageResult result)
+    {
+        var prompt = new Window
+        {
+            Title = "Investigation package saved",
+            Width = 600,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        var done = new Button { Content = "Done" };
+        var open = new Button { Content = "Open it here", IsVisible = Owner is MainWindow };
+        AutomationProperties.SetName(open, "Open the package's investigation in a window of its own");
+        done.Click += (_, _) => prompt.Close(false);
+        open.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => done.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key != Key.Escape) return;
+            prompt.Close(false);
+            key.Handled = true;
+        };
+        int copies = result.Members.Count(member => member.PackagedPath is not null);
+        var content = new StackPanel { Margin = new Thickness(20), Spacing = 12 };
+        content.Children.Add(Paragraph(string.Create(CultureInfo.CurrentCulture,
+            $"Saved {Path.GetFileName(result.WorkspacePath)} with exact copies of {Spoken.Count(copies, "session")} ")
+            + string.Create(CultureInfo.CurrentCulture,
+                $"({Spoken.Count(result.Files, "file")}, {RecentSessions.Size(result.Bytes, CultureInfo.CurrentCulture)}) to {result.Directory}.")));
+        content.Children.Add(Paragraph("Each file was checked against the digest its generation recorded as it was copied, "
+            + "each copy was reopened and hashed as a recipient would, and the investigation was reopened from its own file, "
+            + "every copy found beside it, before the package was saved."));
+        foreach (InvestigationPackageMember member in result.Members.Where(member => member.Note is not null))
+        {
+            content.Children.Add(Paragraph($"Session {member.SessionId.ToString("N")[..8]}: {member.Note}"));
+        }
+
+        content.Children.Add(Paragraph(InvestigationPackage.WarningFor(result.Source)));
+        content.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Children = { done, open },
+        });
+        prompt.Content = content;
+        return await prompt.ShowDialog<bool>(this);
+    }
+
+    private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 
     private async Task AlignSelectedAsync()
     {

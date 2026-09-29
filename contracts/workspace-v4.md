@@ -1,8 +1,9 @@
 # Workspace contract, version 4
 
-Status: M4, revision 260 (ADR-038 to ADR-041); versions 1, 2 and 3 were revisions 253, 254 and 256's
+Status: M4, revision 260 (ADR-038 to ADR-041), packaged since revision 263 (ADR-042); versions 1, 2 and 3 were
+revisions 253, 254 and 256's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align | join`
+Produced by: `icat workspace new | add | relink | alias | align | join | package`
 Read by: `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
@@ -187,13 +188,46 @@ since changed, to review (§8.3). A decision in force whose pair is no candidate
 joins name no member or connection, join one session's own connections, or state `decidedUnder` other than two entries
 for their own two sessions exactly when they decide, is refused, as is a join in an earlier version's file.
 
-## 7. Not defined at this version
+## 7. A package
+
+`icat workspace package <workspace> --output <new-folder>`, and the Desktop's investigation window, share an
+investigation with its sessions as one folder (§8.4, ADR-042):
+
+| Path | Holds |
+|---|---|
+| `<new-folder>/<file name>` | The investigation, under its source file's name, its members' paths rewritten |
+| `<new-folder>/sessions/<first 8 hex of the session>-<folder>/` | An original evidence package of a copied member |
+
+- A member chosen to be copied must hold its capture (`Present`, `Advanced` or `Replaced`). It is copied as an original
+  evidence package of its current generation (`contracts/original-evidence-package-v1.md`), and its `path` becomes
+  `sessions/<folder>`, relative to the file. Its `generation` and `manifestDigest` are kept, so a member that has moved
+  on reads as `Advanced` or `Replaced` in the package, as it does at its source, until a person relinks it.
+- Every other member - not chosen, or `Missing`, `Different` or `Unreadable` - keeps its fields, and its `path` becomes
+  the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
+  `Missing`, to relink.
+- Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments` and
+  `joins`. The file is written as `workspace-v4`.
+- The folder must not exist and must lie inside no session. It is built in a private folder beside it,
+  `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
+  copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
+  cancelled leaves nothing.
+
+`--only <session>`, repeated, copies only the members named, each by its identity or a unique leading part; naming one
+that cannot be copied is refused. `--check` measures the package and writes nothing. `--json` prints
+`workspace-package-v1`: `performed`, `source`, `directory` and `workspace` (null for a check), each member's
+`sessionId`, `fullPath`, `copied`, `packagedPath`, `generation`, `rows`, `files`, `bytes`, `redacted`, `state` (in the
+package once written, where it was found for a check) and `note`, the totals, `unredacted`, the `disclosure` - what the
+package holds and exposes, a paragraph each, as the Desktop states it before saving - the `warning` and the
+`verification`. It exits 0 when every member is copied, or the ones copied were chosen with `--only`, and 1 when a
+member could not be copied.
+
+## 8. Not defined at this version
 
 - Aligning through another aligned member, a rate other than 1 from two separated anchors, and alignment from shared
   markers (§8.2's third mode).
 - Confirming two host identities as one host; pins, notes and saved views.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
-  session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records;
-  packaging a workspace with its sessions.
+  session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.
 - Deduplicating two captures' records of one event: an overlap is flagged, and nothing is merged.
+- A redacted package of a whole investigation: a redacted package's pseudonyms hold only within it (ADR-042).

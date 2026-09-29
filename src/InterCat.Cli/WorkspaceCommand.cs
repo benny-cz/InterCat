@@ -194,12 +194,20 @@ internal static partial class WorkspaceCommand
             return InterCatExitCode.Success;
         }
 
-        string? verb = command.TakePositional();
-        string? workspace = command.TakePositional();
+        // Options that take a value go first, so a value is never read as the verb, the workspace or an operand.
         string? within = command.TakeOption("--within");
         string? drift = command.TakeOption("--drift-ppm");
         string? note = command.TakeOption("--note");
         string? sync = command.TakeOption("--sync");
+        string? output = command.TakeOption("--output");
+        List<string> only = [];
+        while (command.TakeOption("--only") is { } chosen)
+        {
+            only.Add(chosen);
+        }
+
+        string? verb = command.TakePositional();
+        string? workspace = command.TakePositional();
         List<string> operands = [];
         while (command.TakePositional() is { } operand)
         {
@@ -212,6 +220,7 @@ internal static partial class WorkspaceCommand
         bool reject = command.TryTakeFlag("--reject");
         bool sameBoot = command.TryTakeFlag("--same-boot");
         bool wallClock = command.TryTakeFlag("--wall-clock");
+        bool check = command.TryTakeFlag("--check");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
@@ -233,6 +242,7 @@ internal static partial class WorkspaceCommand
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
+            "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
@@ -245,11 +255,13 @@ internal static partial class WorkspaceCommand
             || (within is null) == manual
             || (sync is null) == wallClock
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
-            || (note is not null && !(verb == "align" && !withdraw) && verb != "join");
+            || (note is not null && !(verb == "align" && !withdraw) && verb != "join")
+            || ((output is not null || only.Count > 0 || check) && verb != "package")
+            || (verb == "package" && output is null && !check);
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate or join"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -267,6 +279,11 @@ internal static partial class WorkspaceCommand
             if (verb == "correlate")
             {
                 return Correlate(path, json, cancellationToken);
+            }
+
+            if (verb == "package")
+            {
+                return Package(path, output, only, check, json, cancellationToken);
             }
 
             if (verb == "join")
@@ -844,8 +861,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
         ConsoleUi.Line("icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>] [--json]");
+        ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("An investigation over separately captured sessions (workspace-v2, ADR-038): one file that names each");
+        ConsoleUi.Line("An investigation over separately captured sessions (workspace-v4, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
         ConsoleUi.Line("  new      makes an empty workspace; a name without an extension gets .icat-workspace.");
         ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one member: a copy of a");
@@ -874,5 +892,10 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
         ConsoleUi.Line("           alignments changed is flagged for review.");
+        ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
+        ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
+        ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");
+        ConsoleUi.Line("           reference to relink. It is unredacted. --check measures it and writes nothing. Exits 1");
+        ConsoleUi.Line("           when a session could not be copied.");
     }
 }
