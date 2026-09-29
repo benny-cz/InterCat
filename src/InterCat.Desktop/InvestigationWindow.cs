@@ -65,6 +65,18 @@ internal sealed class InvestigationWindow : Window, IDisposable
             + "scaled to its own busiest column. A session with no alignment has no place.",
     };
     private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
+    private readonly ListBox notesList = new() { SelectionMode = SelectionMode.Single };
+    private readonly Button addNote = new() { Content = "Add a note…" };
+    private readonly Button rewordNote = new() { Content = "Reword…", IsEnabled = false };
+    private readonly Button removeNote = new() { Content = "Remove", IsEnabled = false };
+    private readonly Button showNote = new() { Content = "Show on the timeline", IsEnabled = false };
+    private readonly TextBlock notesIntro = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Text = "Notes are your words on the investigation: about all of it, or pinned at an instant of a session, which its time "
+            + "places and the timeline marks. Each is kept as a revision of the investigation's file, and none changes a session.",
+    };
     private readonly Button compareInstants = new() { Content = "Compare instants…", IsEnabled = false };
     private readonly Button zoomIn = new() { Content = "Zoom in", IsEnabled = false };
     private readonly Button zoomOut = new() { Content = "Zoom out", IsEnabled = false };
@@ -76,7 +88,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly Button package = new() { Content = "Package…", IsEnabled = false };
     private CancellationTokenSource? packaging;
     private bool timelineLoaded;
-    private bool timelineLoading;
+    private Task? timelineLoad;
     private bool loading;
     private bool finding;
     private bool closed;
@@ -105,6 +117,22 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(alignButton, "Align the selected session to the investigation's time");
         AutomationProperties.SetName(withdraw, "Withdraw the selected session's alignment");
         AutomationProperties.SetName(oneHost, "Say whether the selected session's host is one host with another");
+        AutomationProperties.SetName(notesList, "Notes on this investigation");
+        AutomationProperties.SetName(addNote, "Add a note, pinned at the timeline's chosen column when there is one");
+        AutomationProperties.SetName(rewordNote, "Reword the selected note");
+        AutomationProperties.SetName(removeNote, "Remove the selected note");
+        AutomationProperties.SetName(showNote, "Show the selected note on the timeline");
+        AccessibleItems.Name(notesList);
+        notesList.ItemTemplate = new FuncDataTemplate<InvestigationNoteRow>((row, _) => new StackPanel
+        {
+            Margin = new Thickness(2, 4),
+            Spacing = 1,
+            Children =
+            {
+                new TextBlock { Text = row?.Text, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = row?.Where, FontSize = 11, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } },
+            },
+        });
         AutomationProperties.SetName(add, "Add sessions to this investigation");
         AutomationProperties.SetName(refresh, "Look again where each session was last found");
         AutomationProperties.SetName(status, "Investigation status");
@@ -196,6 +224,11 @@ internal sealed class InvestigationWindow : Window, IDisposable
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
         package.Click += (_, _) => _ = PackageAsync();
+        notesList.SelectionChanged += (_, _) => ShowSelectedNote();
+        addNote.Click += (_, _) => _ = WriteNoteAsync(reword: false);
+        rewordNote.Click += (_, _) => _ = WriteNoteAsync(reword: true);
+        removeNote.Click += (_, _) => _ = RemoveSelectedNoteAsync();
+        showNote.Click += (_, _) => _ = ShowSelectedNoteAsync();
         candidates.SelectionChanged += (_, _) => ShowSelectedCandidate();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the investigation window");
@@ -285,17 +318,33 @@ internal sealed class InvestigationWindow : Window, IDisposable
         timelinePage.Children.Add(zooming);
         timelinePage.Children.Add(timelineWords);
 
+        var noteActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (Button button in new[] { addNote, rewordNote, removeNote, showNote })
+        {
+            button.Margin = new Thickness(8, 4, 0, 0);
+            noteActions.Children.Add(button);
+        }
+
+        var notesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+        var notesBorder = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = notesList, Padding = new Thickness(2) };
+        Grid.SetRow(notesBorder, 1);
+        Grid.SetRow(noteActions, 2);
+        notesPage.Children.Add(notesIntro);
+        notesPage.Children.Add(notesBorder);
+        notesPage.Children.Add(noteActions);
+
         tabs.ItemsSource = new[]
         {
             new TabItem { Header = new TextBlock { Text = "Sessions", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = sessionsPage },
             new TabItem { Header = new TextBlock { Text = "Candidate joins", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = candidatesPage },
             new TabItem { Header = new TextBlock { Text = "Timeline", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = timelinePage },
+            new TabItem { Header = new TextBlock { Text = "Notes", FontSize = 15, FontWeight = FontWeight.SemiBold }, Content = notesPage },
         };
         tabs.SelectionChanged += (_, _) =>
         {
             if (tabs.SelectedIndex == 2 && !timelineLoaded) _ = ShowTimelineAsync();
         };
-        AutomationProperties.SetName(tabs, "Sessions and candidate joins");
+        AutomationProperties.SetName(tabs, "Sessions, candidate joins, timeline and notes");
 
         var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlaps, status } };
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
@@ -335,11 +384,24 @@ internal sealed class InvestigationWindow : Window, IDisposable
     /// <summary>Each lane of the timeline in words, as last drawn.</summary>
     internal IReadOnlyList<string> TimelineSentences { get; private set; } = [];
 
-    /// <summary>Draws the investigation's timeline, off the window's thread for its reading of every session.</summary>
+    /// <summary>
+    /// Draws the investigation's timeline, off the window's thread for its reading of every session. A request made while
+    /// one is drawing waits for it and then draws again, so the timeline shows the latest zoom and notes asked for.
+    /// </summary>
     internal async Task ShowTimelineAsync()
     {
-        if (timelineLoading || closed) return;
-        timelineLoading = true;
+        while (timelineLoad is { IsCompleted: false } running)
+        {
+            await running;
+        }
+
+        if (closed) return;
+        timelineLoad = LoadTimelineAsync();
+        await timelineLoad;
+    }
+
+    private async Task LoadTimelineAsync()
+    {
         refreshTimeline.IsEnabled = false;
         timelineWords.Text = "Placing each session on the investigation's time…";
         try
@@ -371,7 +433,6 @@ internal sealed class InvestigationWindow : Window, IDisposable
         }
         finally
         {
-            timelineLoading = false;
             refreshTimeline.IsEnabled = true;
         }
     }
@@ -482,6 +543,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
             overlaps.IsVisible = view.Overlaps is { Count: > 0 };
             caveats.Text = string.Join(" ", view.Caveats);
             members.ItemsSource = view.Members;
+            Guid? noted = (notesList.SelectedItem as InvestigationNoteRow)?.NoteId;
+            notesList.ItemsSource = view.Notes;
+            notesList.SelectedItem = view.Notes.FirstOrDefault(row => row.NoteId == noted);
+            ShowSelectedNote();
             package.IsEnabled = packaging is not null || view.Members.Count > 0;
             compareInstants.IsEnabled = view.Members.Count > 0;
             members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)
@@ -919,6 +984,87 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private async Task CompareInstantsAsync()
     {
         if (CompareDialog() is { } dialog) await dialog.ShowDialog(this);
+    }
+
+    /// <summary>Selects a note, as choosing its row does; a test uses it.</summary>
+    internal void SelectNote(int index) => notesList.SelectedIndex = index;
+
+    /// <summary>
+    /// The dialog that adds a note - pinned, by default, at the timeline's chosen column in its session's own time - or
+    /// rewords the selected one; a test writes in it without showing it modally.
+    /// </summary>
+    internal InvestigationNoteWindow? NoteDialog(bool reword)
+    {
+        if (View is not { } view) return null;
+        InvestigationNoteRow? existing = reword ? notesList.SelectedItem as InvestigationNoteRow : null;
+        if (reword && existing is null) return null;
+        CompareSession[] sessions =
+        [
+            .. view.Members.Select(row => new CompareSession(row.SessionId, row.Title.Split(',')[0] + " · "
+                + Path.GetFileName(Path.TrimEndingDirectorySeparator(row.FullPath)))),
+        ];
+        (Guid, long)? suggested = null;
+        if (Timeline is { } timeline && timelineChart.ChosenColumn is { } chosen && chosen.Column < timeline.Lanes[chosen.Lane].OwnIntervals.Count)
+        {
+            suggested = (timeline.Lanes[chosen.Lane].SessionId, timeline.Lanes[chosen.Lane].OwnIntervals[chosen.Column].StartTicks * 100);
+        }
+
+        return new InvestigationNoteWindow(path, sessions, existing, suggested);
+    }
+
+    private async Task WriteNoteAsync(bool reword)
+    {
+        if (NoteDialog(reword) is not { } dialog) return;
+        if (await dialog.ShowDialog<bool>(this) && !closed)
+        {
+            await RefreshAsync(reword ? "The note is reworded; its earlier words are kept." : "The note is added.");
+            if (timelineLoaded) await ShowTimelineAsync();
+        }
+    }
+
+    /// <summary>Removes the selected note, kept as a revision, and shows the investigation again.</summary>
+    internal async Task RemoveSelectedNoteAsync()
+    {
+        if (notesList.SelectedItem is not InvestigationNoteRow row) return;
+        try
+        {
+            _ = await Task.Run(() => InvestigationWorkspace.RemoveNote(path, row.NoteId, DateTimeOffset.UtcNow));
+            await RefreshAsync("The note is removed; its revisions are kept in the file.");
+            if (timelineLoaded) await ShowTimelineAsync();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed) status.Text = exception.Message;
+        }
+    }
+
+    /// <summary>Shows the selected pinned note on the timeline: zoomed around its instant, the cursor on its column.</summary>
+    internal async Task ShowSelectedNoteAsync()
+    {
+        if (notesList.SelectedItem is not InvestigationNoteRow { At: not null } row) return;
+        ShowTab(2);
+        if (!timelineLoaded) await ShowTimelineAsync();
+        if (Timeline?.Notes.FirstOrDefault(note => note.Note.NoteId == row.NoteId) is not { Lane: { } lane, Ticks: { } ticks }
+            || (whole ?? Timeline.Interval) is not { } all)
+        {
+            status.Text = "That note's session has no place in the investigation's time, so the timeline cannot show it.";
+            return;
+        }
+
+        await ZoomToAsync(InvestigationTimelineControl.Zoomed(all, ticks, 1m / 16));
+        if (Timeline?.Lanes[lane].Buckets is { Count: > 0 } buckets)
+        {
+            int column = Math.Max(0, buckets.ToList().FindLastIndex(bucket => bucket.Interval.StartTicks <= ticks));
+            timelineChart.MoveTo(new(lane, column));
+        }
+    }
+
+    private void ShowSelectedNote()
+    {
+        InvestigationNoteRow? row = notesList.SelectedItem as InvestigationNoteRow;
+        rewordNote.IsEnabled = removeNote.IsEnabled = row is not null;
+        showNote.IsEnabled = row is { At: not null };
     }
 
     private async Task AlignSelectedAsync()

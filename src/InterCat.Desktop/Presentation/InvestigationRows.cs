@@ -34,7 +34,19 @@ public sealed record InvestigationView(
     IReadOnlyList<InvestigationMemberRow> Members,
     IReadOnlyList<string> Caveats,
     Guid? TimeReference = null,
-    IReadOnlyList<string>? Overlaps = null);
+    IReadOnlyList<string>? Overlaps = null)
+{
+    /// <summary>The investigation's notes in force, each with where it is pinned (§8.4).</summary>
+    public IReadOnlyList<InvestigationNoteRow> Notes { get; init; } = [];
+}
+
+/// <summary>A note as the investigation window lists it: its words, and where it is pinned in words.</summary>
+public sealed record InvestigationNoteRow(Guid NoteId, string Text, string Where, WorkspaceNoteAnchor? At) : IAccessibleRow
+{
+    public string Title => Text;
+
+    public string AccessibleName => $"Note {NoteId.ToString("N")[..8]}: {Text}. {Where}.";
+}
 
 /// <summary>One candidate join as the investigation window lists it (ADR-041): what matched, each end, and its evidence.</summary>
 public sealed record InvestigationCandidateRow(
@@ -113,7 +125,11 @@ public static class InvestigationRows
                 + "showing an investigation writes to no session.",
             "Hosts are grouped by identity, which is evidence of one host and never proof; no name or address makes two one.",
         ], workspace.TimeReference,
-        [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => overlap.Statement(culture))]);
+        [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => overlap.Statement(culture))])
+        {
+            Notes = [.. InvestigationWorkspace.NotesInForce(workspace).Select(note => new InvestigationNoteRow(
+                note.NoteId, note.Text!, NotePlace(workspace, note, culture), note.At))],
+        };
     }
 
     /// <summary>
@@ -214,6 +230,8 @@ public static class InvestigationRows
         }
 
         sentences.AddRange(view.Overlaps.Select(overlap => overlap.Statement(culture)));
+        sentences.AddRange(InvestigationWorkspace.NotesInForce(workspace).Select(note =>
+            $"Note {Short(note.NoteId)}, {NotePlace(workspace, note, culture)}: {note.Text}"));
         return (view, labels, sentences);
     }
 
@@ -305,6 +323,28 @@ public static class InvestigationRows
             { Uncertainty.HalfWidthNanoseconds: 0 } => $"{at} is the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}, exactly.",
             _ => $"{at} is the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}, within ±"
                 + OperationText.DurationAtLeast(instant.Uncertainty!.Value.HalfWidthNanoseconds, culture) + ".",
+        };
+    }
+
+    /// <summary>Where a note is pinned, in words: about the whole investigation, or at an instant of a session and its place.</summary>
+    public static string NotePlace(InvestigationWorkspaceFile workspace, WorkspaceNote note, CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(note);
+        if (note.At is not { } at)
+        {
+            return "about the whole investigation";
+        }
+
+        WorkspaceInstant instant = InvestigationWorkspace.Place(workspace, at.SessionId, at.Nanoseconds);
+        string pinned = $"pinned at session {Short(at.SessionId)}'s {Seconds(at.Nanoseconds, culture)}";
+        return instant switch
+        {
+            { WorkspaceNanoseconds: null } => pinned + ", which has no place in the investigation's time",
+            { Uncertainty: null } => $"{pinned}, the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}, how surely unknown",
+            { Uncertainty.HalfWidthNanoseconds: 0 } => $"{pinned}, the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}",
+            _ => $"{pinned}, the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)} within ±"
+                + OperationText.DurationAtLeast(instant.Uncertainty!.Value.HalfWidthNanoseconds, culture),
         };
     }
 

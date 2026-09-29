@@ -225,8 +225,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         string[] refused =
         [
-            text.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v9\"", StringComparison.Ordinal),
-            text.Replace("\"hostAliases\"", "\"notes\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
+            text.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v999\"", StringComparison.Ordinal),
+            text.Replace("\"hostAliases\"", "\"aFieldNoVersionDefines\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": null", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": [{ \"hostId\": \"" + Guid.NewGuid() + "\", \"alias\": \" \" }]", StringComparison.Ordinal),
             "[]",
@@ -446,6 +446,43 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]
+    public void ANoteIsKeptAsRevisions()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+
+        // A note about the whole investigation, and one pinned at alpha's 2.5 s; rewording keeps where it is pinned.
+        WorkspaceNote about = InvestigationWorkspace.AddNote(workspace, " The upload stalls twice. ", null, Now);
+        WorkspaceNote pinned = InvestigationWorkspace.AddNote(workspace, "First stall", new WorkspaceNoteAnchor(a, 2_500_000_000), Now);
+        WorkspaceNote reworded = InvestigationWorkspace.EditNote(workspace, pinned.NoteId, "First stall: 800 ms", Now);
+        Assert.Equal(("The upload stalls twice.", (WorkspaceNoteAnchor?)null), (about.Text, about.At));
+        Assert.Equal((pinned.NoteId, "First stall: 800 ms", pinned.At), (reworded.NoteId, reworded.Text, reworded.At));
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal([about.NoteId, pinned.NoteId], InvestigationWorkspace.NotesInForce(read).Select(note => note.NoteId));
+        Assert.Equal("First stall: 800 ms", InvestigationWorkspace.NoteNamed(read, pinned.NoteId.ToString("N")[..8]).Text);
+
+        // Removed, a note is gone from those in force, and every revision stays in the file.
+        InvestigationWorkspace.RemoveNote(workspace, about.NoteId, Now);
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal([pinned.NoteId], InvestigationWorkspace.NotesInForce(read).Select(note => note.NoteId));
+        Assert.Equal(4, read.Notes.Count);
+
+        // A note says something, not too much, and is pinned only at a member; one removed or never written is none.
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AddNote(workspace, "  ", null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AddNote(workspace, new string('x', InvestigationWorkspace.MostNoteCharacters + 1), null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AddNote(workspace, "Elsewhere", new WorkspaceNoteAnchor(Guid.NewGuid(), 0), Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.EditNote(workspace, about.NoteId, "Back", Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveNote(workspace, Guid.NewGuid(), Now));
+
+        // An earlier version's file holds no note.
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.EighthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no note", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+            StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one")]

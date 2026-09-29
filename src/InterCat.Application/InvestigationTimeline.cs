@@ -76,11 +76,20 @@ public sealed record WorkspaceOverlap(Guid First, Guid Second, OverlapKind Kind,
     }
 }
 
+/// <summary>
+/// A note on the merged time: pinned at an instant of a session, that instant's lane and place in the investigation's time
+/// with its uncertainty - or none, when its session has no place - or about the whole investigation.
+/// </summary>
+public sealed record InvestigationNote(WorkspaceNote Note, int? Lane, long? Ticks, TimeUncertainty? Uncertainty);
+
 /// <summary>An investigation's merged time (§8.2): each session a lane on one axis, the investigation's own.</summary>
 public sealed record InvestigationTimelineView(TimeRange? Interval, int Columns, IReadOnlyList<InvestigationLane> Lanes)
 {
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public IReadOnlyList<WorkspaceOverlap> Overlaps { get; init; } = [];
+
+    /// <summary>The investigation's notes in force, each where it is pinned (§8.4).</summary>
+    public IReadOnlyList<InvestigationNote> Notes { get; init; } = [];
 }
 
 /// <summary>
@@ -140,12 +149,30 @@ public static class InvestigationTimeline
             });
         }
 
-        return new(whole, columns, lanes) { Overlaps = Overlaps(placements) };
+        return new(whole, columns, lanes) { Overlaps = Overlaps(placements), Notes = Notes(workspacePath, placements) };
+    }
+
+    /// <summary>Each note in force where it is pinned: its session's lane and its instant placed through the session's chain.</summary>
+    private static InvestigationNote[] Notes(string workspacePath, List<Placement> placements)
+    {
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(Path.GetFullPath(workspacePath));
+        return [.. InvestigationWorkspace.NotesInForce(workspace).Select(note =>
+        {
+            if (note.At is not { } at)
+            {
+                return new InvestigationNote(note, null, null, null);
+            }
+
+            int lane = placements.FindIndex(placement => placement.SessionId == at.SessionId);
+            return lane >= 0 && placements[lane].Chain is { } chain
+                ? new InvestigationNote(note, lane, Ticks(chain.ToWorkspace(at.Nanoseconds)), chain.UncertaintyAt(at.Nanoseconds).Uncertainty)
+                : new InvestigationNote(note, lane >= 0 ? lane : null, null, null);
+        })];
     }
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
-    /// or cannot be compared (§8.4, `contracts/workspace-v8.md` §5). Pairs of two hosts are never compared: their records
+    /// or cannot be compared (§8.4, `contracts/workspace-v9.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default)

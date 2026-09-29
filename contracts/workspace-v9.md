@@ -1,9 +1,9 @@
-# Workspace contract, version 8
+# Workspace contract, version 9
 
-Status: M4, revision 269 (ADR-038 to ADR-042); versions 1 to 7 were revisions 253, 254, 256, 260, 264, 265 and 266's,
-and packages revision 263's
+Status: M4, revision 270 (ADR-038 to ADR-042); versions 1 to 8 were revisions 253, 254, 256, 260, 264, 265, 266 and
+269's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | package`
+Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | package`
 Read by: `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
@@ -12,18 +12,16 @@ member's clock, to which a person aligns the others (§5). Version 3 aligns by w
 counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version 5
 lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member to
 any member placed in the workspace's time, not only to its reference (§5). Version 7 keeps a person's confirmations that
-two host identities are one host (§4). Version 8 keeps a person's statements of known address translations (§6). A
-`workspace-v1` file - members and host
-names, no time - is read as one without alignments, a `workspace-v2` file as one with manual alignments only, a
-`workspace-v3` file as one without join decisions, a `workspace-v4` file as one whose alignments each have one anchor,
-a `workspace-v5` file as one whose members are each aligned to the reference itself, a `workspace-v6` file as one
-without host confirmations, and a `workspace-v7` file as one without address translations; each is written as version 8.
+two host identities are one host (§4), version 8 their statements of known address translations (§6), and version 9
+their notes (§7). An earlier version's file is read as one without what later versions added - a `workspace-v1` file
+holds members and host names and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file
+members each aligned to the reference itself - and each is written as version 9.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v8"` (`"workspace-v1"` to `"workspace-v7"` are read) |
+| `contract` | `"workspace-v9"` (`"workspace-v1"` to `"workspace-v8"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -33,6 +31,7 @@ without host confirmations, and a `workspace-v7` file as one without address tra
 | `joins` | Every join decision revision, in the order recorded (§6) |
 | `hostEquivalences` | Every revision of a person's confirmation that two host identities are one host, in the order recorded (§4) |
 | `addressTranslations` | Every revision of a person's statement of a known address translation, in the order recorded (§6) |
+| `notes` | Every revision of a person's notes, in the order written (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -76,12 +75,12 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v9`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v10`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
 reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
-`timeReference`, every alignment, join decision, host confirmation and address translation revision, the overlaps of
-captures of one host (§5), and caveats. It exits 0 when every member is present and 1 otherwise.
+`timeReference`, every alignment, join decision, host confirmation, address translation and note revision, the
+overlaps of captures of one host (§5), and caveats. It exits 0 when every member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -257,7 +256,27 @@ person's statement; it is never evidence of its own. A file whose translations n
 relate a loopback address, an endpoint to itself or an endpoint to an address alone, or appear in a file before version
 8, is refused.
 
-## 7. A package
+## 7. Notes
+
+A note is a person's words on the investigation (§8.4), about all of it or pinned at an instant of a member's session,
+which the investigation's time places as it places any other instant - the merged timeline marks it on that session's
+lane:
+
+| Note field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among notes and increasing in the order written |
+| `noteId` | The note a revision is of: every revision of one note shares it |
+| `text` | Its words, at most 4,000 characters; null when the revision removes the note |
+| `at` | Where it is pinned: `{ sessionId, nanoseconds }`, an instant of a member's session in its own time; null for a note about the whole investigation |
+| `recordedUtc` | When it was written |
+
+A note's latest revision is in force unless it removes the note; rewording keeps where it is pinned, and every revision
+is kept. `icat workspace note <text> [--at <session>@<seconds>]` adds one, `<note> --replace <text>` rewords it and
+`<note> --remove` removes it, `<note>` its identity or a unique leading part; `show` lists those in force with their
+place. A note changes no session and is never evidence. A file whose notes name no note, hold no words or too many,
+are pinned to no member, or appear in a file before version 9, is refused.
+
+## 8. A package
 
 `icat workspace package <workspace> --output <new-folder>`, and the Desktop's investigation window, share an
 investigation with its sessions as one folder (§8.4, ADR-042):
@@ -275,7 +294,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments` and
-  `joins`, `hostEquivalences`, `addressTranslations`. The file is written as `workspace-v8`.
+  `joins`, `hostEquivalences`, `addressTranslations`, `notes`. The file is written as `workspace-v9`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -290,10 +309,10 @@ package holds and exposes, a paragraph each, as the Desktop states it before sav
 `verification`. It exits 0 when every member is copied, or the ones copied were chosen with `--only`, and 1 when a
 member could not be copied.
 
-## 8. Not defined at this version
+## 9. Not defined at this version
 
 - Alignment from shared markers (§8.2's third mode).
-- Pins, notes and saved views.
+- Saved views of the merged time, and graph pins; a note pinned at an instant is the investigation's pin.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
   session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.

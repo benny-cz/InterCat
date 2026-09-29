@@ -516,6 +516,63 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window keeps notes: pinned at an instant, reworded, shown on the timeline, removed")]
+    public async Task TheWindowKeepsNotes()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+
+            // A note pinned at beta's 100 µs reads where the investigation's time places it.
+            InvestigationNoteWindow dialog = window.NoteDialog(reword: false)!;
+            dialog.Show(window);
+            dialog.Enter("Beta's datagrams begin", b, 0.0001m.ToString(culture));
+            Assert.True(await dialog.SaveAsync());
+            await window.RefreshAsync();
+            InvestigationNoteRow row = Assert.Single(window.View!.Notes);
+            Assert.Equal("Beta's datagrams begin", row.Text);
+            Assert.StartsWith($"pinned at session {Short(b)}'s {0.0001m.ToString("0.000######", culture)} s, the investigation's "
+                + $"{1.0001m.ToString("0.000######", culture)} s within ±", row.Where, StringComparison.Ordinal);
+            window.ShowTab(3);
+            window.SelectNote(0);
+            Save(window, "investigation-notes.png");
+
+            // Reworded, it keeps its pin; shown on the timeline, the timeline zooms to it with the cursor on its column.
+            InvestigationNoteWindow reword = window.NoteDialog(reword: true)!;
+            reword.Show(window);
+            reword.Enter("Beta's first datagram");
+            Assert.True(await reword.SaveAsync());
+            await window.RefreshAsync();
+            Assert.Equal(("Beta's first datagram", row.At), (window.View!.Notes[0].Text, window.View.Notes[0].At));
+            window.SelectNote(0);
+            await window.ShowSelectedNoteAsync();
+            WaitFor(() => window.Zoom is not null && window.Timeline!.Notes.Count == 1);
+            Assert.StartsWith($"Session {Short(b)}, column ", window.ColumnReadout, StringComparison.Ordinal);
+            Assert.Contains(window.TimelineSentences, sentence => sentence.StartsWith($"Note {window.View.Notes[0].NoteId.ToString("N")[..8]}, pinned at session {Short(b)}", StringComparison.Ordinal));
+
+            // Removed, it is gone from the list and the timeline; its revisions stay in the file.
+            window.SelectNote(0);
+            await window.RemoveSelectedNoteAsync();
+            Assert.Empty(window.View!.Notes);
+            Assert.Equal(3, InvestigationWorkspace.Read(workspace).Notes.Count);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

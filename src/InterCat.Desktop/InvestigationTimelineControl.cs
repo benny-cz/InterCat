@@ -243,6 +243,34 @@ internal sealed class InvestigationTimelineControl : Control
                 context.FillRectangle(bar, new Rect(left + (b * column) + 0.5, top + LaneHeight - 6 - height, Math.Max(column - 1, 1), height));
             }
         }
+
+        DrawNotes(context, view, interval, X, current);
+    }
+
+    /// <summary>A note pinned at an instant: a flag at its place on its session's lane, and a thin line down the lane.</summary>
+    private static void DrawNotes(DrawingContext context, InvestigationTimelineView view, TimeRange interval, Func<long, double> x, Ink ink)
+    {
+        foreach (InvestigationNote note in view.Notes)
+        {
+            if (note is not { Lane: { } lane, Ticks: { } ticks } || ticks < interval.StartTicks || ticks > interval.EndTicks)
+            {
+                continue;
+            }
+
+            double at = x(ticks);
+            double top = AxisHeight + (lane * LaneHeight);
+            var flag = new StreamGeometry();
+            using (StreamGeometryContext figure = flag.Open())
+            {
+                figure.BeginFigure(new Point(at - 5, top + 2), true);
+                figure.LineTo(new Point(at + 5, top + 2));
+                figure.LineTo(new Point(at, top + 10));
+                figure.EndFigure(true);
+            }
+
+            context.DrawGeometry(ink.Text, null, flag);
+            context.DrawLine(ink.NoteLine, new Point(at, top + 10), new Point(at, top + LaneHeight - 4));
+        }
     }
 
     /// <summary>An interval <paramref name="factor"/> times as long as <paramref name="interval"/>, centred where it was asked.</summary>
@@ -315,6 +343,7 @@ internal sealed class InvestigationTimelineControl : Control
         public IBrush Muted { get; } = new SolidColorBrush(ThemeResources.ToColor(ThemePalette.Surfaces(mode).MutedInk));
         public Pen Divider { get; } = new(new SolidColorBrush(ThemeResources.ToColor(ThemePalette.Surfaces(mode).Divider)), 1);
         public Pen Cursor { get; } = new(new SolidColorBrush(ThemeResources.ToColor(ThemePalette.Surfaces(mode).Ink)), 1.5);
+        public Pen NoteLine { get; } = new(new SolidColorBrush(ThemeResources.ToColor(ThemePalette.Surfaces(mode).Ink)), 1, new DashStyle([2, 2], 0));
     }
 
     private static void Text(DrawingContext context, string text, double size, IBrush brush, Point at, double maximumWidth)

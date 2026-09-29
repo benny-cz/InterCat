@@ -106,7 +106,7 @@ public static class SessionConnections
 
     /// <summary>
     /// Every one-sided connection of the session, whoever held it, with its holder and its lifetime in session time - what
-    /// an investigation compares with another capture's connections (`contracts/workspace-v8.md` §6).
+    /// an investigation compares with another capture's connections (`contracts/workspace-v9.md` §6).
     /// </summary>
     public static SessionConnectionIndex All(
         SessionStore store,

@@ -122,6 +122,25 @@ public sealed class InvestigationTimelineTests : IDisposable
             overlap.Statement(CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: a note pinned at a session's instant is placed on the merged time where that session's alignment puts it")]
+    public void ANoteIsPlacedOnTheMergedTime()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 4), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-2", 6), Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 500_000, 10, null, Now);
+        WorkspaceNote onB = InvestigationWorkspace.AddNote(workspace, "B's first record", new WorkspaceNoteAnchor(b, 100_000), Now);
+        WorkspaceNote about = InvestigationWorkspace.AddNote(workspace, "Both hosts", null, Now);
+
+        // B's 100 µs is A's 1.0001 s, on B's lane, as uncertain as B's alignment is there; the note about both has no place.
+        InvestigationTimelineView view = InvestigationTimeline.Read(workspace, 10);
+        InvestigationNote placed = Assert.Single(view.Notes, note => note.Note.NoteId == onB.NoteId);
+        Assert.Equal((1, 10_001_000L), (placed.Lane!.Value, placed.Ticks!.Value));
+        Assert.InRange(placed.Uncertainty!.Value.HalfWidthNanoseconds, 500_000, 500_002);
+        Assert.Equal((null, null), (view.Notes.Single(note => note.Note.NoteId == about.NoteId).Lane, view.Notes.Single(note => note.Note.NoteId == about.NoteId).Ticks));
+    }
+
     [Fact(DisplayName = "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared")]
     public void CapturesOfOneHostThatRanAtOnceAreFlagged()
     {
