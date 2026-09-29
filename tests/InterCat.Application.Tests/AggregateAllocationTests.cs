@@ -59,11 +59,19 @@ public sealed class AggregateAllocationTests
         var spent = new Dictionary<string, long>(StringComparer.Ordinal);
         foreach ((string name, Action run) in queries)
         {
-            // Warm: derivations cached, readers verified, pooled buffers rented once, the code compiled.
+            // Warm: derivations cached, readers verified, pooled buffers rented once, the code compiled. The least of three
+            // warm runs is the query's own: one run disturbed by the rest of the suite running beside it - the revision 269
+            // worktree check once measured 35.7 B per row that five runs alone and two whole suites never did - is not.
             for (int warm = 0; warm < 3; warm++) run();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            run();
-            spent[name] = GC.GetAllocatedBytesForCurrentThread() - before;
+            long least = long.MaxValue;
+            for (int measured = 0; measured < 3; measured++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                run();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            spent[name] = least;
         }
 
         return spent;

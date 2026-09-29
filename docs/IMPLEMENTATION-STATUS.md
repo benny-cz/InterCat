@@ -528,6 +528,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   passed, 4 skipped**, zero failures. Live, `icat workspace translate` on a scratch investigation of an imported ETL,
   deleted after, stated and withdrew a translation, wrote an IPv6 endpoint canonically and refused a loopback address;
   one machine cannot capture both sides of a translation, so the candidate it yields is proven on synthetic sessions.
+  Its worktree check then failed once, on R11's allocation test under the whole suite's load, which passed alone five
+  times and in both suites; that test now takes the least of three warm runs, and the change was checked the same way.
 - Revision 268 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,454 tests: 1,450
   passed, 4 skipped**, zero failures. Live, keys posted to the Release Desktop's investigation window moved its column
   cursor to a 3-second capture's last column and opened it: the main window showed that capture zoomed to it, its one
