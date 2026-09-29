@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v6.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v7.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v6.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v7.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,10 +59,10 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v6`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v7`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
-/// `workspace-v4` file as one whose alignments each have one anchor, and a `workspace-v5` file as one whose members are
-/// each aligned to the time reference itself.
+/// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
+/// aligned to the time reference itself, and a `workspace-v6` file as one without host confirmations.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -86,6 +86,9 @@ public sealed record InvestigationWorkspaceFile
 
     /// <summary>Every join decision revision, in the order recorded; a pair's latest one is in force (ADR-041).</summary>
     public IReadOnlyList<WorkspaceJoin> Joins { get; init; } = [];
+
+    /// <summary>Every revision of a person's confirmation that two host identities are one host, in the order recorded (§8.3).</summary>
+    public IReadOnlyList<WorkspaceHostEquivalence> HostEquivalences { get; init; } = [];
 }
 
 /// <summary>A member as resolved against its path: the generation found there, and why it is not present, when not.</summary>
@@ -101,17 +104,26 @@ public sealed record WorkspaceMemberResolution(
         or WorkspaceMemberState.Replaced;
 }
 
-/// <summary>A host identity of a workspace's members, with a person's name for it when one was given.</summary>
-public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Guid> Members);
+/// <summary>
+/// A host identity of a workspace's members, with a person's name for it when one was given, and the other identities a
+/// person confirmed are one host with it.
+/// </summary>
+public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Guid> Members)
+{
+    public IReadOnlyList<Guid> OneHostWith { get; init; } = [];
+}
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v6` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v7` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v6";
+    public const string Contract = "workspace-v7";
+
+    /// <summary>The sixth version, revision 265's: no host confirmations. It is read, and written as the current one.</summary>
+    public const string SixthContract = "workspace-v6";
 
     /// <summary>The fifth version, revision 264's: every member aligned to the time reference. It is read, and written as the current one.</summary>
     public const string FifthContract = "workspace-v5";
@@ -266,7 +278,10 @@ public static partial class InvestigationWorkspace
         return [.. workspace.Members.GroupBy(member => member.HostId).Select(group => new WorkspaceHost(
             group.Key,
             workspace.HostAliases.FirstOrDefault(alias => alias.HostId == group.Key)?.Alias,
-            [.. group.Select(member => member.SessionId)]))];
+            [.. group.Select(member => member.SessionId)])
+        {
+            OneHostWith = OneHostWith(workspace, group.Key),
+        })];
     }
 
     /// <summary>The member a person named by its session identity or a unique leading part of it.</summary>
@@ -289,7 +304,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v6.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v7.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -432,10 +447,11 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or FifthContract or FourthContract or ThirdContract or SecondContract or FirstContract))
+        if (workspace.Contract is not (Contract or SixthContract or FifthContract or FourthContract or ThirdContract
+            or SecondContract or FirstContract))
         {
             return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
-                + $"{FifthContract} or {Contract}";
+                + $"{FifthContract}, {SixthContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)
@@ -478,7 +494,7 @@ public static partial class InvestigationWorkspace
         return workspace.HostAliases.GroupBy(alias => alias.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1) is { } name
             ? $"'{name.Key}' names two host identities"
-            : TimeProblem(workspace) ?? JoinProblem(workspace);
+            : TimeProblem(workspace) ?? JoinProblem(workspace) ?? HostProblem(workspace);
     }
 
     /// <summary>

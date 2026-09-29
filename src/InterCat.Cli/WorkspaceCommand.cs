@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v6.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v7.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -24,6 +24,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every join decision revision, in the order recorded; each pair's latest one is in force.</summary>
     public required IReadOnlyList<WorkspaceJoin> Joins { get; init; }
+
+    /// <summary>Every revision of a person's confirmation that two host identities are one host, in the order recorded.</summary>
+    public required IReadOnlyList<WorkspaceHostEquivalence> HostEquivalences { get; init; }
 
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
@@ -76,7 +79,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v6.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v7.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -108,7 +111,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v6.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v7.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -180,7 +183,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v7";
+    public const string ResolutionContract = "workspace-resolution-v8";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -246,26 +249,27 @@ internal static partial class WorkspaceCommand
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
+            "same-host" => (2, 2, "icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>]"),
             "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
         bool misplaced = (remove && verb != "alias")
             || ((sameBoot || wallClock) && verb != "align")
-            || (withdraw && verb is not ("align" or "join"))
+            || (withdraw && verb is not ("align" or "join" or "same-host"))
             || ((accept || reject) && verb != "join")
             || (verb == "align" && new[] { withdraw, sameBoot, wallClock }.Count(flag => flag) > 1)
             || (verb == "join" && new[] { accept, reject, withdraw }.Count(flag => flag) != 1)
             || (within is null) == manual
             || (sync is null) == wallClock
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
-            || (note is not null && !(verb == "align" && !withdraw) && verb != "join")
+            || (note is not null && !(verb is "align" or "same-host" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
             || (verb == "package" && output is null && !check);
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join or package"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -303,6 +307,7 @@ internal static partial class WorkspaceCommand
                 "add" => Add(path, operands),
                 "relink" => Relink(path, operands[0], operands[1]),
                 "alias" => Alias(path, operands[0], remove ? null : operands[1]),
+                "same-host" => SameHost(path, operands[0], operands[1], withdraw, note),
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
@@ -426,6 +431,26 @@ internal static partial class WorkspaceCommand
                     + "and no order is stated there. --drift-ppm bounds how far the rate may wander from the one they measure.");
         }
 
+        return InterCatExitCode.Success;
+    }
+
+    /// <summary>
+    /// `icat workspace same-host`: records a person's confirmation that two host identities are one host, or withdraws it
+    /// (§8.3). Their captures are then compared as one host's; their identities stay what they recorded.
+    /// </summary>
+    private static InterCatExitCode SameHost(string path, string host, string other, bool withdraw, string? note)
+    {
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        Guid first = InvestigationWorkspace.HostNamed(workspace, host);
+        Guid second = InvestigationWorkspace.HostNamed(workspace, other);
+        WorkspaceHostEquivalence revision = withdraw
+            ? InvestigationWorkspace.WithdrawOneHost(path, first, second, DateTimeOffset.UtcNow)
+            : InvestigationWorkspace.ConfirmOneHost(path, first, second, note, DateTimeOffset.UtcNow);
+        ConsoleUi.Success(withdraw
+            ? string.Create(CultureInfo.InvariantCulture, $"Hosts {Short(first)} and {Short(second)} are two hosts again (host revision {revision.Revision}); ")
+                + "the confirmation it withdraws is kept in the file."
+            : string.Create(CultureInfo.InvariantCulture, $"Hosts {Short(first)} and {Short(second)} are one host by your confirmation (host revision {revision.Revision}). ")
+                + "Their captures are compared as one host's - for overlaps, and loopback candidates - and their identities stay as recorded.");
         return InterCatExitCode.Success;
     }
 
@@ -735,6 +760,7 @@ internal static partial class WorkspaceCommand
             TimeReference = workspace.TimeReference,
             Alignments = workspace.Alignments,
             Joins = workspace.Joins,
+            HostEquivalences = workspace.HostEquivalences,
             Overlaps = [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
@@ -853,12 +879,13 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line();
         ConsoleUi.Heading("Hosts");
         ConsoleUi.Table(
-            ["Host", "Name", "Members"],
+            ["Host", "Name", "Members", "One host with, by a person"],
             [.. document.Hosts.Select(host => (IReadOnlyList<string>)
             [
                 host.HostId.ToString("N"),
                 host.Alias ?? "-",
                 string.Join(", ", host.Members.Select(Short)),
+                host.OneHostWith.Count == 0 ? "-" : string.Join(", ", host.OneHostWith.Select(Short)),
             ])]);
         ConsoleUi.Line();
         foreach (string caveat in document.Caveats)
@@ -908,6 +935,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
         ConsoleUi.Line("icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>] [--json]");
+        ConsoleUi.Line("icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("An investigation over separately captured sessions (workspace-v4, ADR-038): one file that names each");
@@ -944,6 +972,10 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
         ConsoleUi.Line("           alignments changed is flagged for review.");
+        ConsoleUi.Line("  same-host records your confirmation that two host identities are one host - a machine renamed");
+        ConsoleUi.Line("           or reinstalled, or a file imported from it - so their captures are compared as one host's:");
+        ConsoleUi.Line("           for overlaps, and loopback candidates. Equal identities are evidence; yours is a kept");
+        ConsoleUi.Line("           revision, withdrawn with --withdraw, and never evidence. <host> as for alias.");
         ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
         ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
         ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");

@@ -1,9 +1,9 @@
-# Workspace contract, version 6
+# Workspace contract, version 7
 
-Status: M4, revision 265 (ADR-038 to ADR-042); versions 1 to 5 were revisions 253, 254, 256, 260 and 264's, and
+Status: M4, revision 266 (ADR-038 to ADR-042); versions 1 to 6 were revisions 253, 254, 256, 260, 264 and 265's, and
 packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align | join | package`
+Produced by: `icat workspace new | add | relink | alias | align | join | same-host | package`
 Read by: `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
@@ -11,16 +11,18 @@ A workspace is an investigation over several separately valid sessions (§8.4). 
 member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
 counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version 5
 lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member to
-any member placed in the workspace's time, not only to its reference (§5). A `workspace-v1` file - members and host
+any member placed in the workspace's time, not only to its reference (§5). Version 7 keeps a person's confirmations that
+two host identities are one host (§4). A `workspace-v1` file - members and host
 names, no time - is read as one without alignments, a `workspace-v2` file as one with manual alignments only, a
 `workspace-v3` file as one without join decisions, a `workspace-v4` file as one whose alignments each have one anchor,
-and a `workspace-v5` file as one whose members are each aligned to the reference itself; each is written as version 6.
+a `workspace-v5` file as one whose members are each aligned to the reference itself, and a `workspace-v6` file as one
+without host confirmations; each is written as version 7.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v6"` (`"workspace-v1"` to `"workspace-v5"` are read) |
+| `contract` | `"workspace-v7"` (`"workspace-v1"` to `"workspace-v6"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -28,6 +30,7 @@ and a `workspace-v5` file as one whose members are each aligned to the reference
 | `timeReference` | The member whose session clock is the workspace's time; null while no member is aligned (§5) |
 | `alignments` | Every alignment revision, in the order recorded (§5) |
 | `joins` | Every join decision revision, in the order recorded (§6) |
+| `hostEquivalences` | Every revision of a person's confirmation that two host identities are one host, in the order recorded (§4) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -71,12 +74,12 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v7`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v8`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
-reference, nearest first), the hosts with their members, the `timeReference`
-every alignment and join decision revision, the overlaps of captures of one host (§5), and caveats. It exits 0 when every
-member is present and 1 otherwise.
+reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
+`timeReference`, every alignment, join decision and host confirmation revision, the overlaps of captures of one host
+(§5), and caveats. It exits 0 when every member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -87,6 +90,23 @@ of one host and never proof - an exact clone shares its original's - and equal n
 one (§8.3, R22, P6). A name is a person's, for people; it changes no identity, and one name never names two host
 identities, which would read as one host. A host is named by its identity, a unique leading part of it, or its current
 name.
+
+Two identities are one host only by a person's word - a machine renamed or reinstalled, or a file imported from it -
+which `icat workspace same-host` records as a revision (§8.3):
+
+| Host confirmation field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among host confirmations and increasing in the order recorded |
+| `decision` | `Confirmed`: the two are one host; `Withdrawn`: from this revision they are two again |
+| `first`, `second` | Two different host identities, each a member's |
+| `note`, `recordedUtc` | The person's words, and when |
+
+A pair's latest revision, in either order, is in force, and confirmations in force join identities transitively: two
+identities each confirmed one host with a third are one host too. Captures of identities one host by confirmation are
+compared as one host's - for sessions that ran at once (§5), and for loopback connections between them (§6) - and each
+statement that rests on a confirmation says so. A confirmation changes no session and no identity: it is never evidence
+of its own. A pair is confirmed once and withdrawn only while confirmed; a file whose confirmations name a host no member
+was recorded on, join an identity to itself, or appear in a file before version 7 is refused.
 
 ## 5. Time
 
@@ -167,7 +187,8 @@ states its agreement, acquisition, gap and drift, and a bound no narrower than i
 revision states any of these. A second anchor is stated only by a manual revision, whole, at other instants than the
 first, and measuring a rate within 1,000 ppm of 1; a file before version 5 states none.
 
-Two captures of one host identity may have recorded the same events (§8.4), so every such pair is compared, by its
+Two captures of one host - one identity, or identities a person confirmed are one (§4) - may have recorded the same
+events (§8.4), so every such pair is compared, by its
 record extents placed in the investigation's time: they **ran at once** when each reaches past the other's start by more
 than the pair's uncertainty - records of one event may be in both, so no count across them is summed, and nothing is
 deduplicated by time; they **may have** when they are nearer than that uncertainty; two captures that recorded two
@@ -183,7 +204,8 @@ TCP connections and UDP flows whose other end its own capture holds no record of
 of one member is a candidate with a connection of another when:
 
 - they are of one protocol, and the one's local endpoint is the other's remote endpoint and the other way round;
-- neither endpoint is a loopback address, unless both members were recorded on one host identity;
+- neither endpoint is a loopback address, unless both members were recorded on one host: one identity, or two a person
+  confirmed are one, which the candidate's evidence then says (§4);
 - their lifetimes - each from its first record to its last - overlap once each end is widened by its uncertainty in
   the investigation's time (§5), or cannot be compared because an end has no workspace time or no known uncertainty.
 
@@ -233,7 +255,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments` and
-  `joins`. The file is written as `workspace-v6`.
+  `joins`, `hostEquivalences`. The file is written as `workspace-v7`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -251,7 +273,7 @@ member could not be copied.
 ## 8. Not defined at this version
 
 - Alignment from shared markers (§8.2's third mode).
-- Confirming two host identities as one host; pins, notes and saved views.
+- Pins, notes and saved views.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
   session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.

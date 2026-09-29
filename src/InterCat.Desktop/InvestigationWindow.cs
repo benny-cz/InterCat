@@ -35,6 +35,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly Button relink = new() { Content = "Relink…", IsEnabled = false };
     private readonly Button alignButton = new() { Content = "Align…", IsEnabled = false };
     private readonly Button withdraw = new() { Content = "Withdraw alignment", IsEnabled = false };
+    private readonly Button oneHost = new() { Content = "One host…", IsEnabled = false };
     private readonly Button add = new() { Content = "Add sessions…" };
     private readonly Button refresh = new() { Content = "Refresh" };
     private readonly ListBox candidates = new() { SelectionMode = SelectionMode.Single };
@@ -87,6 +88,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(relink, "Relink the selected session to where it is now");
         AutomationProperties.SetName(alignButton, "Align the selected session to the investigation's time");
         AutomationProperties.SetName(withdraw, "Withdraw the selected session's alignment");
+        AutomationProperties.SetName(oneHost, "Say whether the selected session's host is one host with another");
         AutomationProperties.SetName(add, "Add sessions to this investigation");
         AutomationProperties.SetName(refresh, "Look again where each session was last found");
         AutomationProperties.SetName(status, "Investigation status");
@@ -146,6 +148,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         relink.Click += (_, _) => _ = PickRelinkAsync();
         alignButton.Click += (_, _) => _ = AlignSelectedAsync();
         withdraw.Click += (_, _) => _ = WithdrawSelectedAsync();
+        oneHost.Click += (_, _) => _ = OneHostSelectedAsync();
         add.Click += (_, _) => _ = PickAddAsync();
         refresh.Click += (_, _) => _ = RefreshAsync();
         find.Click += (_, _) => _ = FindCandidatesAsync();
@@ -166,7 +169,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         };
 
         var sessionActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
-        foreach (Button button in new[] { open, relink, alignButton, withdraw, add, refresh })
+        foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, add, refresh })
         {
             button.Margin = new Thickness(8, 4, 0, 0);
             sessionActions.Children.Add(button);
@@ -698,6 +701,54 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 
+    /// <summary>
+    /// The dialog that says whether the selected session's host is one host with another identity of the investigation;
+    /// null when there is no other identity. A test decides in it without showing it modally.
+    /// </summary>
+    internal InvestigationHostWindow? HostDialogForSelected()
+    {
+        if (members.SelectedItem is not InvestigationMemberRow row) return null;
+        InvestigationWorkspaceFile workspace;
+        try
+        {
+            workspace = InvestigationWorkspace.Read(path);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            status.Text = "This investigation could not be read: " + exception.Message;
+            return null;
+        }
+
+        IReadOnlyList<WorkspaceHost> hosts = InvestigationWorkspace.Hosts(workspace);
+        HashSet<Guid> direct = [.. InvestigationWorkspace.EquivalencesInForce(workspace)
+            .Where(equivalence => equivalence.First == row.HostId || equivalence.Second == row.HostId)
+            .Select(equivalence => equivalence.First == row.HostId ? equivalence.Second : equivalence.First)];
+        IReadOnlyList<Guid> reached = InvestigationWorkspace.OneHostWith(workspace, row.HostId);
+        string Name(WorkspaceHost host) => host.Alias ?? "host " + host.HostId.ToString("N")[..8];
+        HostChoice[] choices =
+        [
+            .. hosts.Where(host => host.HostId != row.HostId).Select(host => new HostChoice(
+                host.HostId,
+                $"{Name(host)} · {Spoken.Count(host.Members.Count, "session")}"
+                    + (reached.Contains(host.HostId) && !direct.Contains(host.HostId) ? " - one host with it now, through another confirmation" : string.Empty),
+                direct.Contains(host.HostId))),
+        ];
+        return choices.Length == 0
+            ? null
+            : new InvestigationHostWindow(path, row.HostId, Name(hosts.First(host => host.HostId == row.HostId)), choices);
+    }
+
+    private async Task OneHostSelectedAsync()
+    {
+        if (HostDialogForSelected() is not { } dialog) return;
+        if (await dialog.ShowDialog<bool>(this) && !closed)
+        {
+            await RefreshAsync("Recorded as a revision of the investigation: its captures are compared as their hosts now read.");
+            if (timelineLoaded) await ShowTimelineAsync();
+        }
+    }
+
     private async Task AlignSelectedAsync()
     {
         if (AlignDialogForSelected() is not { } dialog || members.SelectedItem is not InvestigationMemberRow row) return;
@@ -744,6 +795,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         relink.IsEnabled = row is not null;
         alignButton.IsEnabled = row is { IsTimeReference: false } && View is { Members.Count: > 1 };
         withdraw.IsEnabled = row is { IsAligned: true };
+        oneHost.IsEnabled = row is not null && View is { } shown && shown.Members.Any(other => other.HostId != row.HostId);
         detail.Text = row is null
             ? string.Empty
             : $"{row.Title}: {row.FullPath}. {row.Time}." + (row.Reason is null ? string.Empty : $" {row.Reason}");

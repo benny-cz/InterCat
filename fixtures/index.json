@@ -1528,6 +1528,7 @@
         "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: every capture on this machine records its installation's host, each on a clock of its own",
         "R22: hosts are one only by identity, and a name never makes two of them one",
+        "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
@@ -1537,11 +1538,14 @@
         "R22: the investigation window lists candidate joins with their evidence, none established",
         "R22: the investigation window packages the investigation with the sessions a person chooses",
         "R22: the investigation window says when two captures of one host ran at once",
+        "R22: the investigation window takes a person's word that two host identities are one host, and its withdrawal",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared",
         "R22: two captures of one host, one aligned through the other, overlap as that alignment allows, not twice its bound",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
+        "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one",
+        "R22: two identities a person confirms are one host have their captures compared as one host's, and say why",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
       "R3": [

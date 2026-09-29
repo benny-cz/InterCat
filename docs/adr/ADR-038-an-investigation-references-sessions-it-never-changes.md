@@ -1,8 +1,9 @@
 # ADR-038: An investigation references sessions it never changes
 
-- Status: accepted; the workspace manifest, adding, showing, relinking and host names are revision 253
+- Status: accepted; the workspace manifest, adding, showing, relinking and host names are revision 253, a person's
+  confirmation of one host revision 266
 - Date: 2026-09-28
-- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v6.md`, `contracts/store-v1.md`
+- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v7.md`, `contracts/store-v1.md`
 
 ## Context
 
@@ -51,6 +52,11 @@ redacted package, which is deliberately not linkable to its original.
    grouped by equal identities, which are evidence of one host and never proof - an exact clone shares its original's -
    and different identities are never one host by name or address. A person may name a host, one name to one host
    identity, and later confirm two identities as one host as a versioned annotation of the workspace (§8.3, R22, P6).
+7. **A confirmation that two identities are one host is a person's revision, never evidence** (revision 266,
+   `workspace-v7`). It is kept with its note when a later revision withdraws it, and while in force joins identities
+   transitively: two confirmed one host with a third are one too. Captures of confirmed identities are compared as one
+   host's - for sessions that ran at once, and for loopback connections between them - and each statement that rests on
+   a confirmation says so. No session and no identity changes.
 
 ## Consequences
 
@@ -64,8 +70,9 @@ redacted package, which is deliberately not linkable to its original.
   captures read as two hosts - the safe direction - until a person confirms them one.
 - A workspace file holding a field this version does not define is refused, so a file written by a later version is
   never rewritten without what it held; a write goes over only the text it read, so a change made meanwhile is kept.
-- Clock mappings (§8.2's affine segments with their uncertainty), confirmed host equivalence, cross-host correlation,
-  pins, notes, saved views and the Desktop's workspace are later slices; each is recorded in the manifest as an
+- Revision 266 implements decision 7: `icat workspace same-host` and the investigation window's One host….
+- Clock mappings (§8.2's affine segments with their uncertainty), cross-host correlation, pins, notes, saved views and
+  the Desktop's workspace are later slices; each is recorded in the manifest as an
   annotation, versioned, and none rewrites a source. Until a clock mapping exists, no cross-host order, latency or
   pairing is stated: the uncertainty is unknown, not zero (R3, R21).
 - A redacted package is a capture of its own, so a workspace holding it and its original would hold both; the package's

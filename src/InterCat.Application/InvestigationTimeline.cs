@@ -45,22 +45,26 @@ public enum OverlapKind
 /// </summary>
 public sealed record WorkspaceOverlap(Guid First, Guid Second, OverlapKind Kind, TimeRange? Shared)
 {
+    /// <summary>Whether the two are of one host only by a person's confirmation: their own identities differ (§8.3).</summary>
+    public bool ByConfirmation { get; init; }
+
     /// <summary>The overlap in words.</summary>
     public string Statement(IFormatProvider? culture = null)
     {
         IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
         string pair = $"Sessions {First.ToString("N")[..8]} and {Second.ToString("N")[..8]}";
+        string host = ByConfirmation ? "one host, by a person's confirmation," : "one host";
         string span = Shared is { } shared
             ? " for " + OperationText.Duration(checked((shared.EndTicks - shared.StartTicks) * 100), format)
             : string.Empty;
         return Kind switch
         {
-            OverlapKind.Concurrent => $"{pair} of one host ran at once{span}: records of one event may be in both, so no count "
+            OverlapKind.Concurrent => $"{pair} of {host} ran at once{span}: records of one event may be in both, so no count "
                 + "across them is summed.",
-            OverlapKind.Possible => $"{pair} of one host may have run at once: they are nearer than their uncertainty.",
-            OverlapKind.Contradictory => $"{pair} recorded two boots of one host, yet overlap{span} in the investigation's time, "
+            OverlapKind.Possible => $"{pair} of {host} may have run at once: they are nearer than their uncertainty.",
+            OverlapKind.Contradictory => $"{pair} recorded two boots of {host.TrimEnd(',')}, yet overlap{span} in the investigation's time, "
                 + "which two boots cannot: one of their alignments is wrong.",
-            _ => $"{pair} were recorded on one host, but not both have a place with a known uncertainty, so whether they ran "
+            _ => $"{pair} were recorded on {host.TrimEnd(',')}, but not both have a place with a known uncertainty, so whether they ran "
                 + "at once is unknown.",
         };
     }
@@ -130,7 +134,7 @@ public static class InvestigationTimeline
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
-    /// or cannot be compared (§8.4, `contracts/workspace-v6.md` §5). Pairs of two hosts are never compared: their records
+    /// or cannot be compared (§8.4, `contracts/workspace-v7.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default)
@@ -162,7 +166,7 @@ public static class InvestigationTimeline
                     || ClockChain.Compare(chainB, ownB.EndTicks * NanosecondsPerTick, chainA, ownA.StartTicks * NanosecondsPerTick)
                         is not { DifferenceNanoseconds: { } endB, Uncertainty: { } pairB })
                 {
-                    overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Unknown, null));
+                    overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Unknown, null) { ByConfirmation = a.Identity != b.Identity });
                     continue;
                 }
 
@@ -174,11 +178,14 @@ public static class InvestigationTimeline
                 bool twoBoots = a.BootToken is { } bootA && b.BootToken is { } bootB && bootA != bootB;
                 if (reachA > pairA.HalfWidthNanoseconds && reachB > pairB.HalfWidthNanoseconds)
                 {
-                    overlaps.Add(new(a.SessionId, b.SessionId, twoBoots ? OverlapKind.Contradictory : OverlapKind.Concurrent, shared));
+                    overlaps.Add(new(a.SessionId, b.SessionId, twoBoots ? OverlapKind.Contradictory : OverlapKind.Concurrent, shared)
+                    {
+                        ByConfirmation = a.Identity != b.Identity,
+                    });
                 }
                 else if (reachA > -pairA.HalfWidthNanoseconds && reachB > -pairB.HalfWidthNanoseconds && !twoBoots)
                 {
-                    overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Possible, shared));
+                    overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Possible, shared) { ByConfirmation = a.Identity != b.Identity });
                 }
             }
         }
@@ -201,7 +208,11 @@ public static class InvestigationTimeline
         foreach (WorkspaceMemberResolution resolution in InvestigationWorkspace.Resolve(full, workspace, cancellationToken))
         {
             WorkspaceMember member = resolution.Member;
-            var none = new Placement(member.SessionId, member.HostId, null, null, null, null, null, null, WorkspaceTimeGap.None, null);
+            var none = new Placement(member.SessionId, InvestigationWorkspace.HostKey(workspace, member.HostId), null, null, null, null,
+                null, null, WorkspaceTimeGap.None, null)
+            {
+                Identity = member.HostId,
+            };
             if (!resolution.HoldsItsCapture)
             {
                 placements.Add(none with { Unread = $"it is {resolution.State.ToString().ToLowerInvariant()}: {resolution.Reason}" });
@@ -230,9 +241,16 @@ public static class InvestigationTimeline
                 // The extent is placed through the member's chain to the presentation tick, finer than any column.
                 TimeUncertainty? widest = chain.WidestUncertainty(
                     checked(own.StartTicks * NanosecondsPerTick), checked(own.EndTicks * NanosecondsPerTick)).Uncertainty;
-                placements.Add(new(member.SessionId, member.HostId, store,
-                    new TimeRange(Forward(chain, own.StartTicks), Forward(chain, own.EndTicks)), own, chain, widest, boot,
-                    widest is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null));
+                placements.Add(none with
+                {
+                    Store = store,
+                    Extent = new TimeRange(Forward(chain, own.StartTicks), Forward(chain, own.EndTicks)),
+                    Own = own,
+                    Chain = chain,
+                    Uncertainty = widest,
+                    BootToken = boot,
+                    Gap = widest is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None,
+                });
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
             {
@@ -267,5 +285,9 @@ public static class InvestigationTimeline
         TimeUncertainty? Uncertainty,
         Guid? BootToken,
         WorkspaceTimeGap Gap,
-        string? Unread);
+        string? Unread)
+    {
+        /// <summary>Its own host identity; <see cref="HostId"/> stands for every identity confirmed one host with it.</summary>
+        public Guid Identity { get; init; }
+    }
 }

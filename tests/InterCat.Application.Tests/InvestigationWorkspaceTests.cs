@@ -448,6 +448,58 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
     }
 
+    [Fact(DisplayName = "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one")]
+    public void TwoHostIdentitiesAreOneOnlyByAPersonsWord()
+    {
+        string workspace = NewWorkspace();
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "old"), "lab-1").Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "renamed"), "lab-1b", Guid.NewGuid(), CaptureId.New()).Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "imported"), "lab-1-file", Guid.NewGuid(), CaptureId.New()).Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "elsewhere"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now);
+        Guid[] hosts = [.. InvestigationWorkspace.Read(workspace).Members.Select(member => member.HostId)];
+        (Guid old, Guid renamed, Guid imported, Guid elsewhere) = (hosts[0], hosts[1], hosts[2], hosts[3]);
+
+        // Different identities are two hosts until a person says otherwise; then they are one, and so is one confirmed one
+        // host with either - through it.
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.False(InvestigationWorkspace.OneHost(read, old, renamed));
+        WorkspaceHostEquivalence first = InvestigationWorkspace.ConfirmOneHost(workspace, old, renamed, " renamed after the first capture ", Now);
+        InvestigationWorkspace.ConfirmOneHost(workspace, imported, renamed, null, Now);
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((1, WorkspaceHostDecision.Confirmed, "renamed after the first capture"), (first.Revision, first.Decision, first.Note));
+        Assert.True(InvestigationWorkspace.OneHost(read, old, imported));
+        Assert.True(InvestigationWorkspace.OneHostByConfirmation(read, old, imported));
+        Assert.False(InvestigationWorkspace.OneHostByConfirmation(read, old, old));
+        Assert.False(InvestigationWorkspace.OneHost(read, old, elsewhere));
+        Assert.Equal(new[] { renamed, imported }.Order(), InvestigationWorkspace.OneHostWith(read, old).Order());
+        Assert.Equal(new[] { old, renamed, imported }.Min(), InvestigationWorkspace.HostKey(read, imported));
+        Assert.Equal(new[] { renamed, imported }.Order(), InvestigationWorkspace.Hosts(read)[0].OneHostWith.Order());
+        Assert.Empty(InvestigationWorkspace.Hosts(read)[3].OneHostWith);
+
+        // A confirmation is made once and withdrawn once, only of two members' hosts; the withdrawal is kept.
+        Assert.Contains("already", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.ConfirmOneHost(workspace, renamed, old, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("none to withdraw", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.WithdrawOneHost(workspace, old, imported, Now)).Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.ConfirmOneHost(workspace, old, old, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.ConfirmOneHost(workspace, old, Guid.NewGuid(), null, Now));
+        InvestigationWorkspace.WithdrawOneHost(workspace, renamed, old, Now);
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.False(InvestigationWorkspace.OneHost(read, old, renamed));
+        Assert.True(InvestigationWorkspace.OneHost(read, imported, renamed));
+        Assert.Equal(3, read.HostEquivalences.Count);
+
+        // An earlier version's file holds no confirmation, and a confirmation of a host no member was recorded on is refused.
+        string text = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.SixthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no confirmation that two hosts are one", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        int member = text.IndexOf(imported.ToString(), StringComparison.Ordinal);
+        File.WriteAllText(workspace, string.Concat(text.AsSpan(0, member), Guid.NewGuid().ToString(), text.AsSpan(member + 36)));
+        Assert.Contains("names a host no member was recorded on", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R21: a member aligned through another is placed through both, and two members of one chain compare as it allows")]
     public void AMemberAlignedThroughAnotherIsPlacedThroughBoth()
     {

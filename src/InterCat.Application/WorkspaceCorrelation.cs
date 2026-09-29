@@ -46,7 +46,7 @@ public sealed record UnmatchedDecision(WorkspaceJoin Join, string Why);
 /// <summary>A member an investigation could not compare, and why.</summary>
 public sealed record UnreadMember(Guid SessionId, string Reason);
 
-/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v6.md` §6).</summary>
+/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v7.md` §6).</summary>
 public sealed record WorkspaceCorrelationResult(
     string Rule,
     IReadOnlyList<ConnectionCandidate> Candidates,
@@ -97,7 +97,7 @@ public static class WorkspaceCorrelation
 
         int disjoint = 0;
         int loopback = 0;
-        var found = new List<(WorkspaceConnection First, WorkspaceConnection Second, CandidateTiming Timing, string? Why)>();
+        var found = new List<(WorkspaceConnection First, WorkspaceConnection Second, CandidateTiming Timing, string? Why, bool Confirmed)>();
         for (int first = 0; first < members.Count; first++)
         {
             for (int second = first + 1; second < members.Count; second++)
@@ -109,8 +109,8 @@ public static class WorkspaceCorrelation
                     cancellationToken.ThrowIfCancellationRequested();
                     foreach (HeldConnection b in mirrors[(a.Summary.Mechanism, a.Summary.RemoteEndpoint, a.Summary.LocalEndpoint)])
                     {
-                        if ((IsLoopback(a.Summary.LocalEndpoint) || IsLoopback(a.Summary.RemoteEndpoint))
-                            && members[first].Member.HostId != members[second].Member.HostId)
+                        bool looped = IsLoopback(a.Summary.LocalEndpoint) || IsLoopback(a.Summary.RemoteEndpoint);
+                        if (looped && !InvestigationWorkspace.OneHost(workspace, members[first].Member.HostId, members[second].Member.HostId))
                         {
                             // A loopback address means the host it is on: two hosts' loopback connections are never one.
                             loopback++;
@@ -126,14 +126,15 @@ public static class WorkspaceCorrelation
                         }
 
                         found.Add((new(members[first].Member.SessionId, members[first].Member.HostId, a),
-                            new(members[second].Member.SessionId, members[second].Member.HostId, b), known, why));
+                            new(members[second].Member.SessionId, members[second].Member.HostId, b), known, why,
+                            looped && members[first].Member.HostId != members[second].Member.HostId));
                     }
                 }
             }
         }
 
         var uses = new Dictionary<(Guid, string), int>();
-        foreach ((WorkspaceConnection first, WorkspaceConnection second, _, _) in found)
+        foreach ((WorkspaceConnection first, WorkspaceConnection second, _, _, _) in found)
         {
             foreach (WorkspaceConnection end in new[] { first, second })
             {
@@ -154,7 +155,8 @@ public static class WorkspaceCorrelation
                         pair.Second,
                         pair.Timing,
                         uses[(pair.First.SessionId, pair.First.Connection.Summary.Key)] - 1 + uses[(pair.Second.SessionId, pair.Second.Connection.Summary.Key)] - 1,
-                        [.. Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why), .. Decided(decision, current)],
+                        [.. Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why),
+                            .. (pair.Confirmed ? new[] { OneHostByConfirmation } : []), .. Decided(decision, current)],
                         decision,
                         current);
                 })
@@ -258,6 +260,10 @@ public static class WorkspaceCorrelation
             : string.Create(culture, $"The {sender} sent {sent:N0} B in {sends:N0} measured {(sends == 1 ? "transfer" : "transfers")}, ")
                 + string.Create(culture, $"and the {receiver} received {received:N0} B in {receives:N0}")
                 + (sent == received ? ": the same bytes." : ": not the same - one side lost or never recorded some.");
+
+    /// <summary>The evidence line of a loopback candidate between two identities that are one host only by a person's word.</summary>
+    public const string OneHostByConfirmation = "Its loopback endpoints name one host only because a person confirmed its two "
+        + "captures' host identities are one host; the identities themselves differ.";
 
     private static bool IsLoopback(string endpoint) =>
         endpoint.StartsWith("127.", StringComparison.Ordinal) || endpoint.StartsWith("[::1]", StringComparison.Ordinal);

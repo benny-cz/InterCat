@@ -15,7 +15,8 @@ public sealed record InvestigationMemberRow(
     bool HoldsItsCapture,
     bool IsTimeReference = false,
     bool IsAligned = false,
-    IReadOnlyList<Guid>? AlignedThrough = null) : IAccessibleRow
+    IReadOnlyList<Guid>? AlignedThrough = null,
+    Guid HostId = default) : IAccessibleRow
 {
     /// <summary>Whether it has a place in the investigation's time: it is its clock, or aligned to a session that has one.</summary>
     public bool IsPlaced => IsTimeReference || IsAligned;
@@ -68,7 +69,7 @@ public static class InvestigationRows
             .. resolutions.Select(resolution =>
             {
                 WorkspaceMember member = resolution.Member;
-                string host = hosts.First(known => known.HostId == member.HostId).Alias ?? "host " + Short(member.HostId);
+                string host = HostLabel(hosts, member.HostId);
                 string state = resolution.State switch
                 {
                     WorkspaceMemberState.Advanced => string.Create(culture, $"advanced to generation {resolution.CurrentGeneration:N0}"),
@@ -88,7 +89,8 @@ public static class InvestigationRows
                     InvestigationWorkspace.ActiveAlignment(workspace, member.SessionId) is not null,
                     InvestigationWorkspace.ChainOf(workspace, member.SessionId) is { } chain
                         ? [.. chain.Links.Skip(1).Select(link => link.Clock)]
-                        : []);
+                        : [],
+                    member.HostId);
             }),
         ];
 
@@ -97,7 +99,7 @@ public static class InvestigationRows
             : string.Create(culture, $"{rows.Length:N0} {(rows.Length == 1 ? "session" : "sessions")}: ")
                 + string.Join(", ", rows.GroupBy(row => row.State).OrderBy(group => group.Key).Select(group =>
                     string.Create(culture, $"{group.Count():N0} {group.Key.ToString().ToLowerInvariant()}")))
-                + string.Create(culture, $" · {hosts.Count:N0} {(hosts.Count == 1 ? "host" : "hosts")}");
+                + HostCount(workspace, hosts, culture);
         int others = rows.Length - 1;
         string time = workspace.TimeReference is { } reference
             ? $"Time: session {Short(reference)}'s clock; " + string.Create(culture,
@@ -190,7 +192,7 @@ public static class InvestigationRows
         foreach (InvestigationLane lane in view.Lanes)
         {
             WorkspaceMember member = workspace.Members.First(known => known.SessionId == lane.SessionId);
-            string host = hosts.First(known => known.HostId == member.HostId).Alias ?? "host " + Short(member.HostId);
+            string host = HostLabel(hosts, member.HostId);
             string place = lane switch
             {
                 { Unread: { } unread } => "not placed: " + unread,
@@ -265,6 +267,30 @@ public static class InvestigationRows
             WorkspaceAlignmentMode.WallClock => $"Aligned by the wall clocks{to}: {at}, {within}{drift}",
             _ => $"Aligned by a person{to}: {at}, {within}{drift}",
         };
+    }
+
+    /// <summary>
+    /// A host as a person reads it: its name, or its identity's start; with the other identities a person confirmed are one
+    /// host with it, which only that confirmation makes one.
+    /// </summary>
+    public static string HostLabel(IReadOnlyList<WorkspaceHost> hosts, Guid hostId)
+    {
+        ArgumentNullException.ThrowIfNull(hosts);
+        WorkspaceHost host = hosts.First(known => known.HostId == hostId);
+        string Name(WorkspaceHost known) => known.Alias ?? "host " + Short(known.HostId);
+        return host.OneHostWith.Count == 0
+            ? Name(host)
+            : $"{Name(host)}, one host with "
+                + string.Join(" and ", host.OneHostWith.Select(other => Name(hosts.First(known => known.HostId == other))))
+                + " by a person's confirmation";
+    }
+
+    /// <summary>How many hosts, counting identities a person confirmed are one host as one, and how many identities they are.</summary>
+    private static string HostCount(InvestigationWorkspaceFile workspace, IReadOnlyList<WorkspaceHost> hosts, CultureInfo culture)
+    {
+        int count = hosts.Select(host => InvestigationWorkspace.HostKey(workspace, host.HostId)).Distinct().Count();
+        return string.Create(culture, $" · {count:N0} {(count == 1 ? "host" : "hosts")}")
+            + (count == hosts.Count ? string.Empty : string.Create(culture, $" ({hosts.Count:N0} identities)"));
     }
 
     private static string Short(Guid identity) => identity.ToString("N")[..8];

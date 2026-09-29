@@ -96,6 +96,30 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         Assert.Contains(local.Candidates, candidate => candidate.First.Connection.Summary.LocalEndpoint == "127.0.0.1:6000");
     }
 
+    [Fact(DisplayName = "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so")]
+    public void LoopbackJoinsConfirmedHostsAndSaysSo()
+    {
+        string workspace = Workspace();
+        _ = InvestigationWorkspace.Add(workspace, Session("client", "lab-1", ClientRows(1_000)), Now);
+        _ = InvestigationWorkspace.Add(workspace, Session("server", "lab-2", ServerRows(5_000)), Now);
+        Guid[] hosts = [.. InvestigationWorkspace.Read(workspace).Members.Select(member => member.HostId)];
+        Assert.Equal(1, WorkspaceCorrelation.Candidates(workspace).LoopbackAcrossHosts);
+
+        // Confirmed one host - a machine renamed between its captures - the loopback connection's two ends are a candidate,
+        // which says it rests on that confirmation.
+        InvestigationWorkspace.ConfirmOneHost(workspace, hosts[0], hosts[1], "renamed between the captures", Now);
+        WorkspaceCorrelationResult confirmed = WorkspaceCorrelation.Candidates(workspace);
+        ConnectionCandidate loopback = Assert.Single(confirmed.Candidates, candidate => candidate.First.Connection.Summary.LocalEndpoint.StartsWith("127.", StringComparison.Ordinal));
+        Assert.Equal(0, confirmed.LoopbackAcrossHosts);
+        Assert.Contains(WorkspaceCorrelation.OneHostByConfirmation, loopback.Evidence);
+        Assert.DoesNotContain(WorkspaceCorrelation.OneHostByConfirmation,
+            Assert.Single(confirmed.Candidates, candidate => candidate != loopback).Evidence);
+
+        // Withdrawn, they are two hosts again, and no loopback end joins across them.
+        InvestigationWorkspace.WithdrawOneHost(workspace, hosts[1], hosts[0], Now);
+        Assert.Equal(1, WorkspaceCorrelation.Candidates(workspace).LoopbackAcrossHosts);
+    }
+
     [Fact(DisplayName = "R22: a person accepts or rejects a candidate join as a kept revision, and re-aligning flags it for review")]
     public void APersonDecidesACandidate()
     {

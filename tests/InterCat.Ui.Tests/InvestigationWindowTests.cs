@@ -288,6 +288,55 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window takes a person's word that two host identities are one host, and its withdrawal")]
+    public async Task TheWindowTakesAPersonsWordThatTwoHostsAreOne()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed);
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed);
+        Guid[] hosts = [.. InvestigationWorkspace.Read(workspace).Members.Select(member => member.HostId)];
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            Assert.EndsWith(" · 2 hosts", window.View!.Summary, StringComparison.Ordinal);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Assert.True(Named<Button>(window, "Say whether the selected session's host is one host with another").IsEnabled);
+
+            // Confirmed from alpha's side, the two identities read as one host, which the confirmation alone makes them.
+            InvestigationHostWindow dialog = window.HostDialogForSelected()!;
+            dialog.Show(window);
+            Assert.False(Named<Button>(dialog, "Withdraw your confirmation that the two identities are one host").IsEnabled);
+            Save(dialog, "investigation-one-host.png");
+            Assert.True(await dialog.DecideAsync(WorkspaceHostDecision.Confirmed));
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Summary.EndsWith(" · 1 host (2 identities)", StringComparison.Ordinal));
+            Assert.StartsWith($"host {Short(hosts[0])}, one host with host {Short(hosts[1])} by a person's confirmation · ",
+                window.View!.Members[0].Detail, StringComparison.Ordinal);
+
+            // Withdrawn from beta's side, they are two hosts again; both revisions are kept.
+            list.SelectedIndex = 1;
+            InvestigationHostWindow back = window.HostDialogForSelected()!;
+            back.Show(window);
+            Assert.True(Named<Button>(back, "Withdraw your confirmation that the two identities are one host").IsEnabled);
+            Assert.False(Named<Button>(back, "Confirm that the two identities are one host").IsEnabled);
+            Assert.True(await back.DecideAsync(WorkspaceHostDecision.Withdrawn));
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Summary.EndsWith(" · 2 hosts", StringComparison.Ordinal));
+            Assert.Equal(2, InvestigationWorkspace.Read(workspace).HostEquivalences.Count);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

@@ -103,6 +103,25 @@ public sealed class InvestigationTimelineTests : IDisposable
         Assert.Equal(OverlapKind.Possible, Assert.Single(InvestigationTimeline.Read(workspace, 10).Overlaps).Kind);
     }
 
+    [Fact(DisplayName = "R22: two identities a person confirms are one host have their captures compared as one host's, and say why")]
+    public void CapturesOfConfirmedHostsAreComparedAsOneHosts()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 6), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-1-renamed", 6), Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 0, null, Now);
+        Assert.Empty(InvestigationTimeline.Read(workspace, 10).Overlaps);
+
+        // Confirmed one host, their coinciding records ran at once - which only the confirmation makes one host's.
+        Guid[] hosts = [.. InvestigationWorkspace.Read(workspace).Members.Select(member => member.HostId)];
+        InvestigationWorkspace.ConfirmOneHost(workspace, hosts[0], hosts[1], null, Now);
+        WorkspaceOverlap overlap = Assert.Single(InvestigationTimeline.Read(workspace, 10).Overlaps);
+        Assert.Equal((a, b, OverlapKind.Concurrent, true), (overlap.First, overlap.Second, overlap.Kind, overlap.ByConfirmation));
+        Assert.StartsWith($"Sessions {a.ToString("N")[..8]} and {b.ToString("N")[..8]} of one host, by a person's confirmation, ran at once",
+            overlap.Statement(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared")]
     public void CapturesOfOneHostThatRanAtOnceAreFlagged()
     {
