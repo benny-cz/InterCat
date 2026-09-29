@@ -55,7 +55,12 @@ internal sealed class ScriptedEtwHost : IEtwSessionHost, IEtwSessionReclaimer
 
         public void RequestStopProcessing() => stop = true;
         public SourceLossReading ReadLoss() => new(0, 0);
-        public void StopSession() => host.Active.Remove(name);
+        // A stopped session ends its pump, as ETW ends a real-time consumer's once it has delivered the last buffers.
+        public void StopSession()
+        {
+            host.Active.Remove(name);
+            stop = true;
+        }
         public void Dispose() { }
     }
 }

@@ -116,6 +116,28 @@ public interface IOwnedEtwSession : IDisposable
 
     /// <summary>Stops the ETW session this handle created. Safe to call more than once.</summary>
     void StopSession();
+
+    /// <summary>
+    /// Stops the ETW session this handle created while its pump still runs, and returns its loss counters as the stop left
+    /// them: ETW then hands the session's remaining buffers to the pump, which returns by itself once it has delivered
+    /// them, and a stopped session answers no later query. Null when no counter could be read. By default the counters are
+    /// read just before the stop.
+    /// </summary>
+    SourceLossReading? StopSessionReadingLoss()
+    {
+        SourceLossReading? reading;
+        try
+        {
+            reading = ReadLoss();
+        }
+        catch (EtwSessionException)
+        {
+            reading = null;
+        }
+
+        StopSession();
+        return reading;
+    }
 }
 
 /// <summary>

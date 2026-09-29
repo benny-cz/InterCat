@@ -176,7 +176,7 @@ internal sealed class ScriptedHost : IEtwSessionHost
     /// <summary>Completes once every scripted outcome reached the sink.</summary>
     public TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>Whether the capture asked its session to stop delivering.</summary>
+    /// <summary>Whether the capture asked its session to stop, or to stop delivering.</summary>
     public bool StopRequested { get; private set; }
 
     public bool? IsElevated => true;
@@ -252,8 +252,11 @@ internal sealed class ScriptedHost : IEtwSessionHost
         public SourceLossReading ReadLoss() =>
             host.FailLossRead ? throw new EtwSessionException("the counters could not be read in this test") : new(0, 0);
 
+        // A stopped session ends its pump, as ETW ends a real-time consumer's once it has delivered the last buffers.
         public void StopSession()
         {
+            stopRequested = true;
+            host.StopRequested = true;
         }
 
         public void Dispose()

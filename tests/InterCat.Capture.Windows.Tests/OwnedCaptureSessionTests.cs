@@ -228,6 +228,46 @@ public sealed class OwnedCaptureSessionTests
         Assert.Equal(0, quiet.Last!.FlushRequests);
     }
 
+    [Fact(DisplayName = "R8: a stop stops its session first, so the records its buffers still hold are delivered before the pump returns")]
+    public async Task AStopDeliversWhatTheSessionsBuffersHold()
+    {
+        // One record delivered as it was raised, and two raised just before the stop that still wait in the buffers.
+        OwnedSessionPlan plan = BuildPlan();
+        var host = new FakeEtwSessionHost();
+        host.Scripted.Add(Raised(1));
+        host.Buffered.Add(Raised(2));
+        host.Buffered.Add(Raised(3));
+        await using var session = new OwnedCaptureSession(plan, host);
+        Assert.True((await session.StartAsync(CancellationToken.None)).Started);
+        host.Last!.WaitUntilScriptedRecordsDelivered();
+        host.Last.ProviderLoss = 2;
+
+        // The session stops while delivery runs, and the pump takes the buffers before it returns: none is lost, delivery
+        // is never ended under them, and the loss the stop reports is the capture's final loss.
+        CaptureStopResult stop = await session.StopAsync(CancellationToken.None);
+        Assert.False(host.DeliveryEndedBeforeStop);
+        Assert.Equal((3L, 3L), (stop.Health.ObservedRecords, stop.Health.AdmittedRecords));
+        Assert.Equal(2, stop.Health.ProviderReportedEventLoss);
+        Assert.True(stop.ProvidersStopped);
+        Assert.Equal(plan.Identity.SessionName, Assert.Single(host.StoppedSessions));
+        Assert.False(session.SourceLossUnreadable);
+        List<long> journaled = [];
+        await foreach (AdmittedEvent admitted in session.Records.ReadAllAsync(CancellationToken.None))
+        {
+            journaled.Add(admitted.RecordOrdinal);
+        }
+
+        Assert.Equal([1L, 2L, 3L], journaled);
+
+        static AdmittedEvent Raised(long ordinal) => new()
+        {
+            SourceIndex = 0,
+            EventId = 10,
+            TimestampUtcTicks = 1_000 + ordinal,
+            RecordOrdinal = ordinal,
+        };
+    }
+
     [Fact(DisplayName = "P14: a capture never adopts or stops a session it did not create")]
     public async Task ExistingSessionIsNeverAdopted()
     {

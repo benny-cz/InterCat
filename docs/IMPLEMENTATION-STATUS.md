@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 272 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 273 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 273 — a capture delivers its last second (`coverage-v1` §3, R8):**
+  - A stop now stops its ETW session before it ends delivery: ETW hands the session's remaining buffers to the pump,
+    which returns once it has delivered them. Ending delivery first had discarded them, counted by no loss counter.
+  - The stop's own answer gives the final counters: the events the session lost, and the real-time buffers lost.
 
 - **Revision 272 — a whole session's rates divide by its recording (`metrics-v1` §7, `clock-calibration-v1`):**
   - A capture's recording runs from its epoch to the stop reading its clock calibration records, widened to hold every
@@ -482,8 +487,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      and a capture before revision 255 record no stop and keep none. What it leaves open:
      - Coverage over the recording is unknown, since `coverage-v1` §2 bounds a live epoch by its delivered readings,
        which the recording always reaches beyond. A live epoch could speak for its whole recording.
-     - Its live check found that `icat record` never delivers a capture's last second or so: delivery stops before the
-       session's partly filled buffers are flushed, and no ledger counts them lost. That is revision 273's work.
+     - Its live check found that a capture never delivered its last second or so, uncounted as loss: fixed in revision
+       273, whose stop stops the session before it ends delivery.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening, once §26.3's workspace persistence exists.
@@ -538,6 +543,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 273 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,466 tests: 1,462
+  passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad with a loopback sender running
+  past its stop now ends its records 31 ms before its 4.18 s recording ends, not 1.2 s: 137 UDP records, not 101, and
+  a ledger that reports nothing lost. The broker qualification passed on real ETW into the scratchpad
+  (`bench/results/broker-qualification-20260929T054405Z`), and no InterCat session was left.
 - Revision 272 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,465 tests: 1,461
   passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad, deleted after, answered `icat
   metric --metric rate` over "the whole recording, [-0.002778 s, 4.173207 s)", a record before the epoch widening it.

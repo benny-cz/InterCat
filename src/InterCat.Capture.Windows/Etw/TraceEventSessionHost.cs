@@ -236,6 +236,35 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
             }
         }
 
+        public SourceLossReading? StopSessionReadingLoss()
+        {
+            if (stopped)
+            {
+                return null;
+            }
+
+            // ETW reports a session's final loss only in the answer to its stop, which TraceEvent's own stop discards; the
+            // real-time buffers the pump could not take are the consumer's loss, which the source's snapshot misses.
+            if (EtwSessionControl.Stop(session.SessionName) is { } final)
+            {
+                stopped = true;
+                return new(final.EventsLost, Math.Max(source?.EventsLost ?? 0, final.RealTimeBuffersLost));
+            }
+
+            SourceLossReading? reading;
+            try
+            {
+                reading = ReadLoss();
+            }
+            catch (EtwSessionException)
+            {
+                reading = null;
+            }
+
+            StopSession();
+            return reading;
+        }
+
         public void StopSession()
         {
             if (stopped)

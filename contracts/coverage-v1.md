@@ -111,7 +111,10 @@ Every import epoch requires that counter. A live epoch requires explicit, readab
 `ConsumerBuffers`, `CallbackQueue` and `Storage`, including measured zeroes; when a required counter is unreadable,
 the runtime must not publish a ledger claiming coverage for that epoch. A live capture measures `CallbackQueue` as the
 records its full queue dropped after the policy admitted them, and `Storage` as admitted records the writer never
-journaled. A dropped record is counted in no descriptor's deliveries, so each descriptor's outcomes still add up to
+journaled. Since revision 273 it stops its session before it ends delivery, so what the session's buffers still hold
+is delivered rather than discarded uncounted, and it takes `SourceSession` and `ConsumerBuffers` from the stop's
+answer: the events the session lost, and at least the real-time buffers its consumer lost, which ETW reports only
+there. A dropped record is counted in no descriptor's deliveries, so each descriptor's outcomes still add up to
 what it delivered.
 Undecodable records are the `Decode` layer's loss, and they are attributed to their descriptor in `deliveries`.
 

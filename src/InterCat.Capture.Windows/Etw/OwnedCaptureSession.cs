@@ -68,6 +68,11 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     private bool providersStopped;
     private volatile bool sourceLossUnreadable;
 
+    // Set before the stop asks ETW to stop the session, after which a live read of its counters fails and says nothing:
+    // the stop's own reading is the final one. Set once the session stopped, so the cleanup only disposes it.
+    private volatile bool sessionStopping;
+    private volatile bool sessionStopped;
+
     /// <param name="observer">
     /// Told every delivery outcome with its descriptor, from the callback, when a caller keeps a coverage ledger.
     /// </param>
@@ -314,22 +319,22 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     public CaptureHealthSnapshot ReadHealth()
     {
         IOwnedEtwSession? current = Volatile.Read(ref session);
-        if (current is not null)
+        if (current is not null && !sessionStopping)
         {
             try
             {
                 SourceLossReading loss = current.ReadLoss();
                 ledger.RecordSourceLoss(loss.ProviderReportedEventLoss, loss.ConsumerReportedBufferLoss);
             }
-            catch (EtwSessionException) when (ReferenceEquals(Volatile.Read(ref session), current))
+            catch (EtwSessionException) when (!sessionStopping && ReferenceEquals(Volatile.Read(ref session), current))
             {
                 sourceLossUnreadable = true;
                 AddDegradation("Source loss counters could not be read; reported loss may be understated.");
             }
             catch (EtwSessionException)
             {
-                // Cleanup took the session before stopping it, so this read raced the stop. The read taken while
-                // finalizing, before cleanup, is the final one; a failure here says nothing about the counters.
+                // The stop, or the cleanup, took the session under this read. The reading the stop reported, or the one
+                // taken while finalizing, is the final one; a failure here says nothing about the counters.
             }
         }
 
@@ -350,7 +355,14 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             state = CaptureLifecycle.Stopping;
         }
 
-        session?.RequestStopProcessing();
+        // Records raised before the stop wait in the session's buffers until ETW hands them over, which a stopped session
+        // does at once, to a pump that then returns by itself once it has delivered them. Ending delivery first would
+        // discard them with the session, counted by no loss counter, so the session stops first.
+        if (!StopOwnedSession())
+        {
+            session?.RequestStopProcessing();
+        }
+
         if (pumpTask is not null)
         {
             try
@@ -359,10 +371,12 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             }
             catch (TimeoutException)
             {
+                session?.RequestStopProcessing();
                 AddDegradation("The delivery pump did not stop within 15 seconds; counters may be incomplete.");
             }
             catch (OperationCanceledException)
             {
+                session?.RequestStopProcessing();
                 AddDegradation("The stop was cancelled while the delivery pump was still running.");
             }
         }
@@ -549,6 +563,47 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the session this attempt created while its pump still runs, and records the loss counters its stop reports.
+    /// False when there is no such session to stop, or it could not be stopped, and delivery must be ended instead.
+    /// </summary>
+    private bool StopOwnedSession()
+    {
+        // A session another tool owns is never stopped: the cleanup refuses it and says so (P14).
+        if (Volatile.Read(ref session) is not { } current || !plan.Identity.Owns(current.SessionName))
+        {
+            return false;
+        }
+
+        sessionStopping = true;
+        SourceLossReading? final;
+        try
+        {
+            final = current.StopSessionReadingLoss();
+        }
+        catch (EtwSessionException exception)
+        {
+            // The read taken while finalizing then decides the counters, as it does when delivery is ended first.
+            sessionStopping = false;
+            AddDegradation($"The owned session could not be stopped cleanly: {exception.Message}");
+            return false;
+        }
+
+        sessionStopped = true;
+        providersStopped = true;
+        if (final is null)
+        {
+            sourceLossUnreadable = true;
+            AddDegradation("Source loss counters could not be read; reported loss may be understated.");
+        }
+        else
+        {
+            ledger.RecordSourceLoss(final.ProviderReportedEventLoss, final.ConsumerReportedBufferLoss);
+        }
+
+        return true;
+    }
+
     private async Task CleanUpCreatedResourcesAsync()
     {
         IOwnedEtwSession? current = Interlocked.Exchange(ref session, null);
@@ -566,8 +621,11 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
                 return;
             }
 
-            current.StopSession();
-            providersStopped = true;
+            if (!sessionStopped)
+            {
+                current.StopSession();
+                providersStopped = true;
+            }
         }
         catch (EtwSessionException exception)
         {

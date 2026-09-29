@@ -1642,6 +1642,7 @@
         "R8: a queue past half its bound is pressure, and below it is headroom",
         "R8: a series declares every setting that changes what it measures",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
+        "R8: a stop stops its session first, so the records its buffers still hold are delivered before the pump returns",
         "R8: a writer whose flushes outlast the acquisition window set the pace",
         "R8: an unknown series or level is refused rather than silently reduced",
         "R8: cancelled layouts do not publish a partial result",

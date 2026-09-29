@@ -33,6 +33,15 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
     /// <summary>Records this host produces once the pump starts.</summary>
     public List<AdmittedEvent> Scripted { get; } = [];
 
+    /// <summary>
+    /// Records raised after <see cref="Scripted"/> that still wait in the session's buffers: as ETW does, the pump delivers
+    /// them when the session stops, and never when delivery is ended first.
+    /// </summary>
+    public List<AdmittedEvent> Buffered { get; } = [];
+
+    /// <summary>Whether the capture ended delivery while the session still ran.</summary>
+    public bool DeliveryEndedBeforeStop { get; private set; }
+
     public List<string> StoppedSessions { get; } = [];
 
     public List<string> CreatedSessions { get; } = [];
@@ -65,6 +74,7 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
         private readonly ManualResetEventSlim pumping = new(false);
         private readonly ManualResetEventSlim scriptedRecordsDelivered = new(false);
         private volatile bool stopRequested;
+        private volatile bool sessionStopped;
 
         public string SessionName => plan.Identity.SessionName;
 
@@ -115,13 +125,26 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
 
             scriptedRecordsDelivered.Set();
 
-            while (!stopRequested && !cancellationToken.IsCancellationRequested)
+            while (!stopRequested && !sessionStopped && !cancellationToken.IsCancellationRequested)
             {
                 Thread.Sleep(5);
             }
+
+            if (sessionStopped && !stopRequested)
+            {
+                foreach (AdmittedEvent buffered in host.Buffered)
+                {
+                    sink.OnObserved(new DeliveredRecord(Guid.Empty, buffered.EventId, buffered.Version, buffered.TimestampQpc));
+                    _ = sink.Admit(buffered);
+                }
+            }
         }
 
-        public void RequestStopProcessing() => stopRequested = true;
+        public void RequestStopProcessing()
+        {
+            host.DeliveryEndedBeforeStop |= !sessionStopped;
+            stopRequested = true;
+        }
 
         /// <summary>
         /// Set on one thread, a loss read there signals <see cref="LossReadStalled"/>, waits for the event, then fails
@@ -154,7 +177,11 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
             return !host.RefuseFlush;
         }
 
-        public void StopSession() => host.StoppedSessions.Add(SessionName);
+        public void StopSession()
+        {
+            host.StoppedSessions.Add(SessionName);
+            sessionStopped = true;
+        }
 
         public void Dispose() => Disposed = true;
 
