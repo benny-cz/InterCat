@@ -78,7 +78,7 @@
             <ToggleButton x:Name="PerSecondToggle" Grid.Column="2" Content="/s" Margin="6,0,0,0" MinHeight="28" MinWidth="30"
                           FontSize="11" Padding="6,0" VerticalAlignment="Stretch"
                           IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
-                          ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count. The rows keep the order of their totals; a whole session states no interval, so brush one or zoom."
+                          ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
                           AutomationProperties.Name="Per second: state each row's value per second over the interval the rows count" />
           </Grid>
           <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"

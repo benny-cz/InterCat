@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 273 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 274 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 274 — the whole session's time scope is its recording (§5.2, `metrics-v1` §7):**
+  - What revision 272's live UI check found: the inspector stated the span of the records beside a rate over the
+    recording, and the per-second choice still said a whole session states no interval. Both now name the recording.
 
 - **Revision 273 — a capture delivers its last second (`coverage-v1` §3, R8):**
   - A stop now stops its ETW session before it ends delivery: ETW hands the session's remaining buffers to the pump,
@@ -543,6 +547,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 274 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,466 tests: 1,462
+  passed, 4 skipped**, zero failures. Live, the Release app opened a scratch capture and an imported ETL, deleted after,
+  driven through UI Automation and read by PrintWindow: per second read "Records · per second over the whole
+  recording, 4,2 s" and "13 KB on 98 sends · per second over the whole recording, 4,2 s" beside a time scope of
+  "All · 4,178 s recorded", and the import "Per second needs an interval: brush one or zoom" beside "All 2,618 s".
 - Revision 273 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,466 tests: 1,462
   passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad with a loopback sender running
   past its stop now ends its records 31 ms before its 4.18 s recording ends, not 1.2 s: 137 UDP records, not 101, and

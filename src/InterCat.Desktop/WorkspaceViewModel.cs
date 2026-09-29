@@ -3642,13 +3642,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// The time scope the inspector states: the analysis interval, or the whole extent. An empty workspace has recorded
-    /// no time, so its placeholder extent is never read out as a duration.
+    /// The time scope the inspector states: the analysis interval, or the whole session - its recording when its capture
+    /// recorded a stop, which its rates divide by (metrics-v1 §7), or else the span of its records. An empty workspace has
+    /// recorded no time, so its placeholder extent is never read out as a duration.
     /// </summary>
     public string IntervalLabel => selectedInterval is { } interval
         ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
         : VisibleScope is { } visible ? "Visible " + WorkspaceTime.FormatRange(visible, CultureInfo.CurrentCulture)
         : emptyWorkspace ? "No time recorded yet"
+        : Snapshot.Recording is { } recording
+            ? "All · " + WorkspaceTime.FormatDuration(recording.SpanTicks, CultureInfo.CurrentCulture) + " recorded"
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>

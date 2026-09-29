@@ -890,6 +890,10 @@ public sealed class RankingSelectorTests
         using WorkspaceViewModel workspace = Open(session);
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
 
+        // The inspector's time scope is the recording, which the rates divide by, not the span of the records in it.
+        Assert.Equal("All · " + WorkspaceTime.FormatDuration(20_000_000, CultureInfo.CurrentCulture) + " recorded",
+            workspace.IntervalLabel);
+
         // At the whole session the rows state records per second over those 2 s, each with its records still beneath.
         string over = OperationText.Duration(2_000_000_000, CultureInfo.CurrentCulture);
         workspace.PerSecond = true;
