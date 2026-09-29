@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 280 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 281 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 281 — M4's exit review (§14, M4):**
+  - Everything M4 implements is done, and three of its four exit checks hold by test; the known two-host exchange
+    waits on a second machine, and the review says how to run it.
 
 - **Revision 280 — an investigation keeps the pins placed on its sessions' graphs (§26.3, `workspace-v11`):**
   - A session opened from an investigation keeps its pinned nodes there, one layout per member replaced as it changes,
@@ -574,9 +578,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      investigation is not defined, since a redacted package's pseudonyms hold only within it;
    - done in revisions 277 and 278: candidate joins, the merged time and `icat workspace show`'s overlaps name their
      snapshot vector (I16); a decision records the alignments it was made under, not the generations.
+   - **Exit review (revision 281).** Every item M4 implements is done: the workspace file (253), host and boot identity
+     (253, 255, 256, 266), calibration and the alignment UI (255, 259, 264, 265), merged time navigation (261, 267,
+     268, 271), snapshot vectors (277, 278), candidate joins with their evidence (258, 260, 269), one member per
+     capture, so no capture is counted twice (253), and packaging and relinking (257, 263). Of its exit gate, three
+     of four hold, each by a test: injected clock uncertainty is exposed ("a session aligned at two instants is placed
+     at the rate they measure, its lane uncertain by its wander"), an order is stated only beyond it ("a workspace
+     orders instants across members only as far as their alignments allow"), and a manual alignment persists and
+     reopens and changes no timestamp ("a manual alignment is an annotation, kept and reopened as recorded"). The
+     fourth, **a known two-host exchange from separately captured traces**, needs two machines: record one known TCP
+     exchange between them - a client on one, its server on the other - with `icat record` on both (the test
+     workloads are loopback only), bring both sessions to one machine, `icat
+     workspace new` and `add` them, align them by their wall clocks (`align <b> <a> --wall-clock --sync <duration>
+     --drift-ppm <rate>`), and `correlate`: the exchange must be the one candidate, its lifetimes overlapping and its
+     bytes the same on both sides. Correlation is tested only synthetically until then, since one host cannot split
+     an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
 
+- Revision 281 changed documents only; its code is revision 280's, whose Debug suite ran again in a clean worktree
+  before the push.
 - Revision 280 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
   passed, 4 skipped**, zero failures. Its window test drives the real main and investigation windows headlessly: a pin
   placed on a member opened from the investigation is written there, is absent when the session is opened on its own,
