@@ -4,18 +4,18 @@ using InterCat.Storage;
 
 namespace InterCat.Analysis;
 
-/// <summary>One mechanism's coverage over a scope, and the fact that decided it (`coverage-v1` §4).</summary>
+/// <summary>One mechanism's coverage over a scope, and the fact that decided it (`coverage-v2` §4).</summary>
 public sealed record MechanismCoverage(Mechanism Mechanism, CoverageState State, string Reason);
 
 /// <summary>
-/// Coverage states from a session's coverage ledger (`contracts/coverage-v1.md` §4): what an absence of records can and
+/// Coverage states from a session's coverage ledger (`contracts/coverage-v2.md` §4): what an absence of records can and
 /// cannot mean (R21). The rule reads the ledger's facts only. A legacy generation publishes no ledger, and every state
 /// it is asked for is <see cref="CoverageState.UnknownCoverage"/>.
 /// </summary>
 public static class SessionCoverage
 {
     /// <summary>The rule these states follow; results name it beside the states they carry.</summary>
-    public const string Rule = "coverage-v1";
+    public const string Rule = "coverage-v2";
 
     /// <summary>Every mechanism's coverage over an interval, or over every epoch when none is given.</summary>
     public static IReadOnlyList<MechanismCoverage> ByMechanism(CoverageLedgerV1? ledger, TimeRange? interval = null) =>
@@ -60,10 +60,7 @@ public static class SessionCoverage
         List<CoverageEpochV1> spanned =
         [
             .. ledger.Epochs.Where(epoch => interval is not { } range
-                || (epoch.FirstDeliveredNativeTicks is { } first
-                    && epoch.LastDeliveredNativeTicks is { } last
-                    && range.StartTicks <= last
-                    && range.EndTicks > first)),
+                || (Bounds(epoch) is { } bounds && range.StartTicks <= bounds.Last && range.EndTicks > bounds.First)),
         ];
         if (spanned.Count == 0 || !Spans(spanned, interval))
         {
@@ -105,8 +102,7 @@ public static class SessionCoverage
             List<int> spanned = [];
             for (int epoch = 0; epoch < ledger.Epochs.Count; epoch++)
             {
-                if (ledger.Epochs[epoch] is { FirstDeliveredNativeTicks: { } first, LastDeliveredNativeTicks: { } last }
-                    && range.StartTicks <= last && range.EndTicks > first)
+                if (Bounds(ledger.Epochs[epoch]) is { } bounds && range.StartTicks <= bounds.Last && range.EndTicks > bounds.First)
                 {
                     spanned.Add(epoch);
                 }
@@ -223,18 +219,30 @@ public static class SessionCoverage
         }
 
         Int128 covered = range.StartTicks;
-        foreach (CoverageEpochV1 epoch in epochs.OrderBy(epoch => epoch.FirstDeliveredNativeTicks))
+        foreach ((long first, long last) in epochs.Select(Bounds).OfType<(long First, long Last)>().OrderBy(bounds => bounds.First))
         {
-            if (epoch.FirstDeliveredNativeTicks > covered)
+            if (first > covered)
             {
                 return false;
             }
 
-            covered = Int128.Max(covered, (Int128)epoch.LastDeliveredNativeTicks!.Value + 1);
+            covered = Int128.Max(covered, (Int128)last + 1);
         }
 
         return covered >= range.EndTicks;
     }
+
+    /// <summary>
+    /// The readings an epoch speaks for (`coverage-v2` §2): from the earlier of its first delivered and its recorded
+    /// start to the later of its last delivered and its recorded stop; null when it states neither.
+    /// </summary>
+    private static (long First, long Last)? Bounds(CoverageEpochV1 epoch) =>
+        (epoch.FirstDeliveredNativeTicks, epoch.RecordedFromNativeTicks) switch
+        {
+            (null, null) => null,
+            _ => (Math.Min(epoch.FirstDeliveredNativeTicks ?? long.MaxValue, epoch.RecordedFromNativeTicks ?? long.MaxValue),
+                Math.Max(epoch.LastDeliveredNativeTicks ?? long.MinValue, epoch.RecordedToNativeTicks ?? long.MinValue)),
+        };
 
     private static string Describe(CoverageLossV1 loss, CoverageAcquisition acquisition) => loss.Layer switch
     {

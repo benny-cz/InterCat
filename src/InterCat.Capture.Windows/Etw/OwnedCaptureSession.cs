@@ -29,6 +29,13 @@ public sealed record CaptureStopResult(
 
     /// <summary>True only when stopping the exact session created by this capture succeeded.</summary>
     public bool ProvidersStopped { get; init; }
+
+    /// <summary>
+    /// True when the session stopped while its pump ran and the pump then returned by itself: every record its sources
+    /// raised before the stop was delivered, or counted as lost. False when delivery had to be ended instead, which can
+    /// leave records in the session's buffers that nothing counts.
+    /// </summary>
+    public bool DeliveredThroughStop { get; init; }
 }
 
 /// <summary>
@@ -72,6 +79,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     // the stop's own reading is the final one. Set once the session stopped, so the cleanup only disposes it.
     private volatile bool sessionStopping;
     private volatile bool sessionStopped;
+    private bool deliveredThroughStop;
 
     /// <param name="observer">
     /// Told every delivery outcome with its descriptor, from the callback, when a caller keeps a coverage ledger.
@@ -164,7 +172,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
 
     /// <summary>
     /// Whether the source's loss counters failed to read at any point. A coverage ledger then cannot claim what the
-    /// session lost, because an unread counter is not a reported zero (`coverage-v1` §3, R21).
+    /// session lost, because an unread counter is not a reported zero (`coverage-v2` §3, R21).
     /// </summary>
     public bool SourceLossUnreadable => sourceLossUnreadable;
 
@@ -358,16 +366,19 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
         // Records raised before the stop wait in the session's buffers until ETW hands them over, which a stopped session
         // does at once, to a pump that then returns by itself once it has delivered them. Ending delivery first would
         // discard them with the session, counted by no loss counter, so the session stops first.
-        if (!StopOwnedSession())
+        bool stoppedFirst = StopOwnedSession();
+        if (!stoppedFirst)
         {
             session?.RequestStopProcessing();
         }
 
+        bool pumpReturned = pumpTask is null;
         if (pumpTask is not null)
         {
             try
             {
                 await pumpTask.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken).ConfigureAwait(false);
+                pumpReturned = true;
             }
             catch (TimeoutException)
             {
@@ -381,6 +392,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             }
         }
 
+        deliveredThroughStop = stoppedFirst && pumpReturned;
         lock (gate)
         {
             state = CaptureLifecycle.Finalizing;
@@ -660,6 +672,7 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
     {
         CallbacksDrained = pumpTask?.IsCompleted ?? true,
         ProvidersStopped = providersStopped,
+        DeliveredThroughStop = deliveredThroughStop,
     };
 
     private void Transition(CaptureLifecycle expected, CaptureLifecycle next)

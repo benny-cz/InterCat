@@ -58,7 +58,7 @@ public sealed record LiveCaptureResult
     public string? DiskReserveReason { get; init; }
 
     /// <summary>
-    /// What the capture's sources could observe and what they lost (`coverage-v1`); null when a loss counter could not
+    /// What the capture's sources could observe and what they lost (`coverage-v2`); null when a loss counter could not
     /// be read, so the session's coverage is unknown.
     /// </summary>
     public CoverageLedgerV1? Coverage { get; init; }
@@ -235,6 +235,7 @@ public static class LiveRecorder
         CaptureStopResult stop;
         long journaled;
         ClockCalibrationSampleV1? stopSample = null;
+        long? stoppedAt = null;
         try
         {
             // A broker may acknowledge Start only after ETW, the source clock and the single journal
@@ -255,6 +256,9 @@ public static class LiveRecorder
             // session has drained: a record it still delivers was raised before this, or widens the recording (metrics-v1
             // §7), and a second of draining would otherwise count as a second recorded.
             stopSample = startSample is null ? null : calibration?.Sample();
+
+            // The same moment on the source clock, this machine's performance counter (EtwSourceClock), for the ledger.
+            stoppedAt = stopSample?.NativeTicks ?? Stopwatch.GetTimestamp();
         }
         finally
         {
@@ -273,6 +277,9 @@ public static class LiveRecorder
         CoverageLedgerV1? ledger = null;
         if (!session.SourceLossUnreadable)
         {
+            // From its epoch reading, taken once every source was enabled, to its stop, a capture that delivered through the
+            // stop left nothing its sources raised undelivered or uncounted: its epoch speaks for that whole recording
+            // (coverage-v2 §2). One that had to end delivery first speaks only for what it delivered.
             ledger = coverage.ToLedger(
             [
                 new() { Layer = LossLayer.SourceSession, Lost = stop.Health.ProviderReportedEventLoss },
@@ -281,7 +288,10 @@ public static class LiveRecorder
 
                 // Admitted into the queue and never written: the writer's own loss, measured rather than assumed zero.
                 new() { Layer = LossLayer.Storage, Lost = Math.Max(0, stop.Health.AdmittedRecords - journaled) },
-            ]);
+            ],
+            stop.DeliveredThroughStop && stoppedAt > clock.Descriptor.CaptureEpochNativeTicks
+                ? (clock.Descriptor.CaptureEpochNativeTicks, stoppedAt.Value)
+                : null);
         }
 
         ClockCalibrationV1? calibrated = calibration is null || startSample is null || stopSample is null

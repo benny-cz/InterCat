@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 274 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 275 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 275 — a live capture's coverage speaks for its whole recording (`coverage-v2` §2, R21):**
+  - A capture that delivered through its stop records its epoch and stop readings in its ledger, and speaks for every
+    reading between: a quiet start or end is covered, and a whole-recording rate states coverage, not "unknown".
+  - Older ledgers, imports, and a capture whose delivery had to be ended first stay bounded by what they delivered.
 
 - **Revision 274 — the whole session's time scope is its recording (§5.2, `metrics-v1` §7):**
   - What revision 272's live UI check found: the inspector stated the span of the records beside a rate over the
@@ -489,8 +494,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Per second over a whole session: done in revision 272. A whole session's rates divide by its recording, from its
      epoch to the stop its clock calibration records, widened to hold every timed record; an import, a redacted package
      and a capture before revision 255 record no stop and keep none. What it leaves open:
-     - Coverage over the recording is unknown, since `coverage-v1` §2 bounds a live epoch by its delivered readings,
-       which the recording always reaches beyond. A live epoch could speak for its whole recording.
+     - Coverage over the recording: done in revision 275, whose live epochs speak for the readings they recorded
+       between (`coverage-v2` §2). A capture recorded before it stays bounded by what it delivered.
      - Its live check found that a capture never delivered its last second or so, uncounted as loss: fixed in revision
        273, whose stop stops the session before it ends delivery.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
@@ -547,6 +552,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 275 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,469 tests: 1,465
+  passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad, deleted after, published a
+  `coverage-v2` ledger recording from its epoch to its stop; its whole-recording rate states "Process lifecycle
+  covered; Udp covered", where the revision-273 capture of the same shape still states unknown coverage, and its first
+  timeline column is covered. The broker qualification passed on real ETW
+  (`bench/results/broker-qualification-20260929T061601Z`) once the Release CLI it launches was rebuilt: a stale one
+  refused the new ledger.
 - Revision 274 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,466 tests: 1,462
   passed, 4 skipped**, zero failures. Live, the Release app opened a scratch capture and an imported ETL, deleted after,
   driven through UI Automation and read by PrintWindow: per second read "Records · per second over the whole
@@ -759,4 +771,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v4.md`, `clock-calibration-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v10.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

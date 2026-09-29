@@ -4,7 +4,7 @@
 - Date: 2026-09-23
 - Decision owners: InterCat maintainers
 - Relates to: §7.1 (`CoverageInterval`), §10.3, §18.1, §20.1, R21, IC-014, IC-015,
-  `contracts/coverage-v1.md`, `contracts/store-v1.md`
+  `contracts/coverage-v2.md` (`coverage-v1` until revision 275), `contracts/store-v1.md`
 
 ## Context
 
@@ -32,6 +32,13 @@ prove its recording session enabled a quiet provider, even when the import plan 
 5. Keep coverage separate from a metric's eligibility and value. A rate is an observed rate and is never corrected by
    an estimated missing count. An empty eligible set remains unavailable under `metrics-v1`, even with a covered
    capture; it does not silently become zero.
+6. (Revision 275, `coverage-v2`.) A live epoch may record the readings it recorded between: its capture epoch, read
+   once every source is enabled, and the reading at which it asks its session to stop. It records them only when the
+   session then stopped while delivery ran, so nothing its sources raised in between went undelivered and uncounted,
+   and between them it speaks as it does between its delivered readings. They are recorded, never inferred when the
+   ledger is read: a capture before revision 273 ended delivery first and lost its last second uncounted, and reading
+   its recording as covered would have hidden that loss. A `coverage-v1` file, an import, and a capture whose delivery
+   had to be ended first state none and stay bounded by what they delivered.
 
 ## Consequences
 

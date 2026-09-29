@@ -54,7 +54,7 @@ is no directory flush, so a rename proves nothing about the bytes behind the nam
 
 A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` (code 4, `contracts/derivation-checkpoint-v1.md` since
 revision 162), `DerivationPlan` (code 5,
-`contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v1.md`),
+`contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v2.md`),
 `CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`), `RedactionPolicy` (code 8,
 `contracts/redacted-session-v1.md`), `Content` (code 9, `contracts/content-v1.md`, revision 234) or `ClockCalibration`
 (code 10, `contracts/clock-calibration-v1.md`, revision 255). An unknown kind, an unreadable format version, a

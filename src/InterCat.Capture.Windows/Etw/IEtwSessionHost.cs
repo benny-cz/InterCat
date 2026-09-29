@@ -4,7 +4,7 @@ namespace InterCat.Capture.Windows;
 
 /// <summary>
 /// One delivered record's descriptor and native reading, as the callback saw it before any admission decision. A sink
-/// that keeps a coverage ledger attributes every outcome to it (`contracts/coverage-v1.md` §3); the reading is the
+/// that keeps a coverage ledger attributes every outcome to it (`contracts/coverage-v2.md` §3); the reading is the
 /// record's own clock value, never a relative time (I8). A classic kernel record of a class admission knows names its
 /// descriptor with its opcode, because its class has one id for every event (ADR-035); any other record's opcode is
 /// <see cref="EventAdmissionTable.ManifestOpcode"/>, because its id names its descriptor.
@@ -64,7 +64,7 @@ public interface IAdmittedEventSink
 }
 
 /// <summary>
-/// Observes every delivery outcome with its descriptor, for a coverage ledger (`contracts/coverage-v1.md` §3). It is
+/// Observes every delivery outcome with its descriptor, for a coverage ledger (`contracts/coverage-v2.md` §3). It is
 /// called from the capture callback, so its work must be bounded and allocation-free once a descriptor has been seen
 /// (R9, P12). A record the policy admitted but the bounded queue could not take is reported as not queued: it was lost
 /// after admission, not admitted. An admitted record's <c>opcode</c> is its descriptor's, as

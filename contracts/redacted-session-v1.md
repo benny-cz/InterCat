@@ -36,7 +36,7 @@ A package publishes exactly one generation, generation 1, with:
 | `journal-0000000001.icatj` | `Journal` | One synthetic record per row (§5) |
 | `seg-0000000001-NNNN.icats`, `dict-…` | `Segment`, `Dictionary` | The projected observation rows (§3): `observation-v1`, or `observation-v2` for a segment with an IPv6 address |
 | `fld-0000000001-NNNN.icats` | `Segment` | The projected `source-fields-v1` rows (§4), when the source had any |
-| `coverage-0000000001.json` | `CoverageLedger` | The source's `coverage-v1` ledger under package pseudonyms (§6), when it had one |
+| `coverage-0000000001.json` | `CoverageLedger` | The source's `coverage-v2` ledger (or `coverage-v1`, written before it) under package pseudonyms and clock (§6), when it had one |
 | `redaction-policy-0000000001.json` | `RedactionPolicy` (code 8) | The policy and counts (§7) |
 
 A normalizer plan, a capture-finalization marker, an index or any other kind is never published. The directory holds
@@ -146,8 +146,9 @@ a synthetic record, never an original: `icat raw` and the Desktop's record windo
 
 When the source published a ledger, the package publishes it again with every epoch, acquisition, count, omission reason,
 undecodable reason and loss unchanged, providers pseudonymized as in §3.3, provider names taken from §3.3 rather than
-copied, and delivered readings moved as in §3.4. Every coverage state and reason is the source's. A source without a
-ledger gives a package without one, whose coverage is unknown as the source's is.
+copied, and delivered and recorded readings moved as in §3.4, as `coverage-v2` whatever the source's was. Every
+coverage state and reason is the source's. A source without a ledger gives a package without one, whose coverage is
+unknown as the source's is.
 
 ## 7. The policy file
 

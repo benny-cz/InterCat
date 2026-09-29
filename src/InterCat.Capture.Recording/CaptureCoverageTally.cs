@@ -6,7 +6,7 @@ namespace InterCat.Capture.Recording;
 
 /// <summary>
 /// What each descriptor delivered during one capture or replay and what became of it, for the coverage ledger
-/// (`contracts/coverage-v1.md` §3). A provider admission does not know is one entry, because every record of it met one
+/// (`contracts/coverage-v2.md` §3). A provider admission does not know is one entry, because every record of it met one
 /// policy; that keeps the ledger bounded by the plan's descriptors and the providers a source happens to deliver. A
 /// classic kernel descriptor is its class, id 0, version and opcode, so its opcode is part of its entry (ADR-035).
 /// </summary>
@@ -126,17 +126,20 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
         }
     }
 
-    /// <summary>The one-epoch ledger of what was tallied, with the losses the source and InterCat reported.</summary>
-    public CoverageLedgerV1 ToLedger(IReadOnlyList<CoverageLossV1> losses)
+    /// <summary>
+    /// The one-epoch ledger of what was tallied, with the losses the source and InterCat reported, and for a live capture
+    /// that delivered through its stop the readings it recorded between (`coverage-v2` §2).
+    /// </summary>
+    public CoverageLedgerV1 ToLedger(IReadOnlyList<CoverageLossV1> losses, (long From, long To)? recorded = null)
     {
         ArgumentNullException.ThrowIfNull(losses);
         lock (gate)
         {
-            return Snapshot(losses);
+            return Snapshot(losses, recorded);
         }
     }
 
-    private CoverageLedgerV1 Snapshot(IReadOnlyList<CoverageLossV1> losses)
+    private CoverageLedgerV1 Snapshot(IReadOnlyList<CoverageLossV1> losses, (long From, long To)? recorded)
     {
         if (overflowed)
         {
@@ -158,6 +161,8 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
                     Acquisition = acquisition,
                     FirstDeliveredNativeTicks = first,
                     LastDeliveredNativeTicks = last,
+                    RecordedFromNativeTicks = recorded?.From,
+                    RecordedToNativeTicks = recorded?.To,
                     Collected =
                     [
                         .. plan.Sources.SelectMany(source => source.Events)

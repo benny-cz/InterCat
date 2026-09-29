@@ -506,7 +506,7 @@ public sealed record MetricRate
 
 /// <summary>
 /// Capture-source coverage over the request's native interval. This is not measurement availability, process-binding
-/// completeness or a correction to a metric value (`coverage-v1`, ADR-018).
+/// completeness or a correction to a metric value (`coverage-v2`, ADR-018).
 /// </summary>
 public sealed record MetricCoverage
 {

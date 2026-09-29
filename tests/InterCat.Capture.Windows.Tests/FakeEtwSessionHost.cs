@@ -24,6 +24,9 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
 
     public bool RefuseFlush { get; set; }
 
+    /// <summary>Makes stopping the session fail, as ETW refuses a stop it cannot carry out.</summary>
+    public bool FailStop { get; set; }
+
     /// <summary>Refuses kernel flags, as a machine at its limit of eight system loggers would.</summary>
     public bool RefuseKernelFlags { get; set; }
 
@@ -179,6 +182,11 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
 
         public void StopSession()
         {
+            if (host.FailStop)
+            {
+                throw new EtwSessionException("the session could not be stopped in this test");
+            }
+
             host.StoppedSessions.Add(SessionName);
             sessionStopped = true;
         }

@@ -183,7 +183,7 @@ public static class EtlCanonicalImport
 
             // What the file's sources delivered and lost is kept beside the evidence: the journal holds admitted
             // records only, and a reopened session must still say what it could not have seen (R21).
-            // A reported zero is a fact; an absent loss entry would say nothing (`coverage-v1` §3).
+            // A reported zero is a fact; an absent loss entry would say nothing (`coverage-v2` §3).
             CoverageLedgerV1 coverage = sink.Coverage.ToLedger([new() { Layer = LossLayer.SourceSession, Lost = replay.SourceEventsLost }]);
             using CanonicalImportIndex index = builder.Complete(cancellationToken);
             generation?.StageCoverageLedger(coverage);

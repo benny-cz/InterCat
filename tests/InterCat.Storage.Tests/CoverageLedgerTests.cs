@@ -216,6 +216,43 @@ public sealed class CoverageLedgerTests
         }).Encode());
     }
 
+    [Fact(DisplayName = "R21: a live epoch keeps the readings it recorded between, and a coverage-v1 file still reads")]
+    public void RecordedReadingsRoundTripWhereTheyMayBeStated()
+    {
+        CoverageEpochV1 imported = Assert.Single(Example().Epochs);
+        CoverageEpochV1 live = imported with
+        {
+            Acquisition = CoverageAcquisition.LiveCapture,
+            RecordedFromNativeTicks = 5,
+            RecordedToNativeTicks = 30,
+            Losses =
+            [
+                new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+                new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+                new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+                new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+            ],
+        };
+        CoverageLedgerV1 ledger = Example() with { Epochs = [live] };
+        byte[] bytes = ledger.Encode();
+        Assert.Contains("\"contract\":\"coverage-v2\"", Encoding.UTF8.GetString(bytes), StringComparison.Ordinal);
+        CoverageEpochV1 decoded = Assert.Single(CoverageLedgerV1.Decode(bytes).Epochs);
+        Assert.Equal((5L, 30L), (decoded.RecordedFromNativeTicks, decoded.RecordedToNativeTicks));
+
+        // A coverage-v1 file, written before the readings existed, reads as one that states none.
+        CoverageLedgerV1 first = CoverageLedgerV1.Decode((Example() with { Contract = CoverageLedgerV1.FirstContractName }).Encode());
+        Assert.Null(Assert.Single(first.Epochs).RecordedFromNativeTicks);
+
+        // They are refused where they cannot be: in a coverage-v1 file, for an import, one without the other, reversed.
+        Assert.Throws<InvalidDataException>(() => (ledger with { Contract = CoverageLedgerV1.FirstContractName }).Encode());
+        Assert.Throws<InvalidDataException>(() => (Example() with
+        {
+            Epochs = [imported with { RecordedFromNativeTicks = 5, RecordedToNativeTicks = 30 }],
+        }).Encode());
+        Assert.Throws<InvalidDataException>(() => (ledger with { Epochs = [live with { RecordedToNativeTicks = null }] }).Encode());
+        Assert.Throws<InvalidDataException>(() => (ledger with { Epochs = [live with { RecordedToNativeTicks = 4 }] }).Encode());
+    }
+
     private static CoverageLedgerV1 Example() => new()
     {
         Contract = CoverageLedgerV1.ContractName,

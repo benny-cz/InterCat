@@ -1,9 +1,13 @@
-# InterCat coverage ledger v1
+# InterCat coverage ledger v2
 
 Status: **frozen, and implemented for imported and live-recorded sessions**. `icat record` publishes a `LiveCapture`
 epoch with its last generation, when every required loss counter was readable; otherwise that generation is published
 without a ledger, and its coverage stays unknown. The generations a recording publishes while it records carry no
 ledger: the epoch is not over, and coverage stays unknown until it is.
+
+Revision 275 made this `coverage-v2`: a live epoch may state the readings it recorded between (§2), and speaks for
+every reading between them. A `coverage-v1` file, which every earlier generation publishes, is read as a `coverage-v2`
+file whose epochs state none, and nothing else about it changed.
 
 This contract is §7.1's `CoverageInterval` and the "capture configuration epochs and health/loss ledger" of §10: what
 a capture's sources could observe, over which readings, and what they are known to have lost. R21 is why it exists.
@@ -27,10 +31,11 @@ journal. Nothing can rebuild it, so it is kept the way the normalizer plan is:
 A generation that publishes none is **legacy**, and every coverage it is asked about is `UnknownCoverage` (§4).
 
 The file is UTF-8 JSON. Property names are camel-case and enumeration values are §23 names. The contract name is
-`coverage-v1`. A reader refuses any of the following:
+`coverage-v2`, or `coverage-v1` for a file written before it. A reader refuses any of the following:
 
 - an unknown member or an unknown enumeration name;
-- another contract name;
+- another contract name, or recorded readings in a `coverage-v1` file;
+- one recorded reading without the other, a recorded start after its stop, or recorded readings on an import epoch;
 - a count below zero, or a descriptor whose outcomes do not add up to what it delivered (§3);
 - a duplicate descriptor or loss layer;
 - no epoch, or more than 64 epochs;
@@ -44,7 +49,7 @@ The manifest records the file's length and SHA-256; its bytes are not a cross-ru
 ```text
 CoverageLedgerV1 = (contract, epochs[1..64])
 Epoch = (epoch, acquisition, firstDeliveredNativeTicks?, lastDeliveredNativeTicks?,
-         collected[], deliveries[], losses[])
+         recordedFromNativeTicks?, recordedToNativeTicks?, collected[], deliveries[], losses[])
 ```
 
 An **epoch** is an interval over which the capture's configuration and admitted sources were unchanged (§22,
@@ -55,9 +60,18 @@ import is one epoch.
 or `LiveCapture` for an owned session. It decides what an epoch can know. A file does not record which providers its
 session enabled or with which keywords. A live capture knows.
 
-The two readings are the first and last native readings of **every** record the sources delivered, admitted or not,
-on the capture's clock. They bound what the epoch can speak for: before the first and after the last, coverage is
-`UnknownCoverage`. An epoch whose sources delivered nothing has neither reading.
+The two delivered readings are the first and last native readings of **every** record the sources delivered, admitted
+or not, on the capture's clock. They bound what the epoch can speak for: before the first and after the last, coverage
+is `UnknownCoverage`. An epoch whose sources delivered nothing has neither reading.
+
+The two **recorded** readings are a live capture's: its capture epoch, which it reads once every source is enabled,
+and the reading at which it asks its session to stop. A capture states them only when its session then stopped while
+delivery ran and delivered what it still held, so that nothing its sources raised between the two readings went
+undelivered without a loss counter counting it (revision 273). Between them the epoch speaks as it does between its
+delivered readings, and an epoch speaks for the union of the two spans: a quiet capture's start and end are covered,
+and a live epoch that delivered nothing still speaks for its recording. An import, a `coverage-v1` file, and a capture
+whose delivery had to be ended before its session stopped state none; before revision 273 a capture's last records
+could be lost that way, which is why an older ledger is never widened to its recording.
 
 ## 3. What each epoch records
 
@@ -137,10 +151,10 @@ A mechanism's `EN-CoverageState` over an epoch follows from the facts above, che
 `ReducedFidelity` is not produced by this version. It is reserved for a profile that deliberately admits part of a
 mechanism's evidence, such as sampling.
 
-Outside every epoch's readings a mechanism is `UnknownCoverage`. Coverage over an interval, or over several
-mechanisms, rolls up to the **worst** state of what it spans on the ordered lattice `Covered < ReducedFidelity <
-PartialGap < NotCollected < UnknownCoverage` (§10.3). It never takes an average. A legacy generation is
-`UnknownCoverage` everywhere, and says that it publishes no ledger.
+Outside every epoch's delivered and recorded readings a mechanism is `UnknownCoverage`. Coverage over an interval,
+or over several mechanisms, rolls up to the **worst** state of what it spans on the ordered lattice `Covered <
+ReducedFidelity < PartialGap < NotCollected < UnknownCoverage` (§10.3). It never takes an average. A legacy
+generation is `UnknownCoverage` everywhere, and says that it publishes no ledger.
 
 `Covered` states only what this evidence supports. For an import it means a collected descriptor of the mechanism
 delivered records and the file reported no loss. It does not prove the file's session was enabled before its first

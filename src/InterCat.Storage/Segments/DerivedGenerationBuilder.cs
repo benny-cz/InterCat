@@ -167,7 +167,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     }
 
     /// <summary>
-    /// Retains what the capture's sources could observe and what they lost (`contracts/coverage-v1.md`). Like the
+    /// Retains what the capture's sources could observe and what they lost (`contracts/coverage-v2.md`). Like the
     /// plan, it is evidence about the capture: the journal holds admitted records only, so nothing rebuilds it.
     /// </summary>
     public void StageCoverageLedger(CoverageLedgerV1 ledger)
@@ -963,7 +963,7 @@ public static class SessionSegments
 
     /// <summary>
     /// The coverage ledger a generation names, or null for a legacy generation that publishes none: every coverage
-    /// such a generation is asked about is unknown (`contracts/coverage-v1.md` §1). Two ledgers are a refusal, because
+    /// such a generation is asked about is unknown (`contracts/coverage-v2.md` §1). Two ledgers are a refusal, because
     /// a reader could not say which one describes the capture.
     /// </summary>
     public static CoverageLedgerV1? CoverageLedger(IOwnedDirectory directory, SessionManifestV1 manifest)

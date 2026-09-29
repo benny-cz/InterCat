@@ -469,6 +469,36 @@ public sealed class SessionTimelineTests
             state => Assert.Equal(CoverageState.UnknownCoverage, state));
     }
 
+    [Fact(DisplayName = "R21: a live capture's timeline is covered from its epoch to its stop, not only between its first and last record")]
+    public void ALiveCaptureIsCoveredOverItsRecording()
+    {
+        // Records from 2,000 to 8,000 of a capture that recorded from its epoch, 0, to its stop at 10,000.
+        ObservationRowV1[] rows =
+        [
+            Timed(Transfer(2_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(8_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2).Between(ClientEnd, ServerEnd)),
+        ];
+        CoverageEpochV1 delivered = Epoch(1, 2_000, 8_000, lost: 0);
+
+        // Bounded by what it delivered, it says nothing of its first two and last two columns.
+        using var bounded = new TemporarySession();
+        Publish(bounded.Store, rows, coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [delivered] });
+        SessionTimelineDetail before = SessionTimelineQuery.Detail(bounded.Store, new TimeRange(0, 10_000), 10);
+        Assert.Equal(
+            [CoverageState.UnknownCoverage, CoverageState.UnknownCoverage],
+            [before.Buckets[0].Coverage, before.Buckets[^1].Coverage]);
+
+        // Stating what it recorded, it speaks for all of it: the quiet start and end were covered, and nothing happened.
+        using var recorded = new TemporarySession();
+        Publish(recorded.Store, rows, coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [delivered with { RecordedFromNativeTicks = 0, RecordedToNativeTicks = 10_000 }],
+        });
+        SessionTimelineDetail after = SessionTimelineQuery.Detail(recorded.Store, new TimeRange(0, 10_000), 10);
+        Assert.All(after.Buckets, bucket => Assert.Equal(CoverageState.Covered, bucket.Coverage));
+    }
+
     private static int ColumnAt(SessionMinimap minimap, long tick) =>
         Enumerable.Range(0, minimap.Counts.Count).Single(column => minimap.IntervalOf(column).Contains(tick));
 

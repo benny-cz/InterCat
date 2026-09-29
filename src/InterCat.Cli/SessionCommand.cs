@@ -39,7 +39,7 @@ internal sealed record SessionDocument
 }
 
 /// <summary>
-/// What the capture could observe (`coverage-v1`): each mechanism's state with the fact that decided it, and the
+/// What the capture could observe (`coverage-v2`): each mechanism's state with the fact that decided it, and the
 /// ledger's own facts. Absent from a legacy generation's ledger means coverage is unknown, never that it was complete.
 /// </summary>
 internal sealed record SessionLedgerDocument
@@ -711,7 +711,7 @@ internal static class SessionCommand
 
     /// <summary>
     /// What the capture could observe: collected mechanisms by state, the rest named as not collected, and what the
-    /// policy chose not to admit, which is not a loss (`coverage-v1` §3, R21).
+    /// policy chose not to admit, which is not a loss (`coverage-v2` §3, R21).
     /// </summary>
     /// <summary>
     /// The restricted content a session keeps, in sum and without a byte of it (ADR-036), so a session is never shared
@@ -781,9 +781,12 @@ internal static class SessionCommand
         {
             ConsoleUi.Field(
                 facts.Epochs.Count == 1 ? "Epoch" : $"Epoch {epoch.Epoch}",
-                epoch.FirstDeliveredNativeTicks is { } first
+                (epoch.FirstDeliveredNativeTicks is { } first
                     ? $"{Words(epoch.Acquisition.ToString())}, delivered readings [{first:N0}, {epoch.LastDeliveredNativeTicks:N0}] source ticks"
-                    : $"{Words(epoch.Acquisition.ToString())}, nothing delivered");
+                    : $"{Words(epoch.Acquisition.ToString())}, nothing delivered")
+                + (epoch.RecordedFromNativeTicks is { } from
+                    ? $"; recorded from {from:N0} to {epoch.RecordedToNativeTicks:N0}, and it speaks for every reading between"
+                    : string.Empty));
         }
 
         List<SessionMechanismCoverageDocument> collected =

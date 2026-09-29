@@ -515,7 +515,10 @@ public static class RedactedSessionPackage
         CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(root, manifest);
         foreach (CoverageEpochV1 epoch in ledger?.Epochs ?? [])
         {
-            foreach (long? reading in new[] { epoch.FirstDeliveredNativeTicks, epoch.LastDeliveredNativeTicks })
+            foreach (long? reading in new[]
+            {
+                epoch.FirstDeliveredNativeTicks, epoch.LastDeliveredNativeTicks, epoch.RecordedFromNativeTicks, epoch.RecordedToNativeTicks,
+            })
             {
                 if (reading is not { } value) continue;
                 Int128 relative = (Int128)value - clock.CaptureEpochNativeTicks;
@@ -889,6 +892,8 @@ public static class RedactedSessionPackage
                 Acquisition = epoch.Acquisition,
                 FirstDeliveredNativeTicks = epoch.FirstDeliveredNativeTicks is { } first ? scan.Shift(first) : null,
                 LastDeliveredNativeTicks = epoch.LastDeliveredNativeTicks is { } last ? scan.Shift(last) : null,
+                RecordedFromNativeTicks = epoch.RecordedFromNativeTicks is { } from ? scan.Shift(from) : null,
+                RecordedToNativeTicks = epoch.RecordedToNativeTicks is { } to ? scan.Shift(to) : null,
                 Collected =
                 [
                     .. epoch.Collected.Select(collected => new CoverageCollectedV1

@@ -4,7 +4,7 @@ using InterCat.Domain;
 
 namespace InterCat.Storage;
 
-/// <summary>How an epoch's evidence was acquired, which decides what the epoch can know (`coverage-v1` §2).</summary>
+/// <summary>How an epoch's evidence was acquired, which decides what the epoch can know (`coverage-v2` §2).</summary>
 public enum CoverageAcquisition
 {
     /// <summary>A standalone file replayed through admission. A file records neither enablement nor keywords.</summary>
@@ -15,13 +15,18 @@ public enum CoverageAcquisition
 }
 
 /// <summary>
-/// `coverage-v1`: what a capture's sources could observe, over which readings, and what they are known to have lost.
+/// `coverage-v2`: what a capture's sources could observe, over which readings, and what they are known to have lost.
 /// It is evidence about the capture rather than a derivation of its journal, which holds admitted records only, so
 /// nothing can rebuild it: a generation keeps it the way it keeps its normalizer plan (R21, §7.1 `CoverageInterval`).
+/// A `coverage-v1` file is read as one whose epochs state no recorded readings.
 /// </summary>
 public sealed record CoverageLedgerV1
 {
-    public const string ContractName = "coverage-v1";
+    /// <summary>The contract this version writes.</summary>
+    public const string ContractName = "coverage-v2";
+
+    /// <summary>The first contract, which a reader still takes: its epochs state no recorded readings.</summary>
+    public const string FirstContractName = "coverage-v1";
     public const int MaximumBytes = 1_048_576;
     public const int MaximumEpochs = 64;
     public const int MaximumDescriptors = 4_096;
@@ -47,7 +52,7 @@ public sealed record CoverageLedgerV1
     {
         if (bytes.Length is < 1 or > MaximumBytes)
         {
-            throw new InvalidDataException("A coverage-v1 file is empty or exceeds its 1 MiB bound.");
+            throw new InvalidDataException("A coverage file is empty or exceeds its 1 MiB bound.");
         }
 
         CoverageLedgerV1 ledger;
@@ -58,20 +63,21 @@ public sealed record CoverageLedgerV1
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException("The coverage ledger is not valid coverage-v1 JSON.", exception);
+            throw new InvalidDataException("The coverage ledger is not valid coverage-v2 JSON.", exception);
         }
 
         ledger.Validate();
         return ledger;
     }
 
-    /// <summary>Refuses a ledger whose facts do not add up (`coverage-v1` §1, §3).</summary>
+    /// <summary>Refuses a ledger whose facts do not add up (`coverage-v2` §1, §3).</summary>
     public void Validate()
     {
-        if (!string.Equals(Contract, ContractName, StringComparison.Ordinal)
+        bool first = string.Equals(Contract, FirstContractName, StringComparison.Ordinal);
+        if (!(first || string.Equals(Contract, ContractName, StringComparison.Ordinal))
             || Epochs is null or { Count: < 1 or > MaximumEpochs })
         {
-            throw new InvalidDataException($"A coverage-v1 file names its contract and 1-{MaximumEpochs} epochs.");
+            throw new InvalidDataException($"A coverage file names its contract and 1-{MaximumEpochs} epochs.");
         }
 
         for (int index = 0; index < Epochs.Count; index++)
@@ -83,6 +89,10 @@ public sealed record CoverageLedgerV1
             }
 
             Validate(epoch);
+            if (epoch.RecordedFromNativeTicks.HasValue && first)
+            {
+                throw new InvalidDataException($"Coverage epoch {epoch.Epoch} states recorded readings, which coverage-v1 has not.");
+            }
         }
     }
 
@@ -106,6 +116,14 @@ public sealed record CoverageLedgerV1
         {
             throw new InvalidDataException(
                 $"{at} is bounded by its first and last delivered readings exactly when something was delivered.");
+        }
+
+        if (epoch.RecordedFromNativeTicks.HasValue != epoch.RecordedToNativeTicks.HasValue
+            || epoch.RecordedFromNativeTicks > epoch.RecordedToNativeTicks
+            || (epoch.RecordedFromNativeTicks.HasValue && epoch.Acquisition != CoverageAcquisition.LiveCapture))
+        {
+            throw new InvalidDataException(
+                $"{at} states both of its recorded readings, in order, or neither, and only a live capture states them.");
         }
 
         var collected = new HashSet<(Guid, int, int, int?)>();
@@ -216,8 +234,21 @@ public sealed record CoverageEpochV1
     /// <summary>The first native reading of any record a source delivered, admitted or not; null when none was.</summary>
     public long? FirstDeliveredNativeTicks { get; init; }
 
-    /// <summary>The last such reading. Coverage outside the two readings is unknown.</summary>
+    /// <summary>The last such reading. Coverage outside the two readings is unknown, unless recorded readings say more.</summary>
     public long? LastDeliveredNativeTicks { get; init; }
+
+    /// <summary>
+    /// A live capture's reading when it began recording: its capture epoch, which it read once every source was enabled.
+    /// Null for an import, for a `coverage-v1` file, and for a capture that could not show it delivered what its sources
+    /// raised before it stopped (`coverage-v2` §2).
+    /// </summary>
+    public long? RecordedFromNativeTicks { get; init; }
+
+    /// <summary>
+    /// Its reading when it stopped recording: the moment it asked its session to stop, which then delivered every record
+    /// its sources had raised. Between the two recorded readings the epoch speaks as it does between its delivered ones.
+    /// </summary>
+    public long? RecordedToNativeTicks { get; init; }
 
     /// <summary>What the admission plan admitted, whether or not it delivered anything.</summary>
     public required IReadOnlyList<CoverageCollectedV1> Collected { get; init; }

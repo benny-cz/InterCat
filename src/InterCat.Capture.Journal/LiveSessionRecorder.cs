@@ -48,7 +48,7 @@ public sealed record LiveRecordingResult
     public long JournaledRecords { get; init; }
 
     /// <summary>
-    /// What the capture's sources could observe and what they lost (`coverage-v1`); null when a loss counter could not
+    /// What the capture's sources could observe and what they lost (`coverage-v2`); null when a loss counter could not
     /// be read, so the session's coverage is unknown.
     /// </summary>
     public CoverageLedgerV1? Coverage { get; init; }

@@ -68,6 +68,12 @@ public sealed class LiveSessionRecorderTests
             epoch.Losses.Select(loss => loss.Layer));
         Assert.All(epoch.Losses, loss => Assert.Equal(0, loss.Lost));
 
+        // It stopped its session while delivery ran, so its epoch speaks for its whole recording: from its epoch reading,
+        // taken once its sources were enabled, to its stop (coverage-v2 §2).
+        SourceClockDescriptor clock = SessionSegments.SourceClock(reopened.Root, manifest)!.Value;
+        Assert.Equal(clock.CaptureEpochNativeTicks, epoch.RecordedFromNativeTicks);
+        Assert.InRange(epoch.RecordedToNativeTicks!.Value, clock.CaptureEpochNativeTicks + 1, Stopwatch.GetTimestamp());
+
         // One capture per session: a second recording into it is refused before anything starts.
         await Assert.ThrowsAsync<InvalidOperationException>(() => LiveSessionRecorder.RecordAsync(
             Plan(), new ScriptedHost(), reopened, _ => Task.CompletedTask, DateTimeOffset.UtcNow));

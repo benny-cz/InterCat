@@ -114,6 +114,32 @@ public sealed class SessionCoverageTests
         Assert.Equal(CoverageState.UnknownCoverage, SessionCoverage.Of(gap, Mechanism.Tcp, new TimeRange(10, 41)).State);
     }
 
+    [Fact(DisplayName = "R21: a live epoch speaks for every reading between its recorded start and stop, not only its delivered ones")]
+    public void ALiveEpochSpeaksForItsRecording()
+    {
+        // Delivered between 10 and 20: before and after them, nothing says the capture was listening.
+        CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.LiveCapture);
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        Assert.Equal(CoverageState.UnknownCoverage, SessionCoverage.Of(ledger, Mechanism.Tcp, new TimeRange(0, 30)).State);
+
+        // Recorded from its epoch reading, 0, to its stop, 29: all of that is covered, and nothing beyond it.
+        CoverageLedgerV1 recorded = ledger with { Epochs = [epoch with { RecordedFromNativeTicks = 0, RecordedToNativeTicks = 29 }] };
+        Assert.Equal(CoverageState.Covered, SessionCoverage.Of(recorded, Mechanism.Tcp, new TimeRange(0, 30)).State);
+        Assert.Equal(CoverageState.Covered, SessionCoverage.Of(recorded, Mechanism.Tcp, new TimeRange(25, 30)).State);
+        Assert.Equal(CoverageState.UnknownCoverage, SessionCoverage.Of(recorded, Mechanism.Tcp, new TimeRange(25, 31)).State);
+        Assert.Equal([CoverageState.Covered, CoverageState.UnknownCoverage],
+            SessionCoverage.CaptureStates(recorded, [new TimeRange(0, 5), new TimeRange(30, 35)]));
+
+        // A live epoch that delivered nothing still speaks for its recording: its quiet sources were enabled.
+        CoverageLedgerV1 quiet = recorded with { Epochs = [Assert.Single(recorded.Epochs) with
+        {
+            FirstDeliveredNativeTicks = null,
+            LastDeliveredNativeTicks = null,
+            Deliveries = [],
+        }] };
+        Assert.Equal(CoverageState.Covered, SessionCoverage.Of(quiet, Mechanism.Tcp, new TimeRange(0, 30)).State);
+    }
+
     [Fact(DisplayName = "R21: an interval ending at maximum ticks is evaluated without overflow")]
     public void MaximumNativeTickDoesNotOverflow()
     {

@@ -246,6 +246,7 @@ public sealed class OwnedCaptureSessionTests
         // is never ended under them, and the loss the stop reports is the capture's final loss.
         CaptureStopResult stop = await session.StopAsync(CancellationToken.None);
         Assert.False(host.DeliveryEndedBeforeStop);
+        Assert.True(stop.DeliveredThroughStop);
         Assert.Equal((3L, 3L), (stop.Health.ObservedRecords, stop.Health.AdmittedRecords));
         Assert.Equal(2, stop.Health.ProviderReportedEventLoss);
         Assert.True(stop.ProvidersStopped);
@@ -258,6 +259,19 @@ public sealed class OwnedCaptureSessionTests
         }
 
         Assert.Equal([1L, 2L, 3L], journaled);
+
+        // A session that cannot be stopped has its delivery ended instead, and what its buffers held is not delivered:
+        // the stop says it did not deliver through, so no coverage is claimed past what arrived.
+        var stubborn = new FakeEtwSessionHost { FailStop = true };
+        stubborn.Scripted.Add(Raised(1));
+        stubborn.Buffered.Add(Raised(2));
+        await using var ended = new OwnedCaptureSession(plan, stubborn);
+        _ = await ended.StartAsync(CancellationToken.None);
+        stubborn.Last!.WaitUntilScriptedRecordsDelivered();
+        CaptureStopResult partial = await ended.StopAsync(CancellationToken.None);
+        Assert.True(stubborn.DeliveryEndedBeforeStop);
+        Assert.False(partial.DeliveredThroughStop);
+        Assert.Equal(1, partial.Health.ObservedRecords);
 
         static AdmittedEvent Raised(long ordinal) => new()
         {

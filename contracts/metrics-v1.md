@@ -299,7 +299,7 @@ native reading at or after it. A session whose capture recorded no stop — an i
 before revision 255 — names none, and its whole-session rate stays unavailable. A capture before revision 272 took
 its stop reading once its session had drained, up to about a second after its recording ended, so its whole-session
 rates are that much lower than they would be. A rate whose clock the session does not describe is stated per native
-tick. Every rate is an *observed* rate, whether its generation publishes `coverage-v1` or not;
+tick. Every rate is an *observed* rate, whether its generation publishes `coverage-v2` or not;
 no corrected rate exists (§21.1). A metric answer reports capture coverage separately from its numeric value:
 for a mechanism filter, the state and reason over the request's native interval; for an all-mechanism request,
 the separate states of every mechanism, never a synthetic single "covered" state. A legacy generation reports

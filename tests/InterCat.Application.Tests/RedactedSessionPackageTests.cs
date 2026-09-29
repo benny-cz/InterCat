@@ -370,6 +370,8 @@ public sealed class RedactedSessionPackageTests
         long shift = 10_000_000 - SourceEpoch;
         Assert.Equal(before.Epochs[0].FirstDeliveredNativeTicks + shift, epoch.FirstDeliveredNativeTicks);
         Assert.Equal(before.Epochs[0].LastDeliveredNativeTicks + shift, epoch.LastDeliveredNativeTicks);
+        Assert.Equal(before.Epochs[0].RecordedFromNativeTicks + shift, epoch.RecordedFromNativeTicks);
+        Assert.Equal(before.Epochs[0].RecordedToNativeTicks + shift, epoch.RecordedToNativeTicks);
     }
 
     [Fact(DisplayName = "I22: a companion the package reproduces unchanged is not mistaken for a leak")]
@@ -794,6 +796,8 @@ public sealed class RedactedSessionPackageTests
                 Acquisition = CoverageAcquisition.LiveCapture,
                 FirstDeliveredNativeTicks = SourceEpoch + PreEpochOffset,
                 LastDeliveredNativeTicks = SourceEpoch + 60,
+                RecordedFromNativeTicks = SourceEpoch,
+                RecordedToNativeTicks = SourceEpoch + 80,
                 Collected =
                 [
                     new CoverageCollectedV1

@@ -25,7 +25,7 @@ public enum StoreDependencyKind
     DerivationPlan = 5,
 
     /// <summary>
-    /// What the capture's sources could observe and what they lost (`contracts/coverage-v1.md`). Evidence about the
+    /// What the capture's sources could observe and what they lost (`contracts/coverage-v2.md`). Evidence about the
     /// capture, kept with it: no journal holds these facts, so nothing can rebuild them.
     /// </summary>
     CoverageLedger = 6,
