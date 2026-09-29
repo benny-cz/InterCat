@@ -337,6 +337,58 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window compares two instants, placing each and ordering them only beyond their uncertainty")]
+    public async Task TheWindowComparesTwoInstants()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Session(root.Path, "gamma"), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 2_000_000_000, a, 5_500_000_000, 500_000, 50, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            Assert.True(Named<Button>(window, "Compare an instant of one session with an instant of another").IsEnabled);
+            InvestigationCompareWindow dialog = window.CompareDialog()!;
+            dialog.Show(window);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+
+            // Beta's 2 s is alpha's 5.5 s within 500 µs: one instant, whose order is not stated; alpha's is exact.
+            dialog.Enter(a, 5.5m.ToString(culture), b, "2");
+            WorkspaceComparison? tie = await dialog.CompareAsync();
+            Assert.Equal(TimeOrder.Ambiguous, tie!.Result.Order);
+            Assert.Contains($"The first instant, session {Short(a)}'s {5.5m.ToString("0.000", culture)} s, is the investigation's "
+                + $"{5.5m.ToString("0.000", culture)} s, exactly.", dialog.Said, StringComparison.Ordinal);
+            Assert.Contains($"The second instant, session {Short(b)}'s {2m.ToString("0.000", culture)} s, is the investigation's "
+                + $"{5.5m.ToString("0.000", culture)} s, within ±", dialog.Said, StringComparison.Ordinal);
+            Save(dialog, "investigation-compare.png");
+
+            // Half a second apart is an order; an unaligned session's instant has none, and says why; words are not seconds.
+            dialog.Enter(a, "6", b, "2");
+            Assert.Equal(TimeOrder.After, (await dialog.CompareAsync())!.Result.Order);
+            dialog.Enter(a, "6", c, "1");
+            Assert.Equal(TimeOrder.Unknown, (await dialog.CompareAsync())!.Result.Order);
+            Assert.Contains($"session {Short(c)}'s {1m.ToString("0.000", culture)} s, has no place in the investigation's time: "
+                + $"session {Short(c)} is not aligned", dialog.Said, StringComparison.Ordinal);
+            dialog.Enter(a, "soon", b, "2");
+            Assert.Null(await dialog.CompareAsync());
+            Assert.Equal("Write both instants in seconds of their own session's time, such as 12.5.", dialog.Said);
+            dialog.Close();
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

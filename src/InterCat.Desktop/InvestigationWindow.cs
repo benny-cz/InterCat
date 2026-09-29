@@ -62,6 +62,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             + "scaled to its own busiest column. A session with no alignment has no place.",
     };
     private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
+    private readonly Button compareInstants = new() { Content = "Compare instants…", IsEnabled = false };
     private readonly Button package = new() { Content = "Package…", IsEnabled = false };
     private CancellationTokenSource? packaging;
     private bool timelineLoaded;
@@ -98,6 +99,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
         AutomationProperties.SetName(refreshTimeline, "Draw the investigation's timeline again");
+        AutomationProperties.SetName(compareInstants, "Compare an instant of one session with an instant of another");
         AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
         AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
@@ -153,6 +155,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         refresh.Click += (_, _) => _ = RefreshAsync();
         find.Click += (_, _) => _ = FindCandidatesAsync();
         refreshTimeline.Click += (_, _) => _ = ShowTimelineAsync();
+        compareInstants.Click += (_, _) => _ = CompareInstantsAsync();
         acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
@@ -208,11 +211,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
         candidatesPage.Children.Add(decisions);
         candidatesPage.Children.Add(candidateNotes);
 
-        var timelineHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 8, 0, 0) };
-        Grid.SetColumn(refreshTimeline, 1);
+        var timelineHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(0, 8, 0, 0) };
+        Grid.SetColumn(compareInstants, 1);
+        Grid.SetColumn(refreshTimeline, 2);
+        compareInstants.VerticalAlignment = VerticalAlignment.Top;
+        compareInstants.Margin = new Thickness(0, 0, 8, 0);
         refreshTimeline.VerticalAlignment = VerticalAlignment.Top;
         timelineIntro.Margin = new Thickness(0, 0, 12, 0);
         timelineHeader.Children.Add(timelineIntro);
+        timelineHeader.Children.Add(compareInstants);
         timelineHeader.Children.Add(refreshTimeline);
         var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8 };
         var chart = new ScrollViewer
@@ -343,6 +350,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             caveats.Text = string.Join(" ", view.Caveats);
             members.ItemsSource = view.Members;
             package.IsEnabled = packaging is not null || view.Members.Count > 0;
+            compareInstants.IsEnabled = view.Members.Count > 0;
             members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)
                 ?? (view.Members.Count > 0 ? view.Members[0] : null);
             int unresolved = view.Members.Count(row => !row.HoldsItsCapture);
@@ -362,6 +370,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             View = null;
             members.ItemsSource = Array.Empty<InvestigationMemberRow>();
             package.IsEnabled = packaging is not null;
+            compareInstants.IsEnabled = false;
             summary.Text = string.Empty;
             time.Text = string.Empty;
             status.Text = "This investigation could not be read: " + exception.Message;
@@ -747,6 +756,24 @@ internal sealed class InvestigationWindow : Window, IDisposable
             await RefreshAsync("Recorded as a revision of the investigation: its captures are compared as their hosts now read.");
             if (timelineLoaded) await ShowTimelineAsync();
         }
+    }
+
+    /// <summary>The dialog that compares two instants of the investigation's sessions; null before its sessions are read.</summary>
+    internal InvestigationCompareWindow? CompareDialog()
+    {
+        if (View is not { Members.Count: > 0 } view) return null;
+        CompareSession[] sessions =
+        [
+            .. view.Members.Select(row => new CompareSession(row.SessionId, row.Title.Split(',')[0] + " · "
+                + Path.GetFileName(Path.TrimEndingDirectorySeparator(row.FullPath))
+                + (row.IsTimeReference ? " · reference clock" : row.IsAligned ? string.Empty : " · not aligned"))),
+        ];
+        return new InvestigationCompareWindow(path, sessions);
+    }
+
+    private async Task CompareInstantsAsync()
+    {
+        if (CompareDialog() is { } dialog) await dialog.ShowDialog(this);
     }
 
     private async Task AlignSelectedAsync()

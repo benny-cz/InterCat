@@ -285,6 +285,27 @@ public static class InvestigationRows
                 + " by a person's confirmation";
     }
 
+    /// <summary>
+    /// Where an instant falls in the investigation's time, in words: exactly, within its uncertainty, with an unknown one,
+    /// or nowhere - and why.
+    /// </summary>
+    public static string Placed(string label, WorkspaceInstant instant, CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(instant);
+        ArgumentNullException.ThrowIfNull(culture);
+        string session = $"session {Short(instant.SessionId)}";
+        string at = $"{label} instant, {session}'s {Seconds(instant.SessionNanoseconds, culture)},";
+        return instant switch
+        {
+            { WorkspaceNanoseconds: null } => $"{at} has no place in the investigation's time: {instant.Why(session, culture)}.",
+            { Uncertainty: null } => $"{at} falls at {Seconds(instant.WorkspaceNanoseconds.Value, culture)} of the investigation's "
+                + $"time, but how surely is unknown: {instant.Why(session, culture)}.",
+            { Uncertainty.HalfWidthNanoseconds: 0 } => $"{at} is the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}, exactly.",
+            _ => $"{at} is the investigation's {Seconds(instant.WorkspaceNanoseconds.Value, culture)}, within ±"
+                + OperationText.DurationAtLeast(instant.Uncertainty!.Value.HalfWidthNanoseconds, culture) + ".",
+        };
+    }
+
     /// <summary>How many hosts, counting identities a person confirmed are one host as one, and how many identities they are.</summary>
     private static string HostCount(InvestigationWorkspaceFile workspace, IReadOnlyList<WorkspaceHost> hosts, CultureInfo culture)
     {

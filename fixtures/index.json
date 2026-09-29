@@ -1473,6 +1473,7 @@
         "R21: the investigation window aligns a session at two instants, and says the rate they measure",
         "R21: the investigation window aligns a session by an instant read in both, says what is missing, and withdraws it",
         "R21: the investigation window aligns a session through another aligned one, and never through itself",
+        "R21: the investigation window compares two instants, placing each and ordering them only beyond their uncertainty",
         "R21: the investigation window's timeline places each session on the investigation's time, and says it in words",
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",

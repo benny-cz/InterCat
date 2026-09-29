@@ -168,7 +168,8 @@ Its bound adds the wall clocks' agreement the person states - no sample can meas
 and the stated drift over the time between them; away from the anchor the drift grows as a manual alignment's does.
 Both a synchronization bound and a drift bound are required.
 
-`icat workspace compare` places two instants, each written `<session>@<seconds>` in its own session time, and prints
+`icat workspace compare`, and the investigation window's Compare instants…, place two instants, each read in its own
+session time - written `<session>@<seconds>` on the command line - and `compare` prints
 `workspace-comparison-v1`: each instant's workspace time and half-width, or its `gap` (`NoTimeReference`, `NotAligned`,
 `DriftUnknown`) and distance from its nearer anchor; the `order`; the difference; the pair's half-width; and a
 statement. Two instants of one member are ordered exactly, on one clock. Otherwise the pair's uncertainty is
