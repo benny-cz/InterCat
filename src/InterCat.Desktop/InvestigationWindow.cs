@@ -27,6 +27,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly TextBlock summary = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock time = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock overlaps = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Classes = { "caution" }, IsVisible = false };
     private readonly TextBlock caveats = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
     private readonly ListBox members = new() { SelectionMode = SelectionMode.Single };
     private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
@@ -87,6 +88,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(add, "Add sessions to this investigation");
         AutomationProperties.SetName(refresh, "Look again where each session was last found");
         AutomationProperties.SetName(status, "Investigation status");
+        AutomationProperties.SetName(overlaps, "Sessions of one host that ran at once, or may have");
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
@@ -230,7 +232,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         };
         AutomationProperties.SetName(tabs, "Sessions and candidate joins");
 
-        var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, status } };
+        var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlaps, status } };
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         Grid.SetColumn(close, 1);
         close.VerticalAlignment = VerticalAlignment.Bottom;
@@ -323,6 +325,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
             View = view;
             summary.Text = view.Summary;
             time.Text = view.Time;
+            overlaps.Text = string.Join("\n", view.Overlaps ?? []);
+            overlaps.IsVisible = view.Overlaps is { Count: > 0 };
             caveats.Text = string.Join(" ", view.Caveats);
             members.ItemsSource = view.Members;
             members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)

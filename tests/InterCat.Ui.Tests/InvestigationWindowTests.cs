@@ -267,8 +267,36 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window says when two captures of one host ran at once")]
+    public void TheWindowSaysWhenCapturesOfOneHostRanAtOnce()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4, "lab-1"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6, "lab-1"), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            string said = Assert.Single(window.View!.Overlaps!);
+            Assert.StartsWith($"Sessions {Short(a)} and {Short(b)} of one host ran at once for ", said, StringComparison.Ordinal);
+            TextBlock shown = Named<TextBlock>(window, "Sessions of one host that ran at once, or may have");
+            Assert.True(shown.IsVisible);
+            Assert.Equal(said, shown.Text);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>A session whose process 100 sends <paramref name="records"/> datagrams 100 µs into its capture, 1 µs apart.</summary>
-    private static string Datagrams(string root, string name, int records)
+    private static string Datagrams(string root, string name, int records, string? host = null)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
@@ -280,7 +308,7 @@ public sealed class InvestigationWindowTests
                         .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = (1_000 + (index * 10)) * 100 }),
             ],
             capture: CaptureId.New(),
-            clock: ClockFor(ClockId.New(), "lab-" + name));
+            clock: ClockFor(ClockId.New(), host ?? "lab-" + name));
         store.ReleaseSegmentReaders();
         return directory;
     }

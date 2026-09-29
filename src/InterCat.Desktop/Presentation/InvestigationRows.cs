@@ -27,7 +27,8 @@ public sealed record InvestigationView(
     string Time,
     IReadOnlyList<InvestigationMemberRow> Members,
     IReadOnlyList<string> Caveats,
-    Guid? TimeReference = null);
+    Guid? TimeReference = null,
+    IReadOnlyList<string>? Overlaps = null);
 
 /// <summary>One candidate join as the investigation window lists it (ADR-041): what matched, each end, and its evidence.</summary>
 public sealed record InvestigationCandidateRow(
@@ -100,7 +101,8 @@ public static class InvestigationRows
             "Each session is named by its identity and the capture its journal records; one capture is one member, and "
                 + "showing an investigation writes to no session.",
             "Hosts are grouped by identity, which is evidence of one host and never proof; no name or address makes two one.",
-        ], workspace.TimeReference);
+        ], workspace.TimeReference,
+        [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => overlap.Statement(culture))]);
     }
 
     /// <summary>
@@ -199,6 +201,7 @@ public static class InvestigationRows
                 : $"Session {Short(lane.SessionId)} ({host}): {place}.");
         }
 
+        sentences.AddRange(view.Overlaps.Select(overlap => overlap.Statement(culture)));
         return (view, labels, sentences);
     }
 

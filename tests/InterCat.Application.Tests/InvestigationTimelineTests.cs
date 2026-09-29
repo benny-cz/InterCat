@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -58,8 +59,61 @@ public sealed class InvestigationTimelineTests : IDisposable
         Assert.Equal((false, WorkspaceTimeGap.NotAligned), (third.Placed, third.Gap));
     }
 
-    /// <summary>A session whose process 100 sends <paramref name="records"/> datagrams 100 µs into its capture, 1 µs apart.</summary>
-    private string Session(string name, string host, int records)
+    [Fact(DisplayName = "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared")]
+    public void CapturesOfOneHostThatRanAtOnceAreFlagged()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 4), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-1", 6), Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Session("c", "lab-2", 6), Now).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, Session("d", "lab-1", 2), Now).SessionId;
+
+        // B on A's clock, within 1 µs: their records share 3.1 µs, beyond that bound - one host's captures that ran at once.
+        // C, on another host, overlaps too and is no one's concern; D, of A's host but unaligned, cannot be compared.
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 0, null, Now);
+        InvestigationWorkspace.Align(workspace, c, 0, a, 0, 1_000, 0, null, Now);
+        IReadOnlyList<WorkspaceOverlap> overlaps = InvestigationTimeline.Overlaps(workspace);
+        Assert.Equal(
+        [
+            new WorkspaceOverlap(a, b, OverlapKind.Concurrent, new TimeRange(1_000, 1_031)),
+            new WorkspaceOverlap(a, d, OverlapKind.Unknown, null),
+            new WorkspaceOverlap(b, d, OverlapKind.Unknown, null),
+        ], overlaps);
+        Assert.Equal($"Sessions {a.ToString("N")[..8]} and {b.ToString("N")[..8]} of one host ran at once for 3.1 µs: records of one "
+            + "event may be in both, so no count across them is summed.", overlaps[0].Statement(CultureInfo.InvariantCulture));
+        Assert.Equal(overlaps, InvestigationTimeline.Read(workspace, 10).Overlaps);
+
+        // Placed 5 µs after A's last record within 10 µs, B may have run at the same time; placed a second later, it did not.
+        InvestigationWorkspace.Align(workspace, b, 0, a, 8_000, 10_000, 0, null, Now);
+        Assert.Equal(OverlapKind.Possible, InvestigationTimeline.Overlaps(workspace)[0].Kind);
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 10_000, 0, null, Now);
+        Assert.DoesNotContain(InvestigationTimeline.Overlaps(workspace), overlap => overlap.Second == b && overlap.First == a);
+    }
+
+    [Fact(DisplayName = "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong")]
+    public void TwoBootsThatOverlapSayAnAlignmentIsWrong()
+    {
+        string workspace = Path.Combine(root, "boots" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("boot-a", "lab-1", 4, Guid.NewGuid()), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("boot-b", "lab-1", 4, Guid.NewGuid()), Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 0, null, Now);
+        WorkspaceOverlap overlap = Assert.Single(InvestigationTimeline.Overlaps(workspace));
+        Assert.Equal(OverlapKind.Contradictory, overlap.Kind);
+        Assert.EndsWith("which two boots cannot: one of their alignments is wrong.", overlap.Statement(CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+
+        // Nearer than their uncertainty, two boots are not flagged: one may simply have followed the other.
+        InvestigationWorkspace.Align(workspace, b, 0, a, 8_000, 10_000, 0, null, Now);
+        Assert.Empty(InvestigationTimeline.Overlaps(workspace));
+    }
+
+    /// <summary>
+    /// A session whose process 100 sends <paramref name="records"/> datagrams 100 µs into its capture, 1 µs apart; with a
+    /// clock calibration naming <paramref name="boot"/> when one is given.
+    /// </summary>
+    private string Session(string name, string host, int records, Guid? boot = null)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "timeline-tests");
@@ -69,7 +123,17 @@ public sealed class InvestigationTimelineTests : IDisposable
                 Transfer(1_000 + (index * 10), ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(index + 1))
                     .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = (1_000 + (index * 10)) * 100 }),
         ];
-        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host));
+        CaptureId capture = CaptureId.New();
+        SourceClockDescriptor clock = ClockFor(ClockId.New(), host);
+        Publish(store, rows, capture: capture, clock: clock, calibration: boot is null ? null : new ClockCalibrationV1
+        {
+            Contract = ClockCalibrationV1.ContractName,
+            CaptureId = capture.Value,
+            ClockId = clock.Id.Value,
+            BootToken = boot,
+            WallClock = "test-wall-clock",
+            Samples = [new() { NativeTicks = 0, Utc = Now, AcquisitionUncertaintyNanoseconds = 200 }],
+        });
         store.ReleaseSegmentReaders();
         return directory;
     }

@@ -67,10 +67,11 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v4`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v5`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given) and `alignment` (the revision in force, or null), the hosts with their members, the `timeReference`
-and every alignment and join decision revision, and caveats. It exits 0 when every member is present and 1 otherwise.
+every alignment and join decision revision, the overlaps of captures of one host (§5), and caveats. It exits 0 when every
+member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -139,6 +140,14 @@ only manual alignments and withdrawals. A same-boot revision names a boot and st
 states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; no other
 revision states any of these.
 
+Two captures of one host identity may have recorded the same events (§8.4), so every such pair is compared, by its
+record extents placed in the investigation's time: they **ran at once** when each reaches past the other's start by more
+than the pair's uncertainty - records of one event may be in both, so no count across them is summed, and nothing is
+deduplicated by time; they **may have** when they are nearer than that uncertainty; two captures that recorded two
+different boots and seem to run at once **contradict** each other, which two boots cannot, so one of their alignments is
+wrong; and a pair of which not both have a place with a known uncertainty is **unknown**. Two hosts' captures are never
+compared: their records are two machines' events. `show` and the Desktop state each overlap in words.
+
 ## 6. Candidate joins
 
 `icat workspace correlate` proposes candidate joins between members (§8.3, ADR-041), under the rule
@@ -187,4 +196,4 @@ for their own two sessions exactly when they decide, is refused, as is a join in
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
   session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records;
   packaging a workspace with its sessions.
-- Flagging partial overlap between two captures of one host.
+- Deduplicating two captures' records of one event: an overlap is flagged, and nothing is merged.

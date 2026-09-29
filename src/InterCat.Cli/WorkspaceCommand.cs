@@ -25,7 +25,22 @@ internal sealed record WorkspaceDocument
     /// <summary>Every join decision revision, in the order recorded; each pair's latest one is in force.</summary>
     public required IReadOnlyList<WorkspaceJoin> Joins { get; init; }
 
+    /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
+    public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
+
     public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+internal sealed record OverlapDocument
+{
+    public required Guid First { get; init; }
+    public required Guid Second { get; init; }
+    public required OverlapKind Kind { get; init; }
+
+    /// <summary>What the two share of the investigation's time, in 100 ns ticks; null when it is not known.</summary>
+    public required TimeRange? Shared { get; init; }
+
+    public required string Statement { get; init; }
 }
 
 internal sealed record WorkspaceMemberDocument
@@ -162,7 +177,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v4";
+    public const string ResolutionContract = "workspace-resolution-v5";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -670,6 +685,14 @@ internal static partial class WorkspaceCommand
             TimeReference = workspace.TimeReference,
             Alignments = workspace.Alignments,
             Joins = workspace.Joins,
+            Overlaps = [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => new OverlapDocument
+            {
+                First = overlap.First,
+                Second = overlap.Second,
+                Kind = overlap.Kind,
+                Shared = overlap.Shared,
+                Statement = overlap.Statement(CultureInfo.CurrentCulture),
+            })],
             Caveats = caveats,
         };
     }
@@ -755,6 +778,16 @@ internal static partial class WorkspaceCommand
                     ? "1 earlier alignment revision is kept in the file; icat workspace show --json lists it."
                     : string.Create(CultureInfo.CurrentCulture,
                         $"{earlier:N0} earlier alignment revisions are kept in the file; icat workspace show --json lists them."));
+            }
+        }
+
+        if (document.Overlaps.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Overlaps");
+            foreach (OverlapDocument overlap in document.Overlaps)
+            {
+                ConsoleUi.Note(overlap.Statement);
             }
         }
 

@@ -1526,7 +1526,10 @@
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
         "R22: the investigation window lists candidate joins with their evidence, none established",
+        "R22: the investigation window says when two captures of one host ran at once",
+        "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
+        "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-28 · Plan revision: 261 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 262 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, and since revision 261 the window draws the merged time, a lane per session | A known two-host exchange (needs a second host), known address translations, zooming the merged time, comparing instants in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, and since revision 262 two captures of one host that ran at once are flagged | A known two-host exchange (needs a second host), known address translations, zooming the merged time, comparing instants in the Desktop, alignment from shared markers, a rate from two anchors, confirmed host equivalence, cross-host correlation, the Desktop's workspace and merged time, packaging a workspace with its sessions. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 262 — two captures of one host that ran at once are flagged, never merged (§8.4):**
+  - Every pair of one host identity is compared by its extents in the investigation's time: ran at once, may have,
+    unknown, or - two boots seeming to overlap - contradictory, which says an alignment is wrong. `show` and the window
+    say each in words. Live, two concurrent captures read "ran at once for 3.0 s" once aligned by their boot.
 
 - **Revision 261 — the merged time (§8.2, M4):**
   - The investigation window's Timeline tab draws each placed session as a lane on the investigation's own axis, its
@@ -477,7 +482,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - a person's confirmation that two host identities are one host, versioned (§8.3);
    - cross-host correlation: candidates since revision 258 (ADR-041), listed in the window since 259, decided as kept
      revisions since 260; next, known address translations and a real two-host exchange, which needs a second host;
-     flagging partial overlap between two captures of one host;
+     partial overlap between two captures of one host is flagged since revision 262;
    - the Desktop's investigation: its members, states, relinks, additions and opening one (revision 257), aligning,
      withdrawing and candidate joins (revision 259), decisions (260) and the merged time (261); next, comparing instants
      there, zooming the merged time and opening a column's records, then pins, notes and saved views;
@@ -485,6 +490,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 262 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,435 tests: 1,431
+  passed, 4 skipped**, zero failures. Live, two concurrent `icat record` captures in scratch, deleted after, read as an
+  unknown overlap until aligned by their boot and then as having run at once for 3.0 s. Their boot token was new since
+  the previous day's captures: the machine had restarted, and the volatile key had gone with it.
 - Revision 261 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,432 tests: 1,428
   passed, 4 skipped**, zero failures. Live, the Release Desktop drew two scratch captures of this machine, aligned by
   their boot, as lanes at 0 to 3.0 s and 5.93 to 8.92 s of the investigation's time, where their shared counter puts
