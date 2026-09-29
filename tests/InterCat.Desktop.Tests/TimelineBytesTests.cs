@@ -12,8 +12,9 @@ namespace InterCat.Desktop.Tests;
 
 /// <summary>
 /// §6.2's density cell carries the selected count or a compatible byte sum: under a byte ranking the machine rung's
-/// mechanism lanes plot the bytes the ranking measures, read for the columns they draw, and a column whose records
-/// recorded no size is unmeasured, never zero (R3). Other rungs keep counting records and say so.
+/// mechanism lanes, and a group's process lanes with the machine row above them, plot the bytes the ranking measures, read
+/// for the columns they draw, and a column whose records recorded no size is unmeasured, never zero (R3). Lower rungs keep
+/// counting records and say so.
 /// </summary>
 public sealed class TimelineBytesTests
 {
@@ -96,11 +97,16 @@ public sealed class TimelineBytesTests
         workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
         Assert.Null(workspace.TimelineBytes!.Zoomed);
 
-        // A group's rung counts records in its lanes and says so; the machine rung plots its bytes again on return.
+        // A process's rung counts records in its lanes and says so; the machine rung plots its bytes again on return.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "big.exe");
         Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
         Assert.Null(workspace.TimelineBytes);
-        Assert.Contains(" · lanes count records; bytes are plotted at the machine rung", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Null(workspace.ProcessLaneBytes);
+        Assert.Contains(" · lanes count records; bytes are plotted at the machine and group rungs", workspace.TimelineCaption,
+            StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
         Assert.True(workspace.Ascend());
         Assert.Same(plotted.Overview, workspace.TimelineBytes!.Overview);
 
@@ -109,6 +115,71 @@ public sealed class TimelineBytesTests
         Assert.Null(workspace.TimelineBytes);
         Assert.False(workspace.DrawsUnmeasured);
         Assert.StartsWith("Observed records by mechanism · 2 lanes · ", workspace.TimelineCaption, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "§6.2: under a byte ranking a group's process lanes, and the machine row above them, plot the bytes it measures")]
+    public void AGroupsProcessLanesPlotItsBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+
+        // big.exe's two processes, a lane each: their bytes are read once the lanes are counted, and said to be meanwhile.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "big.exe");
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        Assert.True(workspace.ShowsProcessLanes);
+        Assert.Null(workspace.ProcessLaneBytes);
+        Assert.Contains(" · 2 process lanes · reading bytes sent… · machine context above", workspace.TimelineCaption,
+            StringComparison.Ordinal);
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+        ProcessLaneByteLayer plotted = Assert.IsType<ProcessLaneByteLayer>(workspace.ProcessLaneBytes);
+        Assert.Equal(RankingMetric.BytesSent, plotted.Metric);
+        Assert.Contains(" · 2 process lanes · bytes sent per second, cross-hatched where no size was recorded · machine context above",
+            workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.DoesNotContain("lanes count records", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.True(workspace.DrawsUnmeasured);
+
+        // Each lane holds its own process's sends, and the machine row every record's: blind.exe's unsized one only there.
+        ProcessNode first = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        ProcessNode second = workspace.Snapshot.Processes.Single(node => node.ProcessId == 101);
+        TimelineBucket At(ProcessNode owner, long tick) => workspace.ProcessLaneDisplay.Single(lane => lane.ProcessId == owner.Id)
+            .Buckets.Single(bucket => bucket.Interval.StartTicks == tick);
+        (long? Value, long Measured, long Unmeasured) Sent(SessionIntervalByteMeasures lane, TimelineBucket bucket) =>
+            lane.For(bucket.Interval)!.ValueOf(RankingMetric.BytesSent);
+        Assert.Equal(((long?)500, 1L, 0L), Sent(plotted.Measures.Of(first.Id)!, At(first, 10)));
+        Assert.Equal(((long?)null, 0L, 0L), Sent(plotted.Measures.Of(first.Id)!, At(first, 12)));
+        Assert.Equal(((long?)1_000, 1L, 0L), Sent(plotted.Measures.Of(second.Id)!, At(second, 12)));
+        TimelineBucket blind = workspace.WholeSnapshot.Timeline.Single(bucket => bucket.Interval.StartTicks == 14);
+        Assert.Equal(((long?)null, 0L, 1L), Sent(plotted.Measures.Machine, blind));
+
+        // A lane's card: its process's own sends, the hue its records give it, and the scale it shares with the machine row.
+        List<string> lane = [.. workspace.DescribeTimelineHover(At(first, 10), 2_000, ownerLane: first).Lines];
+        Assert.Contains($"1 observed record · {first.NameWithPid} lane · mostly TCP records", lane);
+        Assert.Contains("Basis: source observations · unit: bytes · domain: transport-observed bytes of send records with a "
+            + $"session time canonically owned by {first.NameWithPid} · accounting: sender-accounted", lane);
+        Assert.Contains($"Plotted: {WorkspaceRowBuilder.DescribeSize(500)} sent on 1 measured send", lane);
+        Assert.Contains($"Rate: {WorkspaceRowBuilder.DescribeByteRate(500d * WorkspaceTime.TicksPerSecond)} · height against the "
+            + $"busiest visible lane including machine context, {WorkspaceRowBuilder.DescribeByteRate(2_000)} (shared scale)", lane);
+        Assert.Contains($"Resolution: the lanes' own bytes, {workspace.ProcessLaneDisplay[0].Buckets.Count} buckets", lane);
+
+        // The machine row's card: every record's sends, which the lanes are not added up to.
+        List<string> machine = [.. workspace.DescribeTimelineHover(blind, 2_000).Lines];
+        Assert.Contains("1 observed record · machine context, not added to the lanes", machine);
+        Assert.Contains("Plotted: unmeasured, drawn cross-hatched · 1 send recorded no size, so the value is unknown, not zero", machine);
+        Assert.Contains("Basis: source observations · unit: bytes · domain: transport-observed bytes of every send record with a "
+            + "session time · accounting: sender-accounted", machine);
+
+        // Records bring the record lanes back.
+        workspace.RankBy = RankingMetric.Records;
+        Assert.Null(workspace.ProcessLaneBytes);
+        Assert.DoesNotContain("per second", workspace.TimelineCaption, StringComparison.Ordinal);
+        await workspace.RankingReady;
     });
 
     [Fact(DisplayName = "§6.2: a later publication keeps plotting the earlier one's lane bytes until its own are read")]

@@ -83,6 +83,21 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             mechanisms,
             cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// What a group's lanes' records sent and received in each column, and every record in the machine row's columns, for
+    /// the process lanes to plot under a byte ranking (<see cref="SessionIntervalByteQuery.MeasureByOwner"/>).
+    /// </summary>
+    public Task<SessionOwnerByteMeasures> OwnerBytesAsync(
+        TimeRange interval, int columns, int laneColumns, IReadOnlyList<ProcessInstanceId> owners,
+        CancellationToken cancellationToken) =>
+        Task.Run(() => SessionIntervalByteQuery.MeasureByOwner(
+            Store(),
+            interval,
+            columns,
+            laneColumns,
+            owners,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

@@ -97,8 +97,8 @@ public sealed record ScopeCarry(
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
-/// by that focus's key, and the bytes its lanes plotted under a byte ranking. The next publication of the same session
-/// shows them until its own arrive.
+/// by that focus's key, and the bytes its lanes plotted under a byte ranking, a group's for that focus. The next
+/// publication of the same session shows them until its own arrive.
 /// </summary>
 public sealed record TimelineCarry(
     SessionTimelineDetail? Detail,
@@ -112,7 +112,8 @@ public sealed record TimelineCarry(
     IReadOnlyList<TimelineBucket>? Highlight = null,
     IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null,
     SessionMechanismByteMeasures? LaneBytes = null,
-    SessionMechanismByteMeasures? ZoomedLaneBytes = null);
+    SessionMechanismByteMeasures? ZoomedLaneBytes = null,
+    SessionOwnerByteMeasures? ProcessLaneBytes = null);
 
 public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -468,7 +469,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         drawnTimeline = (viewport, columns);
         RequestHighlight();
         RequestRpcSpans(viewport);
-        FollowLaneBytes();
+        FollowTimelineBytes();
         TimeRange extent = wholeSnapshot.Extent;
         bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
         if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
@@ -598,6 +599,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsProcessLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(ProcessLaneProblem));
+
+        // A group's lanes counted anew are read anew under a byte ranking, over the columns they were counted in.
+        FollowTimelineBytes();
     }
 
     /// <summary>
@@ -927,7 +931,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
-        highlight?.Key, highlightBuckets, highlightLanes, overviewLaneBytes.Measures, zoomedLaneBytes.Measures);
+        highlight?.Key, highlightBuckets, highlightLanes, overviewLaneBytes?.Measures, zoomedLaneBytes?.Measures,
+        ownerLaneBytes?.Measures);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -950,7 +955,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         // The lanes' bytes stand in the same way, so a live refresh under a byte ranking does not blink back to records.
-        AdoptLaneBytes(carry.LaneBytes, carry.ZoomedLaneBytes);
+        AdoptTimelineBytes(carry, sameFocus);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -1200,7 +1205,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
                 ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + LaneResolutionNote
-                    + " · machine context above · scroll names for more"
+                    + ProcessLaneBytesNote + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction · machine context above"
                     + (SelectedTimelineDirection is { } direction
@@ -2458,7 +2463,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         peerReads.Cancel();
         selectionBytes.Cancel();
         CancelIntervalBytes();
-        CancelLaneBytes();
+        CancelTimelineBytes();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -3386,6 +3391,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return DescribeLaneBytesHover(bucket, peakPerSecond, byteLane, plotted);
         }
 
+        if (processLaneBytes is { } group && lane is null && directionLane is null && ShowsProcessLanes)
+        {
+            // A group's lanes and the machine row above them plot bytes too.
+            return ownerLane is { } byteOwner
+                ? DescribeOwnerBytesHover(bucket, peakPerSecond, byteOwner, group)
+                : DescribeMachineBytesHover(bucket, peakPerSecond, group);
+        }
+
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
             || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket))
             || ownerLane is not null && processLaneDisplay.Any(candidate =>
@@ -4170,8 +4183,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
 
-        // Only the machine rung's lanes plot bytes; another rung's count records, and its caption says so.
-        FollowLaneBytes();
+        // The machine rung's lanes and a group's plot bytes; another rung's count records, and its caption says so.
+        FollowTimelineBytes();
         SyncEvidence();
         SyncRpc();
         SyncHttp();

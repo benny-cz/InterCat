@@ -70,6 +70,55 @@ public sealed class TimelineBytesWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.2: a group's byte lane under the pointer states its process's bytes against the rate its rows share")]
+    public async Task AGroupsByteLaneStatesItsProcesssBytes()
+    {
+        // client.exe runs twice, so its group has a lane for each instance.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. SecondClient(10)]);
+        var window = new MainWindow { Width = 1280, Height = 800 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        Dispatch();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        await workspace.TimelineBytesReady;
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        Assert.True(workspace.ProcessLaneBytes is not null, $"lanes shown: {workspace.ShowsProcessLanes}; lanes: "
+            + $"{workspace.ProcessLaneDisplay.Count}; level: {workspace.LevelBadge}; caption: {workspace.TimelineCaption}");
+        ProcessLaneByteLayer plotted = Assert.IsType<ProcessLaneByteLayer>(workspace.ProcessLaneBytes);
+
+        // The machine row and the lanes share one scale: the highest rate any of them plots, in bytes per tick.
+        double RateOf(SessionIntervalByteMeasures row, int column) =>
+            (double)(row.Columns[column].ValueOf(RankingMetric.BytesSent).Value ?? 0) / row.IntervalOf(column).SpanTicks;
+        double peak = new[] { plotted.Measures.Machine }.Concat(plotted.Measures.Lanes)
+            .Max(row => Enumerable.Range(0, row.Columns.Count).Max(column => RateOf(row, column)));
+        Assert.Equal(2, workspace.ProcessLaneDisplay.Count);
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        SessionIntervalByteMeasures measured = plotted.Measures.Of(lane.ProcessId)!;
+        int busiest = Enumerable.Range(0, measured.Columns.Count).MaxBy(column => RateOf(measured, column));
+        TimelineBucket bar = lane.Buckets.Single(bucket => bucket.Interval == measured.IntervalOf(busiest));
+
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        window.MouseMove(timeline.TranslatePoint(timeline.PointOf(bar)!.Value, window)!.Value);
+        Dispatch();
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.Contains(card.Lines, line => line.StartsWith("Plotted: ", StringComparison.Ordinal)
+            && line.Contains(" sent on ", StringComparison.Ordinal));
+        Assert.Contains(card.Lines, line => line.EndsWith("height against the busiest visible lane including machine context, "
+            + $"{WorkspaceRowBuilder.DescribeByteRate(peak * WorkspaceTime.TicksPerSecond)} (shared scale)", StringComparison.Ordinal));
+        Save(window, "timeline-group-bytes.png");
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {
@@ -104,6 +153,15 @@ public sealed class TimelineBytesWindowTests
         }),
         Transfer(10 + (2 * count), ObservationKind.Send, AccountingSide.SendSide, null, 100, (ulong)(100 + (2 * count)))
             .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = (10 + (2 * count)) * 100L },
+    ];
+
+    /// <summary>A second client.exe, PID 101, sending 128 bytes <paramref name="count"/> times.</summary>
+    private static ObservationRowV1[] SecondClient(int count) =>
+    [
+        Lifecycle(3, ObservationKind.Inventory, 101, 3) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 300 },
+        .. Enumerable.Range(0, count).Select(index =>
+            Transfer(13 + (4 * index), ObservationKind.Send, AccountingSide.SendSide, 128, 101, (ulong)(300 + index))
+                .Between("127.0.0.1:50002", ServerEnd) with { SessionRelativeTicks = (13 + (4 * index)) * 100L }),
     ];
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

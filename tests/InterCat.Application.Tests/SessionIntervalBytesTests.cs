@@ -89,6 +89,55 @@ public sealed class SessionIntervalBytesTests
         }
     }
 
+    [Fact(DisplayName = "R18: a group's lanes measured together hold what the byte measure answers for each process and every record")]
+    public void AGroupsLanesMeasuredTogetherHoldEachProcesssMeasure()
+    {
+        for (int seed = 0; seed < 20; seed++)
+        {
+            var random = new Random(seed);
+            List<ObservationRowV1> rows = RandomTraffic(random);
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long start = random.Next(0, (int)end);
+            var interval = new TimeRange(start, start + random.Next(1, (int)end + 1));
+            int columns = random.Next(1, 12);
+            int laneColumns = random.Next(1, columns + 1);
+
+            // Any of the processes, in any order; the machine row counts every record, whoever holds it.
+            ProcessInstanceId[] owners = [.. whole.Processes.Select(process => process.Id).Where(_ => random.Next(3) > 0)
+                .DefaultIfEmpty(whole.Processes[0].Id).OrderBy(_ => random.Next())];
+            SessionOwnerByteMeasures measured = SessionIntervalByteQuery.MeasureByOwner(
+                session.Store, interval, columns, laneColumns, owners);
+            SessionIntervalByteMeasures machine = SessionIntervalByteQuery.Measure(session.Store, interval, columns, IntervalByteScope.Whole);
+            Assert.Equal((machine.Interval, machine.Scope), (measured.Machine.Interval, measured.Machine.Scope));
+            Assert.True(machine.Columns.SequenceEqual(measured.Machine.Columns), $"seed {seed}, the machine row");
+            Assert.Equal(owners, measured.Lanes.Select(lane => lane.Scope.Owner!.Value));
+            foreach (ProcessInstanceId owner in owners)
+            {
+                SessionIntervalByteMeasures expected = SessionIntervalByteQuery.Measure(
+                    session.Store, interval, laneColumns, new() { Owner = owner });
+                SessionIntervalByteMeasures lane = measured.Of(owner)!;
+                Assert.Equal((expected.Interval, expected.Scope), (lane.Interval, lane.Scope));
+                Assert.True(expected.Columns.SequenceEqual(lane.Columns), $"seed {seed}, {owner}");
+            }
+        }
+
+        // No lane, one named twice, more cells than the lanes' budget, and a process this generation does not hold.
+        using var refused = new TemporarySession();
+        Publish(refused.Store, TwoConnections());
+        ProcessInstanceId held = OverviewWorkspace.From(SessionOverviewProjector.Project(refused.Store)).Processes[0].Id;
+        var interval40 = new TimeRange(1, 40);
+        Assert.Throws<ArgumentException>(() => SessionIntervalByteQuery.MeasureByOwner(refused.Store, interval40, 8, 8, []));
+        Assert.Throws<ArgumentException>(() => SessionIntervalByteQuery.MeasureByOwner(refused.Store, interval40, 8, 8, [held, held]));
+        ProcessInstanceId[] eleven = [.. Enumerable.Range(1, 11).Select(number => new ProcessInstanceId(new Guid(number, 1, 1, new byte[8])))];
+        Assert.Throws<ArgumentException>(() =>
+            SessionIntervalByteQuery.MeasureByOwner(refused.Store, new TimeRange(0, 1_000_000), 8, 2_000, eleven));
+        Assert.Throws<InvalidOperationException>(() => SessionIntervalByteQuery.MeasureByOwner(refused.Store, interval40, 8, 8,
+            [new ProcessInstanceId(Guid.Parse("11111111-2222-3333-4444-555555555555"))]));
+    }
+
     [Fact(DisplayName = "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's")]
     public void ALanesBytesAreItsOwnRecords()
     {

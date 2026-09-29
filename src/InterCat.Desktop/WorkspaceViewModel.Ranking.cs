@@ -103,8 +103,9 @@ public sealed partial class WorkspaceViewModel
             if (Family != RankingFamily.Peers) peerReads.Cancel();
             Rerank();
 
-            // Under a byte ranking the machine rung's lanes plot the same bytes (§6.2), read for the columns they draw.
-            FollowLaneBytes();
+            // Under a byte ranking the machine rung's lanes and a group's plot the same bytes (§6.2), read for the columns
+            // they draw.
+            FollowTimelineBytes();
             RankingReady = FollowRankedMeasuresAsync();
         }
     }

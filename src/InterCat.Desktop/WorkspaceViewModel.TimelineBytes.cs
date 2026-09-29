@@ -1,6 +1,7 @@
 using System.Globalization;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -24,29 +25,46 @@ public sealed record TimelineByteLayer(
 }
 
 /// <summary>
-/// The machine rung's timeline under a byte ranking (§6.2: a density cell carries the selected count or a compatible byte
-/// sum). The overview counts records and sums no bytes (`overview-index-v1` §4), so while a real session's machine rung is
-/// ranked by bytes, its mechanism lanes' bytes are read for the columns drawn - the overview's across the whole session,
-/// and the zoomed view's own once it rests - and each lane plots what the ranking measures, per second. A column whose
-/// records declared sizes none of them recorded is drawn unmeasured, never as zero (R3). Until the overview's bytes arrive
-/// the lanes keep plotting records and the caption says their bytes are being read. A live publication shows the previous
-/// one's bytes until its own arrive, as it does its zoomed counts.
+/// What a group's process lanes and the machine row above them plot under a byte ranking
+/// (<see cref="WorkspaceViewModel.ProcessLaneBytes"/>).
+/// </summary>
+/// <param name="Metric">What each column's bar plots: the bytes the ranking measures - sent, received, or both.</param>
+/// <param name="Measures">Every record's bytes in the machine row's columns, and each lane's own in the lanes' columns.</param>
+public sealed record ProcessLaneByteLayer(RankingMetric Metric, SessionOwnerByteMeasures Measures);
+
+/// <summary>
+/// The timeline under a byte ranking (§6.2: a density cell carries the selected count or a compatible byte sum). The
+/// overview counts records and sums no bytes (`overview-index-v1` §4), so while a real session is ranked by bytes, the
+/// lanes' bytes are read for the columns they draw: at the machine rung each mechanism lane's, over the overview's columns
+/// and the zoomed view's own once it rests; at a group's rung each process lane's, and every record's in the machine row
+/// above them, over the columns the lanes were counted in. Each lane plots what the ranking measures, per second, and a
+/// column whose records declared sizes none of them recorded is drawn unmeasured, never as zero (R3). Until the bytes
+/// arrive the lanes keep plotting records and the caption says their bytes are being read. A live publication shows the
+/// previous one's bytes until its own arrive, as it does its zoomed counts.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
-    private readonly LaneByteRead overviewLaneBytes = new();
-    private readonly LaneByteRead zoomedLaneBytes = new();
+    private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures>? overviewLaneBytes;
+    private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures>? zoomedLaneBytes;
+    private ByteRead<OwnerBytesRequest, SessionOwnerByteMeasures>? ownerLaneBytes;
     private IReadOnlyList<Mechanism>? laneMechanisms;
     private TimelineByteLayer? timelineBytes;
+    private ProcessLaneByteLayer? processLaneBytes;
     private bool timelineDrawsUnmeasured;
-    private string? laneBytesNote;
+    private string? timelineBytesNote;
 
     /// <summary>
-    /// What the timeline's mechanism lanes plot under a byte ranking once their bytes are read: the metric and each lane's
-    /// bytes by column. Null while the lanes plot records: under any other ranking, at any other rung, and until the
+    /// What the machine rung's mechanism lanes plot under a byte ranking once their bytes are read: the metric and each
+    /// lane's bytes by column. Null while the lanes plot records: under any other ranking, at any other rung, and until the
     /// overview's bytes arrive.
     /// </summary>
     public TimelineByteLayer? TimelineBytes => timelineBytes;
+
+    /// <summary>
+    /// What a group's process lanes and their machine row plot under a byte ranking once their bytes are read; null while
+    /// they plot records, as <see cref="TimelineBytes"/> is at the machine rung.
+    /// </summary>
+    public ProcessLaneByteLayer? ProcessLaneBytes => processLaneBytes;
 
     /// <summary>Whether the byte lanes draw a column in view whose size was not measured (§6.6).</summary>
     public bool TimelineDrawsUnmeasured => timelineDrawsUnmeasured;
@@ -55,25 +73,82 @@ public sealed partial class WorkspaceViewModel
     public bool DrawsUnmeasured => GraphDrawsUnmeasured || timelineDrawsUnmeasured;
 
     /// <summary>Completes when the timeline's latest byte reads have applied, been superseded or failed.</summary>
-    public Task TimelineBytesReady => Task.WhenAll(overviewLaneBytes.Ready, zoomedLaneBytes.Ready);
+    public Task TimelineBytesReady => Task.WhenAll(OverviewLaneBytes.Ready, ZoomedLaneBytes.Ready, OwnerLaneBytes.Ready);
 
-    /// <summary>The columns of one read: the interval they divide and how many.</summary>
-    private readonly record struct LaneBytesRequest(TimeRange Interval, int Columns);
+    /// <summary>The columns of one read of mechanism lanes: the interval they divide and how many.</summary>
+    private sealed record LaneBytesRequest(TimeRange Interval, int Columns);
 
-    /// <summary>One set of lane columns the timeline reads bytes for: what it shows, the read under way, a failed one.</summary>
-    private sealed class LaneByteRead
+    /// <summary>
+    /// The columns of one read of a group's lanes: the interval, the machine row's columns and the lanes' own, and the
+    /// lanes' process instances, compared by value.
+    /// </summary>
+    private sealed record OwnerBytesRequest(TimeRange Interval, int Columns, int LaneColumns, IReadOnlyList<ProcessInstanceId> Owners)
+    {
+        public bool Equals(OwnerBytesRequest? other) => other is not null && Interval == other.Interval
+            && Columns == other.Columns && LaneColumns == other.LaneColumns && Owners.SequenceEqual(other.Owners);
+
+        public override int GetHashCode() => HashCode.Combine(Interval, Columns, LaneColumns, Owners.Count);
+    }
+
+    private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures> OverviewLaneBytes => overviewLaneBytes ??= new(this,
+        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation),
+        measured => measured.SessionId);
+
+    private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures> ZoomedLaneBytes => zoomedLaneBytes ??= new(this,
+        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation),
+        measured => measured.SessionId);
+
+    private ByteRead<OwnerBytesRequest, SessionOwnerByteMeasures> OwnerLaneBytes => ownerLaneBytes ??= new(this,
+        (source, request, cancellation) => source.OwnerBytesAsync(
+            request.Interval, request.Columns, request.LaneColumns, request.Owners, cancellation),
+        measured => measured.SessionId);
+
+    /// <summary>
+    /// One set of columns the timeline reads bytes for: what it shows, the columns this generation read them for, the read
+    /// under way and one that failed. A read of other columns than those asked for is cancelled; one that failed is not
+    /// tried again until it is forgotten.
+    /// </summary>
+    private sealed class ByteRead<TRequest, TMeasures>(
+        WorkspaceViewModel owner,
+        Func<SessionEvidenceSource, TRequest, CancellationToken, Task<TMeasures>> read,
+        Func<TMeasures, Guid> sessionOf)
+        where TRequest : class
+        where TMeasures : class
     {
         /// <summary>The bytes shown for these columns: this generation's, or a stand-in carried from an earlier one.</summary>
-        public SessionMechanismByteMeasures? Measures { get; set; }
+        public TMeasures? Measures { get; set; }
 
         /// <summary>The columns <see cref="Measures"/> answer when this generation read them; null for a stand-in.</summary>
-        public LaneBytesRequest? Answered { get; set; }
+        public TRequest? Answered { get; private set; }
 
-        public (LaneBytesRequest Request, CancellationTokenSource Cancellation)? Running { get; set; }
+        public (TRequest Request, CancellationTokenSource Cancellation)? Running { get; private set; }
 
-        public (LaneBytesRequest Request, string Problem)? Failed { get; set; }
+        public (TRequest Request, string Problem)? Failed { get; private set; }
 
-        public Task Ready { get; set; } = Task.CompletedTask;
+        public Task Ready { get; private set; } = Task.CompletedTask;
+
+        /// <summary>Forgets a read that failed, so asking again tries once more.</summary>
+        public void ForgetFailure() => Failed = null;
+
+        /// <summary>Reads what <paramref name="wanted"/> asks for unless it has it, is reading it, or could not.</summary>
+        public void Follow(TRequest? wanted)
+        {
+            if (Running is { } running && !EqualityComparer<TRequest?>.Default.Equals(running.Request, wanted))
+            {
+                Cancel();
+            }
+
+            if (owner.disposed || wanted is null || owner.evidenceSource is not { } source
+                || EqualityComparer<TRequest?>.Default.Equals(Answered, wanted) || Running is not null
+                || (Failed is { } failed && EqualityComparer<TRequest?>.Default.Equals(failed.Request, wanted)))
+            {
+                return;
+            }
+
+            var cancellation = new CancellationTokenSource();
+            Running = (wanted, cancellation);
+            Ready = ReadAsync(source, wanted, cancellation);
+        }
 
         public void Cancel()
         {
@@ -84,10 +159,58 @@ public sealed partial class WorkspaceViewModel
                 Running = null;
             }
         }
+
+        private async Task ReadAsync(SessionEvidenceSource source, TRequest request, CancellationTokenSource cancellation)
+        {
+            try
+            {
+                TMeasures measured = await read(source, request, cancellation.Token);
+                if (owner.disposed || Running?.Cancellation != cancellation)
+                {
+                    return;
+                }
+
+                Running = null;
+                cancellation.Dispose();
+                if (sessionOf(measured) == source.SessionId)
+                {
+                    Measures = measured;
+                    Answered = request;
+                    Failed = null;
+                }
+                else
+                {
+                    Failed = (request, "the session on disk is another one");
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // Another view, ranking or rung, or a closed workspace, superseded this read.
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException
+                or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+            {
+                if (owner.disposed || Running?.Cancellation != cancellation)
+                {
+                    return;
+                }
+
+                Running = null;
+                cancellation.Dispose();
+                Failed = (request, exception.Message);
+            }
+
+            owner.UpdateTimelineBytes();
+        }
     }
 
-    /// <summary>The byte metric the lanes are asked to plot: a byte ranking at a real session's machine rung, else null.</summary>
+    /// <summary>The byte metric the mechanism lanes are asked to plot: a byte ranking at a real session's machine rung.</summary>
     private RankingMetric? LaneByteMetric => ReadsBytes && !disposed && ShowsMechanismLanes && Family == RankingFamily.Bytes
+        ? rankBy : null;
+
+    /// <summary>The byte metric a group's process lanes are asked to plot: a byte ranking while they are shown.</summary>
+    private RankingMetric? ProcessLaneByteMetric => ReadsBytes && !disposed && ShowsProcessLanes && Family == RankingFamily.Bytes
         ? rankBy : null;
 
     /// <summary>The mechanisms whose lanes the overview draws, in its order.</summary>
@@ -99,137 +222,120 @@ public sealed partial class WorkspaceViewModel
         viewport.StartTicks <= wholeSnapshot.Extent.StartTicks && viewport.EndTicks >= wholeSnapshot.Extent.EndTicks;
 
     /// <summary>
-    /// Reads the lane bytes the timeline is asked to plot and does not have - the overview's columns, and the zoomed view's
-    /// own while it is zoomed - and cancels a read no longer asked for. Called when the ranking, the rung or the drawn view
-    /// changes. Leaving the byte ranking forgets a failed read, so choosing it again tries once more.
+    /// Reads the bytes the timeline's lanes are asked to plot and does not have, and cancels a read no longer asked for:
+    /// the machine rung's mechanism lanes over the overview's columns and a zoomed view's own, and a group's process lanes
+    /// over the columns they were counted in. Called when the ranking, the rung, the drawn view or the lanes change.
+    /// Leaving the byte ranking forgets a failed read, so choosing it again tries once more.
     /// </summary>
-    private void FollowLaneBytes()
+    private void FollowTimelineBytes()
     {
         IReadOnlyList<TimelineBucket> overview = wholeSnapshot.Timeline;
         bool plots = LaneByteMetric is not null && overview.Count > 0;
-        if (!plots)
+        if (Family != RankingFamily.Bytes)
         {
-            overviewLaneBytes.Failed = null;
-            zoomedLaneBytes.Failed = null;
+            OverviewLaneBytes.ForgetFailure();
+            ZoomedLaneBytes.ForgetFailure();
+            OwnerLaneBytes.ForgetFailure();
         }
 
-        Follow(overviewLaneBytes, plots
+        OverviewLaneBytes.Follow(plots
             ? new LaneBytesRequest(new TimeRange(overview[0].Interval.StartTicks, overview[^1].Interval.EndTicks), overview.Count)
             : null);
-        Follow(zoomedLaneBytes, plots && drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport)
+        ZoomedLaneBytes.Follow(plots && drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport)
             ? new LaneBytesRequest(drawn.Viewport, drawn.Columns)
             : null);
+        OwnerLaneBytes.Follow(ProcessLaneByteMetric is not null ? OwnerRequest() : null);
         UpdateTimelineBytes();
     }
 
-    private void Follow(LaneByteRead read, LaneBytesRequest? wanted)
+    /// <summary>
+    /// The columns a group's lanes were counted in, with the machine row's beside them: the zoomed detail's where it spans
+    /// the lanes, else the overview's, else the lanes' own. Null without lanes to read.
+    /// </summary>
+    private OwnerBytesRequest? OwnerRequest()
     {
-        if (read.Running is { } running && running.Request != wanted)
+        if (processLaneDisplay.Count == 0 || processLaneDisplay[0].Buckets is not { Count: > 0 } lane)
         {
-            read.Cancel();
+            return null;
         }
 
-        if (disposed || wanted is not { } request || evidenceSource is not { } source || read.Answered == request
-            || read.Running is not null || read.Failed?.Request == request)
-        {
-            return;
-        }
+        var span = new TimeRange(lane[0].Interval.StartTicks, lane[^1].Interval.EndTicks);
+        IReadOnlyList<TimelineBucket>? machine = timelineDetail?.Buckets is { Count: > 0 } detail && Spans(detail, span) ? detail
+            : Spans(wholeSnapshot.Timeline, span) ? wholeSnapshot.Timeline
+            : null;
+        return new(span, machine?.Count ?? lane.Count, lane.Count, [.. processLaneDisplay.Select(owner => owner.ProcessId)]);
 
-        var cancellation = new CancellationTokenSource();
-        read.Running = (request, cancellation);
-        read.Ready = ReadLaneBytesAsync(read, source, request, cancellation);
+        static bool Spans(IReadOnlyList<TimelineBucket> buckets, TimeRange span) => buckets.Count > 0
+            && buckets[0].Interval.StartTicks == span.StartTicks && buckets[^1].Interval.EndTicks == span.EndTicks;
     }
 
-    private async Task ReadLaneBytesAsync(
-        LaneByteRead read, SessionEvidenceSource source, LaneBytesRequest request, CancellationTokenSource cancellation)
-    {
-        try
-        {
-            SessionMechanismByteMeasures measured = await source.LaneBytesAsync(
-                request.Interval, request.Columns, LaneMechanisms, cancellation.Token);
-            if (disposed || read.Running?.Cancellation != cancellation)
-            {
-                return;
-            }
-
-            read.Running = null;
-            cancellation.Dispose();
-            if (measured.SessionId == source.SessionId)
-            {
-                read.Measures = measured;
-                read.Answered = request;
-                read.Failed = null;
-            }
-            else
-            {
-                read.Failed = (request, "the session on disk is another one");
-            }
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-            // Another view, ranking or rung, or a closed workspace, superseded this read.
-            return;
-        }
-        catch (Exception exception) when (exception is IOException or InvalidDataException
-            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
-        {
-            if (disposed || read.Running?.Cancellation != cancellation)
-            {
-                return;
-            }
-
-            read.Running = null;
-            cancellation.Dispose();
-            read.Failed = (request, exception.Message);
-        }
-
-        UpdateTimelineBytes();
-    }
-
-    /// <summary>Shows an earlier publication's lane bytes, of the same session, until this generation's own arrive.</summary>
-    private void AdoptLaneBytes(SessionMechanismByteMeasures? overview, SessionMechanismByteMeasures? zoomed)
+    /// <summary>
+    /// Shows an earlier publication's lane bytes, of the same session, until this generation's own arrive; a group's only
+    /// for the same group.
+    /// </summary>
+    private void AdoptTimelineBytes(TimelineCarry carry, bool sameFocus)
     {
         if (evidenceSource is not { } source)
         {
             return;
         }
 
-        if (overview?.SessionId == source.SessionId && overviewLaneBytes.Answered is null)
+        if (carry.LaneBytes?.SessionId == source.SessionId && OverviewLaneBytes.Answered is null)
         {
-            overviewLaneBytes.Measures = overview;
+            OverviewLaneBytes.Measures = carry.LaneBytes;
         }
 
-        if (zoomed?.SessionId == source.SessionId && zoomedLaneBytes.Answered is null)
+        if (carry.ZoomedLaneBytes?.SessionId == source.SessionId && ZoomedLaneBytes.Answered is null)
         {
-            zoomedLaneBytes.Measures = zoomed;
+            ZoomedLaneBytes.Measures = carry.ZoomedLaneBytes;
+        }
+
+        if (sameFocus && carry.ProcessLaneBytes?.SessionId == source.SessionId && OwnerLaneBytes.Answered is null)
+        {
+            OwnerLaneBytes.Measures = carry.ProcessLaneBytes;
         }
 
         UpdateTimelineBytes();
     }
 
-    private void CancelLaneBytes()
+    private void CancelTimelineBytes()
     {
-        overviewLaneBytes.Cancel();
-        zoomedLaneBytes.Cancel();
+        overviewLaneBytes?.Cancel();
+        zoomedLaneBytes?.Cancel();
+        ownerLaneBytes?.Cancel();
     }
 
     /// <summary>Takes up what the lanes plot now, and says what changed: the bytes, the legend's key, the caption.</summary>
     private void UpdateTimelineBytes()
     {
-        TimelineByteLayer? layer = LaneByteMetric is { } metric && overviewLaneBytes.Measures is { } overview
-            ? new(metric, overview, drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport) ? zoomedLaneBytes.Measures : null)
+        TimelineByteLayer? lanes = LaneByteMetric is { } metric && OverviewLaneBytes.Measures is { } overview
+            ? new(metric, overview, drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport) ? ZoomedLaneBytes.Measures : null)
             : null;
-        bool changed = layer is null
-            ? timelineBytes is not null
-            : timelineBytes is null || layer.Metric != timelineBytes.Metric
-                || !ReferenceEquals(layer.Overview, timelineBytes.Overview) || !ReferenceEquals(layer.Zoomed, timelineBytes.Zoomed);
-        if (changed)
+        if (lanes is null ? timelineBytes is not null
+            : timelineBytes is null || lanes.Metric != timelineBytes.Metric
+                || !ReferenceEquals(lanes.Overview, timelineBytes.Overview) || !ReferenceEquals(lanes.Zoomed, timelineBytes.Zoomed))
         {
-            timelineBytes = layer;
+            timelineBytes = lanes;
             OnPropertyChanged(nameof(TimelineBytes));
         }
 
-        bool unmeasured = layer is not null && DrawsUnmeasuredColumn(layer, drawnTimeline?.Viewport ?? wholeSnapshot.Extent);
+        ProcessLaneByteLayer? owners = ProcessLaneByteMetric is { } ownerMetric && OwnerLaneBytes.Measures is { } measured
+            ? new(ownerMetric, measured)
+            : null;
+        if (owners is null ? processLaneBytes is not null
+            : processLaneBytes is null || owners.Metric != processLaneBytes.Metric
+                || !ReferenceEquals(owners.Measures, processLaneBytes.Measures))
+        {
+            processLaneBytes = owners;
+            OnPropertyChanged(nameof(ProcessLaneBytes));
+        }
+
+        TimeRange view = drawnTimeline?.Viewport ?? wholeSnapshot.Extent;
+        bool unmeasured = (timelineBytes is { } plotted
+                && (Unmeasured(plotted.Overview.Lanes, plotted.Metric, view)
+                    || (plotted.Zoomed is { } zoomed && Unmeasured(zoomed.Lanes, plotted.Metric, view))))
+            || (processLaneBytes is { } group
+                && (Unmeasured([group.Measures.Machine], group.Metric, view) || Unmeasured(group.Measures.Lanes, group.Metric, view)));
         if (unmeasured != timelineDrawsUnmeasured)
         {
             timelineDrawsUnmeasured = unmeasured;
@@ -237,21 +343,19 @@ public sealed partial class WorkspaceViewModel
             OnPropertyChanged(nameof(DrawsUnmeasured));
         }
 
-        string? note = LaneBytesNote;
-        if (changed || note != laneBytesNote)
+        // The caption states what the lanes plot, so a change of either, or of a read under way, restates it.
+        string note = (LaneBytesNote ?? string.Empty) + "|" + ProcessLaneBytesNote + "|" + timelineDrawsUnmeasured;
+        if (note != timelineBytesNote)
         {
-            laneBytesNote = note;
+            timelineBytesNote = note;
             OnPropertyChanged(nameof(TimelineCaption));
         }
     }
 
-    /// <summary>Whether any lane column in <paramref name="view"/> plots §6.6's unmeasured value.</summary>
-    private static bool DrawsUnmeasuredColumn(TimelineByteLayer layer, TimeRange view) =>
-        Unmeasured(layer.Overview, layer.Metric, view) || (layer.Zoomed is { } zoomed && Unmeasured(zoomed, layer.Metric, view));
-
-    private static bool Unmeasured(SessionMechanismByteMeasures measures, RankingMetric metric, TimeRange view)
+    /// <summary>Whether any column of <paramref name="lanes"/> in <paramref name="view"/> plots §6.6's unmeasured value.</summary>
+    private static bool Unmeasured(IReadOnlyList<SessionIntervalByteMeasures> lanes, RankingMetric metric, TimeRange view)
     {
-        foreach (SessionIntervalByteMeasures lane in measures.Lanes)
+        foreach (SessionIntervalByteMeasures lane in lanes)
         {
             for (int column = 0; column < lane.Columns.Count; column++)
             {
@@ -273,32 +377,116 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private string? LaneBytesNote =>
         LaneByteMetric is not { } metric || timelineBytes is not null ? null
-        : overviewLaneBytes.Failed is { } failed ? $"{Phrase(metric)} could not be read: {failed.Problem.TrimEnd('.')}"
+        : OverviewLaneBytes.Failed is { } failed ? $"{Phrase(metric)} could not be read: {failed.Problem.TrimEnd('.')}"
         : $"reading {Phrase(metric)}…";
 
     /// <summary>
-    /// What a rung whose lanes count records adds to its caption under a byte ranking: that they count records, and where
-    /// bytes are plotted, so a lane is never read as a byte volume.
+    /// What a group's caption says of its lanes' bytes under a byte ranking: that they plot them, per second, that they are
+    /// being read, or why they could not be. Empty under any other ranking, and while the lanes are not shown.
     /// </summary>
-    private string LaneRecordsNote => ReadsBytes && ShowsRankingChoice && Family == RankingFamily.Bytes && !ShowsMechanismLanes
-        ? " · lanes count records; bytes are plotted at the machine rung"
-        : string.Empty;
+    private string ProcessLaneBytesNote =>
+        ProcessLaneByteMetric is not { } metric ? string.Empty
+        : processLaneBytes is { } plotted ? $" · {Phrase(plotted.Metric)} per second"
+            + (timelineDrawsUnmeasured ? ", cross-hatched where no size was recorded" : string.Empty)
+        : OwnerLaneBytes.Failed is { } failed ? $" · {Phrase(metric)} could not be read: {failed.Problem.TrimEnd('.')}"
+        : $" · reading {Phrase(metric)}…";
 
     /// <summary>
-    /// A mechanism lane's card while the lanes plot bytes: the records the bucket holds, then what its bar plots - the
-    /// ranking's bytes over the lane's records in it, the records that measured them and those that recorded no size - and
-    /// the byte rate its height reads against the busiest lane, closing as every timeline card does.
+    /// What a rung whose lanes count records adds to its caption under a byte ranking: that they count records, and where
+    /// bytes are plotted, so a lane is never read as a byte volume. A group's rung plots bytes in its process lanes, and
+    /// adds it only when they cannot be counted.
     /// </summary>
+    private string LaneRecordsNote => ReadsBytes && ShowsRankingChoice && Family == RankingFamily.Bytes && !ShowsMechanismLanes
+        && !(ladder.Current.Level == DetailLevel.Group && processLaneProblem is null)
+        ? " · lanes count records; bytes are plotted at the machine and group rungs"
+        : string.Empty;
+
+    /// <summary>What a mechanism lane's card says under a byte ranking: its bucket's bytes against the busiest lane.</summary>
     private HoverCard DescribeLaneBytesHover(TimelineBucket bucket, double peakPerSecond, Mechanism lane, TimelineByteLayer plotted)
     {
         string name = EvidenceRowText.MechanismName(lane);
-        (string verb, string record, string domain, string accounting, string none) = plotted.Metric switch
+        SessionIntervalByteMeasures? zoomedLane = plotted.Zoomed?.Of(lane);
+        bool fine = zoomedLane?.For(bucket.Interval) is not null;
+        long generation = fine ? plotted.Zoomed!.Generation : plotted.Overview.Generation;
+        string resolution = (fine
+                ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own bytes, {zoomedLane!.Columns.Count:N0} buckets")
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"Resolution: the overview's {plotted.Overview.Lanes[0].Columns.Count:N0} buckets over the whole session"))
+            + GenerationNote(generation);
+        string domain = plotted.Metric switch
         {
-            RankingMetric.BytesSent => ("sent", "send", $"{name} send records", "sender-accounted", "no send recorded"),
-            RankingMetric.BytesReceived => ("received", "receive", $"{name} receive records", "receiver-accounted",
-                "no receive recorded"),
-            _ => ("sent and received", "record", $"every {name} record, both directions",
-                "endpoint activity, a local transfer at both of its ends", "no transfer recorded"),
+            RankingMetric.BytesSent => $"{name} send records with a session time",
+            RankingMetric.BytesReceived => $"{name} receive records with a session time",
+            _ => $"every {name} record with a session time, both directions",
+        };
+        return DescribeBytesHover(bucket, plotted.Metric, $"{name} lane", domain, plotted.Of(lane, bucket.Interval),
+            peakPerSecond, "the busiest mechanism lane in this time view", resolution, new() { Mechanism = lane },
+            selectionShown: true);
+    }
+
+    /// <summary>
+    /// What a group's process lane's card says under a byte ranking: its bucket's bytes, from the process's own records,
+    /// against the busiest lane including the machine row; its hue is its records' most frequent mechanism, as in records.
+    /// </summary>
+    private HoverCard DescribeOwnerBytesHover(TimelineBucket bucket, double peakPerSecond, ProcessNode owner, ProcessLaneByteLayer plotted)
+    {
+        SessionIntervalByteMeasures? lane = plotted.Measures.Of(owner.Id);
+        string mechanism = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
+        string resolution = string.Create(CultureInfo.CurrentCulture,
+                $"Resolution: the lanes' own bytes, {plotted.Measures.Lanes[0].Columns.Count:N0} buckets")
+            + (plotted.Measures.Lanes[0].Columns.Count < plotted.Measures.Machine.Columns.Count
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $", coarser than the view's so the group's {plotted.Measures.Lanes.Count:N0} lanes stay within ")
+                    + string.Create(CultureInfo.CurrentCulture, $"{SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
+                : string.Empty)
+            + GenerationNote(plotted.Measures.Generation);
+        string domain = plotted.Metric switch
+        {
+            RankingMetric.BytesSent => $"send records with a session time canonically owned by {owner.NameWithPid}",
+            RankingMetric.BytesReceived => $"receive records with a session time canonically owned by {owner.NameWithPid}",
+            _ => $"every record with a session time canonically owned by {owner.NameWithPid}, both directions",
+        };
+        return DescribeBytesHover(bucket, plotted.Metric, $"{owner.NameWithPid} lane · mostly {mechanism} records", domain,
+            lane?.For(bucket.Interval), peakPerSecond, "the busiest visible lane including machine context", resolution,
+            new() { Owner = owner.Id }, selectionShown: false);
+    }
+
+    /// <summary>What the machine row's card says above a group's byte lanes: every record's bytes in its bucket.</summary>
+    private HoverCard DescribeMachineBytesHover(TimelineBucket bucket, double peakPerSecond, ProcessLaneByteLayer plotted)
+    {
+        string resolution = string.Create(CultureInfo.CurrentCulture,
+                $"Resolution: the machine row's bytes, {plotted.Measures.Machine.Columns.Count:N0} buckets")
+            + GenerationNote(plotted.Measures.Generation);
+        string domain = plotted.Metric switch
+        {
+            RankingMetric.BytesSent => "every send record with a session time",
+            RankingMetric.BytesReceived => "every receive record with a session time",
+            _ => "every record with a session time, both directions",
+        };
+        return DescribeBytesHover(bucket, plotted.Metric, "machine context, not added to the lanes", domain,
+            plotted.Measures.Machine.For(bucket.Interval), peakPerSecond, "the busiest visible lane including machine context",
+            resolution, IntervalByteScope.Whole, selectionShown: false);
+    }
+
+    /// <summary>What a card adds when the bytes it states were read from another generation than the one shown.</summary>
+    private string GenerationNote(long generation) => generation != DisplayedGeneration
+        ? string.Create(CultureInfo.CurrentCulture, $" · bytes from generation {generation:N0}")
+        : string.Empty;
+
+    /// <summary>
+    /// A byte lane's card: the records the bucket holds, then what its bar plots - the ranking's bytes over the row's records
+    /// in it, the records that measured them and those that recorded no size - and the byte rate its height reads against
+    /// the busiest row, closing as every timeline card does.
+    /// </summary>
+    private HoverCard DescribeBytesHover(TimelineBucket bucket, RankingMetric metric, string row, string domain,
+        TransportBytes? bytes, double peakPerSecond, string scale, string resolution, IntervalByteScope scope,
+        bool selectionShown)
+    {
+        (string verb, string record, string accounting, string none) = metric switch
+        {
+            RankingMetric.BytesSent => ("sent", "send", "sender-accounted", "no send recorded"),
+            RankingMetric.BytesReceived => ("received", "receive", "receiver-accounted", "no receive recorded"),
+            _ => ("sent and received", "record", "endpoint activity, a local transfer at both of its ends", "no transfer recorded"),
         };
         var lines = new List<string>
         {
@@ -306,29 +494,26 @@ public sealed partial class WorkspaceViewModel
                 ? bucket.Coverage == CoverageState.Covered
                     ? "No record observed · the capture covered this interval, so nothing it collects happened here"
                     : "No record observed · an empty bucket is not proof of inactivity"
-                : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · {name} lane",
-            $"Basis: source observations · unit: bytes · domain: transport-observed bytes of {domain} with a session time · "
-                + $"accounting: {accounting}",
+                : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · {row}",
+            $"Basis: source observations · unit: bytes · domain: transport-observed bytes of {domain} · accounting: {accounting}",
         };
 
-        TransportBytes? bytes = plotted.Of(lane, bucket.Interval);
         string unmeasured;
         if (bytes is null)
         {
-            lines.Add($"Plotted: {Phrase(plotted.Metric)} not read for this interval yet · the bar here is the rate of a "
-                + "coarser or earlier column around it");
+            lines.Add($"Plotted: {Phrase(metric)} not read for this interval yet · the bar here is the rate of a coarser or "
+                + "earlier column around it");
             unmeasured = "Unmeasured: not known until this interval's bytes are read";
         }
         else
         {
-            (long? value, long measured, long withoutSize) = bytes.ValueOf(plotted.Metric);
+            (long? value, long measured, long withoutSize) = bytes.ValueOf(metric);
             long span = Math.Max(1, bucket.Interval.SpanTicks);
             if (value is { } sum)
             {
                 lines.Add($"Plotted: {WorkspaceRowBuilder.DescribeSize(sum)} {verb} on {Spoken.Count(measured, "measured " + record)}");
                 lines.Add($"Rate: {WorkspaceRowBuilder.DescribeByteRate((double)sum * WorkspaceTime.TicksPerSecond / span)} · height "
-                    + "against the busiest mechanism lane in this time view, "
-                    + $"{WorkspaceRowBuilder.DescribeByteRate(Math.Max(0, peakPerSecond))} (shared scale)");
+                    + $"against {scale}, {WorkspaceRowBuilder.DescribeByteRate(Math.Max(0, peakPerSecond))} (shared scale)");
                 unmeasured = withoutSize > 0
                     ? $"Unmeasured: {Spoken.Count(withoutSize, "more " + record)} recorded no size, so the bar is a lower bound"
                     : $"Unmeasured: none; every {record} here recorded its size";
@@ -346,21 +531,11 @@ public sealed partial class WorkspaceViewModel
             }
         }
 
-        if (highlight is not null && highlightName is { } marked)
+        if (selectionShown && highlight is not null && highlightName is { } marked)
         {
             lines.Add($"Selection, {marked}: highlighted while the lanes plot records");
         }
 
-        SessionIntervalByteMeasures? zoomedLane = plotted.Zoomed?.Of(lane);
-        bool fine = zoomedLane?.For(bucket.Interval) is not null;
-        long generation = fine ? plotted.Zoomed!.Generation : plotted.Overview.Generation;
-        string resolution = (fine
-                ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own bytes, {zoomedLane!.Columns.Count:N0} buckets")
-                : string.Create(CultureInfo.CurrentCulture,
-                    $"Resolution: the overview's {plotted.Overview.Lanes[0].Columns.Count:N0} buckets over the whole session"))
-            + (generation != DisplayedGeneration
-                ? string.Create(CultureInfo.CurrentCulture, $" · bytes from generation {generation:N0}")
-                : string.Empty);
-        return FinishTimelineHover(bucket, fine, lines, new() { Mechanism = lane }, resolution, unmeasured, bytes);
+        return FinishTimelineHover(bucket, zoomed: false, lines, scope, resolution, unmeasured, bytes);
     }
 }

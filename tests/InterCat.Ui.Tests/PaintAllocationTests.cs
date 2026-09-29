@@ -74,6 +74,19 @@ public sealed class PaintAllocationTests
             Assert.True(workspace.Descend(), rung);
             await Settle(window, workspace);
             Measure(window, rung, report);
+            if (rung == "group")
+            {
+                // The group's process lanes and the machine row above them, plotting bytes sent.
+                workspace.RankBy = RankingMetric.BytesSent;
+                await workspace.TimelineBytesReady;
+                await workspace.RankingReady;
+                await Settle(window, workspace);
+                Assert.NotNull(workspace.ProcessLaneBytes);
+                Measure(window, "group, plotting bytes sent", report);
+                workspace.RankBy = RankingMetric.Records;
+                await workspace.RankingReady;
+                await Settle(window, workspace);
+            }
         }
 
         window.Close();

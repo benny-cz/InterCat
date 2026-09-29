@@ -110,6 +110,34 @@ public sealed record SessionMechanismByteMeasures(
 }
 
 /// <summary>
+/// A group's lanes' transport bytes over one interval, from one leased generation: every record's bytes in the machine
+/// row's columns, and each process instance's own in the lanes' columns, which past the lanes' cell budget are fewer and
+/// wider over the same interval (§6.2). Each is exactly what <see cref="SessionIntervalByteQuery.Measure"/> answers for
+/// its scope, all measured in one pass (R18). A group's process lanes plot them when the ranking is by bytes.
+/// </summary>
+public sealed record SessionOwnerByteMeasures(
+    Guid SessionId,
+    long Generation,
+    TimeRange Interval,
+    SessionIntervalByteMeasures Machine,
+    IReadOnlyList<SessionIntervalByteMeasures> Lanes)
+{
+    /// <summary>The columns of <paramref name="owner"/>'s lane, or null when it was not measured.</summary>
+    public SessionIntervalByteMeasures? Of(ProcessInstanceId owner)
+    {
+        for (int index = 0; index < Lanes.Count; index++)
+        {
+            if (Lanes[index].Scope.Owner == owner)
+            {
+                return Lanes[index];
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
 /// Measures the transport bytes of one scope's records in each column of an interval: what `icat metric --metric
 /// bytes-sent --byte-domain transport-observed --side send` and its received counterpart answer for each column's own
 /// interval, in one pass (R18). A record declaring a size it did not record is unmeasured and counted apart, never summed
@@ -117,6 +145,141 @@ public sealed record SessionMechanismByteMeasures(
 /// </summary>
 public static class SessionIntervalByteQuery
 {
+    /// <summary>
+    /// Measures a group's lanes in one pass: every record in <paramref name="columns"/> columns of the interval, for the
+    /// machine row, and each of <paramref name="owners"/>' own records, under the evidence rung's rules and the policy, in
+    /// <paramref name="laneColumns"/> columns of the same interval. For each, what <see cref="Measure"/> answers for its
+    /// scope. An owner this generation does not hold is refused with the evidence rung's reason, never measured as nothing.
+    /// </summary>
+    public static SessionOwnerByteMeasures MeasureByOwner(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        int laneColumns,
+        IReadOnlyList<ProcessInstanceId> owners,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(owners);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, SessionTimelineQuery.MaximumColumns);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(laneColumns);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(laneColumns, SessionTimelineQuery.MaximumColumns);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (owners.Count == 0 || owners.Count > SessionTimelineQuery.MaximumProcessLanes
+            || owners.Any(owner => owner.Value == Guid.Empty) || owners.Distinct().Count() != owners.Count)
+        {
+            throw new ArgumentException(
+                $"Name one to {SessionTimelineQuery.MaximumProcessLanes:N0} process instances, each once.", nameof(owners));
+        }
+
+        if ((long)owners.Count * Math.Min(laneColumns, interval.SpanTicks) > SessionTimelineQuery.MaximumProcessLaneCells)
+        {
+            throw new ArgumentException(
+                $"The lanes need more than {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells; count them in fewer columns.",
+                nameof(laneColumns));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
+            ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        FocusRows rows = FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(null, owners), policy,
+            cancellationToken);
+        int[] laneOf = rows.LanesOf(owners);
+        var machine = new TimelineColumns(interval, columns, tallyMechanisms: false);
+        var lanes = new TimelineColumns(interval, laneColumns, tallyMechanisms: false);
+        int machineCount = machine.Counts.Count;
+        int laneCount = lanes.Counts.Count;
+
+        // The machine row's columns and one slot per lane and column, lane by lane, each with one more for every row
+        // outside them.
+        var total = new OwnerByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
+        SegmentPasses.Run(
+            segments,
+            () => new OwnerByteTally(machineCount + 1, (owners.Count * laneCount) + 1),
+            (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
+            total.Add,
+            cancellationToken);
+        return new(manifest.SessionId, manifest.Generation, interval,
+            new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval, IntervalByteScope.Whole,
+                Array.AsReadOnly([.. Enumerable.Range(0, machineCount).Select(total.Machine.Of)])),
+            Array.AsReadOnly([.. owners.Select((owner, lane) =>
+                new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
+                    new IntervalByteScope { Owner = owner },
+                    Array.AsReadOnly([.. Enumerable.Range(0, laneCount).Select(column => total.Lanes.Of((lane * laneCount) + column))])))]));
+    }
+
+    /// <summary>One worker's bytes: the machine row's columns, and every lane's.</summary>
+    private sealed class OwnerByteTally(int machineSlots, int laneSlots)
+    {
+        public TransportByteTally Machine { get; } = new(machineSlots);
+
+        public TransportByteTally Lanes { get; } = new(laneSlots);
+
+        public void Add(OwnerByteTally other)
+        {
+            Machine.Add(other.Machine);
+            Lanes.Add(other.Lanes);
+        }
+    }
+
+    /// <summary>
+    /// Places each of one segment's rows in the machine row's column, and a lane's row in its lane's column, as a group's
+    /// lanes count them, and measures both.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void MeasureOwners(
+        SegmentReaderV1 segment,
+        TimelineColumns machine,
+        TimelineColumns lanes,
+        FocusRows rows,
+        int[] laneOf,
+        int laneTotal,
+        OwnerByteTally tally,
+        CancellationToken cancellationToken)
+    {
+        TimeRange interval = machine.Interval;
+        SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+        if (tiles.First is not { } first || tiles.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return;
+        }
+
+        int machineOutside = machine.Counts.Count;
+        int laneCount = lanes.Counts.Count;
+        int laneOutside = laneTotal * laneCount;
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        using FocusRows.SegmentRows inFocus = rows.Of(segment);
+        using RentedRows<int> machineGroups = RentedRows<int>.For(segment);
+        using RentedRows<int> laneGroups = RentedRows<int>.For(segment);
+        Span<int> columnOf = machineGroups.Span;
+        Span<int> slotOf = laneGroups.Span;
+        for (int row = 0; row < columnOf.Length; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (times.SignedAt(row) is not { } nanoseconds || machine.ColumnOf(nanoseconds / 100) is not { } column)
+            {
+                columnOf[row] = machineOutside;
+                slotOf[row] = laneOutside;
+                continue;
+            }
+
+            columnOf[row] = column;
+            slotOf[row] = inFocus.OwnerPosition(row) is { } position && laneOf[position] is >= 0 and int lane
+                && lanes.ColumnOf(nanoseconds / 100) is { } laneColumn
+                ? (lane * laneCount) + laneColumn
+                : laneOutside;
+        }
+
+        var spec = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved };
+        tally.Machine.Add(SegmentMeasurement.MeasureDomainByGroup(segment, spec, columnOf, machineOutside + 1));
+        tally.Lanes.Add(SegmentMeasurement.MeasureDomainByGroup(segment, spec, slotOf, laneOutside + 1));
+    }
+
     /// <summary>
     /// Measures each of <paramref name="mechanisms"/>' records in each column of an interval, in one pass: for each, what
     /// <see cref="Measure"/> answers for that mechanism's lane. A record of a mechanism not named is measured in no lane.

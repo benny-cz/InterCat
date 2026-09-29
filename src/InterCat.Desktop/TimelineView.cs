@@ -76,6 +76,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         private readonly Dictionary<Mechanism, SolidColorBrush> liveBrushes = [];
         private readonly Dictionary<Mechanism, SolidColorBrush> fillBrushes = [];
         private readonly Dictionary<Mechanism, Pen> hatchPens = [];
+        private Pen? contextHatchPen;
 
         /// <summary>
         /// §6.6's unmeasured cell: its sides and cross-hatch in the mechanism's hue at a pixel, as the graph draws its
@@ -91,6 +92,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             return pen;
         }
+
+        /// <summary>The machine context row's unmeasured cell: muted ink, as its bars are, never a mechanism's hue.</summary>
+        public Pen ContextHatchPen => contextHatchPen ??= new Pen(TextBrush, 1);
 
         /// <summary>A mechanism's fill, built once per mode and reused for every bar (R11).</summary>
         public SolidColorBrush FillBrush(Mechanism mechanism)
@@ -623,10 +627,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         FocusRowSet? rows = FocusRows;
 
-        // Under a byte ranking the machine rung's lanes plot bytes per tick, on a scale of their own (§6.2).
+        // Under a byte ranking the machine rung's lanes, and a group's with the machine row above them, plot bytes per
+        // tick, on a scale of their own (§6.2).
         TimelineByteLayer? bytes = ShowingMechanismLanes ? viewModel.TimelineBytes : null;
+        ProcessLaneByteLayer? groupBytes = rows?.Kind == FocusRowKind.Owners ? viewModel.ProcessLaneBytes : null;
+        bool plotsBytes = bytes is not null || groupBytes is not null;
         double maximumRate = bytes is not null
             ? LaneBytePeak(viewModel.Snapshot.MechanismLanes, bytes, visible)
+            : groupBytes is not null
+            ? GroupBytePeak(groupBytes, visible)
             : ShowingMechanismLanes
             ? MechanismLanePeak(viewModel.Snapshot.MechanismLanes, detail, visible)
             : rows is not null
@@ -646,7 +655,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                     DrawMechanismLanes(context, viewModel, detail, scale, bytes);
                     break;
                 case FocusRowKind.Owners:
-                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale);
+                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes);
                     break;
                 case FocusRowKind.Directions:
                     DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale);
@@ -659,11 +668,13 @@ public sealed class TimelineView : Control, IHoverCardSource
                     break;
             }
 
-            if (bytes is not null)
+            if (plotsBytes)
             {
                 // The bars are bytes: what they were read from is what the note names, a paused view's newer generation
                 // or an earlier publication's standing in until this one's arrive.
-                long? generation = bytes.Overview.Generation != viewModel.DisplayedGeneration ? (long?)bytes.Overview.Generation
+                long? generation = groupBytes is not null
+                    ? groupBytes.Measures.Generation != viewModel.DisplayedGeneration ? (long?)groupBytes.Measures.Generation : null
+                    : bytes!.Overview.Generation != viewModel.DisplayedGeneration ? (long?)bytes.Overview.Generation
                     : bytes.Zoomed is { } zoomed && zoomed.Generation != viewModel.DisplayedGeneration ? zoomed.Generation
                     : null;
                 if (generation is { } read)
@@ -725,7 +736,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (LiveEdgePlacement is { } live)
         {
             // A preview counts records, so beside byte lanes it is drawn on its own records scale, never the bytes'.
-            DrawLiveEdge(context, viewModel, live, rows, top, bottom, bytes is null ? maximumRate : 0, bytes is not null);
+            DrawLiveEdge(context, viewModel, live, rows, top, bottom, plotsBytes ? 0 : maximumRate, plotsBytes);
         }
 
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
@@ -743,7 +754,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
                 WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-            DrawText(context, bytes is not null
+            DrawText(context, plotsBytes
                     ? byteRateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond,
                         static rate => WorkspaceRowBuilder.DescribeByteRate(rate))
                     : rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate)),
@@ -1455,11 +1466,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         SessionIntervalByteMeasures? coarse = bytes.Overview.Of(mechanism);
         SessionIntervalByteMeasures? fine = bytes.Zoomed?.Of(mechanism);
+        var hue = new ByteHue(mechanism, null, Context: false);
         if (fine is null || !Intersects(fine.Interval, scale.Visible))
         {
             if (coarse is not null)
             {
-                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+                DrawByteColumns(context, viewModel, coarse, bytes.Metric, scale, hue);
             }
 
             return;
@@ -1471,18 +1483,53 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             using (context.PushClip(new Rect(scale.Left, row.Top, Math.Max(0, x1 - scale.Left), row.Height)))
             {
-                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+                DrawByteColumns(context, viewModel, coarse, bytes.Metric, scale, hue);
             }
 
             using (context.PushClip(new Rect(x2, row.Top, Math.Max(0, scale.Left + scale.PlotWidth - x2), row.Height)))
             {
-                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+                DrawByteColumns(context, viewModel, coarse, bytes.Metric, scale, hue);
             }
         }
 
         using (context.PushClip(new Rect(x1, row.Top, Math.Max(0, x2 - x1), row.Height)))
         {
-            DrawByteColumns(context, viewModel, mechanism, fine, bytes.Metric, scale);
+            DrawByteColumns(context, viewModel, fine, bytes.Metric, scale, hue);
+        }
+    }
+
+    /// <summary>
+    /// What a byte column is drawn in: its lane's mechanism; for a process lane, the hue its records' most frequent
+    /// mechanism gives the counted bucket around it, as the records view draws it; for the machine row, the context grey.
+    /// </summary>
+    private readonly record struct ByteHue(Mechanism? Fixed, IReadOnlyList<TimelineBucket>? Counted, bool Context)
+    {
+        public SolidColorBrush Fill(long tick) => Context ? ContextBarBrush : BrushFor(MechanismAt(tick));
+
+        public Pen Hatch(long tick) => Context ? Current.ContextHatchPen : Current.HatchPen(MechanismAt(tick));
+
+        /// <summary>The lane's mechanism, or the most frequent mechanism of the counted bucket holding the tick.</summary>
+        private Mechanism MechanismAt(long tick)
+        {
+            if (Fixed is { } mechanism)
+            {
+                return mechanism;
+            }
+
+            // The counted buckets are in time order, so the one holding the tick is found by halving (R11: no allocation).
+            IReadOnlyList<TimelineBucket>? buckets = Counted;
+            int low = 0;
+            int high = (buckets?.Count ?? 0) - 1;
+            while (low <= high)
+            {
+                int middle = low + ((high - low) / 2);
+                TimeRange interval = buckets![middle].Interval;
+                if (tick < interval.StartTicks) high = middle - 1;
+                else if (tick >= interval.EndTicks) low = middle + 1;
+                else return buckets[middle].DominantMechanism;
+            }
+
+            return Mechanism.Tcp;
         }
     }
 
@@ -1492,8 +1539,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// them recorded is §6.6's open cross-hatched cell at that floor: unknown, never a bar of zero (R3). A column with
     /// nothing measured to plot draws nothing.
     /// </summary>
-    private static void DrawByteColumns(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism,
-        SessionIntervalByteMeasures lane, RankingMetric metric, BarScale scale)
+    private static void DrawByteColumns(DrawingContext context, WorkspaceViewModel viewModel,
+        SessionIntervalByteMeasures lane, RankingMetric metric, BarScale scale, ByteHue hue)
     {
         double plot = scale.Bottom - scale.Top;
         double floor = plot * OccupiedFloor;
@@ -1515,17 +1562,18 @@ public sealed class TimelineView : Control, IHoverCardSource
             double x2 = scale.X(Math.Min(interval.EndTicks, scale.Visible.EndTicks));
             double width = Math.Max(1, x2 - x1 - 2);
             Rect bar;
+            long middle = interval.StartTicks + (interval.SpanTicks / 2);
             if (value is { } sum)
             {
                 double height = Math.Max(floor,
                     plot * ((double)sum / interval.SpanTicks) / Math.Max(double.Epsilon, scale.MaximumRate));
                 bar = new(x1, scale.Bottom - height, width, height);
-                context.DrawRectangle(BrushFor(mechanism), null, bar);
+                context.DrawRectangle(hue.Fill(middle), null, bar);
             }
             else
             {
                 bar = new(x1, scale.Bottom - floor, width, floor);
-                Pen pen = Current.HatchPen(mechanism);
+                Pen pen = hue.Hatch(middle);
                 context.DrawRectangle(null, pen, bar);
                 GraphView.CrossHatch(context, pen, bar);
             }
@@ -1546,11 +1594,16 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
-    /// <summary>L1's exact owner rows, with one non-additive machine context row above them.</summary>
+    /// <summary>
+    /// L1's exact owner rows, with one non-additive machine context row above them: records per tick, or under a byte
+    /// ranking the bytes it measures per tick, over the counted rows' coverage.
+    /// </summary>
     private static void DrawProcessLanes(DrawingContext context, WorkspaceViewModel viewModel,
-        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ProcessTimelineLane> lanes, BarScale scale)
+        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ProcessTimelineLane> lanes, BarScale scale,
+        ProcessLaneByteLayer? bytes)
     {
         int count = lanes.Count + 1;
+        bool coverageOnly = bytes is not null;
         for (int index = 0; index < count; index++)
         {
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
@@ -1560,9 +1613,16 @@ public sealed class TimelineView : Control, IHoverCardSource
                 row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
             if (index == 0)
             {
-                DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
+                DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
+                if (bytes is not null)
+                {
+                    // Byte bars first, so the coverage hatch crosses them as it crosses a record bar.
+                    DrawByteColumns(context, viewModel, bytes.Measures.Machine, bytes.Metric, rowScale,
+                        new ByteHue(null, null, Context: true));
+                }
+
                 DrawLaneSeries(context, viewModel, null,
-                    machine, rowScale, row, contextRow: true);
+                    machine, rowScale, row, contextRow: true, coverageOnly: coverageOnly);
                 continue;
             }
 
@@ -1575,9 +1635,27 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
 
             DrawText(context, label, new(9, row.Center.Y - 7));
-            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row);
+            if (bytes?.Measures.Of(lane.ProcessId) is { } measured)
+            {
+                DrawByteColumns(context, viewModel, measured, bytes.Metric, rowScale, new ByteHue(null, lane.Buckets, Context: false));
+                if (!PlotsAnything(measured, bytes.Metric))
+                {
+                    // A process none of whose records here carries the ranking's size is empty for that reason.
+                    DrawText(context, NothingToPlot(bytes.Metric), new(9, row.Center.Y + 4));
+                }
+            }
+
+            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row, coverageOnly: coverageOnly);
         }
     }
+
+    /// <summary>The machine row's name above a group's byte lanes: every record's bytes of the ranking's kind.</summary>
+    private static string MachineBytesLabel(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "Machine · all sends",
+        RankingMetric.BytesReceived => "Machine · all receives",
+        _ => "Machine · all transfers",
+    };
 
     /// <summary>L2's exact source-direction partition; the machine row is context, never added to the owner total.</summary>
     private static void DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
@@ -1648,7 +1726,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
         else if (rows is not null)
         {
-            DrawText(context, "live", new(live.Left, top - 16));
+            DrawText(context, besideBytes ? "live records" : "live", new(live.Left, top - 16));
             Rect machine = LaneRow(0, rows.Rows.Count + 1, top, bottom);
             DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, OccupiedFloor, LiveBars.Machine, default);
         }
@@ -2606,6 +2684,18 @@ public sealed class TimelineView : Control, IHoverCardSource
             {
                 peak = Math.Max(peak, BytePeak(fineLane, bytes.Metric, visible, null));
             }
+        }
+
+        return peak;
+    }
+
+    /// <summary>A group's byte scale: the highest rate the machine row or any process lane plots in the viewport.</summary>
+    private static double GroupBytePeak(ProcessLaneByteLayer bytes, TimeRange visible)
+    {
+        double peak = BytePeak(bytes.Measures.Machine, bytes.Metric, visible, null);
+        for (int index = 0; index < bytes.Measures.Lanes.Count; index++)
+        {
+            peak = Math.Max(peak, BytePeak(bytes.Measures.Lanes[index], bytes.Metric, visible, null));
         }
 
         return peak;
