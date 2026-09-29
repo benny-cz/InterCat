@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 279 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 280 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 280 — an investigation keeps the pins placed on its sessions' graphs (§26.3, `workspace-v11`):**
+  - A session opened from an investigation keeps its pinned nodes there, one layout per member replaced as it changes,
+    and gets them back when opened from it again; the status says so. `show --json` lists the layouts.
 
 - **Revision 279 — an investigation an earlier version wrote keeps reading (`workspace-v10`, R22):**
   - Each kind of fact was refused in any version before the newest, so a v5 file with two anchors, a v9 file with
@@ -517,7 +521,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
        273, whose stop stops the session before it ends delivery.
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
-   - Pins that survive reopening, once §26.3's workspace persistence exists.
+   - Pins that survive reopening: done in revision 280 for a session opened from an investigation, which keeps them
+     (`workspace-v11`); a session opened on its own keeps them while it is open. §26.3's other workspace settings -
+     lane grouping, sort, view filters - are not kept yet.
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
@@ -571,6 +577,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 280 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
+  passed, 4 skipped**, zero failures. Its window test drives the real main and investigation windows headlessly: a pin
+  placed on a member opened from the investigation is written there, is absent when the session is opened on its own,
+  and is back when it is opened from the investigation again. Not checked live: an idle machine's capture draws no
+  relationship, so its graph has no node to pin.
 - Revision 279 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,472 tests: 1,468
   passed, 4 skipped**, zero failures. Its test failed before the fix with "a workspace-v5 file holds no alignment with
   a second anchor", for a file as revision 264 wrote it.
@@ -806,4 +817,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v10.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v11.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

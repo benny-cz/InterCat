@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v10.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v11.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -43,6 +43,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>The snapshot vector the overlaps answer (I16): each capture read to place it, at its one generation.</summary>
     public required IReadOnlyList<SnapshotEntryDocument> OverlapsSnapshotVector { get; init; }
+
+    /// <summary>How a person laid out each member's graph: the nodes they pinned, where (§26.3).</summary>
+    public required IReadOnlyList<WorkspaceLayout> Layouts { get; init; }
 
     public required IReadOnlyList<string> Caveats { get; init; }
 }
@@ -92,7 +95,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v10.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v11.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -124,7 +127,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v10.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v11.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -213,7 +216,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v12";
+    public const string ResolutionContract = "workspace-resolution-v13";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -897,6 +900,7 @@ internal static partial class WorkspaceCommand
                 Statement = overlap.Statement(CultureInfo.CurrentCulture),
             })],
             OverlapsSnapshotVector = SnapshotOf(path, overlaps.Snapshot),
+            Layouts = workspace.Layouts,
             Caveats = caveats,
         };
     }

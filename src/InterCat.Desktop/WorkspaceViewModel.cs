@@ -2231,8 +2231,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Nodes the user placed by hand, by the same stable keys, in graph coordinates. They are hard constraints (§19.4)
-    /// and are kept for as long as the session is open, across refreshes and rungs. Workspaces are not saved yet, so
-    /// pins do not survive closing the session (§26.3); nothing claims that they do.
+    /// and are kept for as long as the session is open, across refreshes and rungs. The main window keeps them in the
+    /// investigation a session was opened from (§26.3); a session opened on its own keeps them only while it is open.
     /// </summary>
     private readonly Dictionary<string, GraphPoint> graphPins = new(StringComparer.Ordinal);
 

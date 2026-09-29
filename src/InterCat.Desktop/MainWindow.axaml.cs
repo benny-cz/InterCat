@@ -43,6 +43,13 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool choosingSession;
     private bool closed;
 
+    // The investigation a session is being opened from, while it is; then the one that keeps the shown session's pins
+    // (§26.3), with the pins it last kept and the writes of them in order. A session opened on its own keeps none there.
+    private string? openingFromInvestigation;
+    private (string Workspace, Guid Session)? layoutHome;
+    private IReadOnlyDictionary<string, GraphPoint>? keptPins;
+    private Task pinsWritten = Task.CompletedTask;
+
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
     private bool railOwnsKeyboard;
     private bool closingPrompt;
@@ -847,10 +854,98 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         }
 
-        var window = new InvestigationWindow(full, session => OpenSessionAsync(session), made, OpenSessionAtAsync);
+        var window = new InvestigationWindow(full, session => FromInvestigationAsync(full, () => OpenSessionAsync(session)), made,
+            (session, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval)));
         window.Show(this);
         return window;
     }
+
+    /// <summary>Opens a member from its investigation, which then keeps the pins placed on its graph (§26.3).</summary>
+    private async Task<bool> FromInvestigationAsync(string investigation, Func<Task<bool>> open)
+    {
+        openingFromInvestigation = investigation;
+        try
+        {
+            return await open();
+        }
+        finally
+        {
+            openingFromInvestigation = null;
+        }
+    }
+
+    /// <summary>
+    /// The pins member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>, none when it keeps none; null
+    /// when the file cannot be read or does not name the session, which then keeps its pins only while it is open.
+    /// </summary>
+    private static Dictionary<string, GraphPoint>? PinsKeptIn(string investigation, Guid sessionId)
+    {
+        try
+        {
+            InvestigationWorkspaceFile file = InvestigationWorkspace.Read(investigation);
+            return file.Members.Any(member => member.SessionId == sessionId)
+                ? (InvestigationWorkspace.LayoutOf(file, sessionId)?.Pins ?? [])
+                    .ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal)
+                : null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the shown session's pins in the investigation it was opened from, when they changed: one write after another,
+    /// off the UI thread, and a write that fails is said beside the session's status rather than lost silently.
+    /// </summary>
+    private void KeepPins((string Workspace, Guid Session) home)
+    {
+        IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
+        if (keptPins is { } kept && kept.Count == pins.Count
+            && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value))
+        {
+            return;
+        }
+
+        keptPins = pins;
+        WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
+        Task previous = pinsWritten;
+        pinsWritten = Task.Run(async () =>
+        {
+            try
+            {
+                await previous.ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+                or UnauthorizedAccessException)
+            {
+                // The earlier write said why it failed; this one tries afresh.
+            }
+
+            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow);
+        });
+        _ = SayIfPinsNotKeptAsync(pinsWritten);
+    }
+
+    private async Task SayIfPinsNotKeptAsync(Task written)
+    {
+        try
+        {
+            await written;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed)
+            {
+                keptPins = null;
+                CaptureDetail.Text += " The pins could not be kept in the investigation: " + exception.Message;
+            }
+        }
+    }
+
+    /// <summary>Completes once every change to the shown session's pins is written to its investigation.</summary>
+    internal Task PinsWritten => pinsWritten;
 
     /// <summary>
     /// Opens a session - or keeps it, when it is the one shown - with its timeline zoomed to <paramref name="interval"/> of
@@ -1973,9 +2068,30 @@ public sealed partial class MainWindow : Window, IDisposable
             ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
             : null;
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
+        IReadOnlyDictionary<string, GraphPoint>? pins = savedNavigation is null ? null : workspace.GraphPins;
+        string? pinsNotice = null;
+        if (savedNavigation is null)
+        {
+            // A session opened from an investigation it is a member of keeps its pins there, and gets back those it kept
+            // (§26.3); any other session keeps its pins only while it is open.
+            layoutHome = null;
+            if (openingFromInvestigation is { } investigation && PinsKeptIn(investigation, overview.SessionId) is { } kept)
+            {
+                layoutHome = (investigation, overview.SessionId);
+                pins = kept;
+                pinsNotice = $"Nodes pinned on its graph are kept in the investigation {Path.GetFileName(investigation)}"
+                    + (kept.Count == 0 ? "." : string.Create(CultureInfo.CurrentCulture, $", which put back {kept.Count:N0}."));
+            }
+
+            keptPins = pins;
+        }
+
         var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence,
-            savedNavigation is null ? null : workspace.LaidOutPositions,
-            savedNavigation is null ? null : workspace.GraphPins);
+            savedNavigation is null ? null : workspace.LaidOutPositions, pins);
+        if (pinsNotice is not null)
+        {
+            CaptureDetail.Text += " " + pinsNotice;
+        }
         if (savedNavigation is not null
             && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
         {
@@ -2175,6 +2291,11 @@ public sealed partial class MainWindow : Window, IDisposable
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.RungRows) or nameof(WorkspaceViewModel.Crumbs))
         {
             KeepRailKeyboard();
+        }
+
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) && layoutHome is { } home)
+        {
+            KeepPins(home);
         }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();

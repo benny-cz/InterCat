@@ -532,11 +532,49 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         As(InvestigationWorkspace.NinthContract,
             () => InvestigationWorkspace.AddNote(workspace, "The upload stalls.", null, Now),
             read => read.Notes.Count == 1);
+        As(InvestigationWorkspace.TenthContract,
+            () =>
+            {
+                InvestigationWorkspace.Align(workspace, b, 0, a, 1_000, 1_000, 1, null, Now);
+                InvestigationWorkspace.SaveView(workspace, "Start", new TimeRange(0, 10), Now);
+            },
+            read => read.Views.Count == 1);
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
         InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
-        Assert.Equal((InvestigationWorkspace.Contract, 2), (rewritten.Contract, rewritten.Notes.Count));
+        Assert.Equal((InvestigationWorkspace.Contract, 1, 1), (rewritten.Contract, rewritten.Views.Count, rewritten.Notes.Count));
+    }
+
+    [Fact(DisplayName = "R22: a member's graph layout is kept by node, replaced as it changes, and refused where it cannot be")]
+    public void AMembersLayoutIsKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        static WorkspacePin Pin(string key, double x, double y) => new() { Key = key, X = x, Y = y };
+
+        // Kept by node, in key order; a later layout replaces it whole, and one pinning nothing removes it.
+        InvestigationWorkspace.SetLayout(workspace, a, [Pin("group:b", 0.5, 0.5), Pin("group:a", 0.1, 0.9)], Now);
+        Assert.Equal(["group:a", "group:b"],
+            InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins.Select(pin => pin.Key));
+        InvestigationWorkspace.SetLayout(workspace, a, [Pin("group:a", 0.2, 0.3)], Now);
+        WorkspacePin moved = Assert.Single(Assert.Single(InvestigationWorkspace.Read(workspace).Layouts).Pins);
+        Assert.Equal(("group:a", 0.2, 0.3), (moved.Key, moved.X, moved.Y));
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now));
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Layouts);
+
+        // Refused: a session not a member, a node pinned twice, outside the graph, or by no key.
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, Guid.NewGuid(), [Pin("k", 0.5, 0.5)], Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [Pin("k", 0.5, 0.5), Pin("k", 0.1, 0.1)], Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [Pin("k", 1.5, 0.5)], Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [Pin(" ", 0.5, 0.5)], Now));
+
+        // A file of a version before layouts holds none.
+        InvestigationWorkspace.SetLayout(workspace, a, [Pin("group:a", 0.2, 0.3)], Now);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TenthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no layout", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+            StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

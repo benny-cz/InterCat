@@ -91,6 +91,60 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins there, and gets them back when opened from it again")]
+    public async Task AnInvestigationKeepsASessionsPins()
+    {
+        using var root = new TemporaryDirectory();
+        string paired = PairedSession(root.Path, "paired");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, paired, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open the selected session in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
+            Assert.EndsWith("Nodes pinned on its graph are kept in the investigation case.icat-workspace.",
+                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+
+            // A node pinned on its graph is kept in the investigation, where it was put.
+            var shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.LayoutReady;
+            string key = shown.GraphDisplay.Nodes[0].Key;
+            var place = new GraphPoint(0.25, 0.75);
+            Assert.True(shown.PinGraphNode(key, place));
+            await main.PinsWritten;
+            WorkspacePin kept = Assert.Single(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins);
+            Assert.Equal((key, 0.25, 0.75), (kept.Key, kept.X, kept.Y));
+
+            // Opened on its own, the session holds none of the investigation's pins.
+            Assert.True(await main.OpenSessionAsync(paired));
+            Assert.False(((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
+
+            // Opened from the investigation again, its node is pinned where it was put.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => ((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.Equal(place, again.GraphPins[key]);
+            Assert.Contains("which put back 1.", main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+
+            // Released, the investigation keeps no layout of it.
+            Assert.True(again.UnpinGraphNode(key));
+            await main.PinsWritten;
+            Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: a new investigation starts empty, and an existing file is opened, never written over")]
     public void ANewInvestigationStartsEmpty()
     {
@@ -858,6 +912,27 @@ public sealed class InvestigationWindowTests
         _ = Publish(
             store,
             [Lifecycle(100, ObservationKind.Create, 400, 1) with { SessionRelativeTicks = 100 }],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>client.exe (PID 100) sends server.exe (PID 200) 100 bytes over loopback TCP, both ends captured: one drawn relationship.</summary>
+    private static string PairedSession(string root, string name)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+                Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+                Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 10)
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+                Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 11)
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+            ],
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name));
         store.ReleaseSegmentReaders();
