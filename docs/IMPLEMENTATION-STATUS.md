@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 281 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 282 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 282 — `icat workspace show` states each session's layout (§26.3):**
+  - Its text listed only what its JSON held of the pins an investigation keeps; it now says how many nodes each
+    session has pinned, which the Desktop puts back. Revision 280 was checked live on a dense capture.
 
 - **Revision 281 — M4's exit review (§14, M4):**
   - Everything M4 implements is done, and three of its four exit checks hold by test; the known two-host exchange
@@ -596,13 +600,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 282 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
+  passed, 4 skipped**, zero failures. Live, a scratch investigation of a 2-second capture with a layout written by hand,
+  as the contract allows, deleted after: `show` read "Session 454c14cc: 2 nodes pinned on its graph, put back when it
+  is opened from this investigation."
 - Revision 281 changed documents only; its code is revision 280's, whose Debug suite ran again in a clean worktree
   before the push.
 - Revision 280 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
   passed, 4 skipped**, zero failures. Its window test drives the real main and investigation windows headlessly: a pin
   placed on a member opened from the investigation is written there, is absent when the session is opened on its own,
-  and is back when it is opened from the investigation again. Not checked live: an idle machine's capture draws no
-  relationship, so its graph has no node to pin.
+  and is back when it is opened from the investigation again. Checked live after revision 281 on a 20-second dense
+  capture in a scratch investigation, deleted after: the Release app opened from the investigation said where its
+  pins are kept, a ranked group selected and P posted to its window wrote one pin to the file, and a relaunch opened
+  from the investigation said it "put back 1".
 - Revision 279 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,472 tests: 1,468
   passed, 4 skipped**, zero failures. Its test failed before the fix with "a workspace-v5 file holds no alignment with
   a second anchor", for a file as revision 264 wrote it.

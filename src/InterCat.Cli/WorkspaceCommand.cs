@@ -1030,6 +1030,19 @@ internal static partial class WorkspaceCommand
             }
         }
 
+        if (document.Layouts.Count > 0)
+        {
+            // What the Desktop puts back when a member is opened from this investigation (§26.3).
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Layouts");
+            foreach (WorkspaceLayout layout in document.Layouts)
+            {
+                ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
+                    $"Session {Short(layout.SessionId)}: {layout.Pins.Count:N0} {(layout.Pins.Count == 1 ? "node" : "nodes")} pinned on its graph, ")
+                    + "put back when it is opened from this investigation.");
+            }
+        }
+
         IReadOnlyList<WorkspaceAddressTranslation> translations = InvestigationWorkspace.TranslationsInForce(document.AddressTranslations);
         if (translations.Count > 0)
         {
