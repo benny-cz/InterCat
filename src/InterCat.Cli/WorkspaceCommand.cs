@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v9.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v10.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -33,6 +33,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every revision of a person's notes, in the order written.</summary>
     public required IReadOnlyList<WorkspaceNote> Notes { get; init; }
+
+    /// <summary>Every revision of a person's saved views of the investigation's time, in the order saved.</summary>
+    public required IReadOnlyList<WorkspaceView> Views { get; init; }
 
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
@@ -85,7 +88,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v9.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v10.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -117,7 +120,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v9.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v10.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -192,7 +195,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v10";
+    public const string ResolutionContract = "workspace-resolution-v11";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -263,11 +266,12 @@ internal static partial class WorkspaceCommand
             "same-host" => (2, 2, "icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>]"),
             "translate" => (2, 2, "icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>]"),
             "note" => (1, 1, "icat workspace note <workspace> (<text> [--at <session>@<seconds>] | <note> --replace <text> | <note> --remove)"),
+            "view" => (remove ? 1 : 3, remove ? 1 : 3, "icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove)"),
             "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
-        bool misplaced = (remove && verb is not ("alias" or "note"))
+        bool misplaced = (remove && verb is not ("alias" or "note" or "view"))
             || ((pinned is not null || replacement is not null) && verb != "note")
             || (verb == "note" && new[] { pinned is not null, replacement is not null, remove }.Count(flag => flag) > 1)
             || ((sameBoot || wallClock) && verb != "align")
@@ -284,7 +288,7 @@ internal static partial class WorkspaceCommand
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host, translate, note or package"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host, translate, note, view or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -325,6 +329,7 @@ internal static partial class WorkspaceCommand
                 "same-host" => SameHost(path, operands[0], operands[1], withdraw, note),
                 "translate" => Translate(path, operands[0], operands[1], withdraw, note),
                 "note" => Note(path, operands[0], pinned, replacement, remove),
+                "view" => View(path, operands, remove),
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
@@ -517,6 +522,34 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Success($"Note {Short(added.NoteId)} added"
             + (at is { } where ? $", pinned at session {Short(where.SessionId)}'s {Seconds(where.Nanoseconds)}" : ", about the whole investigation")
             + string.Create(CultureInfo.InvariantCulture, $" (note revision {added.Revision})."));
+        return InterCatExitCode.Success;
+    }
+
+    /// <summary>
+    /// `icat workspace view`: saves an interval of the investigation's time, in seconds of its reference session's clock, as
+    /// a named view, replacing one of that name; or removes one. Every revision is kept (§8.4).
+    /// </summary>
+    private static InterCatExitCode View(string path, List<string> operands, bool remove)
+    {
+        if (remove)
+        {
+            WorkspaceView removed = InvestigationWorkspace.RemoveView(path, operands[0], DateTimeOffset.UtcNow);
+            ConsoleUi.Success(string.Create(CultureInfo.InvariantCulture, $"View '{removed.Name}' removed (view revision {removed.Revision}); its revisions are kept."));
+            return InterCatExitCode.Success;
+        }
+
+        long from = InvestigationInput.Seconds(operands[1])
+            ?? throw new InvalidOperationException($"A view's start is in seconds of the investigation's time, such as 12.5; '{operands[1]}' is not.");
+        long to = InvestigationInput.Seconds(operands[2])
+            ?? throw new InvalidOperationException($"A view's end is in seconds of the investigation's time, such as 14; '{operands[2]}' is not.");
+        if (to / 100 <= from / 100)
+        {
+            throw new InvalidOperationException($"A view shows some of the investigation's time, so its end comes after its start; {Seconds(to)} is not after {Seconds(from)}.");
+        }
+
+        WorkspaceView saved = InvestigationWorkspace.SaveView(path, operands[0], new TimeRange(from / 100, to / 100), DateTimeOffset.UtcNow);
+        ConsoleUi.Success($"View '{saved.Name}' saved: {Seconds(from)} to {Seconds(to)} of the investigation's time"
+            + string.Create(CultureInfo.InvariantCulture, $" (view revision {saved.Revision})."));
         return InterCatExitCode.Success;
     }
 
@@ -830,6 +863,7 @@ internal static partial class WorkspaceCommand
             HostEquivalences = workspace.HostEquivalences,
             AddressTranslations = workspace.AddressTranslations,
             Notes = workspace.Notes,
+            Views = workspace.Views,
             Overlaps = [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
@@ -955,6 +989,18 @@ internal static partial class WorkspaceCommand
             }
         }
 
+        IReadOnlyList<WorkspaceView> views = InvestigationWorkspace.ViewsInForce(current);
+        if (views.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Saved views");
+            foreach (WorkspaceView view in views)
+            {
+                ConsoleUi.Note($"{view.Name}: {Seconds(view.Interval!.Value.StartTicks * 100)} to {Seconds(view.Interval.Value.EndTicks * 100)} of the investigation's time"
+                    + (InvestigationWorkspace.ViewIsCurrent(current, view) ? "." : $", saved on session {Short(view.Reference!.Value)}'s clock, which is not its time now."));
+            }
+        }
+
         IReadOnlyList<WorkspaceAddressTranslation> translations = InvestigationWorkspace.TranslationsInForce(document.AddressTranslations);
         if (translations.Count > 0)
         {
@@ -1040,6 +1086,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <text> [--at <session>@<seconds>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <note> (--replace <text> | --remove) [--json]");
+        ConsoleUi.Line("icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove) [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("An investigation over separately captured sessions (workspace-v4, ADR-038): one file that names each");
@@ -1086,6 +1133,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  note     adds a note to the investigation, pinned with --at at an instant of a session, which");
         ConsoleUi.Line("           its time places; --replace rewords one and --remove removes it, each a kept revision.");
         ConsoleUi.Line("           <note> is its identity or a unique leading part.");
+        ConsoleUi.Line("  view     saves an interval of the investigation's time, in seconds of its reference's clock, as a");
+        ConsoleUi.Line("           named view the Desktop's timeline can show again; --remove removes it. A view saved on");
+        ConsoleUi.Line("           another time reference is kept, and said not to be of the time now.");
         ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
         ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
         ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");

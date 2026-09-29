@@ -448,6 +448,46 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
     }
 
+    [Fact(DisplayName = "R22: a saved view is a named interval of the investigation's time, kept in its reference's clock")]
+    public void ASavedViewIsKeptInItsReferencesClock()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+
+        // With no time yet there is nothing to view.
+        Assert.Contains("no time yet", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.SaveView(workspace, "Upload", new TimeRange(0, 10), Now)).Message, StringComparison.Ordinal);
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 1, null, Now);
+
+        // A view is saved by name in the reference's clock; one of that name, in any case, replaces it.
+        WorkspaceView first = InvestigationWorkspace.SaveView(workspace, " Upload ", new TimeRange(10_000_000, 20_000_000), Now);
+        InvestigationWorkspace.SaveView(workspace, "upload", new TimeRange(12_000_000, 18_000_000), Now);
+        InvestigationWorkspace.SaveView(workspace, "Handshake", new TimeRange(0, 1_000_000), Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(("Upload", (Guid?)a), (first.Name, first.Reference));
+        Assert.Equal([("upload", new TimeRange(12_000_000, 18_000_000)), ("Handshake", new TimeRange(0, 1_000_000))],
+            InvestigationWorkspace.ViewsInForce(read).Select(view => (view.Name, view.Interval!.Value)));
+        Assert.All(InvestigationWorkspace.ViewsInForce(read), view => Assert.True(InvestigationWorkspace.ViewIsCurrent(read, view)));
+
+        // Removed, a view is gone; when the time reference changes, the rest are kept and are not of the time now.
+        InvestigationWorkspace.RemoveView(workspace, "HANDSHAKE", Now);
+        InvestigationWorkspace.Withdraw(workspace, b, Now);
+        InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 1, null, Now);
+        read = InvestigationWorkspace.Read(workspace);
+        WorkspaceView stale = Assert.Single(InvestigationWorkspace.ViewsInForce(read));
+        Assert.False(InvestigationWorkspace.ViewIsCurrent(read, stale));
+        Assert.Equal(4, read.Views.Count);
+
+        // A view is named; none is removed that is not there; an earlier version's file holds none.
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SaveView(workspace, "  ", new TimeRange(0, 10), Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveView(workspace, "Handshake", Now));
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.NinthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no saved view", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+            StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]
     public void ANoteIsKeptAsRevisions()
     {

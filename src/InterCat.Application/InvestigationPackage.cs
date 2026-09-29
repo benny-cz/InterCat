@@ -90,7 +90,7 @@ public sealed record InvestigationPackageProgress(int Session, int Sessions, Ori
 /// copy by a path relative to itself, so the folder moves as one; the investigation's identity, time reference,
 /// alignments, host names and join decisions go with it unchanged, since every session keeps its identity. Any other
 /// member stays a reference to where it was last found, to relink wherever the package is opened
-/// (`contracts/workspace-v9.md` §8). The package is built in a private directory beside its destination, each copy
+/// (`contracts/workspace-v10.md` §8). The package is built in a private directory beside its destination, each copy
 /// verified as it is made, the investigation reopened and resolved as a recipient would, and only then moved into place.
 /// </summary>
 public static class InvestigationPackage

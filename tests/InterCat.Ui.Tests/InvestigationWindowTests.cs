@@ -573,6 +573,60 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window saves the view shown, and shows it again")]
+    public async Task TheWindowSavesAndShowsViews()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            TimeRange whole = window.Timeline!.Interval!.Value;
+
+            // Zoomed in, the interval shown is saved under a name.
+            await window.ZoomToAsync(new TimeRange(whole.StartTicks, whole.StartTicks + ((whole.EndTicks - whole.StartTicks) / 4)));
+            TimeRange zoomed = window.Timeline!.Interval!.Value;
+            InvestigationViewsWindow dialog = window.ViewsDialog();
+            dialog.Show(window);
+            dialog.Load();
+            dialog.NameIt("Alpha's datagrams");
+            Assert.True(await dialog.SaveAsync());
+            Assert.Equal(("Alpha's datagrams", zoomed, true), (Assert.Single(dialog.Listed).View.Name, dialog.Listed[0].View.Interval!.Value, dialog.Listed[0].Current));
+            Save(dialog, "investigation-views.png");
+            dialog.Close();
+
+            // Back on the whole, the saved view shows its interval again.
+            await window.ZoomToAsync(null);
+            WorkspaceView saved = Assert.Single(InvestigationWorkspace.ViewsInForce(InvestigationWorkspace.Read(workspace)));
+            await window.ZoomToAsync(saved.Interval);
+            Assert.Equal(zoomed, window.Timeline!.Interval);
+
+            // Removed, it is gone from the list; its revisions stay in the file.
+            InvestigationViewsWindow again = window.ViewsDialog();
+            again.Show(window);
+            again.Load();
+            again.Select(0);
+            Assert.True(await again.RemoveSelectedAsync());
+            Assert.Empty(again.Listed);
+            again.Close();
+            Assert.Equal(2, InvestigationWorkspace.Read(workspace).Views.Count);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

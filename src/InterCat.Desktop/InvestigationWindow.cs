@@ -82,6 +82,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly Button zoomOut = new() { Content = "Zoom out", IsEnabled = false };
     private readonly Button zoomWhole = new() { Content = "Whole investigation", IsEnabled = false };
     private readonly Button openColumn = new() { Content = "Open this column", IsEnabled = false };
+    private readonly Button savedViews = new() { Content = "Views…" };
     private readonly TextBlock columnReadout = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     private TimeRange? zoom;
     private TimeRange? whole;
@@ -148,6 +149,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(zoomOut, "Zoom the timeline out");
         AutomationProperties.SetName(zoomWhole, "Show the whole investigation on the timeline");
         AutomationProperties.SetName(openColumn, "Open the chosen column's records in InterCat");
+        AutomationProperties.SetName(savedViews, "Save the view shown, or show a saved one");
         AutomationProperties.SetName(columnReadout, "The chosen column of the timeline");
         AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
@@ -209,6 +211,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         zoomIn.Click += (_, _) => ZoomBy(0.5m);
         zoomOut.Click += (_, _) => ZoomBy(2m);
         zoomWhole.Click += (_, _) => _ = ZoomToAsync(null);
+        savedViews.Click += (_, _) => _ = SavedViewsAsync();
         openColumn.Click += (_, _) =>
         {
             if (timelineChart.ChosenColumn is { } chosen) _ = OpenColumnAsync(chosen);
@@ -295,10 +298,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
         timelineHeader.Children.Add(compareInstants);
         timelineHeader.Children.Add(refreshTimeline);
         var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
-        var zooming = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto") };
+        var zooming = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto,Auto") };
         columnReadout.Margin = new Thickness(0, 0, 12, 0);
         zooming.Children.Add(columnReadout);
-        foreach ((Button button, int column) in new[] { (openColumn, 1), (zoomIn, 2), (zoomOut, 3), (zoomWhole, 4) })
+        foreach ((Button button, int column) in new[] { (openColumn, 1), (zoomIn, 2), (zoomOut, 3), (zoomWhole, 4), (savedViews, 5) })
         {
             Grid.SetColumn(button, column);
             button.Margin = new Thickness(8, 0, 0, 0);
@@ -466,6 +469,17 @@ internal sealed class InvestigationWindow : Window, IDisposable
             ? buckets[chosen.Column].Interval.StartTicks + ((buckets[chosen.Column].Interval.EndTicks - buckets[chosen.Column].Interval.StartTicks) / 2)
             : shown.StartTicks + ((shown.EndTicks - shown.StartTicks) / 2);
         _ = ZoomToAsync(InvestigationTimelineControl.Zoomed(shown, around, factor));
+    }
+
+    /// <summary>The dialog of the investigation's saved views, with the interval shown now to save; a test uses it.</summary>
+    internal InvestigationViewsWindow ViewsDialog() => new(path, Timeline?.Interval);
+
+    private async Task SavedViewsAsync()
+    {
+        if (await ViewsDialog().ShowDialog<TimeRange?>(this) is { } chosen && !closed)
+        {
+            await ZoomToAsync(chosen);
+        }
     }
 
     /// <summary>Chooses a lane's column on the timeline, as the arrow keys or a click do; a test uses it.</summary>

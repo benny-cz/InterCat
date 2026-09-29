@@ -101,7 +101,7 @@ public static partial class InvestigationWorkspace
         return note;
     }
 
-    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v9.md` §7).</summary>
+    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v10.md` §7).</summary>
     private static string? NoteProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Notes.Count > 0 && workspace.Contract != Contract)

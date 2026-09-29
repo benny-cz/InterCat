@@ -3,7 +3,7 @@
 - Status: accepted; the workspace manifest, adding, showing, relinking and host names are revision 253, a person's
   confirmation of one host revision 266
 - Date: 2026-09-28
-- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v9.md`, `contracts/store-v1.md`
+- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v10.md`, `contracts/store-v1.md`
 
 ## Context
 
@@ -73,8 +73,10 @@ redacted package, which is deliberately not linkable to its original.
 - Revision 266 implements decision 7: `icat workspace same-host` and the investigation window's One host….
 - Revision 270 keeps a person's notes (`workspace-v9`): each a revision, about the whole investigation or pinned at an
   instant of a member's session, which the merged time places and marks; `icat workspace note` and the window's Notes.
-- Clock mappings (§8.2's affine segments with their uncertainty), cross-host correlation, saved views and the Desktop's
-  workspace are later slices; each is recorded in the manifest as an
+- Revision 271 keeps saved views (`workspace-v10`): named intervals of the investigation's time, in the clock of the
+  reference they were saved under, never shown on another; `icat workspace view` and the timeline's Views….
+- Clock mappings (§8.2's affine segments with their uncertainty), cross-host correlation and the Desktop's workspace are
+  later slices; each is recorded in the manifest as an
   annotation, versioned, and none rewrites a source. Until a clock mapping exists, no cross-host order, latency or
   pairing is stated: the uncertainty is unknown, not zero (R3, R21).
 - A redacted package is a capture of its own, so a workspace holding it and its original would hold both; the package's
