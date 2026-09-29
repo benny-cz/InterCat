@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v7.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v8.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v7.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v8.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,10 +59,11 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v7`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v8`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
 /// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
-/// aligned to the time reference itself, and a `workspace-v6` file as one without host confirmations.
+/// aligned to the time reference itself, a `workspace-v6` file as one without host confirmations, and a `workspace-v7`
+/// file as one without address translations.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -89,6 +90,9 @@ public sealed record InvestigationWorkspaceFile
 
     /// <summary>Every revision of a person's confirmation that two host identities are one host, in the order recorded (§8.3).</summary>
     public IReadOnlyList<WorkspaceHostEquivalence> HostEquivalences { get; init; } = [];
+
+    /// <summary>Every revision of a person's statement of a known address translation, in the order recorded (§8.3).</summary>
+    public IReadOnlyList<WorkspaceAddressTranslation> AddressTranslations { get; init; } = [];
 }
 
 /// <summary>A member as resolved against its path: the generation found there, and why it is not present, when not.</summary>
@@ -114,13 +118,16 @@ public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Gui
 }
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v7` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v8` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v7";
+    public const string Contract = "workspace-v8";
+
+    /// <summary>The seventh version, revision 266's: no address translations. It is read, and written as the current one.</summary>
+    public const string SeventhContract = "workspace-v7";
 
     /// <summary>The sixth version, revision 265's: no host confirmations. It is read, and written as the current one.</summary>
     public const string SixthContract = "workspace-v6";
@@ -304,7 +311,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v7.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v8.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -447,11 +454,11 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or SixthContract or FifthContract or FourthContract or ThirdContract
-            or SecondContract or FirstContract))
+        if (workspace.Contract is not (Contract or SeventhContract or SixthContract or FifthContract or FourthContract
+            or ThirdContract or SecondContract or FirstContract))
         {
             return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
-                + $"{FifthContract}, {SixthContract} or {Contract}";
+                + $"{FifthContract}, {SixthContract}, {SeventhContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)
@@ -494,7 +501,7 @@ public static partial class InvestigationWorkspace
         return workspace.HostAliases.GroupBy(alias => alias.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1) is { } name
             ? $"'{name.Key}' names two host identities"
-            : TimeProblem(workspace) ?? JoinProblem(workspace) ?? HostProblem(workspace);
+            : TimeProblem(workspace) ?? JoinProblem(workspace) ?? HostProblem(workspace) ?? TranslationProblem(workspace);
     }
 
     /// <summary>

@@ -50,6 +50,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     };
     private readonly TextBlock candidateNotes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
     private readonly Button find = new() { Content = "Find candidate joins" };
+    private readonly Button translations = new() { Content = "Known translations…" };
     private readonly Button acceptJoin = new() { Content = "Accept as one connection", IsEnabled = false };
     private readonly Button rejectJoin = new() { Content = "Reject", IsEnabled = false };
     private readonly Button withdrawJoin = new() { Content = "Withdraw decision", IsEnabled = false };
@@ -110,6 +111,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(overlaps, "Sessions of one host that ran at once, or may have");
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
+        AutomationProperties.SetName(translations, "State or withdraw a known address translation between the sessions");
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
         AutomationProperties.SetName(refreshTimeline, "Draw the investigation's timeline again");
@@ -173,6 +175,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         add.Click += (_, _) => _ = PickAddAsync();
         refresh.Click += (_, _) => _ = RefreshAsync();
         find.Click += (_, _) => _ = FindCandidatesAsync();
+        translations.Click += (_, _) => _ = TranslationsAsync();
         refreshTimeline.Click += (_, _) => _ = ShowTimelineAsync();
         compareInstants.Click += (_, _) => _ = CompareInstantsAsync();
         zoomIn.Click += (_, _) => ZoomBy(0.5m);
@@ -220,11 +223,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
         sessionsPage.Children.Add(detail);
         sessionsPage.Children.Add(sessionActions);
 
-        var candidatesHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 8, 0, 0) };
-        Grid.SetColumn(find, 1);
+        var candidatesHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(0, 8, 0, 0) };
+        Grid.SetColumn(translations, 1);
+        Grid.SetColumn(find, 2);
+        translations.VerticalAlignment = VerticalAlignment.Top;
+        translations.Margin = new Thickness(0, 0, 8, 0);
         find.VerticalAlignment = VerticalAlignment.Top;
         candidateSummary.Margin = new Thickness(0, 0, 12, 0);
         candidatesHeader.Children.Add(candidateSummary);
+        candidatesHeader.Children.Add(translations);
         candidatesHeader.Children.Add(find);
         var candidatesList = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = candidates, Padding = new Thickness(2) };
         var decisions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
@@ -559,6 +566,18 @@ internal sealed class InvestigationWindow : Window, IDisposable
             or UnauthorizedAccessException)
         {
             if (!closed) candidateSummary.Text = exception.Message;
+        }
+    }
+
+    /// <summary>The dialog of the investigation's known address translations; a test uses it without showing it modally.</summary>
+    internal InvestigationTranslationsWindow TranslationsDialog() => new(path);
+
+    private async Task TranslationsAsync()
+    {
+        InvestigationTranslationsWindow dialog = TranslationsDialog();
+        if (await dialog.ShowDialog<bool>(this) && !closed)
+        {
+            await FindCandidatesAsync();
         }
     }
 

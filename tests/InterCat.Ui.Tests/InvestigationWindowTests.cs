@@ -464,6 +464,58 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the investigation window states a known address translation, and a candidate joins through it")]
+    public async Task TheWindowStatesAKnownTranslation()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "203.0.113.7:8443"], 100), Committed);
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(1);
+            await window.FindCandidatesAsync();
+            Assert.Empty(window.Candidates!.Rows);
+
+            // The client dialed a forward's public endpoint; stated, the two ends meet through it, and say so.
+            InvestigationTranslationsWindow dialog = window.TranslationsDialog();
+            dialog.Show(window);
+            dialog.Enter("127.0.0.1:80", "10.0.0.2:80");
+            Assert.False(await dialog.StateAsync());
+            Assert.Contains("loopback", Named<TextBlock>(dialog, "Translation status").Text, StringComparison.Ordinal);
+            dialog.Enter("203.0.113.7:8443", "10.0.0.2:443", "the router forwards 8443");
+            Assert.True(await dialog.StateAsync());
+            Assert.Equal(("203.0.113.7:8443", "10.0.0.2:443"), (Assert.Single(dialog.Listed).Seen, dialog.Listed[0].Is));
+            Save(dialog, "investigation-translations.png");
+            dialog.Close();
+            await window.FindCandidatesAsync();
+            InvestigationCandidateRow joined = Assert.Single(window.Candidates!.Rows);
+            Assert.Contains("A person stated that 203.0.113.7:8443 is 10.0.0.2:443", joined.Evidence, StringComparison.Ordinal);
+
+            // Withdrawn, the two ends mirror nothing again; the statement is kept as a revision.
+            InvestigationTranslationsWindow again = window.TranslationsDialog();
+            again.Show(window);
+            again.Load();
+            again.Select(0);
+            Assert.True(await again.WithdrawSelectedAsync());
+            Assert.Empty(again.Listed);
+            again.Close();
+            await window.FindCandidatesAsync();
+            Assert.Empty(window.Candidates!.Rows);
+            Assert.Equal(2, InvestigationWorkspace.Read(workspace).AddressTranslations.Count);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

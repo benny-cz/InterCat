@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v7.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v8.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -27,6 +27,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every revision of a person's confirmation that two host identities are one host, in the order recorded.</summary>
     public required IReadOnlyList<WorkspaceHostEquivalence> HostEquivalences { get; init; }
+
+    /// <summary>Every revision of a person's statement of a known address translation, in the order recorded.</summary>
+    public required IReadOnlyList<WorkspaceAddressTranslation> AddressTranslations { get; init; }
 
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
@@ -79,7 +82,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v7.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v8.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -111,7 +114,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v7.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v8.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -157,6 +160,9 @@ internal sealed record CandidateDocument
     /// <summary>A person's decision in force about it; null when undecided.</summary>
     public required DecisionDocument? Decision { get; init; }
 
+    /// <summary>The address translations a person stated that its endpoints mirror through; empty when they mirror as seen.</summary>
+    public required IReadOnlyList<WorkspaceAddressTranslation> Translations { get; init; }
+
     public required IReadOnlyList<string> Evidence { get; init; }
 }
 
@@ -183,11 +189,11 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v8";
+    public const string ResolutionContract = "workspace-resolution-v9";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
-    public const string CorrelationContract = "workspace-correlation-v2";
+    public const string CorrelationContract = "workspace-correlation-v3";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -250,26 +256,27 @@ internal static partial class WorkspaceCommand
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
             "same-host" => (2, 2, "icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>]"),
+            "translate" => (2, 2, "icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>]"),
             "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
         bool misplaced = (remove && verb != "alias")
             || ((sameBoot || wallClock) && verb != "align")
-            || (withdraw && verb is not ("align" or "join" or "same-host"))
+            || (withdraw && verb is not ("align" or "join" or "same-host" or "translate"))
             || ((accept || reject) && verb != "join")
             || (verb == "align" && new[] { withdraw, sameBoot, wallClock }.Count(flag => flag) > 1)
             || (verb == "join" && new[] { accept, reject, withdraw }.Count(flag => flag) != 1)
             || (within is null) == manual
             || (sync is null) == wallClock
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
-            || (note is not null && !(verb is "align" or "same-host" && !withdraw) && verb != "join")
+            || (note is not null && !(verb is "align" or "same-host" or "translate" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
             || (verb == "package" && output is null && !check);
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host or package"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host, translate or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             PrintHelp();
@@ -308,6 +315,7 @@ internal static partial class WorkspaceCommand
                 "relink" => Relink(path, operands[0], operands[1]),
                 "alias" => Alias(path, operands[0], remove ? null : operands[1]),
                 "same-host" => SameHost(path, operands[0], operands[1], withdraw, note),
+                "translate" => Translate(path, operands[0], operands[1], withdraw, note),
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
@@ -454,6 +462,23 @@ internal static partial class WorkspaceCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// `icat workspace translate`: records a person's statement that an endpoint one capture sees is an endpoint the other
+    /// holds - a port forward, a NAT or a proxy - or withdraws it (§8.3). Candidate joins then mirror through it.
+    /// </summary>
+    private static InterCatExitCode Translate(string path, string seen, string actual, bool withdraw, string? note)
+    {
+        WorkspaceAddressTranslation revision = withdraw
+            ? InvestigationWorkspace.WithdrawTranslation(path, seen, actual, DateTimeOffset.UtcNow)
+            : InvestigationWorkspace.StateTranslation(path, seen, actual, note, DateTimeOffset.UtcNow);
+        ConsoleUi.Success(withdraw
+            ? string.Create(CultureInfo.InvariantCulture, $"{revision.Seen} and {revision.Is} are two endpoints again (translation revision {revision.Revision}); ")
+                + "the statement it withdraws is kept in the file."
+            : string.Create(CultureInfo.InvariantCulture, $"{revision.Seen} is {revision.Is} by your statement (translation revision {revision.Revision}). ")
+                + "Candidate joins mirror through it, and each one that does says it rests on it.");
+        return InterCatExitCode.Success;
+    }
+
     private static InterCatExitCode AlignSameBoot(string path, string session, string reference, string? note)
     {
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
@@ -545,6 +570,7 @@ internal static partial class WorkspaceCommand
                 Second = End(candidate.Second),
                 Timing = candidate.Timing,
                 Alternatives = candidate.Alternatives,
+                Translations = candidate.Translations,
                 Decision = candidate.Decision is { } decision ? DecisionOf(decision, candidate.DecisionCurrent, null) : null,
                 Evidence = candidate.Evidence,
             })],
@@ -761,6 +787,7 @@ internal static partial class WorkspaceCommand
             Alignments = workspace.Alignments,
             Joins = workspace.Joins,
             HostEquivalences = workspace.HostEquivalences,
+            AddressTranslations = workspace.AddressTranslations,
             Overlaps = [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
@@ -866,6 +893,18 @@ internal static partial class WorkspaceCommand
             }
         }
 
+        IReadOnlyList<WorkspaceAddressTranslation> translations = InvestigationWorkspace.TranslationsInForce(document.AddressTranslations);
+        if (translations.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Known address translations");
+            foreach (WorkspaceAddressTranslation translation in translations)
+            {
+                ConsoleUi.Note(string.Create(CultureInfo.InvariantCulture, $"{translation.Seen} is {translation.Is}, by a person (revision {translation.Revision})")
+                    + (translation.Note is { } remark ? $": {remark}" : "."));
+            }
+        }
+
         if (document.Overlaps.Count > 0)
         {
             ConsoleUi.Line();
@@ -936,6 +975,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
         ConsoleUi.Line("icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>] [--json]");
+        ConsoleUi.Line("icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("An investigation over separately captured sessions (workspace-v4, ADR-038): one file that names each");
@@ -976,6 +1016,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           or reinstalled, or a file imported from it - so their captures are compared as one host's:");
         ConsoleUi.Line("           for overlaps, and loopback candidates. Equal identities are evidence; yours is a kept");
         ConsoleUi.Line("           revision, withdrawn with --withdraw, and never evidence. <host> as for alias.");
+        ConsoleUi.Line("  translate records your statement that an endpoint one capture sees - a port forward's, a NAT's or a");
+        ConsoleUi.Line("           proxy's - is an endpoint the other holds, so candidate joins mirror through it and say so.");
+        ConsoleUi.Line("           Both with a port, or both an address alone, whose ports pass through; never loopback.");
         ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
         ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
         ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");

@@ -1,9 +1,9 @@
-# Workspace contract, version 7
+# Workspace contract, version 8
 
-Status: M4, revision 266 (ADR-038 to ADR-042); versions 1 to 6 were revisions 253, 254, 256, 260, 264 and 265's, and
-packages revision 263's
+Status: M4, revision 269 (ADR-038 to ADR-042); versions 1 to 7 were revisions 253, 254, 256, 260, 264, 265 and 266's,
+and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align | join | same-host | package`
+Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | package`
 Read by: `icat workspace show | compare | correlate`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
@@ -12,17 +12,18 @@ member's clock, to which a person aligns the others (§5). Version 3 aligns by w
 counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version 5
 lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member to
 any member placed in the workspace's time, not only to its reference (§5). Version 7 keeps a person's confirmations that
-two host identities are one host (§4). A `workspace-v1` file - members and host
+two host identities are one host (§4). Version 8 keeps a person's statements of known address translations (§6). A
+`workspace-v1` file - members and host
 names, no time - is read as one without alignments, a `workspace-v2` file as one with manual alignments only, a
 `workspace-v3` file as one without join decisions, a `workspace-v4` file as one whose alignments each have one anchor,
-a `workspace-v5` file as one whose members are each aligned to the reference itself, and a `workspace-v6` file as one
-without host confirmations; each is written as version 7.
+a `workspace-v5` file as one whose members are each aligned to the reference itself, a `workspace-v6` file as one
+without host confirmations, and a `workspace-v7` file as one without address translations; each is written as version 8.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v7"` (`"workspace-v1"` to `"workspace-v6"` are read) |
+| `contract` | `"workspace-v8"` (`"workspace-v1"` to `"workspace-v7"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -31,6 +32,7 @@ without host confirmations; each is written as version 7.
 | `alignments` | Every alignment revision, in the order recorded (§5) |
 | `joins` | Every join decision revision, in the order recorded (§6) |
 | `hostEquivalences` | Every revision of a person's confirmation that two host identities are one host, in the order recorded (§4) |
+| `addressTranslations` | Every revision of a person's statement of a known address translation, in the order recorded (§6) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -74,12 +76,12 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v8`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v9`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
 reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
-`timeReference`, every alignment, join decision and host confirmation revision, the overlaps of captures of one host
-(§5), and caveats. It exits 0 when every member is present and 1 otherwise.
+`timeReference`, every alignment, join decision, host confirmation and address translation revision, the overlaps of
+captures of one host (§5), and caveats. It exits 0 when every member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -200,11 +202,12 @@ compared: their records are two machines' events. `show` and the Desktop state e
 ## 6. Candidate joins
 
 `icat workspace correlate` proposes candidate joins between members (§8.3, ADR-041), under the rule
-`cross-capture-connection-candidate-v1`. Each member that holds its capture is read for its one-sided connections - the
+`cross-capture-connection-candidate-v2`. Each member that holds its capture is read for its one-sided connections - the
 TCP connections and UDP flows whose other end its own capture holds no record of (`relations-v1` §5b) - and a connection
 of one member is a candidate with a connection of another when:
 
-- they are of one protocol, and the one's local endpoint is the other's remote endpoint and the other way round;
+- they are of one protocol, and the one's local endpoint is the other's remote endpoint and the other way round - as
+  each capture sees them, or through a known address translation a person stated (below), which the evidence then says;
 - neither endpoint is a loopback address, unless both members were recorded on one host: one identity, or two a person
   confirmed are one, which the candidate's evidence then says (§4);
 - their lifetimes - each from its first record to its last - overlap once each end is widened by its uncertainty in
@@ -213,11 +216,11 @@ of one member is a candidate with a connection of another when:
 A mirrored pair whose lifetimes lie apart beyond their uncertainty is not proposed, and is counted. A candidate is never
 an established join: it states its evidence - the mirrored endpoints, whether the lifetimes overlap or cannot be
 compared and why, and the bytes each side measured of each direction, the same or not - and how many other candidates
-either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v2`: the
+either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v3`: the
 rule, each candidate's two ends (session, key, protocol, endpoints, process, lifetime and bytes), its timing, its
-alternatives, the decision in force and its evidence; the mirrored pairs not proposed and the loopback pairs of two
-hosts, counted; the members not compared and why; the decisions in force whose pair is no candidate now, and why; and
-caveats. Nothing is joined by time alone, by an address alone or by a name.
+alternatives, the decision in force, the translations it mirrors through, and its evidence; the mirrored pairs not
+proposed and the loopback pairs of two hosts, counted; the members not compared and why; the decisions in force whose
+pair is no candidate now, and why; and caveats. Nothing is joined by time alone, by an address alone or by a name.
 
 A person decides a candidate with `icat workspace join <n> --accept | --reject | --withdraw`, `<n>` its number in
 `correlate`'s list. Each decision is a revision of the file, kept when a later one replaces or withdraws it:
@@ -238,6 +241,22 @@ joins name no member or connection, join one session's own connections, or state
 member, their own two sessions among them, exactly when they decide, is refused, as is a join in a version 1 to 3 file,
 or one with more than its own two entries in a file before version 6.
 
+A known address translation is a person's statement, recorded by `icat workspace translate <seen> <endpoint>`, that an
+endpoint one capture sees - a port forward's, a NAT's or a proxy's - is an endpoint the other capture holds (§8.3):
+
+| Translation field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among translations and increasing in the order recorded |
+| `decision` | `Stated`, or `Withdrawn`: from this revision the two are two endpoints again |
+| `seen`, `is` | Two different endpoints, as InterCat writes them: an address and a port - `203.0.113.7:8443`, `[2001:db8::7]:443` - or both an address alone, whose ports then pass through unchanged |
+| `note`, `recordedUtc` | The person's words, and when |
+
+A pair's latest revision, in either order, is in force; a translation applies either way, one hop, and never to a
+loopback address, which names its own host. A candidate that mirrors only through one lists it and says it rests on the
+person's statement; it is never evidence of its own. A file whose translations name no endpoint as InterCat writes one,
+relate a loopback address, an endpoint to itself or an endpoint to an address alone, or appear in a file before version
+8, is refused.
+
 ## 7. A package
 
 `icat workspace package <workspace> --output <new-folder>`, and the Desktop's investigation window, share an
@@ -256,7 +275,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments` and
-  `joins`, `hostEquivalences`. The file is written as `workspace-v7`.
+  `joins`, `hostEquivalences`, `addressTranslations`. The file is written as `workspace-v8`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

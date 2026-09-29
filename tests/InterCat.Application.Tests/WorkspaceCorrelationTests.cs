@@ -120,6 +120,56 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         Assert.Equal(1, WorkspaceCorrelation.Candidates(workspace).LoopbackAcrossHosts);
     }
 
+    [Fact(DisplayName = "R22: a known address translation lets mirrored endpoints meet through it, and the candidate rests on it")]
+    public void AKnownTranslationLetsEndpointsMeet()
+    {
+        string workspace = Workspace();
+        _ = InvestigationWorkspace.Add(workspace, Session("client", "lab-1", ClientRows(1_000, "203.0.113.7:8443")), Now);
+        _ = InvestigationWorkspace.Add(workspace, Session("server", "lab-2", ServerRows(5_000)), Now);
+
+        // The client dials a port forward's public endpoint: as seen, the server's end mirrors nothing.
+        Assert.Empty(WorkspaceCorrelation.Candidates(workspace).Candidates);
+
+        // A person states the forward, and the two ends are a candidate that says it rests on that statement.
+        WorkspaceAddressTranslation stated = InvestigationWorkspace.StateTranslation(workspace, "203.0.113.7:8443", " 10.0.0.2:443 ",
+            "the router forwards 8443 to the server", Now);
+        ConnectionCandidate forwarded = Assert.Single(WorkspaceCorrelation.Candidates(workspace).Candidates);
+        Assert.Equal((1, "10.0.0.2:443"), (stated.Revision, stated.Is));
+        Assert.Equal([stated], forwarded.Translations);
+        Assert.Equal("Endpoints mirror through a known translation: the first holds 10.0.0.1:50000 to 203.0.113.7:8443, and the "
+            + "second 10.0.0.2:443 to 10.0.0.1:50000, TCP.", forwarded.Evidence[0]);
+        Assert.Equal("A person stated that 203.0.113.7:8443 is 10.0.0.2:443 (translation revision 1); the join rests on that statement.",
+            forwarded.Evidence[1]);
+
+        // An address alone keeps its ports, so a forward from 8443 to 443 is no translation of the address; withdrawn, it is gone.
+        InvestigationWorkspace.WithdrawTranslation(workspace, "10.0.0.2:443", "203.0.113.7:8443", Now);
+        InvestigationWorkspace.StateTranslation(workspace, "203.0.113.7", "10.0.0.2", null, Now);
+        Assert.Empty(WorkspaceCorrelation.Candidates(workspace).Candidates);
+        Assert.Equal(3, InvestigationWorkspace.Read(workspace).AddressTranslations.Count);
+
+        // Loopback, one endpoint twice, an endpoint and an address alone, and no endpoint at all are no translation.
+        Assert.Contains("loopback", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.StateTranslation(workspace, "127.0.0.1:80", "10.0.0.2:80", null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("itself", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.StateTranslation(workspace, "10.0.0.2:443", "10.0.0.2:443", null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("or neither has", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.StateTranslation(workspace, "203.0.113.7:8443", "10.0.0.2", null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("is no endpoint", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.StateTranslation(workspace, "the router", "10.0.0.2", null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("already", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.StateTranslation(workspace, "10.0.0.2", "203.0.113.7", null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("none to withdraw", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.WithdrawTranslation(workspace, "203.0.113.7:8443", "10.0.0.2:443", Now)).Message, StringComparison.Ordinal);
+        Assert.Equal("[2001:db8::7]:443", InvestigationWorkspace.CanonicalEndpoint(" [2001:DB8:0::7]:443 "));
+        Assert.Null(InvestigationWorkspace.CanonicalEndpoint("10.0.0.1:0"));
+
+        // An earlier version's file holds no translation.
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.SeventhContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no address translation", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R22: a person accepts or rejects a candidate join as a kept revision, and re-aligning flags it for review")]
     public void APersonDecidesACandidate()
     {
@@ -212,13 +262,13 @@ public sealed class WorkspaceCorrelationTests : IDisposable
     }
 
     /// <summary>Process 100 connects to the server, sends 100 bytes, receives 200 and disconnects; and holds one loopback end.</summary>
-    private static ObservationRowV1[] ClientRows(long at) =>
+    private static ObservationRowV1[] ClientRows(long at, string server = Server) =>
     [
         Timed(Lifecycle(1, ObservationKind.Create, 100, 1)),
-        Timed(Transfer(at, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between(Client, Server)),
-        Timed(Transfer(at + 1, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 21).Between(Client, Server)),
-        Timed(Transfer(at + 2, ObservationKind.Receive, AccountingSide.ReceiveSide, 200, 100, 22).Between(Client, Server)),
-        Timed(Transfer(at + 4, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 24).Between(Client, Server)),
+        Timed(Transfer(at, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between(Client, server)),
+        Timed(Transfer(at + 1, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 21).Between(Client, server)),
+        Timed(Transfer(at + 2, ObservationKind.Receive, AccountingSide.ReceiveSide, 200, 100, 22).Between(Client, server)),
+        Timed(Transfer(at + 4, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 24).Between(Client, server)),
         Timed(Transfer(at + 10, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 30).Between("127.0.0.1:6000", "127.0.0.1:7000")),
     ];
 

@@ -32,6 +32,9 @@ public sealed record ConnectionCandidate(
     WorkspaceJoin? Decision = null,
     bool DecisionCurrent = true)
 {
+    /// <summary>The address translations a person stated that its endpoints mirror through; empty when they mirror as seen.</summary>
+    public IReadOnlyList<WorkspaceAddressTranslation> Translations { get; init; } = [];
+
     /// <summary>Whether either connection has another candidate too, so this one is not the only match of it.</summary>
     public bool Ambiguous => Alternatives > 0;
 
@@ -46,7 +49,7 @@ public sealed record UnmatchedDecision(WorkspaceJoin Join, string Why);
 /// <summary>A member an investigation could not compare, and why.</summary>
 public sealed record UnreadMember(Guid SessionId, string Reason);
 
-/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v7.md` §6).</summary>
+/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v8.md` §6).</summary>
 public sealed record WorkspaceCorrelationResult(
     string Rule,
     IReadOnlyList<ConnectionCandidate> Candidates,
@@ -65,7 +68,7 @@ public sealed record WorkspaceCorrelationResult(
 /// </summary>
 public static class WorkspaceCorrelation
 {
-    public const string Rule = "cross-capture-connection-candidate-v1";
+    public const string Rule = "cross-capture-connection-candidate-v2";
 
     public static WorkspaceCorrelationResult Candidates(
         string workspacePath,
@@ -97,7 +100,9 @@ public static class WorkspaceCorrelation
 
         int disjoint = 0;
         int loopback = 0;
-        var found = new List<(WorkspaceConnection First, WorkspaceConnection Second, CandidateTiming Timing, string? Why, bool Confirmed)>();
+        IReadOnlyList<WorkspaceAddressTranslation> translations = InvestigationWorkspace.TranslationsInForce(workspace);
+        var found = new List<(WorkspaceConnection First, WorkspaceConnection Second, CandidateTiming Timing, string? Why, bool Confirmed,
+            WorkspaceAddressTranslation[] Through)>();
         for (int first = 0; first < members.Count; first++)
         {
             for (int second = first + 1; second < members.Count; second++)
@@ -107,8 +112,23 @@ public static class WorkspaceCorrelation
                 foreach (HeldConnection a in members[first].Index.Connections)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    foreach (HeldConnection b in mirrors[(a.Summary.Mechanism, a.Summary.RemoteEndpoint, a.Summary.LocalEndpoint)])
+
+                    // The other end's local endpoint is this one's remote, and its remote this one's local - as each is seen,
+                    // or as a person stated a translation makes it (§8.3).
+                    (string Endpoint, WorkspaceAddressTranslation? By)[] remotes =
+                        [(a.Summary.RemoteEndpoint, null), .. InvestigationWorkspace.Translated(translations, a.Summary.RemoteEndpoint).Select(to => (to.Endpoint, (WorkspaceAddressTranslation?)to.By))];
+                    (string Endpoint, WorkspaceAddressTranslation? By)[] locals =
+                        [(a.Summary.LocalEndpoint, null), .. InvestigationWorkspace.Translated(translations, a.Summary.LocalEndpoint).Select(to => (to.Endpoint, (WorkspaceAddressTranslation?)to.By))];
+                    var matched = new HashSet<HeldConnection>(ReferenceEqualityComparer.Instance);
+                    foreach ((HeldConnection b, WorkspaceAddressTranslation[] through) in remotes.SelectMany(remote => locals.SelectMany(local =>
+                        mirrors[(a.Summary.Mechanism, remote.Endpoint, local.Endpoint)].Select(b =>
+                            (b, new[] { remote.By, local.By }.OfType<WorkspaceAddressTranslation>().ToArray())))))
                     {
+                        if (!matched.Add(b))
+                        {
+                            continue;
+                        }
+
                         bool looped = IsLoopback(a.Summary.LocalEndpoint) || IsLoopback(a.Summary.RemoteEndpoint);
                         if (looped && !InvestigationWorkspace.OneHost(workspace, members[first].Member.HostId, members[second].Member.HostId))
                         {
@@ -127,14 +147,14 @@ public static class WorkspaceCorrelation
 
                         found.Add((new(members[first].Member.SessionId, members[first].Member.HostId, a),
                             new(members[second].Member.SessionId, members[second].Member.HostId, b), known, why,
-                            looped && members[first].Member.HostId != members[second].Member.HostId));
+                            looped && members[first].Member.HostId != members[second].Member.HostId, through));
                     }
                 }
             }
         }
 
         var uses = new Dictionary<(Guid, string), int>();
-        foreach ((WorkspaceConnection first, WorkspaceConnection second, _, _, _) in found)
+        foreach ((WorkspaceConnection first, WorkspaceConnection second, _, _, _, _) in found)
         {
             foreach (WorkspaceConnection end in new[] { first, second })
             {
@@ -155,10 +175,13 @@ public static class WorkspaceCorrelation
                         pair.Second,
                         pair.Timing,
                         uses[(pair.First.SessionId, pair.First.Connection.Summary.Key)] - 1 + uses[(pair.Second.SessionId, pair.Second.Connection.Summary.Key)] - 1,
-                        [.. Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why),
+                        [.. Evidence(pair.First.Connection, pair.Second.Connection, pair.Timing, pair.Why, pair.Through),
                             .. (pair.Confirmed ? new[] { OneHostByConfirmation } : []), .. Decided(decision, current)],
                         decision,
-                        current);
+                        current)
+                    {
+                        Translations = pair.Through,
+                    };
                 })
                 .OrderBy(candidate => candidate.Timing)
                 .ThenBy(candidate => candidate.Ambiguous)
@@ -231,7 +254,12 @@ public static class WorkspaceCorrelation
         return overlap ? (CandidateTiming.Overlapping, null) : (null, null);
     }
 
-    private static string[] Evidence(HeldConnection first, HeldConnection second, CandidateTiming timing, string? why)
+    private static string[] Evidence(
+        HeldConnection first,
+        HeldConnection second,
+        CandidateTiming timing,
+        string? why,
+        WorkspaceAddressTranslation[] through)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
         ConnectionSummary a = first.Summary;
@@ -239,7 +267,13 @@ public static class WorkspaceCorrelation
         string protocol = a.Mechanism == Mechanism.Udp ? "UDP" : "TCP";
         return
         [
-            $"Endpoints mirror: {a.LocalEndpoint} and {a.RemoteEndpoint}, {protocol}, each capture holding one end.",
+            through.Length == 0
+                ? $"Endpoints mirror: {a.LocalEndpoint} and {a.RemoteEndpoint}, {protocol}, each capture holding one end."
+                : $"Endpoints mirror through a known translation: the first holds {a.LocalEndpoint} to {a.RemoteEndpoint}, and the "
+                    + $"second {b.LocalEndpoint} to {b.RemoteEndpoint}, {protocol}.",
+            .. through.Select(translation => string.Create(culture,
+                $"A person stated that {translation.Seen} is {translation.Is} (translation revision {translation.Revision}); ")
+                + "the join rests on that statement."),
             timing == CandidateTiming.Overlapping
                 ? "Their lifetimes overlap in the investigation's time, within their uncertainty."
                 : $"Their lifetimes cannot be compared: {why}.",
