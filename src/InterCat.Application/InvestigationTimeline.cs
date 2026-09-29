@@ -102,7 +102,7 @@ public static class InvestigationTimeline
         foreach (Placement placement in placements)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (placement is not { Extent: { } extent, Store: { } store, Mapping: { } mapping })
+            if (placement is not { Extent: { } extent, Store: { } store, Chain: { } chain })
             {
                 lanes.Add(new(placement.SessionId, null, [], null, placement.Gap, placement.Unread));
                 continue;
@@ -114,10 +114,10 @@ public static class InvestigationTimeline
                 // A mapping is affine, so the axis's uniform grid is a uniform grid of the session's own time: its columns
                 // are read there and placed back through the mapping.
                 SessionTimelineDetail detail = SessionTimelineQuery.Detail(
-                    store, new TimeRange(Back(mapping, axis.StartTicks), Back(mapping, axis.EndTicks)), columns, cancellationToken);
+                    store, new TimeRange(Back(chain, axis.StartTicks), Back(chain, axis.EndTicks)), columns, cancellationToken);
                 buckets = [.. detail.Buckets.Select(bucket => bucket with
                 {
-                    Interval = new TimeRange(Forward(mapping, bucket.Interval.StartTicks), Forward(mapping, bucket.Interval.EndTicks)),
+                    Interval = new TimeRange(Forward(chain, bucket.Interval.StartTicks), Forward(chain, bucket.Interval.EndTicks)),
                 })];
             }
 
@@ -130,7 +130,7 @@ public static class InvestigationTimeline
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
-    /// or cannot be compared (§8.4, `contracts/workspace-v5.md` §5). Pairs of two hosts are never compared: their records
+    /// or cannot be compared (§8.4, `contracts/workspace-v6.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default)
@@ -152,25 +152,31 @@ public static class InvestigationTimeline
                     continue;
                 }
 
-                if (a is not { Extent: { } x, Uncertainty: { } ux } || b is not { Extent: { } y, Uncertainty: { } uy })
+                // Each end is compared with the other's start as their chains allow - what they are aligned through counts
+                // once: they certainly overlap only when each reaches past the other's start by more than that pair's
+                // uncertainty, and may overlap when a gap between them is within it.
+                if (a is not { Extent: { } x, Own: { } ownA, Chain: { } chainA, Uncertainty: not null }
+                    || b is not { Extent: { } y, Own: { } ownB, Chain: { } chainB, Uncertainty: not null }
+                    || ClockChain.Compare(chainA, ownA.EndTicks * NanosecondsPerTick, chainB, ownB.StartTicks * NanosecondsPerTick)
+                        is not { DifferenceNanoseconds: { } endA, Uncertainty: { } pairA }
+                    || ClockChain.Compare(chainB, ownB.EndTicks * NanosecondsPerTick, chainA, ownA.StartTicks * NanosecondsPerTick)
+                        is not { DifferenceNanoseconds: { } endB, Uncertainty: { } pairB })
                 {
                     overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Unknown, null));
                     continue;
                 }
 
-                // Each extent may lie as far off as its placement's uncertainty: they certainly overlap only when each reaches
-                // past the other's start by more than the pair's uncertainty, and may overlap when their gap is within it.
-                double pair = TimeUncertainty.Pair(ux, uy).HalfWidthNanoseconds / NanosecondsPerTick;
-                double reach = Math.Min(x.EndTicks - y.StartTicks, y.EndTicks - x.StartTicks);
-                TimeRange? shared = reach > 0
+                // Each difference runs from an end to the other's start, so a negative one is that end reaching past it.
+                (double reachA, double reachB) = (-endA, -endB);
+                TimeRange? shared = reachA > 0 && reachB > 0
                     ? new TimeRange(Math.Max(x.StartTicks, y.StartTicks), Math.Min(x.EndTicks, y.EndTicks))
                     : null;
                 bool twoBoots = a.BootToken is { } bootA && b.BootToken is { } bootB && bootA != bootB;
-                if (reach > pair)
+                if (reachA > pairA.HalfWidthNanoseconds && reachB > pairB.HalfWidthNanoseconds)
                 {
                     overlaps.Add(new(a.SessionId, b.SessionId, twoBoots ? OverlapKind.Contradictory : OverlapKind.Concurrent, shared));
                 }
-                else if (reach > -pair && !twoBoots)
+                else if (reachA > -pairA.HalfWidthNanoseconds && reachB > -pairB.HalfWidthNanoseconds && !twoBoots)
                 {
                     overlaps.Add(new(a.SessionId, b.SessionId, OverlapKind.Possible, shared));
                 }
@@ -190,19 +196,19 @@ public static class InvestigationTimeline
     {
         string full = Path.GetFullPath(workspacePath);
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(full);
-        IReadOnlyDictionary<Guid, ClockMapping> mappings = InvestigationWorkspace.Mappings(workspace);
+        IReadOnlyDictionary<Guid, ClockChain> chains = InvestigationWorkspace.Chains(workspace);
         var placements = new List<Placement>(workspace.Members.Count);
         foreach (WorkspaceMemberResolution resolution in InvestigationWorkspace.Resolve(full, workspace, cancellationToken))
         {
             WorkspaceMember member = resolution.Member;
-            var none = new Placement(member.SessionId, member.HostId, null, null, null, null, null, WorkspaceTimeGap.None, null);
+            var none = new Placement(member.SessionId, member.HostId, null, null, null, null, null, null, WorkspaceTimeGap.None, null);
             if (!resolution.HoldsItsCapture)
             {
                 placements.Add(none with { Unread = $"it is {resolution.State.ToString().ToLowerInvariant()}: {resolution.Reason}" });
                 continue;
             }
 
-            if (!mappings.TryGetValue(member.SessionId, out ClockMapping? mapping))
+            if (!chains.TryGetValue(member.SessionId, out ClockChain? chain))
             {
                 placements.Add(none with
                 {
@@ -221,11 +227,11 @@ public static class InvestigationTimeline
                     continue;
                 }
 
-                // The extent is placed through the mapping to the presentation tick, finer than any column.
-                TimeUncertainty? widest = mapping.WidestUncertainty(
-                    checked(own.StartTicks * NanosecondsPerTick), checked(own.EndTicks * NanosecondsPerTick));
+                // The extent is placed through the member's chain to the presentation tick, finer than any column.
+                TimeUncertainty? widest = chain.WidestUncertainty(
+                    checked(own.StartTicks * NanosecondsPerTick), checked(own.EndTicks * NanosecondsPerTick)).Uncertainty;
                 placements.Add(new(member.SessionId, member.HostId, store,
-                    new TimeRange(Forward(mapping, own.StartTicks), Forward(mapping, own.EndTicks)), mapping, widest, boot,
+                    new TimeRange(Forward(chain, own.StartTicks), Forward(chain, own.EndTicks)), own, chain, widest, boot,
                     widest is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null));
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -237,15 +243,17 @@ public static class InvestigationTimeline
         return placements;
     }
 
-    /// <summary>A session tick placed in the investigation's time; an offset alone moves it by whole ticks, as it always did.</summary>
-    private static long Forward(ClockMapping mapping, long ticks) => mapping.Scale == 1
-        ? checked(ticks + Ticks(mapping.OffsetNanoseconds))
-        : Ticks(mapping.ToWorkspace(checked(ticks * NanosecondsPerTick)));
+    /// <summary>A session tick placed in the investigation's time; offsets alone move it by whole ticks, as they always did.</summary>
+    private static long Forward(ClockChain chain, long ticks) => chain.Links.All(link => link.Mapping.Scale == 1)
+        ? checked(ticks + Ticks(Offset(chain)))
+        : Ticks(chain.ToWorkspace(checked(ticks * NanosecondsPerTick)));
 
     /// <summary>The session tick an investigation tick maps from.</summary>
-    private static long Back(ClockMapping mapping, long ticks) => mapping.Scale == 1
-        ? checked(ticks - Ticks(mapping.OffsetNanoseconds))
-        : Ticks(mapping.FromWorkspace(checked(ticks * NanosecondsPerTick)));
+    private static long Back(ClockChain chain, long ticks) => chain.Links.All(link => link.Mapping.Scale == 1)
+        ? checked(ticks - Ticks(Offset(chain)))
+        : Ticks(chain.FromWorkspace(checked(ticks * NanosecondsPerTick)));
+
+    private static long Offset(ClockChain chain) => chain.Links.Aggregate(0L, (sum, link) => checked(sum + link.Mapping.OffsetNanoseconds));
 
     private static long Ticks(long nanoseconds) => (long)Math.Round(nanoseconds / (double)NanosecondsPerTick, MidpointRounding.ToEven);
 
@@ -254,7 +262,8 @@ public static class InvestigationTimeline
         Guid HostId,
         SessionStore? Store,
         TimeRange? Extent,
-        ClockMapping? Mapping,
+        TimeRange? Own,
+        ClockChain? Chain,
         TimeUncertainty? Uncertainty,
         Guid? BootToken,
         WorkspaceTimeGap Gap,

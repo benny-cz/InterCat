@@ -232,6 +232,62 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window aligns a session through another aligned one, and never through itself")]
+    public async Task TheWindowAlignsThroughAnotherSession()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Session(root.Path, "gamma"), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 5_000_000_000, 1_000_000, 10, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+
+            // Gamma may be aligned to the investigation's clock or to beta, which is placed in it.
+            list.SelectedIndex = 2;
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            ComboBox to = Named<ComboBox>(dialog, "The session to align to: the investigation's clock, or a session placed in it");
+            Assert.True(to.IsEnabled);
+            Assert.Equal([a, b], ((IEnumerable<AlignmentReference>)to.ItemsSource!).Select(choice => choice.SessionId));
+            to.SelectedIndex = 1;
+            dialog.Choose(WorkspaceAlignmentMode.Manual);
+            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "0";
+            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "1";
+            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = "1";
+            Assert.True(await dialog.AlignAsync());
+            Assert.Equal(b, InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), c)!.ReferenceSessionId);
+
+            // The window says whom it is aligned to, and that the investigation's sessions are placed through one another.
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members[2].IsAligned);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Assert.StartsWith($"Aligned by a person to session {Short(b)}, itself aligned: its {0m.ToString("0.000", culture)} s is "
+                + $"session {Short(b)}'s {1m.ToString("0.000", culture)} s", window.View!.Members[2].Time, StringComparison.Ordinal);
+            Assert.EndsWith(", directly or through another.", window.View.Time, StringComparison.Ordinal);
+
+            // Beta, which gamma is aligned through, may be aligned only to the investigation's clock now: never through gamma.
+            list.SelectedIndex = 1;
+            InvestigationAlignWindow betas = window.AlignDialogForSelected()!;
+            betas.Show(window);
+            Assert.Equal([a], ((IEnumerable<AlignmentReference>)Named<ComboBox>(betas,
+                "The session to align to: the investigation's clock, or a session placed in it").ItemsSource!).Select(choice => choice.SessionId));
+            betas.Close();
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

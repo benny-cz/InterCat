@@ -14,8 +14,12 @@ public sealed record InvestigationMemberRow(
     WorkspaceMemberState State,
     bool HoldsItsCapture,
     bool IsTimeReference = false,
-    bool IsAligned = false) : IAccessibleRow
+    bool IsAligned = false,
+    IReadOnlyList<Guid>? AlignedThrough = null) : IAccessibleRow
 {
+    /// <summary>Whether it has a place in the investigation's time: it is its clock, or aligned to a session that has one.</summary>
+    public bool IsPlaced => IsTimeReference || IsAligned;
+
     public string AccessibleName => $"{Title}. {Detail}. {Time}." + (Reason is null ? string.Empty : $" {Reason}")
         + (HoldsItsCapture ? " Press Enter to open it." : " Relink it to open it.");
 }
@@ -81,7 +85,10 @@ public static class InvestigationRows
                     resolution.State,
                     resolution.HoldsItsCapture,
                     member.SessionId == workspace.TimeReference,
-                    InvestigationWorkspace.ActiveAlignment(workspace, member.SessionId) is not null);
+                    InvestigationWorkspace.ActiveAlignment(workspace, member.SessionId) is not null,
+                    InvestigationWorkspace.ChainOf(workspace, member.SessionId) is { } chain
+                        ? [.. chain.Links.Skip(1).Select(link => link.Clock)]
+                        : []);
             }),
         ];
 
@@ -94,7 +101,8 @@ public static class InvestigationRows
         int others = rows.Length - 1;
         string time = workspace.TimeReference is { } reference
             ? $"Time: session {Short(reference)}'s clock; " + string.Create(culture,
-                $"{rows.Count(row => InvestigationWorkspace.ActiveAlignment(workspace, row.SessionId) is not null):N0} of {others:N0} other {(others == 1 ? "session is" : "sessions are")} aligned to it.")
+                $"{rows.Count(row => InvestigationWorkspace.ActiveAlignment(workspace, row.SessionId) is not null):N0} of {others:N0} other {(others == 1 ? "session is" : "sessions are")} aligned to it")
+                + (rows.Any(row => row.AlignedThrough is { Count: > 0 }) ? ", directly or through another." : ".")
             : "Time: none. No session is aligned to another, so no order, latency or pairing across sessions is stated.";
         return new(path, summary, time, rows,
         [
@@ -227,7 +235,11 @@ public static class InvestigationRows
             return "Not aligned: no order against the other sessions is stated";
         }
 
-        string at = $"its {Seconds(alignment.SessionNanoseconds!.Value, culture)} is the reference's "
+        // Aligned to another aligned session, it is placed through that session's alignment too.
+        bool direct = alignment.ReferenceSessionId == workspace.TimeReference;
+        string whose = direct ? "the reference's" : $"session {Short(alignment.ReferenceSessionId!.Value)}'s";
+        string to = direct ? string.Empty : $" to session {Short(alignment.ReferenceSessionId!.Value)}, itself aligned";
+        string at = $"its {Seconds(alignment.SessionNanoseconds!.Value, culture)} is {whose} "
             + Seconds(alignment.ReferenceNanoseconds!.Value, culture);
         string within = alignment.WithinNanoseconds == 0
             ? "exactly"
@@ -241,17 +253,17 @@ public static class InvestigationRows
             string wander = alignment.DriftPartsPerMillion is { } bound
                 ? string.Create(culture, $", its rate wandering at most {bound:0.###} ppm")
                 : ", its rate's wander not stated, so unknown away from those instants";
-            return $"Aligned by a person at two instants: its {Seconds(alignment.SessionNanoseconds!.Value, culture)} and "
-                + $"{Seconds(second, culture)} are the reference's {Seconds(alignment.ReferenceNanoseconds!.Value, culture)} and "
+            return $"Aligned by a person at two instants{to}: its {Seconds(alignment.SessionNanoseconds!.Value, culture)} and "
+                + $"{Seconds(second, culture)} are {whose} {Seconds(alignment.ReferenceNanoseconds!.Value, culture)} and "
                 + $"{Seconds(secondReference, culture)}, {within}, so its clock runs "
-                + (measured >= 0 ? "+" : "−") + Math.Abs(measured).ToString("0.###", culture) + $" ppm against the reference's{wander}";
+                + (measured >= 0 ? "+" : "−") + Math.Abs(measured).ToString("0.###", culture) + $" ppm against {(direct ? "the reference's" : "that session's")}{wander}";
         }
 
         return alignment.Mode switch
         {
-            WorkspaceAlignmentMode.SameBoot => $"Aligned by one boot's counter: {at}, {within}",
-            WorkspaceAlignmentMode.WallClock => $"Aligned by the wall clocks: {at}, {within}{drift}",
-            _ => $"Aligned by a person: {at}, {within}{drift}",
+            WorkspaceAlignmentMode.SameBoot => $"Aligned by one boot's counter{to}: {at}, {within}",
+            WorkspaceAlignmentMode.WallClock => $"Aligned by the wall clocks{to}: {at}, {within}{drift}",
+            _ => $"Aligned by a person{to}: {at}, {within}{drift}",
         };
     }
 

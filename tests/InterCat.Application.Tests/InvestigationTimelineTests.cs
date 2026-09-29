@@ -82,6 +82,27 @@ public sealed class InvestigationTimelineTests : IDisposable
         Assert.InRange(lane.Uncertainty!.Value.HalfWidthNanoseconds, 109_001, 109_002);
     }
 
+    [Fact(DisplayName = "R22: two captures of one host, one aligned through the other, overlap as that alignment allows, not twice its bound")]
+    public void CapturesAlignedThroughOneAnotherOverlapAsItAllows()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 4), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-2", 6), Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Session("c", "lab-2", 6), Now).SessionId;
+
+        // B is on A's clock within 1 ms; C, of B's host, on B's within 1 µs, instant for instant, so their 5.1 µs of records
+        // coincide: B's alignment moves both alike, and they ran at once.
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000_000, 0, null, Now);
+        InvestigationWorkspace.Align(workspace, c, 0, b, 0, 1_000, 0, null, Now);
+        WorkspaceOverlap overlap = Assert.Single(InvestigationTimeline.Read(workspace, 10).Overlaps);
+        Assert.Equal((b, c, OverlapKind.Concurrent), (overlap.First, overlap.Second, overlap.Kind));
+
+        // Aligned apart, each within 1 ms of A's clock, the same two may only have run at once.
+        InvestigationWorkspace.Align(workspace, c, 0, a, 0, 1_000_000, 0, null, Now);
+        Assert.Equal(OverlapKind.Possible, Assert.Single(InvestigationTimeline.Read(workspace, 10).Overlaps).Kind);
+    }
+
     [Fact(DisplayName = "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared")]
     public void CapturesOfOneHostThatRanAtOnceAreFlagged()
     {

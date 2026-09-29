@@ -4,7 +4,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>How an alignment revision was made (`contracts/workspace-v5.md` §5).</summary>
+/// <summary>How an alignment revision was made (`contracts/workspace-v6.md` §5).</summary>
 public enum WorkspaceAlignmentMode
 {
     /// <summary>A person stated that an instant of the member's clock is an instant of the time reference's, within a bound.</summary>
@@ -97,7 +97,7 @@ public enum WorkspaceTimeGap
     /// <summary>Its member is not aligned to the workspace's time.</summary>
     NotAligned = 2,
 
-    /// <summary>Its member's alignment bounds no drift, and the instant is away from its anchors.</summary>
+    /// <summary>Its member's alignment, or one it is aligned through, bounds no drift, and the instant is away from its anchors.</summary>
     DriftUnknown = 3,
 }
 
@@ -110,12 +110,17 @@ public sealed record WorkspaceInstant(
     WorkspaceTimeGap Gap,
     long? FromAnchorNanoseconds)
 {
+    /// <summary>When its uncertainty is unknown through another member it is aligned through, that member; null otherwise.</summary>
+    public Guid? UnknownThrough { get; init; }
+
     /// <summary>Why the instant has no workspace time or no known uncertainty, of <paramref name="session"/>; null when it has both.</summary>
     public string? Why(string session, IFormatProvider? culture = null) => Gap switch
     {
         WorkspaceTimeGap.None => null,
         WorkspaceTimeGap.NoTimeReference => "no member is aligned, so the workspace has no time across members",
         WorkspaceTimeGap.NotAligned => $"{session} is not aligned to the workspace's time",
+        _ when UnknownThrough is { } through => $"{session} is aligned through session {through.ToString("N")[..8]}, whose drift "
+            + "is not stated, so its uncertainty there is unknown",
         _ => $"{session}'s drift from the time reference is not stated, so "
             + OperationText.Duration(Math.Abs(FromAnchorNanoseconds ?? 0), culture ?? CultureInfo.CurrentCulture)
             + " from the nearest instant it was aligned at, its uncertainty is unknown",
@@ -203,7 +208,7 @@ public static partial class InvestigationWorkspace
         };
         Save(full, workspace with
         {
-            TimeReference = referenceSessionId,
+            TimeReference = workspace.TimeReference ?? referenceSessionId,
             Alignments = [.. workspace.Alignments, alignment],
             UpdatedUtc = now,
         }, text);
@@ -303,7 +308,7 @@ public static partial class InvestigationWorkspace
         };
         Save(full, workspace with
         {
-            TimeReference = referenceSessionId,
+            TimeReference = workspace.TimeReference ?? referenceSessionId,
             Alignments = [.. workspace.Alignments, alignment],
             UpdatedUtc = now,
         }, text);
@@ -360,7 +365,7 @@ public static partial class InvestigationWorkspace
         };
         Save(full, workspace with
         {
-            TimeReference = referenceSessionId,
+            TimeReference = workspace.TimeReference ?? referenceSessionId,
             Alignments = [.. workspace.Alignments, alignment],
             UpdatedUtc = now,
         }, text);
@@ -378,6 +383,18 @@ public static partial class InvestigationWorkspace
         if (ActiveAlignment(workspace, sessionId) is null)
         {
             throw new InvalidOperationException($"Session {sessionId:N} is not aligned to the workspace's time.");
+        }
+
+        Guid[] dependents = [.. workspace.Members.Select(member => member.SessionId)
+            .Where(member => ActiveAlignment(workspace, member)?.ReferenceSessionId == sessionId)];
+        if (dependents.Length > 0)
+        {
+            throw new InvalidOperationException($"Session{(dependents.Length == 1 ? string.Empty : "s")} "
+                + string.Join(", ", dependents.Select(member => member.ToString("N")[..8]))
+                + $" {(dependents.Length == 1 ? "is" : "are")} aligned through session {sessionId:N}, so withdrawing its alignment "
+                + (dependents.Length == 1
+                    ? "would leave it with no place. Withdraw or re-align its first."
+                    : "would leave them with no place. Withdraw or re-align theirs first."));
         }
 
         var withdrawal = new WorkspaceAlignment
@@ -444,7 +461,7 @@ public static partial class InvestigationWorkspace
                             UncertaintyCombination.Bound, 2 * wander)
                         : UncertaintyContribution.UnknownRate("the rate's wander from the one the anchors measure, not stated",
                             UncertaintyCombination.Bound),
-                    UncertaintyContribution.Fixed("the rounding of an instant placed at the measured rate", UncertaintyCombination.Bound, 1),
+                    UncertaintyContribution.Rounding("the rounding of an instant placed at the measured rate", 1),
                 ],
             };
         }
@@ -453,7 +470,7 @@ public static partial class InvestigationWorkspace
         {
             WorkspaceAlignmentMode.SameBoot =>
             [
-                UncertaintyContribution.Fixed("one boot's counter, through the two captures' epochs", UncertaintyCombination.Bound, within),
+                UncertaintyContribution.Rounding("one boot's counter, through the two captures' epochs, rounded", within),
             ],
             WorkspaceAlignmentMode.WallClock =>
             [
@@ -477,26 +494,54 @@ public static partial class InvestigationWorkspace
         return new() { OffsetNanoseconds = checked(reference - anchor), AnchorNanoseconds = anchor, Contributions = contributions };
     }
 
-    /// <summary>Each member's mapping into the workspace's time: the reference's exact, an aligned member's its alignment's.</summary>
-    public static IReadOnlyDictionary<Guid, ClockMapping> Mappings(InvestigationWorkspaceFile workspace)
+    /// <summary>
+    /// How a member reaches the workspace's time: the time reference's chain is empty; an aligned member's runs through its
+    /// alignment to the member it is aligned to, and on through that member's, to the time reference. Null when the member
+    /// has no place in the workspace's time.
+    /// </summary>
+    public static ClockChain? ChainOf(InvestigationWorkspaceFile workspace, Guid sessionId)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        var mappings = new Dictionary<Guid, ClockMapping>();
-        if (workspace.TimeReference is { } reference)
+        if (workspace.TimeReference is not { } reference)
         {
-            mappings[reference] = ClockMapping.Reference;
+            return null;
         }
 
+        var links = new List<ClockLink>();
+        for (Guid current = sessionId; current != reference;)
+        {
+            if (ActiveAlignment(workspace, current) is not { ReferenceSessionId: { } next } alignment
+                || links.Any(link => link.Clock == current) || links.Count > workspace.Members.Count)
+            {
+                return null;
+            }
+
+            links.Add(new(current, MappingOf(alignment)));
+            current = next;
+        }
+
+        return new ClockChain(links);
+    }
+
+    /// <summary>Each placed member's chain into the workspace's time.</summary>
+    public static IReadOnlyDictionary<Guid, ClockChain> Chains(InvestigationWorkspaceFile workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        var chains = new Dictionary<Guid, ClockChain>();
         foreach (WorkspaceMember member in workspace.Members)
         {
-            if (ActiveAlignment(workspace, member.SessionId) is { } alignment)
+            if (ChainOf(workspace, member.SessionId) is { } chain)
             {
-                mappings[member.SessionId] = MappingOf(alignment);
+                chains[member.SessionId] = chain;
             }
         }
 
-        return mappings;
+        return chains;
     }
+
+    /// <summary>The members a member is aligned through to the time reference, nearest first; empty for one aligned to it.</summary>
+    internal static IReadOnlyList<Guid> Through(InvestigationWorkspaceFile workspace, Guid sessionId) =>
+        ChainOf(workspace, sessionId) is { Links.Count: > 1 } chain ? [.. chain.Links.Skip(1).Select(link => link.Clock)] : [];
 
     /// <summary>An instant of a member placed in the workspace's time, or why it cannot be.</summary>
     public static WorkspaceInstant Place(InvestigationWorkspaceFile workspace, Guid sessionId, long sessionNanoseconds)
@@ -507,22 +552,27 @@ public static partial class InvestigationWorkspace
             throw new InvalidOperationException($"No member of this workspace is session {sessionId:N}.");
         }
 
-        if (!Mappings(workspace).TryGetValue(sessionId, out ClockMapping? mapping))
+        if (ChainOf(workspace, sessionId) is not { } chain)
         {
             return new(sessionId, sessionNanoseconds, null, null,
                 workspace.TimeReference is null ? WorkspaceTimeGap.NoTimeReference : WorkspaceTimeGap.NotAligned, null);
         }
 
-        long placed = mapping.ToWorkspace(sessionNanoseconds);
-        long? fromAnchor = sessionId == workspace.TimeReference ? null : mapping.FromNearerAnchor(sessionNanoseconds);
-        return mapping.UncertaintyAt(sessionNanoseconds) is { } uncertainty
-            ? new(sessionId, sessionNanoseconds, placed, uncertainty, WorkspaceTimeGap.None, fromAnchor)
-            : new(sessionId, sessionNanoseconds, placed, null, WorkspaceTimeGap.DriftUnknown, fromAnchor);
+        long placed = chain.ToWorkspace(sessionNanoseconds);
+        long? fromAnchor = chain.Links.Count == 0 ? null : chain.Links[0].Mapping.FromNearerAnchor(sessionNanoseconds);
+        ChainUncertainty uncertainty = chain.UncertaintyAt(sessionNanoseconds);
+        return uncertainty.Uncertainty is { } known
+            ? new(sessionId, sessionNanoseconds, placed, known, WorkspaceTimeGap.None, fromAnchor)
+            : new(sessionId, sessionNanoseconds, placed, null, WorkspaceTimeGap.DriftUnknown, fromAnchor)
+            {
+                UnknownThrough = uncertainty.UnknownAt == sessionId ? null : uncertainty.UnknownAt,
+            };
     }
 
     /// <summary>
     /// Compares two members' instants: exactly when they share one clock, and otherwise in the workspace's time, stating an
-    /// order only beyond the pair's uncertainty and nothing where an instant has no time or its uncertainty is unknown.
+    /// order only beyond the pair's uncertainty and nothing where an instant has no time or its uncertainty is unknown. Where
+    /// the two are aligned through one member, what its alignment shares with both counts once (§8.2).
     /// </summary>
     public static WorkspaceComparison Compare(
         InvestigationWorkspaceFile workspace,
@@ -535,8 +585,9 @@ public static partial class InvestigationWorkspace
         WorkspaceInstant b = Place(workspace, second, secondNanoseconds);
         return new(a, b, first == second
             ? TimeComparison.OnOneClock(firstNanoseconds, secondNanoseconds)
-            : TimeComparison.Of(a.Uncertainty is null ? null : a.WorkspaceNanoseconds, a.Uncertainty,
-                b.Uncertainty is null ? null : b.WorkspaceNanoseconds, b.Uncertainty));
+            : ChainOf(workspace, first) is { } firstChain && ChainOf(workspace, second) is { } secondChain
+                ? ClockChain.Compare(firstChain, firstNanoseconds, secondChain, secondNanoseconds)
+                : new TimeComparison(TimeOrder.Unknown, null, null));
     }
 
     private static WorkspaceAlignment? Active(IEnumerable<WorkspaceAlignment> alignments, Guid sessionId) =>
@@ -545,7 +596,10 @@ public static partial class InvestigationWorkspace
             ? latest
             : null;
 
-    /// <summary>Refuses an alignment of a member that is not one, to itself, or to a member other than the time reference.</summary>
+    /// <summary>
+    /// Refuses an alignment of a member that is not one, to itself, of the time reference, to a member with no place in the
+    /// workspace's time, or to one aligned through the member itself, which would make each the other's reference.
+    /// </summary>
     private static void CheckAlignable(InvestigationWorkspaceFile workspace, Guid sessionId, Guid referenceSessionId)
     {
         foreach (Guid named in new[] { sessionId, referenceSessionId })
@@ -561,13 +615,27 @@ public static partial class InvestigationWorkspace
             throw new InvalidOperationException("A member is aligned to another member's clock, not to its own.");
         }
 
-        if (workspace.TimeReference is { } reference && referenceSessionId != reference)
+        if (workspace.TimeReference is not { } reference)
         {
-            throw new InvalidOperationException(sessionId == reference
-                ? $"Session {reference:N} is the workspace's time reference: its clock is the workspace's time, so it is not "
-                    + "aligned; align the other members to it."
-                : $"The workspace's time is session {reference:N}'s clock, so a member is aligned to it, not to session "
-                    + $"{referenceSessionId:N}.");
+            return;
+        }
+
+        if (sessionId == reference)
+        {
+            throw new InvalidOperationException($"Session {reference:N} is the workspace's time reference: its clock is the "
+                + "workspace's time, so it is not aligned; align the other members to it.");
+        }
+
+        if (ChainOf(workspace, referenceSessionId) is not { } chain)
+        {
+            throw new InvalidOperationException($"Session {referenceSessionId:N} has no place in the workspace's time, so nothing "
+                + $"aligned to it would have one. Align it first, or align session {sessionId:N} to session {reference:N}.");
+        }
+
+        if (chain.Links.Any(link => link.Clock == sessionId))
+        {
+            throw new InvalidOperationException($"Session {referenceSessionId:N} is aligned through session {sessionId:N}, so "
+                + "aligning that session to it would make each the other's reference. Align it to another member.");
         }
     }
 
@@ -606,7 +674,7 @@ public static partial class InvestigationWorkspace
     private static int NextRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Alignments.Count == 0 ? 1 : checked(workspace.Alignments.Max(alignment => alignment.Revision) + 1);
 
-    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v5.md` §5).</summary>
+    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v6.md` §5).</summary>
     private static string? TimeProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Contract == FirstContract && (workspace.TimeReference is not null || workspace.Alignments.Count > 0))
@@ -692,14 +760,26 @@ public static partial class InvestigationWorkspace
         {
             if (ActiveAlignment(workspace, member.SessionId) is { } active)
             {
-                if (workspace.TimeReference is not { } time || active.ReferenceSessionId != time)
+                if (workspace.TimeReference is not { } time)
                 {
-                    return $"session {member.SessionId:N} is aligned to a member that is not the workspace's time reference";
+                    return $"session {member.SessionId:N} is aligned, and the workspace has no time reference";
                 }
 
                 if (member.SessionId == time)
                 {
                     return $"the time reference {time:N} is aligned to another member";
+                }
+
+                if (workspace.Contract != Contract && active.ReferenceSessionId != time)
+                {
+                    return $"session {member.SessionId:N} is aligned to a member that is not the workspace's time reference, "
+                        + $"which a {workspace.Contract} file does not";
+                }
+
+                if (ChainOf(workspace, member.SessionId) is null)
+                {
+                    return $"session {member.SessionId:N} is aligned to a member with no place in the workspace's time, or "
+                        + "through itself";
                 }
             }
         }

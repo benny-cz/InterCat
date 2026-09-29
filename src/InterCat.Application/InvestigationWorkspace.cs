@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v5.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v6.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v5.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v6.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,9 +59,10 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v5`): a `workspace-v1` file is read as one without alignments, a
-/// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, and a
-/// `workspace-v4` file as one whose alignments each have one anchor.
+/// A workspace as its file holds it (`workspace-v6`): a `workspace-v1` file is read as one without alignments, a
+/// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
+/// `workspace-v4` file as one whose alignments each have one anchor, and a `workspace-v5` file as one whose members are
+/// each aligned to the time reference itself.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -104,13 +105,16 @@ public sealed record WorkspaceMemberResolution(
 public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Guid> Members);
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v5` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v6` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v5";
+    public const string Contract = "workspace-v6";
+
+    /// <summary>The fifth version, revision 264's: every member aligned to the time reference. It is read, and written as the current one.</summary>
+    public const string FifthContract = "workspace-v5";
 
     /// <summary>The fourth version, revision 260's: one anchor per alignment. It is read, and written as the current one.</summary>
     public const string FourthContract = "workspace-v4";
@@ -285,7 +289,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v5.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v6.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -428,9 +432,10 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or FourthContract or ThirdContract or SecondContract or FirstContract))
+        if (workspace.Contract is not (Contract or FifthContract or FourthContract or ThirdContract or SecondContract or FirstContract))
         {
-            return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract} or {Contract}";
+            return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
+                + $"{FifthContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)

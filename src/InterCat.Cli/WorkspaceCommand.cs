@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v5.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v6.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -71,9 +71,12 @@ internal sealed record WorkspaceMemberDocument
 
     /// <summary>The revision of the member's alignment in force; null when it is the time reference or not aligned.</summary>
     public required int? Alignment { get; init; }
+
+    /// <summary>The members it is aligned through to the time reference, nearest first; empty when aligned to it or not placed.</summary>
+    public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v5.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v6.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -105,7 +108,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v5.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v6.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -177,7 +180,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v6";
+    public const string ResolutionContract = "workspace-resolution-v7";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -434,7 +437,8 @@ internal static partial class WorkspaceCommand
         WorkspaceAlignment alignment = InvestigationWorkspace.AlignSameBoot(path, member.SessionId, to.SessionId, note, DateTimeOffset.UtcNow);
         ConsoleUi.Success($"Session {Short(member.SessionId)} ran in session {Short(to.SessionId)}'s boot "
             + $"({Short(alignment.BootToken!.Value)}), so both read one counter: its instant 0 s is {Seconds(alignment.ReferenceNanoseconds!.Value)} "
-            + (alignment.WithinNanoseconds == 0 ? "of the reference, exactly" : "of the reference, within ±2 ns of rounding")
+            + $"of session {Short(to.SessionId)}'s, "
+            + (alignment.WithinNanoseconds == 0 ? "exactly" : "within ±2 ns of rounding")
             + string.Create(CultureInfo.InvariantCulture, $" (alignment revision {alignment.Revision})."));
         return InterCatExitCode.Success;
     }
@@ -723,6 +727,9 @@ internal static partial class WorkspaceCommand
                 CaptureEpochNativeTicks = resolution.Member.CaptureEpochNativeTicks,
                 AddedUtc = resolution.Member.AddedUtc,
                 Alignment = InvestigationWorkspace.ActiveAlignment(workspace, resolution.Member.SessionId)?.Revision,
+                Through = InvestigationWorkspace.ChainOf(workspace, resolution.Member.SessionId) is { } chain
+                    ? [.. chain.Links.Skip(1).Select(link => link.Clock)]
+                    : [],
             })],
             Hosts = hosts,
             TimeReference = workspace.TimeReference,
@@ -753,6 +760,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Field("Time", document.TimeReference is { } reference
             ? $"session {Short(reference)}'s clock; " + string.Create(CultureInfo.CurrentCulture,
                 $"{document.Members.Count(member => member.Alignment is not null):N0} of {others:N0} other {(others == 1 ? "member" : "members")} aligned to it")
+                + (document.Members.Any(member => member.Through.Count > 0) ? ", directly or through another" : string.Empty)
             : "none: no member is aligned, so no order across members is stated");
         ConsoleUi.Line();
         if (document.Members.Count == 0)
@@ -793,10 +801,11 @@ internal static partial class WorkspaceCommand
             ConsoleUi.Line();
             ConsoleUi.Heading("Alignments");
             ConsoleUi.Table(
-                ["Session", "By", "At", "Is reference at", "Within", "Drift", "Revision", "Note"],
+                ["Session", "To", "By", "At", "Is there at", "Within", "Drift", "Revision", "Note"],
                 [.. inForce.Select(alignment => (IReadOnlyList<string>)
                 [
                     Short(alignment.SessionId),
+                    alignment.ReferenceSessionId == document.TimeReference ? "reference" : Short(alignment.ReferenceSessionId!.Value),
                     alignment.Mode switch
                     {
                         WorkspaceAlignmentMode.SameBoot => "one boot",
@@ -920,6 +929,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           pair of instants, well apart from the first, measures the clocks' rate; --drift-ppm then");
         ConsoleUi.Line("           bounds how far that rate may wander, and without it only the two instants are placed.");
         ConsoleUi.Line("           --same-boot aligns two captures that recorded one boot exactly: they read one counter.");
+        ConsoleUi.Line("           <reference> is the time reference, or any member placed in its time: a member aligned");
+        ConsoleUi.Line("           through another is placed through both, and two members aligned through one compare as");
+        ConsoleUi.Line("           that shared alignment allows.");
         ConsoleUi.Line("           --wall-clock anchors on the two captures' recorded wall-clock samples; --sync states how");
         ConsoleUi.Line("           closely their wall clocks agreed, which no sample can measure, and --drift-ppm bounds");
         ConsoleUi.Line("           their counters' drift, over the time between the samples and away from them.");

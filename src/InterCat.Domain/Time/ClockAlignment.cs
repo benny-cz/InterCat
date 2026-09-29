@@ -36,10 +36,20 @@ public sealed record UncertaintyContribution
     /// </summary>
     public bool BeyondAnchors { get; init; }
 
+    /// <summary>
+    /// Whether each instant has its own - a rounding - rather than one error every instant of the mapping shares, which
+    /// is what two instants mapped by one mapping may cancel.
+    /// </summary>
+    public bool PerInstant { get; init; }
+
     public bool IsUnknown => Nanoseconds is null && PartsPerMillion is null;
 
     public static UncertaintyContribution Fixed(string source, UncertaintyCombination combination, double nanoseconds) =>
         new() { Source = source, Combination = combination, Nanoseconds = NonNegative(nanoseconds) };
+
+    /// <summary>A half-width each instant has of its own, such as a rounding: one mapping's two instants never cancel it.</summary>
+    public static UncertaintyContribution Rounding(string source, double nanoseconds) =>
+        Fixed(source, UncertaintyCombination.Bound, nanoseconds) with { PerInstant = true };
 
     public static UncertaintyContribution Rate(string source, UncertaintyCombination combination, double partsPerMillion) =>
         new() { Source = source, Combination = combination, PartsPerMillion = NonNegative(partsPerMillion), GrowsWithDistance = true };
@@ -106,6 +116,18 @@ public sealed record ClockMapping
 
     /// <summary>The second session instant, when two separated anchors measured the mapping's rate; null for one.</summary>
     public long? SecondAnchorNanoseconds { get; init; }
+
+    /// <summary>
+    /// How fast the mapping's error may change from one instant to another, as a fraction of the time between them: its
+    /// drifts, and the slope a line through two uncertain anchors may have, which holds between them too. Null when a drift
+    /// is unknown. Two instants mapped by one mapping differ by their own difference scaled, and by up to this times it.
+    /// </summary>
+    public double? Growth => Contributions.Where(contribution => contribution.GrowsWithDistance).Any(contribution => contribution.IsUnknown)
+        ? null
+        : Contributions.Where(contribution => contribution.GrowsWithDistance).Sum(contribution => contribution.PartsPerMillion!.Value) / 1_000_000;
+
+    /// <summary>The half-width each instant has of its own - its roundings - which two instants never cancel.</summary>
+    public double PerInstantNanoseconds => Contributions.Where(contribution => contribution.PerInstant).Sum(contribution => contribution.Nanoseconds ?? 0);
 
     public required IReadOnlyList<UncertaintyContribution> Contributions { get; init; }
 

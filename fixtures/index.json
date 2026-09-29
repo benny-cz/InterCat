@@ -1432,6 +1432,7 @@
         "R21: a machine that falls short of the reference names every way it does",
         "R21: a machine that meets the reference has no gaps to name",
         "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic",
+        "R21: a member aligned through another is placed through both, and two members of one chain compare as it allows",
         "R21: a negative result records the control that proves the source was live",
         "R21: a one-sided connection is a candidate join with its mirror in another capture, never where their lifetimes lie apart",
         "R21: a process lane's quiet interval is judged by what the capture collected, not left unknown",
@@ -1471,6 +1472,7 @@
         "R21: source loss and undecodable records make coverage partial; policy omissions do not",
         "R21: the investigation window aligns a session at two instants, and says the rate they measure",
         "R21: the investigation window aligns a session by an instant read in both, says what is missing, and withdraws it",
+        "R21: the investigation window aligns a session through another aligned one, and never through itself",
         "R21: the investigation window's timeline places each session on the investigation's time, and says it in words",
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the record accessor either reaches the callback record or states why it cannot",
@@ -1478,6 +1480,7 @@
         "R21: the timeline counts a connection's records apart, the same records its evidence reads",
         "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
         "R21: total-machine processor time is readable or explicitly unavailable",
+        "R21: two clocks aligned through one compare as that alignment allows: its drift between them, and their roundings",
         "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
         "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
@@ -1537,6 +1540,7 @@
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared",
+        "R22: two captures of one host, one aligned through the other, overlap as that alignment allows, not twice its bound",
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],

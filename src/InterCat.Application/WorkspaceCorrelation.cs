@@ -46,7 +46,7 @@ public sealed record UnmatchedDecision(WorkspaceJoin Join, string Why);
 /// <summary>A member an investigation could not compare, and why.</summary>
 public sealed record UnreadMember(Guid SessionId, string Reason);
 
-/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v5.md` §6).</summary>
+/// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v6.md` §6).</summary>
 public sealed record WorkspaceCorrelationResult(
     string Rule,
     IReadOnlyList<ConnectionCandidate> Candidates,

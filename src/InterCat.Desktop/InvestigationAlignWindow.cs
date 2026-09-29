@@ -59,9 +59,9 @@ internal sealed class InvestigationAlignWindow : Window
         reference.ItemsSource = references;
         reference.SelectedItem = references.FirstOrDefault(choice => choice.SessionId == timeReference)
             ?? (references.Count > 0 ? references[0] : null);
-        reference.IsEnabled = timeReference is null && references.Count > 1;
+        reference.IsEnabled = references.Count > 1;
         byInstant.IsChecked = true;
-        AutomationProperties.SetName(reference, "The session whose clock is the investigation's time");
+        AutomationProperties.SetName(reference, "The session to align to: the investigation's clock, or a session placed in it");
         AutomationProperties.SetName(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetName(byWallClock, "Align by the two captures' wall clocks");
         AutomationProperties.SetName(byInstant, "Align by one or two instants read in both sessions");
@@ -117,7 +117,7 @@ internal sealed class InvestigationAlignWindow : Window
             {
                 new TextBlock
                 {
-                    Text = $"Place {name}'s instants in the investigation's time, aligned to this session's clock:",
+                    Text = $"Place {name}'s instants in the investigation's time by aligning them to this session's:",
                     TextWrapping = TextWrapping.Wrap,
                 },
                 reference,
@@ -161,7 +161,7 @@ internal sealed class InvestigationAlignWindow : Window
         if (aligning) return false;
         if (reference.SelectedItem is not AlignmentReference to)
         {
-            status.Text = "Choose the session whose clock is the investigation's time.";
+            status.Text = "Choose the session to align to.";
             return false;
         }
 

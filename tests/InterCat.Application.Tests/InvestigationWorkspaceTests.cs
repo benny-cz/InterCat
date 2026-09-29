@@ -339,8 +339,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         Assert.Contains("is the workspace's time reference", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
-        Assert.Contains("so a member is aligned to it", Assert.Throws<InvalidOperationException>(() =>
-            InvestigationWorkspace.Align(workspace, c, 0, b, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("has no place in the workspace's time", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Align(workspace, b, 0, c, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, c, 0, 1_000, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, a, 0, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, a, 0, 1_000, -10, null, Now));
@@ -446,6 +446,64 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    [Fact(DisplayName = "R21: a member aligned through another is placed through both, and two members of one chain compare as it allows")]
+    public void AMemberAlignedThroughAnotherIsPlacedThroughBoth()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "gamma"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "delta"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid e = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "epsilon"), "lab-4", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+
+        // Beta is placed on alpha's clock within 1 ms, drifting 10 ppm; gamma, of beta's host, on beta's within 2 µs; delta on
+        // alpha's as beta is. Gamma's 0 s is beta's 1 s, which is alpha's 6 s.
+        InvestigationWorkspace.Align(workspace, b, 0, a, Seconds(5), 1_000_000, 10, null, Now);
+        InvestigationWorkspace.Align(workspace, c, 0, b, Seconds(1), 2_000, 1, "one host", Now);
+        InvestigationWorkspace.Align(workspace, d, 0, a, Seconds(5), 1_000_000, 10, null, Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((a, InvestigationWorkspace.Contract), (read.TimeReference!.Value, read.Contract));
+        Assert.Equal([c, b], InvestigationWorkspace.ChainOf(read, c)!.Links.Select(link => link.Clock));
+
+        // Through both, gamma carries its own 2 µs, and beta's 1 ms and 10 µs of drift a second from its anchor.
+        WorkspaceInstant placed = InvestigationWorkspace.Place(read, c, 0);
+        Assert.Equal(Seconds(6), placed.WorkspaceNanoseconds);
+        Assert.InRange(placed.Uncertainty!.Value.HalfWidthNanoseconds, 1_012_000, 1_012_001);
+
+        // Gamma against beta, whose alignment both share, differs only by gamma's own: 2.001 µs apart is an order, 2 µs is not.
+        // Against delta, aligned apart, the two sides' uncertainties add, and a microsecond orders nothing.
+        Assert.Equal(TimeOrder.Before, InvestigationWorkspace.Compare(read, c, 0, b, Seconds(1) + 2_001).Result.Order);
+        WorkspaceComparison tie = InvestigationWorkspace.Compare(read, c, 0, b, Seconds(1));
+        Assert.Equal(TimeOrder.Ambiguous, tie.Result.Order);
+        Assert.InRange(tie.Result.Uncertainty!.Value.HalfWidthNanoseconds, 2_000, 2_001);
+        WorkspaceComparison apart = InvestigationWorkspace.Compare(read, c, 0, d, Seconds(1) + 1_000);
+        Assert.Equal(TimeOrder.Ambiguous, apart.Result.Order);
+        Assert.InRange(apart.Result.Uncertainty!.Value.HalfWidthNanoseconds, 2_022_000, 2_022_001);
+
+        // Nothing is aligned to a member with no place, nor through itself; a member others are aligned through keeps its own.
+        Assert.Contains("has no place in the workspace's time", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Align(workspace, c, 0, e, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains($"is aligned through session {b:N}", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Align(workspace, b, 0, c, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains($"Session {c.ToString("N")[..8]} is aligned through session {b:N}", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.Withdraw(workspace, b, Now)).Message, StringComparison.Ordinal);
+
+        // A decision about gamma and delta was made under beta's alignment too, so re-aligning beta flags it for review.
+        WorkspaceJoin join = InvestigationWorkspace.Decide(workspace, new(c, "connection:first"), new(d, "connection:second"),
+            WorkspaceJoinDecision.Accepted, null, Now);
+        Assert.Equal([c, d, b], join.DecidedUnder.Select(under => under.SessionId));
+        Assert.True(InvestigationWorkspace.DecidedUnderCurrentTime(InvestigationWorkspace.Read(workspace), join));
+        InvestigationWorkspace.Align(workspace, b, 0, a, Seconds(5), 500_000, 10, null, Now);
+        Assert.False(InvestigationWorkspace.DecidedUnderCurrentTime(InvestigationWorkspace.Read(workspace), join));
+
+        // A version 5 file aligned every member to the time reference, and is refused whole when it seems not to.
+        string text = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FifthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("is aligned to a member that is not the workspace's time reference", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them")]

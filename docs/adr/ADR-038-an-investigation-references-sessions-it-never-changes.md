@@ -2,7 +2,7 @@
 
 - Status: accepted; the workspace manifest, adding, showing, relinking and host names are revision 253
 - Date: 2026-09-28
-- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v5.md`, `contracts/store-v1.md`
+- Relates to: §8, §8.3, §8.4, M4, I9, R22, P6, ADR-039, `contracts/workspace-v6.md`, `contracts/store-v1.md`
 
 ## Context
 

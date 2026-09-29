@@ -98,6 +98,61 @@ public sealed class ClockAlignmentTests
         Assert.Null(unbounded.WidestUncertainty(1_000_000_000, 11_000_000_000));
     }
 
+    [Fact(DisplayName = "R21: two clocks aligned through one compare as that alignment allows: its drift between them, and their roundings")]
+    public void ClocksAlignedThroughOneCompareAsItAllows()
+    {
+        Guid bClock = Guid.NewGuid(), cClock = Guid.NewGuid(), dClock = Guid.NewGuid();
+
+        // B is on the reference's clock within 1 ms, drifting 10 ppm; C and D are on B's, within 2 µs with a 1 ns rounding,
+        // and within 3 µs. C's 0 s and D's -1 s are both B's 1 s, which is the reference's 6 s.
+        var b = new ClockMapping
+        {
+            OffsetNanoseconds = 5_000_000_000,
+            AnchorNanoseconds = 0,
+            Contributions =
+            [
+                UncertaintyContribution.Fixed("b's anchor", UncertaintyCombination.Bound, 1_000_000),
+                UncertaintyContribution.Rate("b's drift", UncertaintyCombination.Bound, 10),
+            ],
+        };
+        var c = new ClockMapping
+        {
+            OffsetNanoseconds = 1_000_000_000,
+            AnchorNanoseconds = 0,
+            Contributions = [UncertaintyContribution.Fixed("c's anchor", UncertaintyCombination.Bound, 2_000), UncertaintyContribution.Rounding("c's rounding", 1)],
+        };
+        var d = new ClockMapping
+        {
+            OffsetNanoseconds = 2_000_000_000,
+            AnchorNanoseconds = 0,
+            Contributions = [UncertaintyContribution.Fixed("d's anchor", UncertaintyCombination.Bound, 3_000)],
+        };
+        var chainC = new ClockChain([new(cClock, c), new(bClock, b)]);
+        var chainD = new ClockChain([new(dClock, d), new(bClock, b)]);
+        Assert.Equal(6_000_000_000, chainC.ToWorkspace(0));
+        Assert.Equal(0, chainC.FromWorkspace(6_000_000_000));
+        Assert.Equal(1_012_001.02001, chainC.UncertaintyAt(0).Uncertainty!.Value.HalfWidthNanoseconds, 6);
+
+        // B's alignment, shared, moves both alike: only its 10 ppm over the 5 µs the two may lie apart adds to their own sides.
+        TimeComparison tie = ClockChain.Compare(chainC, 0, chainD, -1_000_000_000);
+        Assert.Equal((TimeOrder.Ambiguous, 0L), (tie.Order, tie.DifferenceNanoseconds!.Value));
+        Assert.Equal(5_001.05001, tie.Uncertainty!.Value.HalfWidthNanoseconds, 6);
+        Assert.Equal(TimeOrder.Before, ClockChain.Compare(chainC, 0, chainD, -1_000_000_000 + 5_002).Order);
+
+        // A rounding of the shared link is each instant's own, so it counts twice; an unknown drift there leaves no order.
+        ClockChain roundedC = new([new(cClock, c), new(bClock, b with { Contributions = [.. b.Contributions, UncertaintyContribution.Rounding("b's rounding", 1)] })]);
+        ClockChain roundedD = new([new(dClock, d), roundedC.Links[1]]);
+        Assert.Equal(5_003.05001, ClockChain.Compare(roundedC, 0, roundedD, -1_000_000_000).Uncertainty!.Value.HalfWidthNanoseconds, 6);
+        ClockMapping unbounded = b with { Contributions = [b.Contributions[0], UncertaintyContribution.UnknownRate("b's drift", UncertaintyCombination.Bound)] };
+        Assert.Equal(TimeOrder.Unknown, ClockChain.Compare(new([new(cClock, c), new(bClock, unbounded)]), 0,
+            new([new(dClock, d), new(bClock, unbounded)]), -1_000_000_000).Order);
+        Assert.Equal(new ChainUncertainty(null, bClock), new ClockChain([new(cClock, c), new(bClock, unbounded)]).UncertaintyAt(0));
+
+        // Against the reference nothing is shared; one clock's two instants are ordered on it, exactly.
+        Assert.Equal(1_012_001.02001, ClockChain.Compare(ClockChain.Reference, 6_000_000_000, chainC, 0).Uncertainty!.Value.HalfWidthNanoseconds, 6);
+        Assert.Equal(new TimeComparison(TimeOrder.Before, 5, TimeUncertainty.Exact), ClockChain.Compare(chainC, 0, chainC, 5));
+    }
+
     [Fact(DisplayName = "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown")]
     public void TwoClocksInstantsAreOrderedOnlyBeyondTheirUncertainty()
     {

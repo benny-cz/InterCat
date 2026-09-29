@@ -2,7 +2,7 @@ using InterCat.Analysis;
 
 namespace InterCat.Application;
 
-/// <summary>What a person decided of a candidate join (`contracts/workspace-v5.md` §6, ADR-041).</summary>
+/// <summary>What a person decided of a candidate join (`contracts/workspace-v6.md` §6, ADR-041).</summary>
 public enum WorkspaceJoinDecision
 {
     /// <summary>A person accepted the candidate as one connection: a manual join, never evidence.</summary>
@@ -99,7 +99,8 @@ public static partial class InvestigationWorkspace
             Second = second,
             DecidedUnder = decision == WorkspaceJoinDecision.Withdrawn
                 ? []
-                : [InForce(workspace, first.SessionId), InForce(workspace, second.SessionId)],
+                : [.. new[] { first.SessionId, second.SessionId }.Concat(Through(workspace, first.SessionId))
+                    .Concat(Through(workspace, second.SessionId)).Distinct().Select(session => InForce(workspace, session))],
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             RecordedUtc = now,
         };
@@ -129,8 +130,9 @@ public static partial class InvestigationWorkspace
     }
 
     /// <summary>
-    /// Whether a decision was made under the alignments in force now: false when either session's alignment has been
-    /// revised, withdrawn or made since, which is when the timing it was decided on may no longer hold (§8.3).
+    /// Whether a decision was made under the alignments in force now: false when either session's alignment, or that of a
+    /// session either is aligned through, has been revised, withdrawn or made since, which is when the timing it was decided
+    /// on may no longer hold (§8.3).
     /// </summary>
     public static bool DecidedUnderCurrentTime(InvestigationWorkspaceFile workspace, WorkspaceJoin join)
     {
@@ -150,7 +152,7 @@ public static partial class InvestigationWorkspace
             ? (a.SessionId, a.Key, b.SessionId, b.Key)
             : (b.SessionId, b.Key, a.SessionId, a.Key);
 
-    /// <summary>What makes a file's joins contradict themselves, or null (`contracts/workspace-v5.md` §6).</summary>
+    /// <summary>What makes a file's joins contradict themselves, or null (`contracts/workspace-v6.md` §6).</summary>
     private static string? JoinProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Contract is FirstContract or SecondContract or ThirdContract && workspace.Joins.Count > 0)
@@ -177,9 +179,13 @@ public static partial class InvestigationWorkspace
                 : !TransportConnection.IsKey(join.First.Key) || !TransportConnection.IsKey(join.Second.Key) ? "names no connection"
                 : (join.Decision == WorkspaceJoinDecision.Withdrawn) != (join.DecidedUnder.Count == 0)
                     ? "states the alignments it was decided under only when, and exactly when, it decides"
-                : join.DecidedUnder.Count > 0 && (join.DecidedUnder.Count != 2 || join.DecidedUnder.Any(under => under is null || under.Revision < 0)
-                    || !join.DecidedUnder.Select(under => under.SessionId).Order().SequenceEqual(new[] { join.First.SessionId, join.Second.SessionId }.Order()))
-                    ? "states the alignments of other sessions than its own"
+                : join.DecidedUnder.Count > 0 && (join.DecidedUnder.Any(under => under is null || under.Revision < 0 || !members.Contains(under.SessionId))
+                    || join.DecidedUnder.GroupBy(under => under.SessionId).Any(group => group.Count() > 1)
+                    || join.DecidedUnder.All(under => under.SessionId != join.First.SessionId)
+                    || join.DecidedUnder.All(under => under.SessionId != join.Second.SessionId))
+                    ? "states the alignments it was decided under other than once each, its own two sessions' among them"
+                : join.DecidedUnder.Count > 2 && workspace.Contract != Contract
+                    ? $"states the alignments of other sessions than its own, which a {workspace.Contract} file does not"
                 : null;
             if (problem is not null)
             {

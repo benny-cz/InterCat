@@ -1,6 +1,6 @@
-# Workspace contract, version 5
+# Workspace contract, version 6
 
-Status: M4, revision 264 (ADR-038 to ADR-042); versions 1, 2, 3 and 4 were revisions 253, 254, 256 and 260's, and
+Status: M4, revision 265 (ADR-038 to ADR-042); versions 1 to 5 were revisions 253, 254, 256, 260 and 264's, and
 packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | package`
@@ -10,16 +10,17 @@ A workspace is an investigation over several separately valid sessions (§8.4). 
 `*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
 member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
 counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version 5
-lets a person's alignment take a second instant, which measures the two clocks' rate (§5). A `workspace-v1` file -
-members and host names, no time - is read as one without alignments, a `workspace-v2` file as one with manual alignments
-only, a `workspace-v3` file as one without join decisions, and a `workspace-v4` file as one whose alignments each have
-one anchor; each is written as version 5.
+lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member to
+any member placed in the workspace's time, not only to its reference (§5). A `workspace-v1` file - members and host
+names, no time - is read as one without alignments, a `workspace-v2` file as one with manual alignments only, a
+`workspace-v3` file as one without join decisions, a `workspace-v4` file as one whose alignments each have one anchor,
+and a `workspace-v5` file as one whose members are each aligned to the reference itself; each is written as version 6.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v5"` (`"workspace-v1"` to `"workspace-v4"` are read) |
+| `contract` | `"workspace-v6"` (`"workspace-v1"` to `"workspace-v5"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -70,9 +71,10 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v6`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v7`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
-name, when given) and `alignment` (the revision in force, or null), the hosts with their members, the `timeReference`
+name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
+reference, nearest first), the hosts with their members, the `timeReference`
 every alignment and join decision revision, the overlaps of captures of one host (§5), and caveats. It exits 0 when every
 member is present and 1 otherwise.
 
@@ -90,14 +92,14 @@ name.
 
 The workspace's time is its time reference's session time, in nanoseconds: that member's instants are its own, exactly.
 Another member has workspace time only through its alignment in force - its latest revision, when that is not a
-withdrawal - and every alignment in force is to the time reference (ADR-039).
+withdrawal - to the time reference, or to another member that has workspace time, and never through itself (ADR-039).
 
 | Alignment field | Meaning |
 |---|---|
 | `revision` | A positive number, unique in the file and increasing in the order recorded |
 | `sessionId` | The member aligned |
 | `mode` | `Manual`: a person's statement; `SameBoot`: one boot's counter; `WallClock`: the captures' recorded wall clocks; `Withdrawn`: the member is not aligned from this revision |
-| `referenceSessionId` | The member aligned to: the time reference while the revision is in force; null for a withdrawal |
+| `referenceSessionId` | The member aligned to: the time reference, or a member placed in its time, while the revision is in force; null for a withdrawal |
 | `sessionNanoseconds`, `referenceNanoseconds` | The anchor: the member's instant, and the same instant in the reference's session time |
 | `withinNanoseconds` | The bound on the anchor, a half-width: the person's, the rounding of one counter, or the sum of the wall-clock bounds |
 | `driftPartsPerMillion` | The person's bound on how fast the two clocks drift apart - with a second anchor, on how far their rate may wander from the one the anchors measure; null when not stated; 0 for one boot's counter |
@@ -125,6 +127,15 @@ uncertainty but at the anchors themselves. A second anchor at the first's instan
 more than 1,000 ppm from 1 - which no working clock runs at, so an instant was misread - is refused. A member's span is
 as uncertain as its widest instant, which lies at an end of it or midway between its anchors.
 
+A member aligned to another aligned member is placed through both alignments in turn, and on through that member's to
+the reference: each adds its own uncertainty, taken at the widest instant what was carried so far allows, and carries
+the rest at its rate. Two members compared meet in the nearest member both are placed through, or the reference: below
+it each side counts as independent, and the alignments above it, which both share, move both instants alike, so they add
+only their growth - a drift, or the slope a two-anchor line may have - over the time the two instants may lie apart, and
+each instant's own roundings, which no shared alignment cancels: the rounding of a measured rate, and one boot's
+counter's bound. Aligning a member to one with no place, or to one placed through the member itself, is refused, and so
+is withdrawing an alignment another member is aligned through.
+
 A same-boot alignment is made only when both captures recorded one `bootToken` in their clock calibrations
 (`contracts/clock-calibration-v1.md`), with one host, encoding and rate: they read one counter, so the member's instant 0
 is the reference's `(memberEpoch - referenceEpoch) * 10^9 / rate`, with no drift, exactly when a tick is a whole number
@@ -149,7 +160,8 @@ up at the precision written, so it never reads smaller than it is.
 A file's time contradicts itself when a `workspace-v1` file holds any; its reference is no member; a revision is not a
 unique positive number; a manual revision names no member, aligns a member to itself or to no member, or lacks its
 anchor or a non-negative bound, or states a drift that is no non-negative rate; a withdrawal states an anchor; or an
-alignment in force is to a member other than the reference, or aligns the reference itself. A `workspace-v2` file holds
+alignment in force leaves its member with no place - aligned to a member with none, or through itself - or aligns the
+reference itself. A file before version 6 aligns every member to the reference itself. A `workspace-v2` file holds
 only manual alignments and withdrawals. A same-boot revision names a boot and states a drift of 0; a wall-clock revision
 states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; no other
 revision states any of these. A second anchor is stated only by a manual revision, whole, at other instants than the
@@ -192,15 +204,16 @@ A person decides a candidate with `icat workspace join <n> --accept | --reject |
 | `revision` | A positive number, unique among joins and increasing in the order recorded |
 | `decision` | `Accepted`: one connection, by a person; `Rejected`: not one; `Withdrawn`: undecided from this revision |
 | `first`, `second` | The two ends: `{ sessionId, key }`, each a member's one-sided connection's stable key |
-| `decidedUnder` | The alignment revision in force for each of the two sessions when decided, 0 for none; empty for a withdrawal |
+| `decidedUnder` | The alignment revision in force when decided, 0 for none, for each of the two sessions and every member either was aligned through; empty for a withdrawal |
 | `note`, `recordedUtc` | The person's words, and when |
 
 A pair's decision in force is its latest revision, in either order of its ends, unless it withdraws. An accepted join is
-a person's and is never evidence: a candidate says it was accepted or rejected by a person, and, when either session's
-alignment has changed since the decision - revised, withdrawn or made - that the decision was made under alignments
+a person's and is never evidence: a candidate says it was accepted or rejected by a person, and, when an alignment it was
+decided under has changed since the decision - revised, withdrawn or made - that the decision was made under alignments
 since changed, to review (§8.3). A decision in force whose pair is no candidate now is said, never dropped. A file whose
-joins name no member or connection, join one session's own connections, or state `decidedUnder` other than two entries
-for their own two sessions exactly when they decide, is refused, as is a join in an earlier version's file.
+joins name no member or connection, join one session's own connections, or state `decidedUnder` other than one entry per
+member, their own two sessions among them, exactly when they decide, is refused, as is a join in a version 1 to 3 file,
+or one with more than its own two entries in a file before version 6.
 
 ## 7. A package
 
@@ -220,7 +233,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments` and
-  `joins`. The file is written as `workspace-v5`.
+  `joins`. The file is written as `workspace-v6`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -237,7 +250,7 @@ member could not be copied.
 
 ## 8. Not defined at this version
 
-- Aligning through another aligned member, and alignment from shared markers (§8.2's third mode).
+- Alignment from shared markers (§8.2's third mode).
 - Confirming two host identities as one host; pins, notes and saved views.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each

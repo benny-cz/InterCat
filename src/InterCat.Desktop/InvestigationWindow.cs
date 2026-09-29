@@ -488,10 +488,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
             return null;
         }
 
+        // Once the investigation has a time, a session is aligned to one placed in it, never to one aligned through itself.
         AlignmentReference[] references =
         [
-            .. view.Members.Where(other => other.SessionId != row.SessionId)
-                .Select(other => new AlignmentReference(other.SessionId, other.Title.Split(',')[0] + " · " + other.Detail)),
+            .. view.Members.Where(other => other.SessionId != row.SessionId
+                    && (view.TimeReference is null || (other.IsPlaced && other.AlignedThrough?.Contains(row.SessionId) != true)))
+                .Select(other => new AlignmentReference(other.SessionId, other.Title.Split(',')[0] + " · " + other.Detail
+                    + (other.IsTimeReference ? " · the investigation's clock" : string.Empty))),
         ];
         return new InvestigationAlignWindow(path, row, references, view.TimeReference);
     }

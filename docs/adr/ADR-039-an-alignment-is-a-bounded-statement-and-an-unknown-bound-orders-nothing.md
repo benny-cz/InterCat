@@ -1,8 +1,9 @@
 # ADR-039: An alignment is a bounded statement, and an unknown bound orders nothing
 
-- Status: accepted; revision 254, recorded evidence revision 256, a rate from two anchors revision 264
+- Status: accepted; revision 254, recorded evidence revision 256, a rate from two anchors revision 264, aligning through
+  another member revision 265
 - Date: 2026-09-28
-- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v5.md`
+- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v6.md`
 
 ## Context
 
@@ -21,8 +22,8 @@ fall on, and for what happens when the rate is not known.
 ## Decision
 
 1. **The workspace's time is one member's clock.** The first alignment makes its reference member the time reference,
-   whose instants are workspace time exactly; every alignment in force is to it. Aligning through another aligned member,
-   which would compose two mappings and their uncertainties, is not offered yet.
+   whose instants are workspace time exactly; every alignment in force is to it or, since revision 265, to another member
+   placed in its time (decision 9).
 2. **A manual alignment is a person's bounded statement.** It says that one instant of a member is one instant of the
    reference, within a half-width the person states; with one anchor it supplies an offset and no rate (§8.2). The
    person may bound how fast the two clocks drift apart, in parts per million. Both are bounds, so both add linearly;
@@ -49,6 +50,13 @@ fall on, and for what happens when the rate is not known.
    which moves an instant by up to twice the wander times its distance from the nearer anchor; with none stated, only
    the anchors themselves have a known uncertainty. A rate more than 1,000 ppm from 1, which no working clock runs at,
    says an instant was misread, and is refused.
+9. **A member may be aligned through another** (revision 265, `workspace-v6`). A member aligned to an aligned member is
+   placed through both alignments in turn: each adds its own uncertainty, taken at the widest instant what was carried so
+   far allows, and carries the rest at its rate. Two members aligned through one share its alignment, whose errors move
+   both alike, so comparing them counts it only by its growth - a drift, or a two-anchor line's slope - over the time the
+   two may lie apart, and by each instant's own roundings; never by twice its bound. Aligning to a member with no place
+   or through the member itself, and withdrawing an alignment others are aligned through, are refused. A join decision
+   records every alignment it was made under, so one changed anywhere along either chain flags it for review.
 
 ## Consequences
 
@@ -58,6 +66,7 @@ fall on, and for what happens when the rate is not known.
 - Alignment from recorded wall clocks needed captures to record paired monotonic and wall-clock samples; revision 255
   records them (ADR-040), and revision 256 aligns by them and by one boot's counter (`workspace-v3`, decision 7).
   Alignment from shared markers needs cross-host correlation, and follows; revision 264 measures a rate from two
-  separated anchors (decision 8), placing a member's lane on the merged time through it. Revision
+  separated anchors (decision 8), placing a member's lane on the merged time through it, and revision 265 aligns a member
+  through another (decision 9), `ClockChain` carrying each instant through its alignments. Revision
   261 draws the merged time in the Desktop: each session a lane on the investigation's axis where its alignment places
   it, its placement's uncertainty stated beside it.
